@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "browser/scrolling: Middle-clicking the empty background or gutter of a scrollable Columns, Icons, or List listing starts autoscroll. A round anchor marks the press point."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "x": 5,
+      "y": 100,
+      "button": "middle"
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 5,
+      "y": 100
+    }
+  ],
+  "expect": [
+    {
+      "key": "autoscroll-shield",
+      "role": "dialog",
+      "name": "Autoscroll"
+    }
+  ]
+}

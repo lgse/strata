@@ -1,0 +1,86 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "key": "w1-title",
+          "name": "Matched text",
+          "role": "label"
+        },
+        {
+          "key": "w1-case-fuzzy",
+          "name": "fuzzy “stc”",
+          "role": "label"
+        },
+        {
+          "key": "w1-matched-fuzzy",
+          "name": "strata-components",
+          "role": "label"
+        },
+        {
+          "key": "w1-case-prefix",
+          "name": "prefix “Doc”",
+          "role": "label"
+        },
+        {
+          "key": "w1-matched-prefix",
+          "name": "Documents",
+          "role": "label"
+        },
+        {
+          "key": "w1-case-merged",
+          "name": "touching ranges merge",
+          "role": "label"
+        },
+        {
+          "key": "w1-matched-merged",
+          "name": "Downloads",
+          "role": "label"
+        },
+        {
+          "key": "w1-case-accented",
+          "name": "fuzzy “dé”",
+          "role": "label"
+        },
+        {
+          "key": "w1-matched-accented",
+          "name": "Café déjà vu",
+          "role": "label"
+        },
+        {
+          "key": "w1-case-whole",
+          "name": "the whole text",
+          "role": "label"
+        },
+        {
+          "key": "w1-matched-whole",
+          "name": "Music",
+          "role": "label"
+        },
+        {
+          "key": "w1-case-none",
+          "name": "no match",
+          "role": "label"
+        },
+        {
+          "key": "w1-matched-none",
+          "name": "Pictures",
+          "role": "label"
+        },
+        {
+          "key": "w1-case-truncated",
+          "name": "match past the cut",
+          "role": "label"
+        },
+        {
+          "key": "w1-matched-truncated",
+          "name": "a-very-long-file-name-that-will-not-fit-in-this-row-quarterly-report-final.pdf",
+          "role": "label"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

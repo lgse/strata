@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "settings/preferences: A query with no match shows \"No settings match your search.\" under the title Search results"
+  ],
+  "scene": "c20c-settings-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20c-search-field"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "zzzz"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20c-title",
+      "name": "Search results"
+    },
+    {
+      "key": "c20c-search-empty"
+    },
+    {
+      "key": "c20c-search-status",
+      "name": "No settings match your search."
+    },
+    {
+      "key": "c20c-nav-general",
+      "absent": true
+    }
+  ]
+}

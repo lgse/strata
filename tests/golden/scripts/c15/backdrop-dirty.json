@@ -1,0 +1,218 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection",
+                                "scroll-into-view"
+                              ],
+                              "key": "input",
+                              "name": "Server address",
+                              "placeholder": "smb://server/share",
+                              "role": "text-input",
+                              "states": [
+                                "focused"
+                              ],
+                              "value": "nas"
+                            }
+                          ],
+                          "key": "value",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c15-form-address",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "expand",
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-protocol-trigger",
+                      "name": "Protocol",
+                      "role": "combo-box",
+                      "states": [
+                        "collapsed"
+                      ],
+                      "value": "SMB"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection",
+                                "scroll-into-view"
+                              ],
+                              "key": "input",
+                              "name": "Volume label",
+                              "role": "text-input",
+                              "value": ""
+                            }
+                          ],
+                          "key": "value",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c15-form-label",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-form-label-left",
+                      "name": "11 chars remaining",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-form-chars",
+                      "name": "Count the label in characters",
+                      "role": "check-box",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection",
+                            "scroll-into-view"
+                          ],
+                          "key": "input",
+                          "name": "Notes",
+                          "role": "multiline-text-input",
+                          "value": ""
+                        }
+                      ],
+                      "key": "c15-form-notes",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-form-notes-lines",
+                      "name": "0 lines",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-form-remember",
+                      "name": "Remember password",
+                      "role": "check-box",
+                      "states": [
+                        "unchecked"
+                      ]
+                    }
+                  ],
+                  "key": "c15-form-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-form-secondary",
+                  "name": "Cancel",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-form-primary",
+                  "name": "Connect",
+                  "role": "default-button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-form-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "description": "Browse files on another computer",
+              "key": "c15-form-dialog",
+              "name": "Connect to Server",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

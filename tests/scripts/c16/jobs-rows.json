@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "operations/progress/jobs: A row shows the action name and icon",
+    "operations/progress/jobs: An active whole-selection job whose script reports no total",
+    "operations/progress/jobs: An active per-item job's bar fills"
+  ],
+  "scene": "c16-jobs-light",
+  "events": [
+    {
+      "t": 0.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-jobs-row-4",
+      "role": "group",
+      "name": "Resize images"
+    },
+    {
+      "key": "c16-jobs-row-4-bar",
+      "role": "progress-indicator",
+      "value": "45%"
+    },
+    {
+      "key": "c16-jobs-row-3-bar",
+      "role": "progress-indicator"
+    },
+    {
+      "key": "c16-jobs-row-1",
+      "name": "Strip EXIF"
+    }
+  ]
+}

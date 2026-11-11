@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Clicking an `http` or `https` link opens it externally"
+  ],
+  "scene": "c11-html-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "link-0"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c11-last-intent",
+      "name": "Open https://example.org/strata"
+    },
+    {
+      "key": "c11-selection",
+      "name": "None"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "bullets": [
+    "browser/context-menu: A menu opens with keyboard focus on its first visible action"
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "/",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "rep",
+      "every": 0.01,
+      "t": 0.41
+    },
+    {
+      "type": "key",
+      "name": "F10",
+      "shift": true,
+      "t": 0.64
+    },
+    {
+      "type": "type",
+      "text": "f",
+      "every": 0.01,
+      "t": 0.84
+    },
+    {
+      "type": "key",
+      "name": "Escape",
+      "t": 1.05
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.35
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-field-menu-menu",
+      "absent": true
+    },
+    {
+      "key": "c18-prompt-field",
+      "name": "Find in this listing",
+      "value": "rep",
+      "focused": true
+    },
+    {
+      "key": "c18-log",
+      "name": "Prompt menu closed"
+    }
+  ]
+}

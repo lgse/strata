@@ -1,0 +1,65 @@
+{
+  "bullets": [
+    "browser/selection: With no transient UI open, Escape clears the active pane's selection and keeps the keyboard cursor and directory.",
+    "browser/selection: After Escape clears a selection, the next Shift+arrow range starts at the keyboard cursor."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-3"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-6",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: main.rs"
+    },
+    {
+      "key": "c1-title",
+      "name": "Documents · 10 items"
+    }
+  ]
+}

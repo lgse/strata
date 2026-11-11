@@ -1,0 +1,96 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c6-loc-menu-item0",
+                              "name": "strata",
+                              "role": "menu-item-check-box",
+                              "states": [
+                                "focused",
+                                "checked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c6-loc-menu-item1",
+                              "name": "Projects",
+                              "role": "menu-item-check-box",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c6-loc-menu-item2",
+                              "name": "~",
+                              "role": "menu-item-check-box",
+                              "states": [
+                                "unchecked"
+                              ]
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "c6-loc-menu-scroll-area",
+                  "role": "group"
+                }
+              ],
+              "key": "c6-loc-menu-menu",
+              "role": "menu",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

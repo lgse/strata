@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "operations/progress/dock: During a deletion, the footer's left label is empty",
+    "operations/progress/dock: During a one-item permanent local delete, the left label shows the count",
+    "operations/progress/dock: While that count pulses the bar",
+    "operations/progress: While one local item is permanently deleted",
+    "operations/progress: A permanent delete of two or more items keeps the item percentage",
+    "operations/progress: When the deleted item finishes, the bar stops pulsing"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-delete"
+    },
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c16-start-compress"
+    },
+    {
+      "t": 6.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "name": "Deletion complete"
+    },
+    {
+      "key": "c16-dock-card-2",
+      "name": "Compression complete"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "integration/10xer-mode: The panel lists each valid second key as a keycap beside its action, and closes when the chord completes or Esc cancels it."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-5",
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "g",
+      "every": 0.01,
+      "t": 0.35
+    },
+    {
+      "type": "key",
+      "name": "Escape",
+      "t": 0.56
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.86
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-chord-panel",
+      "absent": true
+    },
+    {
+      "key": "c18-chord-pill",
+      "absent": true
+    },
+    {
+      "key": "c18-pane",
+      "focused": true
+    },
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

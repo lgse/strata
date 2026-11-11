@@ -1,0 +1,143 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item0",
+                              "name": "New Folder",
+                              "role": "menu-item",
+                              "states": [
+                                "focused"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item1",
+                              "name": "New File",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item2",
+                              "name": "Paste",
+                              "role": "menu-item",
+                              "states": [
+                                "disabled"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item4",
+                              "name": "Open in Terminal",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item6",
+                              "name": "Select All",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item7",
+                              "name": "Refresh",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item8",
+                              "name": "Show Hidden Files",
+                              "role": "menu-item-check-box",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item10",
+                              "name": "Properties",
+                              "role": "menu-item"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "c21-menu-scroll-area",
+                  "role": "group"
+                }
+              ],
+              "key": "c21-menu-menu",
+              "name": "Context menu",
+              "role": "menu",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

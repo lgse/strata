@@ -1,0 +1,63 @@
+{
+  "bullets": [
+    "operations/rename: Committing an empty, invalid, or unchanged name closes the editor and leaves the item and its contents as they were."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Backspace"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "F2"
+    },
+    {
+      "t": 1.0,
+      "type": "type",
+      "text": "a//b"
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 1.6,
+      "type": "key",
+      "name": "F2"
+    },
+    {
+      "t": 1.8,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Kept Notes.md (unchanged, Enter)"
+    },
+    {
+      "key": "c5-log-1",
+      "name": "Kept Notes.md (invalid, Enter)"
+    },
+    {
+      "key": "c5-log-2",
+      "name": "Kept Notes.md (empty, Enter)"
+    }
+  ]
+}

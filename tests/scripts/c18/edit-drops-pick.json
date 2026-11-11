@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/search/filter/enter-target: In search results, editing the query text drops the pick and the results' selection"
+  ],
+  "scene": "c18-filter-picked-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "o",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.51
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-outlined",
+      "name": "Outlined: reports"
+    },
+    {
+      "key": "c18-filter-field",
+      "value": "repo",
+      "focused": true
+    }
+  ]
+}

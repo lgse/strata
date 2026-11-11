@@ -1,0 +1,60 @@
+{
+  "bullets": [
+    "preview/quick-preview: With the timeline focused, Home, `0`, or Shift+0 seeks to the start, and End or `G` to the last frame, so playback does not stop."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "0"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "G",
+      "shift": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": ")",
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Home"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 1.1,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-timeline",
+      "value": "3:19 of 3:20"
+    },
+    {
+      "key": "c13-seeks",
+      "name": "7 seeks"
+    }
+  ]
+}

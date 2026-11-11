@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/scrolling: Page Up and Page Down"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-2-title"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "PageDown"
+    },
+    {
+      "t": 1.2,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1000001",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-2000021",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

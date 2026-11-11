@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "browser/thumbnails: A thumbnail that a file operation stopped is not cached as failed; it is requested again once the operation ends"
+  ],
+  "scene": "c25-loading-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "o"
+    },
+    {
+      "t": 2.0,
+      "type": "key",
+      "name": "s"
+    },
+    {
+      "t": 2.1,
+      "type": "key",
+      "name": "p"
+    },
+    {
+      "t": 4.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c25-snapshot",
+      "name": "Snapshot: 9 rows on screen: 0 show thumbnails, 9 show icons (7 waiting, 0 failed, 2 without thumbnails, 1 of them folders) · 0.00 MiB of 8.00 MiB held | Rendered 0 · failed 0 · cancelled 0 · late results dropped 0 · stopped 4 · view ran 1 times while 0 thumbnails landed"
+    },
+    {
+      "key": "c25-status",
+      "name": "9 rows on screen: 6 show thumbnails, 3 show icons (0 waiting, 1 failed, 2 without thumbnails, 1 of them folders) · 0.44 MiB of 8.00 MiB held"
+    },
+    {
+      "key": "c25-work",
+      "name": "Rendered 9 · failed 1 · cancelled 0 · late results dropped 0 · stopped 0 · view ran 0 times while 9 thumbnails landed"
+    }
+  ]
+}

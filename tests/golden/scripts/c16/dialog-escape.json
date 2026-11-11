@@ -1,0 +1,69 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "description": "6 MB / 120 MB · Waiting for device…",
+                      "key": "c16-progress-bar",
+                      "name": "Cancelling transfer…",
+                      "role": "progress-indicator"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c16-progress-items",
+                      "name": "1 of 30 files · IMG_0002.jpg",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c16-progress-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "c16-progress-primary",
+                  "name": "Cancellation requested",
+                  "role": "default-button",
+                  "states": [
+                    "disabled"
+                  ]
+                }
+              ],
+              "description": "Waiting for the active write to stop. The device may still be writing.",
+              "key": "c16-progress-dialog",
+              "name": "Cancelling transfer…",
+              "role": "dialog",
+              "states": [
+                "focused",
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

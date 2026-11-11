@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/audio: Hovering the waveform shows the target time in the elapsed label, and clicking or dragging seeks."
+  ],
+  "scene": "c13-audio-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "media-timeline",
+      "dx": -100,
+      "dur": 0.3
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c13-seeks",
+      "name": "1 seeks"
+    }
+  ]
+}

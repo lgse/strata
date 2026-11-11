@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: A loading FreeCAD file or embedded-image 3MF shows the same details and inactive camera controls",
+    "preview/preview-panel/model-views: The header spinner's accessible label reads"
+  ],
+  "scene": "c14b-model-embedded-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-format",
+      "name": "3MF"
+    },
+    {
+      "key": "c14b-model-title",
+      "name": "lid.3mf"
+    },
+    {
+      "key": "c14b-model-next",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "preview-busy",
+      "name": "Reading thumbnail…"
+    }
+  ]
+}

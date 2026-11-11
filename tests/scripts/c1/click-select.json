@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/selection: A plain click on an entry selects only that entry and replaces the previous selection."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-4"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "row-7"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-7",
+      "role": "list-box-option",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: holiday.jpg"
+    }
+  ]
+}

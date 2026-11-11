@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Holding a file drag over a parent breadcrumb for 750 ms navigates there, and the drag stays held."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drag_files": {
+        "paths": [
+          "/home/demo/report.pdf"
+        ],
+        "key": "c6-loc-crumb-1"
+      }
+    },
+    {
+      "t": 1.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/report.pdf"
+        ],
+        "key": "c6-loc-crumb-0",
+        "hover": 0.1
+      }
+    },
+    {
+      "t": 1.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-log",
+      "name": "Drop 1 into ~"
+    },
+    {
+      "key": "c6-loc-item-1",
+      "name": "Projects"
+    },
+    {
+      "key": "c6-loc-item-2",
+      "absent": true
+    }
+  ]
+}

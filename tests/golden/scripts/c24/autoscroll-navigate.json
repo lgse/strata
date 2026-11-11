@@ -1,0 +1,720 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c24-title",
+              "name": "Scroll extras",
+              "role": "label"
+            },
+            {
+              "key": "c24-intent",
+              "name": "Nothing yet",
+              "role": "label"
+            },
+            {
+              "key": "c24-history",
+              "name": "No history button",
+              "role": "label"
+            },
+            {
+              "key": "c24-status",
+              "name": "Autoscroll: off",
+              "role": "label"
+            },
+            {
+              "key": "c24-chord",
+              "name": "No chord",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus",
+                "set-value",
+                "replace-selected-text",
+                "set-text-selection"
+              ],
+              "key": "c24-filter",
+              "name": "Filter",
+              "role": "multiline-text-input",
+              "value": ""
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50001",
+                          "name": "other folder 00000",
+                          "position": 1,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50002",
+                          "name": "other file 00001.txt",
+                          "position": 2,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50003",
+                          "name": "other file 00002.txt",
+                          "position": 3,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50004",
+                          "name": "other file 00003.txt",
+                          "position": 4,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50005",
+                          "name": "other file 00004.txt",
+                          "position": 5,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50006",
+                          "name": "other file 00005.txt",
+                          "position": 6,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50007",
+                          "name": "other file 00006.txt",
+                          "position": 7,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50008",
+                          "name": "other file 00007.txt",
+                          "position": 8,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50009",
+                          "name": "other file 00008.txt",
+                          "position": 9,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50010",
+                          "name": "other file 00009.txt",
+                          "position": 10,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50011",
+                          "name": "other folder 00010",
+                          "position": 11,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50012",
+                          "name": "other file 00011.txt",
+                          "position": 12,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50013",
+                          "name": "other file 00012.txt",
+                          "position": 13,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50014",
+                          "name": "other file 00013.txt",
+                          "position": 14,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50015",
+                          "name": "other file 00014.txt",
+                          "position": 15,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50016",
+                          "name": "other file 00015.txt",
+                          "position": 16,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50017",
+                          "name": "other file 00016.txt",
+                          "position": 17,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50018",
+                          "name": "other file 00017.txt",
+                          "position": 18,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50019",
+                          "name": "other file 00018.txt",
+                          "position": 19,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50020",
+                          "name": "other file 00019.txt",
+                          "position": 20,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50021",
+                          "name": "other folder 00020",
+                          "position": 21,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50022",
+                          "name": "other file 00021.txt",
+                          "position": 22,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50023",
+                          "name": "other file 00022.txt",
+                          "position": 23,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50024",
+                          "name": "other file 00023.txt",
+                          "position": 24,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50025",
+                          "name": "other file 00024.txt",
+                          "position": 25,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50026",
+                          "name": "other file 00025.txt",
+                          "position": 26,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50027",
+                          "name": "other file 00026.txt",
+                          "position": 27,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50028",
+                          "name": "other file 00027.txt",
+                          "position": 28,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50029",
+                          "name": "other file 00028.txt",
+                          "position": 29,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50030",
+                          "name": "other file 00029.txt",
+                          "position": 30,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50031",
+                          "name": "other folder 00030",
+                          "position": 31,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50032",
+                          "name": "other file 00031.txt",
+                          "position": 32,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50033",
+                          "name": "other file 00032.txt",
+                          "position": 33,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50034",
+                          "name": "other file 00033.txt",
+                          "position": 34,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50035",
+                          "name": "other file 00034.txt",
+                          "position": 35,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50036",
+                          "name": "other file 00035.txt",
+                          "position": 36,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50037",
+                          "name": "other file 00036.txt",
+                          "position": 37,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50038",
+                          "name": "other file 00037.txt",
+                          "position": 38,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50039",
+                          "name": "other file 00038.txt",
+                          "position": 39,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50040",
+                          "name": "other file 00039.txt",
+                          "position": 40,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50041",
+                          "name": "other folder 00040",
+                          "position": 41,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50042",
+                          "name": "other file 00041.txt",
+                          "position": 42,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50043",
+                          "name": "other file 00042.txt",
+                          "position": 43,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50044",
+                          "name": "other file 00043.txt",
+                          "position": 44,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50045",
+                          "name": "other file 00044.txt",
+                          "position": 45,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50046",
+                          "name": "other file 00045.txt",
+                          "position": 46,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50047",
+                          "name": "other file 00046.txt",
+                          "position": 47,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50048",
+                          "name": "other file 00047.txt",
+                          "position": 48,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50049",
+                          "name": "other file 00048.txt",
+                          "position": 49,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50050",
+                          "name": "other file 00049.txt",
+                          "position": 50,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50051",
+                          "name": "other folder 00050",
+                          "position": 51,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50052",
+                          "name": "other file 00051.txt",
+                          "position": 52,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50053",
+                          "name": "other file 00052.txt",
+                          "position": 53,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50054",
+                          "name": "other file 00053.txt",
+                          "position": 54,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50055",
+                          "name": "other file 00054.txt",
+                          "position": 55,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50056",
+                          "name": "other file 00055.txt",
+                          "position": 56,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50057",
+                          "name": "other file 00056.txt",
+                          "position": 57,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50058",
+                          "name": "other file 00057.txt",
+                          "position": 58,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50059",
+                          "name": "other file 00058.txt",
+                          "position": 59,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50060",
+                          "name": "other file 00059.txt",
+                          "position": 60,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50061",
+                          "name": "other folder 00060",
+                          "position": 61,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50062",
+                          "name": "other file 00061.txt",
+                          "position": 62,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50063",
+                          "name": "other file 00062.txt",
+                          "position": 63,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50064",
+                          "name": "other file 00063.txt",
+                          "position": 64,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50065",
+                          "name": "other file 00064.txt",
+                          "position": 65,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50066",
+                          "name": "other file 00065.txt",
+                          "position": 66,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50067",
+                          "name": "other file 00066.txt",
+                          "position": 67,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50068",
+                          "name": "other file 00067.txt",
+                          "position": 68,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-50069",
+                          "name": "other file 00068.txt",
+                          "position": 69,
+                          "role": "list-box-option"
+                        }
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 10000
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "status",
+                  "name": "",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c24-files",
+              "name": "Files",
+              "role": "list-box"
+            }
+          ],
+          "key": "c24-page",
+          "role": "main"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

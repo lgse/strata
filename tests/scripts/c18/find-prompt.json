@@ -1,0 +1,61 @@
+{
+  "bullets": [
+    "integration/10xer-mode/search: `/` and `?` open a footer find prompt"
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "/",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "duck",
+      "every": 0.01,
+      "t": 0.41
+    },
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 0.65
+    },
+    {
+      "type": "type",
+      "text": "?",
+      "every": 0.01,
+      "t": 0.85
+    },
+    {
+      "type": "type",
+      "text": "rep",
+      "every": 0.01,
+      "t": 1.06
+    },
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 1.29
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.59
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "absent": true
+    },
+    {
+      "key": "c18-log",
+      "name": "Found reports"
+    },
+    {
+      "key": "c18-pane",
+      "focused": true
+    }
+  ]
+}

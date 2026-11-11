@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "integration/10xer-mode/search: Pressing `f` again pre-fills the current filter query."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "f",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "rep",
+      "every": 0.01,
+      "t": 0.41
+    },
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 0.64
+    },
+    {
+      "type": "type",
+      "text": "f",
+      "every": 0.01,
+      "t": 0.84
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.15
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "value": "rep",
+      "focused": true
+    }
+  ]
+}

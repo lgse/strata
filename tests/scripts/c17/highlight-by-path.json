@@ -1,0 +1,52 @@
+{
+  "bullets": [
+    "browser/search: While indexing adds results, the highlighted result stays selected by path"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "notes"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.52,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.54,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "Right"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-option-4",
+      "name": "/home/demo/Downloads/notes-export.zip",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c17-palette-busy",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In 10xer mode, `~` also toggles the reference"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "~"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog"
+    },
+    {
+      "key": "c19-reference-search",
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,1026 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c19-reference-search",
+                              "name": "Search actions or keys…",
+                              "placeholder": "Search actions or keys…",
+                              "role": "text-input",
+                              "states": [
+                                "focused"
+                              ],
+                              "value": ""
+                            }
+                          ],
+                          "key": "c19-reference-frame",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c19-reference-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "41 shortcuts",
+                                  "key": "c19-reference-category-0",
+                                  "name": "All",
+                                  "role": "tab",
+                                  "states": [
+                                    "selected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "23 shortcuts",
+                                  "key": "c19-reference-category-1",
+                                  "name": "List navigation",
+                                  "role": "tab",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "9 shortcuts",
+                                  "key": "c19-reference-category-2",
+                                  "name": "Files and selection",
+                                  "role": "tab",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "7 shortcuts",
+                                  "key": "c19-reference-category-3",
+                                  "name": "Search and tools",
+                                  "role": "tab",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "2 shortcuts",
+                                  "key": "c19-reference-category-4",
+                                  "name": "Preview media",
+                                  "role": "tab",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                }
+                              ],
+                              "key": "c19-reference-categories",
+                              "name": "Categories",
+                              "role": "tab-list"
+                            }
+                          ],
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "focus",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "23 shortcuts",
+                                  "key": "c19-reference-heading-0-title",
+                                  "name": "List navigation",
+                                  "role": "row-header"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Previous item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "↑",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-0",
+                                  "name": "Previous item ↑",
+                                  "position": 1,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Same as ← ↓ ↑ → (type-to-search off)",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "h / j / k / l",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-1",
+                                  "name": "Same as ← ↓ ↑ → (type-to-search off) h / j / k / l",
+                                  "position": 2,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Extend the selection up",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Shift+↑",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-2",
+                                  "name": "Extend the selection up Shift+↑",
+                                  "position": 3,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Next item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "↓",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-3",
+                                  "name": "Next item ↓",
+                                  "position": 4,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Extend the selection down",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Shift+↓",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-4",
+                                  "name": "Extend the selection down Shift+↓",
+                                  "position": 5,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Go to the parent folder",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "←",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-5",
+                                  "name": "Go to the parent folder ←",
+                                  "position": 6,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Extend the selection left",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Shift+←",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-6",
+                                  "name": "Extend the selection left Shift+←",
+                                  "position": 7,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Open the focused directory",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "→",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-7",
+                                  "name": "Open the focused directory →",
+                                  "position": 8,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Extend the selection right",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Shift+→",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-8",
+                                  "name": "Extend the selection right Shift+→",
+                                  "position": 9,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "First item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Home / Ctrl+↑",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-9",
+                                  "name": "First item Home / Ctrl+↑",
+                                  "position": 10,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Extend to the first item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Shift+Home",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-10",
+                                  "name": "Extend to the first item Shift+Home",
+                                  "position": 11,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Last item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "End / Ctrl+↓",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-11",
+                                  "name": "Last item End / Ctrl+↓",
+                                  "position": 12,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Extend to the last item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Shift+End",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-12",
+                                  "name": "Extend to the last item Shift+End",
+                                  "position": 13,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Page up",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Page Up",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-13",
+                                  "name": "Page up Page Up",
+                                  "position": 14,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Extend a page up",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Shift+Page Up",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-14",
+                                  "name": "Extend a page up Shift+Page Up",
+                                  "position": 15,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Page down",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Page Down",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-15",
+                                  "name": "Page down Page Down",
+                                  "position": 16,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Extend a page down",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Shift+Page Down",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-16",
+                                  "name": "Extend a page down Shift+Page Down",
+                                  "position": 17,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Move the cursor left, keeping the selection",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+←",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-17",
+                                  "name": "Move the cursor left, keeping the selection Ctrl+←",
+                                  "position": 18,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Move the cursor right, keeping the selection",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+→",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-18",
+                                  "name": "Move the cursor right, keeping the selection Ctrl+→",
+                                  "position": 19,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Toggle the focused item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+Space",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-19",
+                                  "name": "Toggle the focused item Ctrl+Space",
+                                  "position": 20,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Select all",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+A",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-20",
+                                  "name": "Select all Ctrl+A",
+                                  "position": 21,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Clear the selection",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Escape",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-21",
+                                  "name": "Clear the selection Escape",
+                                  "position": 22,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Open the focused item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Enter",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-0-22",
+                                  "name": "Open the focused item Enter",
+                                  "position": 23,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "9 shortcuts",
+                                  "key": "c19-reference-heading-1-title",
+                                  "name": "Files and selection",
+                                  "role": "row-header"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Copy",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+C",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-1-0",
+                                  "name": "Copy Ctrl+C",
+                                  "position": 24,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Cut",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+X",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-1-1",
+                                  "name": "Cut Ctrl+X",
+                                  "position": 25,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Paste",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+V",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-1-2",
+                                  "name": "Paste Ctrl+V",
+                                  "position": 26,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Rename the focused item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "F2",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-1-3",
+                                  "name": "Rename the focused item F2",
+                                  "position": 27,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Rename the next / previous item",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Tab / Shift+Tab in a rename",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-1-4",
+                                  "name": "Rename the next / previous item Tab / Shift+Tab in a rename",
+                                  "position": 28,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Duplicate",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+D",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-1-5",
+                                  "name": "Duplicate Ctrl+D",
+                                  "position": 29,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Move to Trash",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Delete",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-1-6",
+                                  "name": "Move to Trash Delete",
+                                  "position": 30,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Delete permanently",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Shift+Delete",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-1-7",
+                                  "name": "Delete permanently Shift+Delete",
+                                  "position": 31,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Open the focused folder in a new tab / window",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+Enter / Shift+Enter",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-1-8",
+                                  "name": "Open the focused folder in a new tab / window Ctrl+Enter / Shift+Enter",
+                                  "position": 32,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "7 shortcuts",
+                                  "key": "c19-reference-heading-2-title",
+                                  "name": "Search and tools",
+                                  "role": "row-header"
+                                }
+                              ],
+                              "key": "c19-reference-rows",
+                              "role": "row-group",
+                              "setSize": 41
+                            }
+                          ],
+                          "key": "c19-reference-results",
+                          "name": "Shortcuts",
+                          "role": "table",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "key": "c19-reference-status",
+                          "role": "status",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c19-reference-body",
+                      "role": "group"
+                    },
+                    {
+                      "key": "c19-reference-note",
+                      "name": "Ctrl+B categories · Ctrl+F search · Ctrl+L list · j / k / ↑ / ↓ move · Tab cycle · Escape close",
+                      "role": "note"
+                    }
+                  ],
+                  "key": "c19-reference-content",
+                  "role": "group"
+                }
+              ],
+              "key": "c19-reference-dialog",
+              "name": "Keyboard shortcuts",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

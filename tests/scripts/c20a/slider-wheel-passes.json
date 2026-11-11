@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/view-modes/density: A mouse wheel over a slider scrolls the menu and leaves the value unchanged"
+  ],
+  "scene": "c20a-controls-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "wheel",
+      "key": "c20a-frame",
+      "dy": -40.0,
+      "precise": false
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-frame",
+      "value": "Compact · 0 px"
+    },
+    {
+      "key": "c20a-log",
+      "name": "—"
+    }
+  ]
+}

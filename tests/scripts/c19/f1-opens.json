@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "app/shortcut-reference: F1 opens the \"Keyboard shortcuts\" panel"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "F1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "role": "dialog",
+      "name": "Keyboard shortcuts"
+    }
+  ]
+}

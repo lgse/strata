@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "browser/sidebar: Clicking the PINNED or DEVICES heading in the full sidebar folds that section's rows away; clicking it again shows them"
+  ],
+  "scene": "c8-collapsed-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-heading-pinned"
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-pin-projects",
+      "name": "Projects"
+    },
+    {
+      "key": "places-heading-pinned",
+      "states": [
+        "expanded"
+      ]
+    }
+  ]
+}

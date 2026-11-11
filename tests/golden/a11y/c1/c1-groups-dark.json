@@ -1,0 +1,696 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c1-title",
+              "name": "Grouped · 600 items",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "activeDescendant": "row-500012",
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "head-0",
+                          "name": "Folders",
+                          "position": 1,
+                          "role": "heading"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500000",
+                          "name": "Folder 01",
+                          "position": 1,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500001",
+                          "name": "Folder 02",
+                          "position": 2,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500002",
+                          "name": "Folder 03",
+                          "position": 3,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500003",
+                          "name": "Folder 04",
+                          "position": 4,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500004",
+                          "name": "Folder 05",
+                          "position": 5,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500005",
+                          "name": "Folder 06",
+                          "position": 6,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500006",
+                          "name": "Folder 07",
+                          "position": 7,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500007",
+                          "name": "Folder 08",
+                          "position": 8,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "head-1",
+                          "name": "Images",
+                          "position": 10,
+                          "role": "heading"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500008",
+                          "name": "IMG_0001.jpg",
+                          "position": 9,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500009",
+                          "name": "IMG_0002.jpg",
+                          "position": 10,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500010",
+                          "name": "IMG_0003.jpg",
+                          "position": 11,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500011",
+                          "name": "IMG_0004.jpg",
+                          "position": 12,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500012",
+                          "name": "IMG_0005.jpg",
+                          "position": 13,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500013",
+                          "name": "IMG_0006.jpg",
+                          "position": 14,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500014",
+                          "name": "IMG_0007.jpg",
+                          "position": 15,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500015",
+                          "name": "IMG_0008.jpg",
+                          "position": 16,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500016",
+                          "name": "IMG_0009.jpg",
+                          "position": 17,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500017",
+                          "name": "IMG_0010.jpg",
+                          "position": 18,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500018",
+                          "name": "IMG_0011.jpg",
+                          "position": 19,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500019",
+                          "name": "IMG_0012.jpg",
+                          "position": 20,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500020",
+                          "name": "IMG_0013.jpg",
+                          "position": 21,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500021",
+                          "name": "IMG_0014.jpg",
+                          "position": 22,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500022",
+                          "name": "IMG_0015.jpg",
+                          "position": 23,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500023",
+                          "name": "IMG_0016.jpg",
+                          "position": 24,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500024",
+                          "name": "IMG_0017.jpg",
+                          "position": 25,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500025",
+                          "name": "IMG_0018.jpg",
+                          "position": 26,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500026",
+                          "name": "IMG_0019.jpg",
+                          "position": 27,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500027",
+                          "name": "IMG_0020.jpg",
+                          "position": 28,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500028",
+                          "name": "IMG_0021.jpg",
+                          "position": 29,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500029",
+                          "name": "IMG_0022.jpg",
+                          "position": 30,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500030",
+                          "name": "IMG_0023.jpg",
+                          "position": 31,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500031",
+                          "name": "IMG_0024.jpg",
+                          "position": 32,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500032",
+                          "name": "IMG_0025.jpg",
+                          "position": 33,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500033",
+                          "name": "IMG_0026.jpg",
+                          "position": 34,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500034",
+                          "name": "IMG_0027.jpg",
+                          "position": 35,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500035",
+                          "name": "IMG_0028.jpg",
+                          "position": 36,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500036",
+                          "name": "IMG_0029.jpg",
+                          "position": 37,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500037",
+                          "name": "IMG_0030.jpg",
+                          "position": 38,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500038",
+                          "name": "IMG_0031.jpg",
+                          "position": 39,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500039",
+                          "name": "IMG_0032.jpg",
+                          "position": 40,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500040",
+                          "name": "IMG_0033.jpg",
+                          "position": 41,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500041",
+                          "name": "IMG_0034.jpg",
+                          "position": 42,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500042",
+                          "name": "IMG_0035.jpg",
+                          "position": 43,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500043",
+                          "name": "IMG_0036.jpg",
+                          "position": 44,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500044",
+                          "name": "IMG_0037.jpg",
+                          "position": 45,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500045",
+                          "name": "IMG_0038.jpg",
+                          "position": 46,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500046",
+                          "name": "IMG_0039.jpg",
+                          "position": 47,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500047",
+                          "name": "IMG_0040.jpg",
+                          "position": 48,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500048",
+                          "name": "IMG_0041.jpg",
+                          "position": 49,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500049",
+                          "name": "IMG_0042.jpg",
+                          "position": 50,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500050",
+                          "name": "IMG_0043.jpg",
+                          "position": 51,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500051",
+                          "name": "IMG_0044.jpg",
+                          "position": 52,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500052",
+                          "name": "IMG_0045.jpg",
+                          "position": 53,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500053",
+                          "name": "IMG_0046.jpg",
+                          "position": 54,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500054",
+                          "name": "IMG_0047.jpg",
+                          "position": 55,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500055",
+                          "name": "IMG_0048.jpg",
+                          "position": 56,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500056",
+                          "name": "IMG_0049.jpg",
+                          "position": 57,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500057",
+                          "name": "IMG_0050.jpg",
+                          "position": 58,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500058",
+                          "name": "IMG_0051.jpg",
+                          "position": 59,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500059",
+                          "name": "IMG_0052.jpg",
+                          "position": 60,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500060",
+                          "name": "IMG_0053.jpg",
+                          "position": 61,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500061",
+                          "name": "IMG_0054.jpg",
+                          "position": 62,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500062",
+                          "name": "IMG_0055.jpg",
+                          "position": 63,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500063",
+                          "name": "IMG_0056.jpg",
+                          "position": 64,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500064",
+                          "name": "IMG_0057.jpg",
+                          "position": 65,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500065",
+                          "name": "IMG_0058.jpg",
+                          "position": 66,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-500066",
+                          "name": "IMG_0059.jpg",
+                          "position": 67,
+                          "role": "list-box-option"
+                        }
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 600
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "status",
+                  "name": "3 items selected",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c1-groups",
+              "name": "Grouped",
+              "role": "list-box"
+            }
+          ],
+          "key": "c1-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

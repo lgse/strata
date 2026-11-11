@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "preview/preview-panel/layout: When less than 240 px would remain beside the focused column, the preview content hides"
+  ],
+  "scene": "c9-list-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "resize",
+      "dw": -450,
+      "dh": 0,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-drawer",
+      "absent": true
+    },
+    {
+      "key": "demo-suspended",
+      "name": "Preview paused: the window is too narrow"
+    }
+  ]
+}

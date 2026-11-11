@@ -1,0 +1,81 @@
+{
+  "bullets": [
+    "operations/rename: A file's editor opens with the name before the last `.` selected; a folder's opens with the whole name selected."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "Memo"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "F2"
+    },
+    {
+      "t": 1.2,
+      "type": "type",
+      "text": "Pics"
+    },
+    {
+      "t": 1.6,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 1.8,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 2.0,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 2.2,
+      "type": "key",
+      "name": "F2"
+    },
+    {
+      "t": 2.4,
+      "type": "type",
+      "text": "Box"
+    },
+    {
+      "t": 2.75,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Renamed archive.tar.gz to Box.gz (Enter)"
+    },
+    {
+      "key": "c5-log-1",
+      "name": "Renamed photos.2024 to Pics (Enter)"
+    },
+    {
+      "key": "c5-log-2",
+      "name": "Renamed Notes.md to Memo.md (Enter)"
+    },
+    {
+      "key": "rename-field",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: **Next model view** turns the camera clockwise"
+  ],
+  "scene": "c14b-model-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 1.4,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 1.9999999999999998,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 2.6,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 3.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-camera",
+      "name": "Camera position"
+    }
+  ]
+}

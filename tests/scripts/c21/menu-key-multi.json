@@ -1,0 +1,52 @@
+{
+  "bullets": [
+    "browser/context-menu: With several entries selected, Menu or Shift+F10 opens the multi-selection menu and keeps the whole selection."
+  ],
+  "scene": "c21-three-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "ContextMenu"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-6",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-7",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c21-status",
+      "name": "Dismissed menu 1 on main.rs"
+    }
+  ]
+}

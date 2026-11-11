@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "operations/archives/preview: An empty archive folder shows \"This folder is empty\"."
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-8000000009"
+    },
+    {
+      "t": 0.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-archive-empty",
+      "name": "This folder is empty"
+    },
+    {
+      "key": "c14b-archive-count",
+      "name": "Empty folder"
+    },
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "empty"
+    }
+  ]
+}

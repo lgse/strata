@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "browser/search: A spinner shows in the search bar while indexing runs."
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "notes"
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "Down"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-busy",
+      "absent": true
+    },
+    {
+      "key": "c17-palette-option-1",
+      "name": "/home/demo/Documents/notes.md",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

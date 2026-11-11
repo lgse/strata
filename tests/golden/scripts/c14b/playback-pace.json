@@ -1,0 +1,237 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "name": "Documents",
+                      "role": "label"
+                    },
+                    {
+                      "name": "estuary.kml",
+                      "role": "label"
+                    },
+                    {
+                      "name": "notes.txt",
+                      "role": "label"
+                    },
+                    {
+                      "name": "ridge.gpx",
+                      "role": "label"
+                    },
+                    {
+                      "name": "summit.gpx",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "ridge.gpx",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "86 KB · Last week · GPS route",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "description": "5.9 km",
+                              "key": "c14b-route-picture",
+                              "name": "Route preview",
+                              "role": "image"
+                            },
+                            {
+                              "children": [
+                                {
+                                  "key": "c14b-route-eyebrow",
+                                  "name": "3 of 5 in results",
+                                  "role": "label"
+                                },
+                                {
+                                  "key": "c14b-route-title",
+                                  "name": "ridge.gpx",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "c14b-route-details",
+                              "role": "group"
+                            },
+                            {
+                              "children": [
+                                {
+                                  "key": "c14b-route-format",
+                                  "name": "GPX",
+                                  "role": "label"
+                                },
+                                {
+                                  "key": "c14b-route-distance",
+                                  "name": "12.0 km",
+                                  "role": "label"
+                                },
+                                {
+                                  "key": "c14b-route-duration",
+                                  "name": "10:17:50",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "c14b-route-badges",
+                              "role": "group"
+                            },
+                            {
+                              "children": [
+                                {
+                                  "key": "c14b-route-heading",
+                                  "name": "Elevation",
+                                  "role": "label"
+                                },
+                                {
+                                  "key": "c14b-route-height",
+                                  "name": "30 m",
+                                  "role": "label"
+                                },
+                                {
+                                  "key": "c14b-route-range",
+                                  "name": "10–30 m",
+                                  "role": "label"
+                                },
+                                {
+                                  "description": "5.9 km",
+                                  "key": "c14b-route-profile",
+                                  "name": "Elevation profile",
+                                  "role": "image"
+                                }
+                              ],
+                              "key": "c14b-route-elevation",
+                              "role": "group"
+                            },
+                            {
+                              "children": [
+                                {
+                                  "key": "c14b-route-elapsed",
+                                  "name": "5.9 km",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus"
+                                  ],
+                                  "description": "Play/Pause (Ctrl+Alt+Space)",
+                                  "key": "c14b-route-play",
+                                  "name": "Play or pause",
+                                  "role": "button",
+                                  "states": [
+                                    "focused",
+                                    "unchecked"
+                                  ]
+                                },
+                                {
+                                  "key": "c14b-route-total",
+                                  "name": "12.0 km",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "c14b-route-controls",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c14b-route",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

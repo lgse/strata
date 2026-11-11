@@ -1,0 +1,106 @@
+{
+  "bullets": [
+    "browser/folder-customization: The ICON grid offers 16 bundled icons"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "mark",
+      "name": "shown"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-0",
+      "role": "grid-cell",
+      "name": "Documents"
+    },
+    {
+      "key": "row-1",
+      "role": "grid-cell",
+      "name": "Downloads"
+    },
+    {
+      "key": "row-2",
+      "role": "grid-cell",
+      "name": "Code"
+    },
+    {
+      "key": "row-3",
+      "role": "grid-cell",
+      "name": "Archive"
+    },
+    {
+      "key": "row-4",
+      "role": "grid-cell",
+      "name": "Pictures"
+    },
+    {
+      "key": "row-5",
+      "role": "grid-cell",
+      "name": "Videos"
+    },
+    {
+      "key": "row-6",
+      "role": "grid-cell",
+      "name": "Terminal"
+    },
+    {
+      "key": "row-7",
+      "role": "grid-cell",
+      "name": "Home"
+    },
+    {
+      "key": "row-8",
+      "role": "grid-cell",
+      "name": "Storage"
+    },
+    {
+      "key": "row-9",
+      "role": "grid-cell",
+      "name": "Network"
+    },
+    {
+      "key": "row-10",
+      "role": "grid-cell",
+      "name": "Computer"
+    },
+    {
+      "key": "row-11",
+      "role": "grid-cell",
+      "name": "Private"
+    },
+    {
+      "key": "row-12",
+      "role": "grid-cell",
+      "name": "Pinned"
+    },
+    {
+      "key": "row-13",
+      "role": "grid-cell",
+      "name": "Media"
+    },
+    {
+      "key": "row-14",
+      "role": "grid-cell",
+      "name": "Settings"
+    },
+    {
+      "key": "row-15",
+      "role": "grid-cell",
+      "name": "Tasks"
+    },
+    {
+      "key": "c20d-icons-grid",
+      "role": "grid",
+      "name": "Icon"
+    },
+    {
+      "key": "row-12",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

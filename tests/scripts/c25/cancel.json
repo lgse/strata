@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "browser/thumbnails: Scrolling an item away or rebinding its row cancels its pending work, and a late result never appears on a recycled row"
+  ],
+  "scene": "c25-filled-light",
+  "events": [
+    {
+      "t": 1.2,
+      "type": "wheel",
+      "key": "c25-list",
+      "dx": 0,
+      "dy": -2400
+    },
+    {
+      "t": 1.3,
+      "type": "wheel",
+      "key": "c25-list",
+      "dx": 0,
+      "dy": -2400
+    },
+    {
+      "t": 1.36,
+      "type": "key",
+      "name": "f"
+    },
+    {
+      "t": 3.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c25-status",
+      "name": "10 rows on screen: 10 show thumbnails, 0 show icons (0 waiting, 0 failed, 0 without thumbnails, 0 of them folders) · 1.19 MiB of 8.00 MiB held"
+    },
+    {
+      "key": "c25-work",
+      "name": "Rendered 27 · failed 2 · cancelled 12 · late results dropped 3 · stopped 0 · view ran 1 times while 16 thumbnails landed"
+    }
+  ]
+}

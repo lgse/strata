@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/search: Opening a result, or Open containing folder, hands focus to the revealed item"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c17-search"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "notes"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Enter",
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-dialog",
+      "absent": true
+    },
+    {
+      "key": "c17-files",
+      "focused": true
+    },
+    {
+      "key": "c17-log",
+      "name": "Revealed /home/demo/Documents/Notes in its folder"
+    }
+  ]
+}

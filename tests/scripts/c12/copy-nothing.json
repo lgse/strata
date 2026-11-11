@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: With no text selected, Ctrl+C on a focused PDF copies nothing and leaves the clipboard unchanged."
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "c",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c12-copied",
+      "name": "None"
+    },
+    {
+      "key": "c12-selection",
+      "name": "None"
+    },
+    {
+      "key": "c12-last",
+      "name": "Ctrl+C passed on"
+    }
+  ]
+}

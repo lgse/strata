@@ -1,0 +1,1443 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "c20d-emoji-field",
+                          "name": "Search",
+                          "placeholder": "Search",
+                          "role": "search-input",
+                          "value": ""
+                        }
+                      ],
+                      "key": "c20d-emoji-frame",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus",
+                            "context-menu"
+                          ],
+                          "activeDescendant": "row-100006",
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100000",
+                                          "name": "grinning face",
+                                          "position": 1,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100001",
+                                          "name": "grinning face with big eyes",
+                                          "position": 2,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100002",
+                                          "name": "grinning face with smiling eyes",
+                                          "position": 3,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100003",
+                                          "name": "beaming face with smiling eyes",
+                                          "position": 4,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100004",
+                                          "name": "grinning squinting face",
+                                          "position": 5,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100005",
+                                          "name": "grinning face with sweat",
+                                          "position": 6,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100000",
+                                      "name": "grinning face grinning face with big eyes grinning face with smiling eyes beaming face with smiling eyes grinning squinting face grinning face with sweat",
+                                      "position": 1,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100006",
+                                          "name": "rolling on the floor laughing",
+                                          "position": 7,
+                                          "role": "grid-cell",
+                                          "states": [
+                                            "selected"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100007",
+                                          "name": "face with tears of joy",
+                                          "position": 8,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100008",
+                                          "name": "slightly smiling face",
+                                          "position": 9,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100009",
+                                          "name": "upside-down face",
+                                          "position": 10,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100010",
+                                          "name": "melting face",
+                                          "position": 11,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100011",
+                                          "name": "winking face",
+                                          "position": 12,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100006",
+                                      "name": "rolling on the floor laughing face with tears of joy slightly smiling face upside-down face melting face winking face",
+                                      "position": 2,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100012",
+                                          "name": "smiling face with smiling eyes",
+                                          "position": 13,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100013",
+                                          "name": "smiling face with halo",
+                                          "position": 14,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100014",
+                                          "name": "smiling face with hearts",
+                                          "position": 15,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100015",
+                                          "name": "smiling face with heart-eyes",
+                                          "position": 16,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100016",
+                                          "name": "star-struck",
+                                          "position": 17,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100017",
+                                          "name": "face blowing a kiss",
+                                          "position": 18,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100012",
+                                      "name": "smiling face with smiling eyes smiling face with halo smiling face with hearts smiling face with heart-eyes star-struck face blowing a kiss",
+                                      "position": 3,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100018",
+                                          "name": "kissing face",
+                                          "position": 19,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100019",
+                                          "name": "smiling face",
+                                          "position": 20,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100020",
+                                          "name": "kissing face with closed eyes",
+                                          "position": 21,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100021",
+                                          "name": "kissing face with smiling eyes",
+                                          "position": 22,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100022",
+                                          "name": "smiling face with tear",
+                                          "position": 23,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100023",
+                                          "name": "face savoring food",
+                                          "position": 24,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100018",
+                                      "name": "kissing face smiling face kissing face with closed eyes kissing face with smiling eyes smiling face with tear face savoring food",
+                                      "position": 4,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100024",
+                                          "name": "face with tongue",
+                                          "position": 25,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100025",
+                                          "name": "winking face with tongue",
+                                          "position": 26,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100026",
+                                          "name": "zany face",
+                                          "position": 27,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100027",
+                                          "name": "squinting face with tongue",
+                                          "position": 28,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100028",
+                                          "name": "money-mouth face",
+                                          "position": 29,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100029",
+                                          "name": "smiling face with open hands",
+                                          "position": 30,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100024",
+                                      "name": "face with tongue winking face with tongue zany face squinting face with tongue money-mouth face smiling face with open hands",
+                                      "position": 5,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100030",
+                                          "name": "face with hand over mouth",
+                                          "position": 31,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100031",
+                                          "name": "face with open eyes and hand over mouth",
+                                          "position": 32,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100032",
+                                          "name": "face with peeking eye",
+                                          "position": 33,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100033",
+                                          "name": "shushing face",
+                                          "position": 34,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100034",
+                                          "name": "thinking face",
+                                          "position": 35,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100035",
+                                          "name": "saluting face",
+                                          "position": 36,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100030",
+                                      "name": "face with hand over mouth face with open eyes and hand over mouth face with peeking eye shushing face thinking face saluting face",
+                                      "position": 6,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100036",
+                                          "name": "zipper-mouth face",
+                                          "position": 37,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100037",
+                                          "name": "face with raised eyebrow",
+                                          "position": 38,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100038",
+                                          "name": "neutral face",
+                                          "position": 39,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100039",
+                                          "name": "expressionless face",
+                                          "position": 40,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100040",
+                                          "name": "face without mouth",
+                                          "position": 41,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100041",
+                                          "name": "dotted line face",
+                                          "position": 42,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100036",
+                                      "name": "zipper-mouth face face with raised eyebrow neutral face expressionless face face without mouth dotted line face",
+                                      "position": 7,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100042",
+                                          "name": "face in clouds",
+                                          "position": 43,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100043",
+                                          "name": "smirking face",
+                                          "position": 44,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100044",
+                                          "name": "unamused face",
+                                          "position": 45,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100045",
+                                          "name": "face with rolling eyes",
+                                          "position": 46,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100046",
+                                          "name": "grimacing face",
+                                          "position": 47,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100047",
+                                          "name": "face exhaling",
+                                          "position": 48,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100042",
+                                      "name": "face in clouds smirking face unamused face face with rolling eyes grimacing face face exhaling",
+                                      "position": 8,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100048",
+                                          "name": "lying face",
+                                          "position": 49,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100049",
+                                          "name": "shaking face",
+                                          "position": 50,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100050",
+                                          "name": "head shaking horizontally",
+                                          "position": 51,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100051",
+                                          "name": "head shaking vertically",
+                                          "position": 52,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100052",
+                                          "name": "relieved face",
+                                          "position": 53,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100053",
+                                          "name": "pensive face",
+                                          "position": 54,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100048",
+                                      "name": "lying face shaking face head shaking horizontally head shaking vertically relieved face pensive face",
+                                      "position": 9,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100054",
+                                          "name": "sleepy face",
+                                          "position": 55,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100055",
+                                          "name": "drooling face",
+                                          "position": 56,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100056",
+                                          "name": "sleeping face",
+                                          "position": 57,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100057",
+                                          "name": "face with medical mask",
+                                          "position": 58,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100058",
+                                          "name": "face with thermometer",
+                                          "position": 59,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100059",
+                                          "name": "face with head-bandage",
+                                          "position": 60,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100054",
+                                      "name": "sleepy face drooling face sleeping face face with medical mask face with thermometer face with head-bandage",
+                                      "position": 10,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100060",
+                                          "name": "nauseated face",
+                                          "position": 61,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100061",
+                                          "name": "face vomiting",
+                                          "position": 62,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100062",
+                                          "name": "sneezing face",
+                                          "position": 63,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100063",
+                                          "name": "hot face",
+                                          "position": 64,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100064",
+                                          "name": "cold face",
+                                          "position": 65,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100065",
+                                          "name": "woozy face",
+                                          "position": 66,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100060",
+                                      "name": "nauseated face face vomiting sneezing face hot face cold face woozy face",
+                                      "position": 11,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100066",
+                                          "name": "face with crossed-out eyes",
+                                          "position": 67,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100067",
+                                          "name": "face with spiral eyes",
+                                          "position": 68,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100068",
+                                          "name": "exploding head",
+                                          "position": 69,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100069",
+                                          "name": "cowboy hat face",
+                                          "position": 70,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100070",
+                                          "name": "partying face",
+                                          "position": 71,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100071",
+                                          "name": "disguised face",
+                                          "position": 72,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100066",
+                                      "name": "face with crossed-out eyes face with spiral eyes exploding head cowboy hat face partying face disguised face",
+                                      "position": 12,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100072",
+                                          "name": "smiling face with sunglasses",
+                                          "position": 73,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100073",
+                                          "name": "nerd face",
+                                          "position": 74,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100074",
+                                          "name": "face with monocle",
+                                          "position": 75,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100075",
+                                          "name": "confused face",
+                                          "position": 76,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100076",
+                                          "name": "face with diagonal mouth",
+                                          "position": 77,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100077",
+                                          "name": "worried face",
+                                          "position": 78,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100072",
+                                      "name": "smiling face with sunglasses nerd face face with monocle confused face face with diagonal mouth worried face",
+                                      "position": 13,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100078",
+                                          "name": "slightly frowning face",
+                                          "position": 79,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100079",
+                                          "name": "frowning face",
+                                          "position": 80,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100080",
+                                          "name": "face with open mouth",
+                                          "position": 81,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100081",
+                                          "name": "hushed face",
+                                          "position": 82,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100082",
+                                          "name": "astonished face",
+                                          "position": 83,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100083",
+                                          "name": "flushed face",
+                                          "position": 84,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100078",
+                                      "name": "slightly frowning face frowning face face with open mouth hushed face astonished face flushed face",
+                                      "position": 14,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100084",
+                                          "name": "pleading face",
+                                          "position": 85,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100085",
+                                          "name": "face holding back tears",
+                                          "position": 86,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100086",
+                                          "name": "frowning face with open mouth",
+                                          "position": 87,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100087",
+                                          "name": "anguished face",
+                                          "position": 88,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100088",
+                                          "name": "fearful face",
+                                          "position": 89,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100089",
+                                          "name": "anxious face with sweat",
+                                          "position": 90,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100084",
+                                      "name": "pleading face face holding back tears frowning face with open mouth anguished face fearful face anxious face with sweat",
+                                      "position": 15,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100090",
+                                          "name": "sad but relieved face",
+                                          "position": 91,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100091",
+                                          "name": "crying face",
+                                          "position": 92,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100092",
+                                          "name": "loudly crying face",
+                                          "position": 93,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100093",
+                                          "name": "face screaming in fear",
+                                          "position": 94,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100094",
+                                          "name": "confounded face",
+                                          "position": 95,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100095",
+                                          "name": "persevering face",
+                                          "position": 96,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100090",
+                                      "name": "sad but relieved face crying face loudly crying face face screaming in fear confounded face persevering face",
+                                      "position": 16,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100096",
+                                          "name": "disappointed face",
+                                          "position": 97,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100097",
+                                          "name": "downcast face with sweat",
+                                          "position": 98,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100098",
+                                          "name": "weary face",
+                                          "position": 99,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100099",
+                                          "name": "tired face",
+                                          "position": 100,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100100",
+                                          "name": "yawning face",
+                                          "position": 101,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100101",
+                                          "name": "face with steam from nose",
+                                          "position": 102,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100096",
+                                      "name": "disappointed face downcast face with sweat weary face tired face yawning face face with steam from nose",
+                                      "position": 17,
+                                      "role": "row",
+                                      "setSize": 168
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100102",
+                                          "name": "enraged face",
+                                          "position": 103,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100103",
+                                          "name": "angry face",
+                                          "position": 104,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100104",
+                                          "name": "face with symbols on mouth",
+                                          "position": 105,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100105",
+                                          "name": "smiling face with horns",
+                                          "position": 106,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100106",
+                                          "name": "angry face with horns",
+                                          "position": 107,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100107",
+                                          "name": "skull",
+                                          "position": 108,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100102",
+                                      "name": "enraged face angry face face with symbols on mouth smiling face with horns angry face with horns skull",
+                                      "position": 18,
+                                      "role": "row",
+                                      "setSize": 168
+                                    }
+                                  ],
+                                  "key": "rows",
+                                  "role": "group",
+                                  "setSize": 28
+                                }
+                              ],
+                              "key": "viewport",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "key": "status",
+                              "name": "",
+                              "role": "label",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20d-emoji-grid",
+                          "name": "Emoji",
+                          "role": "grid",
+                          "states": [
+                            "focused"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-emoji-panel",
+                      "name": "Smileys & Emotion",
+                      "role": "tab-panel"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "c20d-emoji-name-text",
+                          "name": "rolling on the floor laughing",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c20d-emoji-name",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-smileys",
+                          "name": "Smileys & Emotion",
+                          "position": 1,
+                          "role": "tab",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-people",
+                          "name": "People & Body",
+                          "position": 2,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-nature",
+                          "name": "Animals & Nature",
+                          "position": 3,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-food",
+                          "name": "Food & Drink",
+                          "position": 4,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-travel",
+                          "name": "Travel & Places",
+                          "position": 5,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-activities",
+                          "name": "Activities",
+                          "position": 6,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-objects",
+                          "name": "Objects",
+                          "position": 7,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-symbols",
+                          "name": "Symbols",
+                          "position": 8,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-flags",
+                          "name": "Flags",
+                          "position": 9,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-emoji-tabs",
+                      "name": "Categories",
+                      "role": "tab-list",
+                      "setSize": 9
+                    },
+                    {
+                      "key": "c20d-emoji-status",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "body",
+                  "role": "group"
+                }
+              ],
+              "key": "c20d-emoji-popover-content",
+              "name": "Choose an emoji",
+              "role": "dialog"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "browser/scrolling: Wheel scrolling inside an open panel keeps it open."
+  ],
+  "scene": "c24-panel-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "wheel",
+      "key": "c24-panel",
+      "dx": 0,
+      "dy": -400,
+      "precise": false
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 600,
+      "y": 100
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-panel",
+      "role": "dialog",
+      "name": "Sort by"
+    },
+    {
+      "key": "row-1"
+    }
+  ]
+}

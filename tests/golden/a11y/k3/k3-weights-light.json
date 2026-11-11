@@ -1,0 +1,25 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "catppuccin-latte · Brand colors",
+              "role": "label"
+            },
+            {
+              "name": "lucide · Theme colors",
+              "role": "label"
+            }
+          ],
+          "key": "k3",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

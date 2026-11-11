@@ -1,0 +1,142 @@
+[package]
+name = "strata-platform"
+description = "Linux platform shims for Rune apps: the Wayland and X11 pieces Rune does not ship yet"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# One feature per shim, each gating one module (docs/plan.md §3). A work package fills in only
+# its own feature's list and its own block under [dependencies]. Keep the blank line and the
+# comment between entries: git conflicts when two branches edit neighbouring lines.
+#
+# A dependency appears once in [dependencies]. If another shim's block already declares one you
+# need (zbus for both P5 and P8, say), move it to the shared block at the top, keep it
+# `optional = true`, and enable it with `dep:<name>` from each feature that uses it. Two blocks
+# declaring the same crate merge cleanly in git but make the manifest invalid.
+#
+# Examples gate their own body on their feature (`#[cfg(feature = "csd")] fn main()`, plus a
+# `#[cfg(not(..))] fn main()` that says which feature to enable), so they need no
+# `[[example]]` entry here and still build under `mise run compile-features`.
+[features]
+default = []
+
+# P1 drag and drop: src/dnd/
+dnd = ["_transfer", "x11rb/shape", "x11rb/xinput"]
+
+# P2 clipboard: src/clipboard/
+clipboard = ["_transfer"]
+
+# P3 client-side decorations: src/csd/
+csd = ["dep:x11rb"]
+
+# P4 foreign parenting: src/foreign_parent/
+foreign-parent = ["_transfer", "wayland-protocols/unstable"]
+
+# P5 desktop settings: src/settings/
+settings = [
+    "dep:futures-util",
+    "dep:tokio",
+    "dep:zbus",
+    "tokio/macros",
+    "tokio/rt",
+    "tokio/sync",
+    "tokio/time",
+    "zbus/proxy",
+    "zbus/tokio",
+]
+
+# P6 icon theme lookup: src/icon_theme/. Decodes through Rune's ImageCache; SVG needs rune/svg.
+icon-theme = ["rune/svg"]
+
+# P8 single instance and activation: src/single_instance/
+single-instance = [
+    "dep:tokio",
+    "dep:zbus",
+    "tokio/macros",
+    "tokio/rt",
+    "tokio/sync",
+    "tokio/time",
+    "zbus/proxy",
+    "zbus/service",
+    "zbus/tokio",
+]
+
+# P9 GLib bridge: src/glib_bridge/
+glib-bridge = ["dep:futures-channel", "dep:gio", "dep:glib"]
+
+# Internal, not public API: P0's transfer substrate (src/transfer/), enabled by dnd, clipboard
+# and foreign-parent.
+_transfer = ["dep:libc", "dep:wayland-backend", "dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr", "dep:x11rb", "x11rb/xfixes"]
+
+# Depends on `rune` only: never rune-kit, strata-kit or Strata (docs/plan.md §3). Each shim's
+# optional dependencies go in its own block below, enabled with `dep:` from its feature.
+[dependencies]
+rune.workspace = true
+
+# Shared by two or more shims: optional, enabled with `dep:` from each feature that uses it.
+# settings (P5) and single-instance (P8): each feature enables the tokio and zbus features it uses.
+tokio = { workspace = true, optional = true }
+zbus = { workspace = true, optional = true }
+# x11rb: csd (P3) and _transfer (P0); each feature names the x11rb features it needs.
+x11rb = { workspace = true, optional = true }
+
+# dnd (P1)
+
+# clipboard (P2)
+
+# csd (P3)
+
+# foreign-parent (P4)
+
+# settings (P5)
+futures-util = { workspace = true, optional = true, features = ["std"] }
+
+# icon-theme (P6)
+
+# single-instance (P8)
+
+# glib-bridge (P9)
+futures-channel = { workspace = true, optional = true }
+gio = { workspace = true, optional = true }
+glib = { workspace = true, optional = true }
+
+# _transfer (P0)
+libc = { workspace = true, optional = true }
+wayland-backend = { workspace = true, optional = true, features = ["client_system"] }
+wayland-client = { workspace = true, optional = true }
+wayland-protocols = { workspace = true, optional = true, features = ["client", "staging"] }
+wayland-protocols-wlr = { workspace = true, optional = true, features = ["client"] }
+
+# Tests only. tests/session/ is one binary: each work package's compositor and D-Bus tests run
+# in private sessions from tests/support/ (docs/testing.md). Same layout as [dependencies]: a
+# shared block, then one block per work package. Keep the blank lines.
+[dev-dependencies]
+# Shared by two or more work packages: the harness (W3) and its peer.
+serde.workspace = true
+serde_json.workspace = true
+strata-test-peer.workspace = true
+
+# dnd (P1)
+
+# clipboard (P2)
+
+# csd (P3)
+
+# foreign-parent (P4)
+
+# settings (P5): the fake Settings portal the session tests serve on the private bus.
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+zbus = { workspace = true, features = ["tokio", "service"] }
+
+# icon-theme (P6)
+
+# single-instance (P8)
+
+# glib-bridge (P9)
+
+# _transfer (P0)
+
+[lints]
+workspace = true

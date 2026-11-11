@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "app/dialogs: Closing a dialog over a modal that stays open"
+  ],
+  "scene": "c15-openers-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c15-open-outer"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c15-outer-permissions"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-inner-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-outer-dialog",
+      "role": "dialog",
+      "states": [
+        "modal"
+      ]
+    },
+    {
+      "key": "c15-outer-permissions",
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "events": [
+    {"t": 0.1, "type": "tap", "key": "index-w1"}
+  ]
+}

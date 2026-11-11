@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/audio: The caption shows the tagged track number, such as \"Track 3 of 12\", or \"Track 3\" without a total tag. Without a track tag it shows \"3 of 12 in folder\", or \"3 of 12 in results\" while filtered results replace the listing."
+  ],
+  "scene": "c13-audio-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-next"
+    },
+    {
+      "t": 0.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-eyebrow",
+      "name": "Track 2"
+    }
+  ]
+}

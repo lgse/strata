@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: Selected text on a page scrolled out of view stays copyable until the selection changes."
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "double-click",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "End",
+      "cmd": true
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "c",
+      "cmd": true
+    }
+  ]
+}

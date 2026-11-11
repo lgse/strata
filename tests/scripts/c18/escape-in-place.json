@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "browser/search/filter: Escape on a focused row also closes a filter that narrows rows in place."
+  ],
+  "scene": "c18-filter-in-place-light",
+  "events": [
+    {
+      "type": "key",
+      "name": "Down",
+      "t": 0.2
+    },
+    {
+      "type": "key",
+      "name": "Escape",
+      "t": 0.4
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.7
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-filter-field",
+      "absent": true
+    },
+    {
+      "key": "c18-pane",
+      "focused": true
+    },
+    {
+      "key": "row-4",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-12"
+    }
+  ]
+}

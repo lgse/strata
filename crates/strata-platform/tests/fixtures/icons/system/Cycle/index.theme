@@ -1,0 +1,9 @@
+# fixture
+[Icon Theme]
+Name=Cycle
+Name[de]=Cycle (de)
+Inherits=Cycle,Child
+Directories=16x16/apps,
+
+[16x16/apps]
+Size=16

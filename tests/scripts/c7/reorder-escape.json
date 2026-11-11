@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/tabs: Escape during a tab drag, a sidebar row drag"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "t-c7-1",
+      "dx": 300,
+      "dy": 0,
+      "dur": 1.0
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "Select ~"
+    },
+    {
+      "key": "t-c7-1",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

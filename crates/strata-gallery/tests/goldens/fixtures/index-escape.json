@@ -1,0 +1,10 @@
+{
+  "events": [
+    {"t": 0.1, "type": "tap", "key": "index-w1"},
+    {"t": 0.4, "type": "key", "name": "Escape"}
+  ],
+  "expect": [
+    {"key": "index-w1", "name": "W1 Component contracts"},
+    {"key": "w1-title", "absent": true}
+  ]
+}

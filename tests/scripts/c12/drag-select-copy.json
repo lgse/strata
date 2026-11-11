@@ -1,0 +1,22 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: Dragging across PDF text highlights it in the theme accent; Ctrl+C then copies it in page order"
+  ],
+  "scene": "c12-landscape-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "drag",
+      "key": "pdf-z2-p0/page",
+      "dx": 0,
+      "dy": 250,
+      "dur": 0.4
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "c",
+      "cmd": true
+    }
+  ]
+}

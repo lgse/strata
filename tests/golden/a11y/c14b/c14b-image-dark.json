@@ -1,0 +1,146 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "name": "Documents",
+                      "role": "label"
+                    },
+                    {
+                      "name": "harbour.png",
+                      "role": "label"
+                    },
+                    {
+                      "name": "notes.md",
+                      "role": "label"
+                    },
+                    {
+                      "name": "project.zip",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "harbour.png",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "412 KB · Yesterday · PNG image",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "focus"
+                              ],
+                              "description": "960 × 640",
+                              "key": "c14b-image-picture",
+                              "name": "harbour.png",
+                              "role": "image",
+                              "value": "42%"
+                            },
+                            {
+                              "key": "c14b-image-caption",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c14b-image",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

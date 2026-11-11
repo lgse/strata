@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "app/dialogs: Enter in a single-line text or password field"
+  ],
+  "scene": "c15-form-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "nas.local"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-form-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-status",
+      "name": "Connected to nas.local"
+    }
+  ]
+}

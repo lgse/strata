@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "operations/rename: For an item outside a local folder, such as on `smb://`, typing a name containing `/` puts the field in the error style."
+  ],
+  "scene": "c5-remote-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "a/b"
+    }
+  ],
+  "expect": [
+    {
+      "key": "rename-field",
+      "value": "a/b.md",
+      "states": [
+        "invalid"
+      ]
+    },
+    {
+      "key": "rename-message-text",
+      "name": "Names cannot contain /"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "operations/rename: Tab and Shift+Tab commit too"
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "Memo"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "Back"
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Renamed archive.tar.gz to Back.gz (Shift+Tab)"
+    },
+    {
+      "key": "c5-log-1",
+      "name": "Renamed Notes.md to Memo.md (Tab)"
+    }
+  ]
+}

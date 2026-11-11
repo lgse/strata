@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: Appearance has a \"Customize columns…\" item after Group by file type, visible only in List. Choosing it closes Appearance and opens the Columns popover on the headings."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-list-headings-menu-item1",
+      "name": "Name",
+      "states": [
+        "checked",
+        "disabled"
+      ]
+    }
+  ]
+}

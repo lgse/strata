@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "browser/sidebar: Middle-clicking a place, a pin, or a mounted device row opens its location in a new tab."
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-pin-projects",
+      "button": "middle"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "New tab projects"
+    },
+    {
+      "key": "places-place-home",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

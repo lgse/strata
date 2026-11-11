@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "preview/quick-preview: `media_volume_step_up` ships with both `+` and `=`; removing one leaves the other raising a focused timeline's volume."
+  ],
+  "scene": "c13-rebound-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "+",
+      "shift": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "="
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-volume",
+      "value": "70%"
+    }
+  ]
+}

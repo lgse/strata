@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "operations/archives/preview: Moving the pointer over member rows tints the hovered row; the highlighted member and keyboard cursor stay where they were."
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-8000000006"
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "key": "row-8000000009"
+    },
+    {
+      "t": 0.4,
+      "type": "move",
+      "key": "row-8000000013"
+    },
+    {
+      "t": 0.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-8000000001",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

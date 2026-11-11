@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "integration/10xer-mode/file-verbs: `r` and F2 open `rename ›` for the cursor item or focused hit, never the fill.",
+    "integration/10xer-mode/file-verbs: Enter renames the item and keeps its contents"
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-11",
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "r",
+      "every": 0.01,
+      "t": 0.35
+    },
+    {
+      "type": "type",
+      "text": "final",
+      "every": 0.01,
+      "t": 0.56
+    },
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 0.81
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.11
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "absent": true
+    },
+    {
+      "key": "c18-log",
+      "name": "Renamed report.pdf to final.pdf"
+    },
+    {
+      "key": "row-11",
+      "name": "final.pdf"
+    }
+  ]
+}

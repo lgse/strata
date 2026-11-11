@@ -1,0 +1,54 @@
+{
+  "bullets": [
+    "browser/context-menu: Right-click menus in text inputs use the same surface, border, corners, font, and separators as file menus, and follow live theme changes."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c21-search"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "draft notes"
+    },
+    {
+      "t": 0.84,
+      "type": "tap",
+      "key": "c21-search",
+      "button": "secondary"
+    },
+    {
+      "t": 0.94,
+      "type": "tap",
+      "key": "c21-field-menu-item5"
+    },
+    {
+      "t": 1.04,
+      "type": "key",
+      "name": "F10",
+      "shift": true
+    },
+    {
+      "t": 1.14,
+      "type": "tap",
+      "key": "c21-field-menu-item0"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-status",
+      "name": "Search now reads \"\""
+    },
+    {
+      "key": "c21-search",
+      "focused": true
+    },
+    {
+      "key": "c21-field-menu-menu",
+      "absent": true
+    }
+  ]
+}

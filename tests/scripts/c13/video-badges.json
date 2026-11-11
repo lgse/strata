@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/video: Badges under the title show resolution class (SD to 8K), HDR10 or HLG, bit depth, rounded frame rate, video codec, and audio codec with channel layout."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-badge-0",
+      "name": "1080p"
+    },
+    {
+      "key": "media-badge-1",
+      "name": "HDR10"
+    },
+    {
+      "key": "media-badge-2",
+      "name": "10-bit"
+    },
+    {
+      "key": "media-badge-3",
+      "name": "30 fps"
+    },
+    {
+      "key": "media-badge-4",
+      "name": "HEVC"
+    },
+    {
+      "key": "media-badge-5",
+      "name": "AAC Stereo"
+    }
+  ]
+}

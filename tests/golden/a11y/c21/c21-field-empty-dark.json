@@ -1,0 +1,113 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-field-menu-item0",
+                              "name": "Cut",
+                              "role": "menu-item",
+                              "states": [
+                                "disabled"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-field-menu-item1",
+                              "name": "Copy",
+                              "role": "menu-item",
+                              "states": [
+                                "disabled"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-field-menu-item2",
+                              "name": "Paste",
+                              "role": "menu-item",
+                              "states": [
+                                "disabled"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-field-menu-item3",
+                              "name": "Delete",
+                              "role": "menu-item",
+                              "states": [
+                                "disabled"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-field-menu-item5",
+                              "name": "Select All",
+                              "role": "menu-item",
+                              "states": [
+                                "focused"
+                              ]
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "c21-field-menu-scroll-area",
+                  "role": "group"
+                }
+              ],
+              "key": "c21-field-menu-menu",
+              "name": "Text editing",
+              "role": "menu",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

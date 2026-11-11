@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "remote/file-providers/network-locations: Cancel or Escape on the sign-in dialog"
+  ],
+  "scene": "c26-sign-in-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "pw"
+    },
+    {
+      "t": 0.45,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-password-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Aborted"
+    }
+  ]
+}

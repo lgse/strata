@@ -1,0 +1,20 @@
+{
+  "bullets": [
+    "browser/view-modes/list: Sorted by Extension, Created, or Unsorted, no heading shows an arrow, since no column matches."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "e",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Extension ↑"
+    }
+  ]
+}

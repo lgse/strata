@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "browser/sidebar: With nothing pinned, dragging files or folders over the sidebar shows the empty PINNED section; leaving the sidebar hides it again."
+  ],
+  "scene": "c8-no-pins-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drag_files": {
+        "paths": [
+          "/home/demo/Work"
+        ],
+        "key": "places-place-documents"
+      }
+    },
+    {
+      "t": 0.6,
+      "drag_files": "leave"
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-heading-pinned",
+      "absent": true
+    }
+  ]
+}

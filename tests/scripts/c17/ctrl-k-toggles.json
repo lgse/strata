@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "browser/search: Ctrl+K or the header search button opens the search dialog over a blurred window; Ctrl+K again closes it.",
+    "browser/search: Closing search with Escape, Ctrl+K, or a click outside the panel returns focus to its opener"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c17-files"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "c17-search"
+    },
+    {
+      "t": 1.5,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-field",
+      "absent": true
+    },
+    {
+      "key": "c17-files",
+      "focused": false
+    },
+    {
+      "key": "c17-search",
+      "focused": true
+    }
+  ]
+}

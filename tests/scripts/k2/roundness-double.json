@@ -1,0 +1,98 @@
+{
+  "bullets": [
+    "settings/themes/corner-roundness: At 0, every pixel corner radius in Strata's stylesheet becomes 0px"
+  ],
+  "scene": "k2-defaults-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 0.7,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 0.9,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 1.1,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 1.2,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 1.3,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 1.4,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 1.5,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    },
+    {
+      "t": 1.6,
+      "type": "tap",
+      "key": "k2-roundness-more"
+    }
+  ],
+  "expect": [
+    {
+      "key": "k2-roundness-value",
+      "name": "Corner roundness: 200 %"
+    },
+    {
+      "key": "k2-token-radius-md",
+      "name": "radius.md 12"
+    }
+  ]
+}

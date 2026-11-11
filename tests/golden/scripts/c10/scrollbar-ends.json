@@ -1,0 +1,1870 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "name": "file-0.rs",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-0.rs",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "file-1.rs",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-1.rs",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "file-2.rs",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-2.rs",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "file-3.rs",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-3.rs",
+                      "role": "list-box-option"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                },
+                {
+                  "key": "c10-last-intent",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c10-selection",
+                  "name": "None",
+                  "role": "label"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "generated.rs",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "1.4 MB · Today 09:41 · Rust source",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand"
+                          ],
+                          "key": "preview-find",
+                          "name": "Find in preview (Ctrl+F)",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-wrap",
+                          "name": "Toggle word wrap",
+                          "role": "button",
+                          "states": [
+                            "checked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49910",
+                                      "position": 49911,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49911",
+                                      "position": 49912,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49912: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49912",
+                                      "position": 49913,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49913(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49913",
+                                      "position": 49914,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49914\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49914",
+                                      "position": 49915,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49915); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49915",
+                                      "position": 49916,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49916 { return y - 49916; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49916",
+                                      "position": 49917,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49917",
+                                      "position": 49918,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49918",
+                                      "position": 49919,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49919",
+                                      "position": 49920,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49920: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49920",
+                                      "position": 49921,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49921(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49921",
+                                      "position": 49922,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49922\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49922",
+                                      "position": 49923,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49923); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49923",
+                                      "position": 49924,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49924 { return y - 49924; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49924",
+                                      "position": 49925,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49925",
+                                      "position": 49926,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49926",
+                                      "position": 49927,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49927",
+                                      "position": 49928,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49928: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49928",
+                                      "position": 49929,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49929(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49929",
+                                      "position": 49930,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49930\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49930",
+                                      "position": 49931,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49931); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49931",
+                                      "position": 49932,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49932 { return y - 49932; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49932",
+                                      "position": 49933,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49933",
+                                      "position": 49934,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49934",
+                                      "position": 49935,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49935",
+                                      "position": 49936,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49936: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49936",
+                                      "position": 49937,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49937(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49937",
+                                      "position": 49938,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49938\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49938",
+                                      "position": 49939,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49939); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49939",
+                                      "position": 49940,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49940 { return y - 49940; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49940",
+                                      "position": 49941,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49941",
+                                      "position": 49942,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49942",
+                                      "position": 49943,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49943",
+                                      "position": 49944,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49944: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49944",
+                                      "position": 49945,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49945(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49945",
+                                      "position": 49946,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49946\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49946",
+                                      "position": 49947,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49947); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49947",
+                                      "position": 49948,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49948 { return y - 49948; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49948",
+                                      "position": 49949,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49949",
+                                      "position": 49950,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49950",
+                                      "position": 49951,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49951",
+                                      "position": 49952,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49952: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49952",
+                                      "position": 49953,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49953(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49953",
+                                      "position": 49954,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49954\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49954",
+                                      "position": 49955,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49955); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49955",
+                                      "position": 49956,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49956 { return y - 49956; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49956",
+                                      "position": 49957,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49957",
+                                      "position": 49958,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49958",
+                                      "position": 49959,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49959",
+                                      "position": 49960,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49960: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49960",
+                                      "position": 49961,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49961(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49961",
+                                      "position": 49962,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49962\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49962",
+                                      "position": 49963,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49963); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49963",
+                                      "position": 49964,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49964 { return y - 49964; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49964",
+                                      "position": 49965,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49965",
+                                      "position": 49966,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49966",
+                                      "position": 49967,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49967",
+                                      "position": 49968,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49968: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49968",
+                                      "position": 49969,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49969(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49969",
+                                      "position": 49970,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49970\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49970",
+                                      "position": 49971,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49971); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49971",
+                                      "position": 49972,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49972 { return y - 49972; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49972",
+                                      "position": 49973,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49973",
+                                      "position": 49974,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49974",
+                                      "position": 49975,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49975",
+                                      "position": 49976,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49976: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49976",
+                                      "position": 49977,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49977(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49977",
+                                      "position": 49978,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49978\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49978",
+                                      "position": 49979,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49979); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49979",
+                                      "position": 49980,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49980 { return y - 49980; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49980",
+                                      "position": 49981,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49981",
+                                      "position": 49982,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49982",
+                                      "position": 49983,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49983",
+                                      "position": 49984,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49984: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49984",
+                                      "position": 49985,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49985(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49985",
+                                      "position": 49986,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49986\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49986",
+                                      "position": 49987,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49987); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49987",
+                                      "position": 49988,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49988 { return y - 49988; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49988",
+                                      "position": 49989,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49989",
+                                      "position": 49990,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49990",
+                                      "position": 49991,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49991",
+                                      "position": 49992,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "/// Item 49992: a function and its body.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49992",
+                                      "position": 49993,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "pub fn item_49993(x: u32) -> u32 {",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49993",
+                                      "position": 49994,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let name = \"item 49994\";",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49994",
+                                      "position": 49995,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    let y = x.wrapping_mul(49995); // scaled",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49995",
+                                      "position": 49996,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    if y > 49996 { return y - 49996; }",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49996",
+                                      "position": 49997,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "    y + name.len() as u32",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49997",
+                                      "position": 49998,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "}",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49998",
+                                      "position": 49999,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "Blank",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l49999",
+                                      "position": 50000,
+                                      "role": "group"
+                                    }
+                                  ],
+                                  "key": "code-rows",
+                                  "role": "group",
+                                  "setSize": 50000
+                                }
+                              ],
+                              "key": "code-scroll",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "focus",
+                                "increment",
+                                "decrement",
+                                "set-value"
+                              ],
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "key": "thumb",
+                                      "role": "group"
+                                    }
+                                  ],
+                                  "key": "trough",
+                                  "role": "group"
+                                }
+                              ],
+                              "key": "code-position",
+                              "name": "Document position",
+                              "range": [
+                                49970.0,
+                                0.0,
+                                49970.0,
+                                1.0
+                              ],
+                              "role": "slider",
+                              "value": "Line 49971 of 50000"
+                            }
+                          ],
+                          "key": "code",
+                          "name": "Source",
+                          "role": "document"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

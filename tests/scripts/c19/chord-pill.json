@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "integration/10xer-mode: Arming a chord (`g`, `c`, `,`, `;`, or `t`) shows its pill"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "g"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-chord-pill",
+      "role": "status",
+      "name": "g-"
+    },
+    {
+      "key": "c19-chord-panel",
+      "name": "Keys after g"
+    },
+    {
+      "key": "c19-footer-tenxer"
+    }
+  ]
+}

@@ -1,0 +1,995 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "overrides.toml",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "1",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "# The gallery's overrides.toml",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "2",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "radius.md = 2",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "3",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "color.border_focus = \"#ff9e64\"",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "4",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "5",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "[sidebar.row]",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "6",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "height = 34",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "7",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "8",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "[sidebar.selected]",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "9",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "fill = \"alpha(@color.border_focus, 0.25)\"",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "10",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "icon = \"@color.border_focus\"",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "11",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "12",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "[list.row]",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "13",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "height = 32",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "14",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "length = 30",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "15",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "16",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "[collection.row]",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "17",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "radius = 10",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "18",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "inset = 12",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "19",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "20",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "[light]",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "21",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "fill.highlight = \"#ffd8b8\"",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "22",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "color.text_base = \"nope\"",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "23",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "24",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "[dark]",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "25",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "fill.highlight = \"#5a3a20\"",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "26",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "row.columns = \"28px\"",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "27",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "collection.cut.opacity = 1.5",
+                  "role": "label"
+                }
+              ],
+              "key": "k4-source",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "Overrides on",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "10 ROWS APPLY · 4 PROBLEMS",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 14, column 1: unknown token `list.row.length`",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 22, column 19: `color.text_base` takes a colour, and \"nope\" isn't one (in [light])",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 26, column 15: `row.columns` takes a length, not a string: write the number without quotes or units (in [dark])",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 27, column 26: `collection.cut.opacity` takes a number from 0 to 1 (in [dark])",
+                  "role": "label"
+                }
+              ],
+              "key": "k4-report",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "context-menu",
+                            "scroll-into-view",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-place-home",
+                                      "name": "Home",
+                                      "position": 1,
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-place-documents",
+                                      "name": "Documents",
+                                      "position": 2,
+                                      "role": "list-item",
+                                      "states": [
+                                        "selected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-place-downloads",
+                                      "name": "Downloads",
+                                      "position": 3,
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-place-trash",
+                                      "name": "Trash",
+                                      "position": 4,
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "k4-sidebar-places",
+                                  "role": "group",
+                                  "setSize": 4
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "collapse",
+                                        "scroll-into-view"
+                                      ],
+                                      "description": "1 item",
+                                      "key": "k4-sidebar-heading-pinned",
+                                      "name": "PINNED",
+                                      "role": "button",
+                                      "states": [
+                                        "expanded"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-pin-projects",
+                                      "name": "Projects",
+                                      "position": 1,
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "k4-sidebar-section-pinned",
+                                  "name": "PINNED",
+                                  "role": "group",
+                                  "setSize": 1
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "collapse",
+                                        "scroll-into-view"
+                                      ],
+                                      "description": "1 item",
+                                      "key": "k4-sidebar-heading-devices",
+                                      "name": "DEVICES",
+                                      "role": "button",
+                                      "states": [
+                                        "expanded"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "description": "/",
+                                      "key": "k4-sidebar-device-system",
+                                      "name": "System",
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "k4-sidebar-section-devices",
+                                  "name": "DEVICES",
+                                  "role": "group"
+                                }
+                              ],
+                              "key": "k4-sidebar-list",
+                              "name": "Places",
+                              "role": "list"
+                            }
+                          ],
+                          "key": "k4-sidebar-scroll",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        }
+                      ],
+                      "key": "k4-sidebar",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "notes.md",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "photos (drop target)",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "name": "budget.ods (focused)",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "k4-focused",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "todo.txt",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "k4-files",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "k4-window",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "SET FOR THIS APPEARANCE: THEME → OVERRIDE",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "collection.row.inset",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "5",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "12",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "collection.row.radius",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "3.6",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "10",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "color.border_focus",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#007f9dff",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#ff9e64ff",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "fill.highlight",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#b9e1e9ff",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#ffd8b8ff",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "list.row.height",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "26",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "32",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "radius.md",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "3.6",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "2",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "sidebar.row.height",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "24",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "34",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "sidebar.selected.fill",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#007f9d46",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#ff9e6440",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "sidebar.selected.icon",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#007f9dff",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#ff9e64ff",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k4-tokens",
+                  "role": "group"
+                }
+              ],
+              "key": "k4-specimen",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            }
+          ],
+          "key": "k4",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

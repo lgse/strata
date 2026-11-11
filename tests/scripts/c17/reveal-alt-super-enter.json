@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "browser/search: Alt+Enter with Hyper or Meta held also opens the containing folder."
+  ],
+  "scene": "c17-results-light",
+  "events": [
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Enter",
+      "alt": true,
+      "logo": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-log",
+      "name": "Revealed /home/demo/Documents/Reports in its folder"
+    },
+    {
+      "key": "c17-palette-dialog",
+      "absent": true
+    }
+  ]
+}

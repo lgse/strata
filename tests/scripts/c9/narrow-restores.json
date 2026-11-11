@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "preview/preview-panel/layout: Widening the window again restores the same file at the previous manual width"
+  ],
+  "scene": "c9-list-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "drag",
+      "key": "preview-grip",
+      "dx": -60,
+      "dy": 0,
+      "dur": 0.3
+    },
+    {
+      "t": 0.6,
+      "type": "resize",
+      "dw": -450,
+      "dh": 0,
+      "dur": 0.3
+    },
+    {
+      "t": 1.2,
+      "type": "resize",
+      "dw": 450,
+      "dh": 0,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-title",
+      "name": "notes.md"
+    },
+    {
+      "key": "preview-grip",
+      "value": "492"
+    },
+    {
+      "key": "demo-suspended",
+      "absent": true
+    }
+  ]
+}

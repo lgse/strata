@@ -1,0 +1,57 @@
+{
+  "bullets": [
+    "browser/scrolling: Page Up and Page Down",
+    "browser/scrolling: A page is the number of rows that fit the viewport minus one, kept as overlap",
+    "browser/selection: Shift+Page Up and Shift+Page Down extend or shrink the selection by one page from the range anchor.",
+    "browser/selection: In List, Icons, and Columns, plain Home, End, Page Up, and Page Down move the range anchor to the new cursor."
+  ],
+  "scene": "c1-photos-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-10002"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageDown"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "PageDown",
+      "shift": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "PageDown",
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "PageUp",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-10023",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-10044",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: IMG_0045.jpg"
+    }
+  ]
+}

@@ -1,0 +1,435 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "name": "Edit action",
+                      "role": "label"
+                    },
+                    {
+                      "key": "c20c-error",
+                      "name": "",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-editor-tab-0",
+                              "name": "General",
+                              "position": 1,
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-editor-tab-1",
+                              "name": "Script",
+                              "position": 2,
+                              "role": "tab",
+                              "states": [
+                                "focused",
+                                "selected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-editor-tab-2",
+                              "name": "Behavior",
+                              "position": 3,
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            }
+                          ],
+                          "key": "c20c-editor-tabs",
+                          "name": "Action editor sections",
+                          "role": "tab-list",
+                          "setSize": 3
+                        },
+                        {
+                          "children": [
+                            {
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-up",
+                                    "scroll-down",
+                                    "set-scroll-offset"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": " 1  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": " 2  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": " 3  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": " 4  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": " 5  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": " 6  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": " 7  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": " 8  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": " 9  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "10  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "11  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "12  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "13  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "14  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "15  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "16  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "17  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "18  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "19  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "20  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "21  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "22  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "23  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "24  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "25  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "26  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "27  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "28  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "29  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "30  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "31  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "32  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "33  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "34  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "35  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "36  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "37  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "38  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "39  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "40  convert \"$f\" -resize 1200x \"$f\"",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "c20c-script-lines",
+                                      "role": "group"
+                                    }
+                                  ],
+                                  "key": "c20c-script",
+                                  "role": "scroll-view",
+                                  "states": [
+                                    "clips"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-editor-panel-1",
+                              "name": "Script",
+                              "role": "tab-panel"
+                            }
+                          ],
+                          "key": "c20c-editor-panels",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c20c-editor",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus"
+                          ],
+                          "key": "c20c-cancel",
+                          "name": "Cancel",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20c-save",
+                          "name": "Save changes",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "c20c-footer",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20c-editor-dialog",
+                  "role": "group"
+                }
+              ],
+              "key": "c20c",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

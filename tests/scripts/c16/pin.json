@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "operations/progress/dock: The pin button, \"Keep notification\""
+  ],
+  "scene": "c16-complete-light",
+  "events": [
+    {
+      "t": 0.05,
+      "type": "move",
+      "x": 100,
+      "y": 300
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c16-dock-card-1-pin"
+    },
+    {
+      "t": 0.4,
+      "type": "move",
+      "x": 100,
+      "y": 300
+    },
+    {
+      "t": 6.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "name": "Copy complete"
+    },
+    {
+      "key": "c16-dock-card-1-pin",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c16-dock-card-1-meta",
+      "name": "· pinned"
+    },
+    {
+      "key": "c16-dock-card-2",
+      "name": "Copy complete"
+    }
+  ]
+}

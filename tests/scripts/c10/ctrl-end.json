@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Ctrl+Home and Ctrl+End move the caret to the start and end of the loaded document."
+  ],
+  "scene": "c10-large-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "code-l2/t"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "End",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "code-position",
+      "value": "Line 49971 of 50000"
+    }
+  ]
+}

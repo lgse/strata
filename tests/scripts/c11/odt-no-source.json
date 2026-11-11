@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents/odt: Selecting a local `.odt` or `.ott` file shows its rendered document with no Source view",
+    "preview/preview-panel: Rendered DOCX, ODT, OTT, and workbook previews hide **Toggle word wrap**."
+  ],
+  "scene": "c11-odt-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "doc-u0/t"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-view-switch",
+      "absent": true
+    },
+    {
+      "key": "preview-wrap",
+      "absent": true
+    }
+  ]
+}

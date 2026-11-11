@@ -1,0 +1,80 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "key": "c15-conflict-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-conflict-skip",
+                  "name": "Skip",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-conflict-secondary",
+                  "name": "Cancel",
+                  "role": "button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-conflict-primary",
+                  "name": "Replace",
+                  "role": "default-button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-conflict-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "description": "A file with this name already exists in Pictures.",
+              "key": "c15-conflict-dialog",
+              "name": "Replace photo.raw?",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

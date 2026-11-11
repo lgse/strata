@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "integration/10xer-mode/search: In the `/`, `?`, `f`, and `s` prompts, Up and Down move the listing cursor while the prompt keeps focus."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "f",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "key",
+      "name": "Down",
+      "t": 0.41
+    },
+    {
+      "type": "key",
+      "name": "Down",
+      "t": 0.51
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.81
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "focused": true
+    },
+    {
+      "key": "c18-log",
+      "name": "Cursor on Receipts"
+    }
+  ]
+}

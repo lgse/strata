@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "browser/tabs: Ctrl+Shift+1 to Ctrl+Shift+9 select tabs 1 to 9"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "6",
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "1",
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "2",
+      "cmd": true,
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "t-c7-2",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

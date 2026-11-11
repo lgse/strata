@@ -1,0 +1,84 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Script",
+                  "role": "label"
+                },
+                {
+                  "name": "Runs with bash, found on PATH.",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c10-runtime",
+                  "name": "Bash",
+                  "role": "button"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection",
+                            "scroll-into-view"
+                          ],
+                          "key": "field",
+                          "name": "Script",
+                          "role": "multiline-text-input",
+                          "value": "#!/usr/bin/env bash\n# Rename every photo by the day it was taken.\nset -euo pipefail\n\ndir=\"${1:-$HOME/Pictures}\"\ncount=0\nfor f in \"$dir\"/*.jpg; do\n    stamp=$(date -r \"$f\" +%Y-%m-%d)\n    mv -n \"$f\" \"$dir/$stamp-$((count++)).jpg\"\ndone\n\necho \"Renamed $count photos in $dir\"\n"
+                        }
+                      ],
+                      "key": "script-scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "script",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c10-library",
+                  "name": "Library",
+                  "role": "button"
+                }
+              ],
+              "key": "c10-editor-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

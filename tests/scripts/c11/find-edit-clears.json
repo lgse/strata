@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Each edit to the query clears the document selection"
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "strata"
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "zzz"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "No matches"
+    },
+    {
+      "key": "c11-selection",
+      "name": "None"
+    }
+  ]
+}

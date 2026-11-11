@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: **Next model view** turns the camera clockwise",
+    "preview/preview-panel/model-views: Between the buttons, an image named \"Camera position\" maps the camera from above.",
+    "preview/preview-panel/model-views: The indicator's accessible description is the current view name"
+  ],
+  "scene": "c14b-model-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 1.4,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 2.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-camera",
+      "role": "image",
+      "name": "Camera position"
+    }
+  ]
+}

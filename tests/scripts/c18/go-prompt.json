@@ -1,0 +1,52 @@
+{
+  "bullets": [
+    "integration/10xer-mode/places: `g Space` opens a footer `go ›` prompt; typing never navigates.",
+    "integration/10xer-mode/places: Up and Down choose a candidate, and results that arrive later keep that choice.",
+    "integration/10xer-mode/places: Tab writes the chosen folder into the prompt as `./…/`, `~/…/`, or an absolute path, and never acts on it."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "g ",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "~/d",
+      "every": 0.01,
+      "t": 0.42
+    },
+    {
+      "type": "key",
+      "name": "Down",
+      "t": 1.05
+    },
+    {
+      "type": "key",
+      "name": "Tab",
+      "t": 1.15
+    },
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 1.75
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 2.05
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "absent": true
+    },
+    {
+      "key": "c18-log",
+      "name": "Go ~/dev"
+    }
+  ]
+}

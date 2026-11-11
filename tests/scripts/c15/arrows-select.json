@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "app/dialogs: With focus outside a text field, an unmodified arrow key"
+  ],
+  "scene": "c15-form-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-protocol-content",
+      "role": "dialog",
+      "states": [
+        "modal"
+      ]
+    },
+    {
+      "key": "option0",
+      "focused": true,
+      "name": "SMB"
+    }
+  ]
+}

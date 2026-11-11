@@ -1,0 +1,59 @@
+{
+  "bullets": [
+    "browser/search/filter/enter-target: A pick, such as Ctrl+click on `old-reports` then a click back in the field, removes the outline"
+  ],
+  "scene": "c18-filter-in-place-light",
+  "events": [
+    {
+      "hold": "ctrl",
+      "t": 0.2
+    },
+    {
+      "type": "tap",
+      "key": "row-6",
+      "t": 0.25
+    },
+    {
+      "type": "tap",
+      "key": "row-11",
+      "t": 0.4
+    },
+    {
+      "hold": "",
+      "t": 0.55
+    },
+    {
+      "type": "tap",
+      "key": "c18-filter-field",
+      "t": 0.6
+    },
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 0.75
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.05
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-log",
+      "name": "Opened ducks_in_the_pool.txt"
+    },
+    {
+      "key": "row-6",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-11",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "browser/view-modes/thumbnail-size: In Icons, Ctrl+Alt++ or Ctrl+Alt+= moves the size one step larger.",
+    "browser/view-modes/thumbnail-size: In Icons, Ctrl+Alt+− moves the size one step smaller along the same sizes."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "=",
+      "ctrl": true,
+      "alt": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "=",
+      "ctrl": true,
+      "alt": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "-",
+      "ctrl": true,
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-size",
+      "name": "Thumbnail size: 72px"
+    },
+    {
+      "key": "c3-grid",
+      "focused": false
+    }
+  ]
+}

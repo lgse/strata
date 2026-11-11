@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "browser/sidebar/pins: Dropping a pinned row on the upper or lower half of another pinned row moves it before or after that row."
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "places-pin-projects",
+      "dy": 60,
+      "dur": 0.4
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "Move pin projects to 2"
+    },
+    {
+      "key": "places-place-home",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

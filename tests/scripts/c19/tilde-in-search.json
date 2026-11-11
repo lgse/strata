@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In 10xer mode, `~` typed in the open reference's search closes"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "~",
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "co"
+    },
+    {
+      "t": 1.1,
+      "type": "key",
+      "name": "~",
+      "shift": true
+    },
+    {
+      "t": 1.6,
+      "type": "key",
+      "name": "F1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "value": "co",
+      "focused": true
+    }
+  ]
+}

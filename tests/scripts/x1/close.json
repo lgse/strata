@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "app/window: Minimize minimizes the window and Close closes it (the header's half: the host receives the action; the window's response is a hand test)"
+  ],
+  "scene": "x1-shell-dark",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "x1-header-close"
+    }
+  ],
+  "expect": [
+    {
+      "key": "x1-last",
+      "name": "Last header button: Close"
+    }
+  ]
+}

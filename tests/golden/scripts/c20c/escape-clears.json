@@ -1,0 +1,343 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "context-menu"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c20c-search-field",
+                              "name": "Search settings",
+                              "placeholder": "Search settings",
+                              "role": "search-input",
+                              "states": [
+                                "focused"
+                              ],
+                              "value": ""
+                            },
+                            {
+                              "key": "c20c-search-status",
+                              "role": "status",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20c-search-frame",
+                          "role": "group"
+                        },
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-general",
+                              "name": "General",
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-theme",
+                              "name": "Appearance",
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-actions",
+                              "name": "Actions",
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-keyboard",
+                              "name": "Keyboard",
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-integrations",
+                              "name": "Integrations",
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-updates",
+                              "name": "Updates",
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-diagnostics",
+                              "name": "Diagnostics",
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-about",
+                              "name": "About",
+                              "role": "tab",
+                              "states": [
+                                "selected"
+                              ]
+                            }
+                          ],
+                          "key": "c20c-nav",
+                          "name": "Settings pages",
+                          "role": "tab-list"
+                        }
+                      ],
+                      "key": "c20c-side",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "c20c-title",
+                          "name": "About",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Version information",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c20c-switch-version",
+                                  "name": "Version information",
+                                  "role": "switch",
+                                  "states": [
+                                    "unchecked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-search-row-version",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Website",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c20c-switch-website",
+                                  "name": "Website",
+                                  "role": "switch",
+                                  "states": [
+                                    "unchecked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-search-row-website",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Source code",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c20c-switch-source",
+                                  "name": "Source code",
+                                  "role": "switch",
+                                  "states": [
+                                    "unchecked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-search-row-source",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Report an issue",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c20c-switch-issue",
+                                  "name": "Report an issue",
+                                  "role": "switch",
+                                  "states": [
+                                    "unchecked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-search-row-issue",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "License",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c20c-switch-license",
+                                  "name": "License",
+                                  "role": "switch",
+                                  "states": [
+                                    "unchecked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-search-row-license",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c20c-page",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        }
+                      ],
+                      "key": "c20c-main",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20c-settings",
+                  "role": "group"
+                }
+              ],
+              "key": "c20c",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

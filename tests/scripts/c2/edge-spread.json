@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: A resize or autofit is saved as `browser_column_width`"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "c2-col-1-edge",
+      "dx": 100,
+      "dy": 0,
+      "dur": 0.2
+    },
+    {
+      "t": 1.0,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-intent",
+      "name": "Width 400"
+    }
+  ]
+}

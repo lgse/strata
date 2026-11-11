@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "browser/sidebar: Dragging files over a pinned folder's row body shows a highlight and an accent outline, and dropping still moves or copies"
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/notes.txt"
+        ],
+        "key": "places-pin-projects",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "Drop 1 into projects"
+    }
+  ]
+}

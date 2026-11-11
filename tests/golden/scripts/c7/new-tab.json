@@ -1,0 +1,588 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "scroll-left",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-1",
+                                      "name": "~",
+                                      "position": 1,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-2",
+                                      "name": "Documents",
+                                      "position": 2,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-3",
+                                      "name": "Music",
+                                      "position": 3,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-4",
+                                      "name": "Quarterly reports and invoices 2026",
+                                      "position": 4,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-5",
+                                      "name": "Trash",
+                                      "position": 5,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-6",
+                                      "name": "share",
+                                      "position": 6,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-7",
+                                      "name": "Music",
+                                      "position": 7,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "ground",
+                                                  "role": "group"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-8",
+                                      "name": "Music",
+                                      "position": 8,
+                                      "role": "tab",
+                                      "states": [
+                                        "selected"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c7-list",
+                                  "name": "Tabs",
+                                  "role": "tab-list",
+                                  "setSize": 8
+                                }
+                              ],
+                              "key": "c7-scroll",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "description": "New tab (Ctrl+T)",
+                              "key": "c7-new",
+                              "name": "New tab",
+                              "role": "button",
+                              "states": [
+                                "focused"
+                              ]
+                            }
+                          ],
+                          "key": "c7",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c7-band",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c7-bar",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "/home/demo/Music",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c7-pane-8",
+                      "name": "Music view",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c7-panes",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "key": "c7-log",
+                      "name": "New tab Music",
+                      "role": "label"
+                    },
+                    {
+                      "key": "c7-title",
+                      "name": "Music — Strata",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c7-lines",
+                  "role": "group"
+                }
+              ],
+              "key": "c7-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Music — Strata",
+  "role": "window"
+}

@@ -1,0 +1,208 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "name": "Documents",
+                      "role": "label"
+                    },
+                    {
+                      "name": "bracket.stl",
+                      "role": "label"
+                    },
+                    {
+                      "name": "gear.stl",
+                      "role": "label"
+                    },
+                    {
+                      "name": "lid.3mf",
+                      "role": "label"
+                    },
+                    {
+                      "name": "benchy.gcode",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "bracket.stl",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "2.1 MB · Today 10:12 · 3D model",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "key": "preview-busy",
+                          "name": "Rendering 12,480 triangles…",
+                          "role": "progress-indicator"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "c14b-model-picture",
+                              "name": "Model preview",
+                              "role": "image"
+                            },
+                            {
+                              "children": [
+                                {
+                                  "key": "c14b-model-eyebrow",
+                                  "name": "1 of 4 in folder",
+                                  "role": "label"
+                                },
+                                {
+                                  "key": "c14b-model-title",
+                                  "name": "bracket.stl",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "c14b-model-details",
+                              "role": "group"
+                            },
+                            {
+                              "children": [
+                                {
+                                  "key": "c14b-model-format",
+                                  "name": "Binary STL",
+                                  "role": "label"
+                                },
+                                {
+                                  "key": "c14b-model-triangles",
+                                  "name": "12,480 triangles",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "c14b-model-badges",
+                              "role": "group"
+                            },
+                            {
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus"
+                                  ],
+                                  "key": "c14b-model-previous",
+                                  "name": "Previous model view",
+                                  "role": "button"
+                                },
+                                {
+                                  "description": "Back right",
+                                  "key": "c14b-model-camera",
+                                  "name": "Camera position",
+                                  "role": "image"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus"
+                                  ],
+                                  "key": "c14b-model-next",
+                                  "name": "Next model view",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c14b-model-controls",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c14b-model",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

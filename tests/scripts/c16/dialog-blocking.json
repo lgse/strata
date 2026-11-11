@@ -1,0 +1,45 @@
+{
+  "bullets": [
+    "operations/progress: Clicking outside the progress dialog leaves the dialog",
+    "operations/progress: The progress dialog's subtitle reads"
+  ],
+  "scene": "c16-dialog-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "tap",
+      "x": 4,
+      "y": 630
+    },
+    {
+      "t": 0.7,
+      "type": "tap",
+      "x": 900,
+      "y": 40
+    },
+    {
+      "t": 0.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-progress-dialog",
+      "role": "dialog",
+      "name": "Moving items",
+      "states": [
+        "modal"
+      ]
+    },
+    {
+      "key": "c16-progress-primary",
+      "name": "Cancel",
+      "focused": true
+    },
+    {
+      "key": "c16-progress-close",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,254 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Password required for share “public” on “nas.local”",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "key": "segment0",
+                          "name": "Registered user",
+                          "position": 1,
+                          "role": "radio-button",
+                          "states": [
+                            "checked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "key": "segment1",
+                          "name": "Anonymous",
+                          "position": 2,
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        }
+                      ],
+                      "key": "c26-mount-password-connect-as",
+                      "name": "Connect as",
+                      "role": "radio-group",
+                      "setSize": 2
+                    },
+                    {
+                      "actions": [
+                        "context-menu",
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection",
+                            "scroll-into-view"
+                          ],
+                          "key": "c26-mount-password-user",
+                          "name": "Username",
+                          "role": "text-input",
+                          "value": "ann"
+                        }
+                      ],
+                      "key": "c26-mount-password-user-frame",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "context-menu",
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection",
+                            "scroll-into-view"
+                          ],
+                          "key": "c26-mount-password-domain",
+                          "name": "Domain",
+                          "role": "text-input",
+                          "value": "WORKGROUP"
+                        }
+                      ],
+                      "key": "c26-mount-password-domain-frame",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "context-menu",
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection",
+                            "scroll-into-view"
+                          ],
+                          "key": "c26-mount-password-secret",
+                          "name": "Password",
+                          "role": "password-input",
+                          "states": [
+                            "focused"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "scroll-into-view"
+                          ],
+                          "key": "c26-mount-password-reveal",
+                          "name": "Show password",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "c26-mount-password-secret-frame",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "key": "segment0",
+                          "name": "Don't remember",
+                          "position": 1,
+                          "role": "radio-button",
+                          "states": [
+                            "checked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "key": "segment1",
+                          "name": "Until logout",
+                          "position": 2,
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "key": "segment2",
+                          "name": "Forever",
+                          "position": 3,
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        }
+                      ],
+                      "key": "c26-mount-password-remember",
+                      "name": "Password storage",
+                      "role": "radio-group",
+                      "setSize": 3
+                    }
+                  ],
+                  "key": "c26-mount-password-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c26-mount-password-secondary",
+                  "name": "Cancel",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c26-mount-password-primary",
+                  "name": "Connect",
+                  "role": "default-button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c26-mount-password-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "description": "Authenticate to access this volume or location",
+              "key": "c26-mount-password-dialog",
+              "name": "Authentication required",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

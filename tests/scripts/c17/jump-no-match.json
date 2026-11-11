@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "browser/search: A query that matches no visited folder shows"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "k",
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "zzqx"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-status",
+      "name": "No matching folders"
+    }
+  ]
+}

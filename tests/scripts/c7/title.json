@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/tabs: A window whose active tab is at folder",
+    "browser/tabs: Navigating the active tab, or selecting another tab, retitles the window"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "t-c7-1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "t-c7-1",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c7-log",
+      "name": "Select ~"
+    },
+    {
+      "key": "c7-title",
+      "name": "~ — Strata"
+    }
+  ]
+}

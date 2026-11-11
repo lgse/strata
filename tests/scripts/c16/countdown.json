@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "operations/progress/dock: A completed card counts down 5 seconds"
+  ],
+  "scene": "c16-complete-light",
+  "events": [
+    {
+      "t": 0.05,
+      "type": "move",
+      "x": 100,
+      "y": 300
+    },
+    {
+      "t": 4.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "absent": true
+    },
+    {
+      "key": "c16-dock-card-2",
+      "name": "Copy complete"
+    }
+  ]
+}

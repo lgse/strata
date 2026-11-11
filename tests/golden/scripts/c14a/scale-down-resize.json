@@ -1,0 +1,44 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c14a-report",
+                  "name": "ScaleDown · 50% · 6 reports · render at 128 × 80 px",
+                  "role": "label"
+                }
+              ],
+              "key": "c14a-status",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "key": "c14a-viewport",
+                  "name": "benchy.gcode",
+                  "role": "image",
+                  "value": "50%"
+                }
+              ],
+              "key": "c14a-stage",
+              "role": "group"
+            }
+          ],
+          "key": "c14a-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

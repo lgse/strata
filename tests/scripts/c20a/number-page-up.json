@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "settings/themes/corner-roundness: Settings → Appearance has a Shape group with a Corner roundness stepper from 0 to 200 in steps of 10"
+  ],
+  "scene": "c20a-controls-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20a-roundness-input"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageUp"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-roundness",
+      "value": "160%"
+    },
+    {
+      "key": "c20a-log",
+      "name": "Roundness 160"
+    }
+  ]
+}

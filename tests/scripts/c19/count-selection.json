@@ -1,0 +1,20 @@
+{
+  "bullets": [
+    "app/shortcut-reference: With 2 of 5 items selected, the count's accessible description",
+    "app/shortcut-reference: With a selection, the count shows a folder and file breakdown"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-select-two"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-count",
+      "name": "2 files selected (2.4 MB)"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "preview/quick-preview: With the timeline focused, `+`, `=`, `-`, and keypad +/− change the volume by 0.1; reaching 0 mutes and keeps the volume to restore."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "+"
+    },
+    {
+      "t": 0.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-volume",
+      "value": "70%"
+    }
+  ]
+}

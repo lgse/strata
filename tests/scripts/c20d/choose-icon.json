@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/folder-customization: The ICON grid offers 16 bundled icons",
+    "browser/folder-customization: Each choice updates the dialog's 56 px preview"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-6"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-preview",
+      "name": "Preview: Terminal"
+    },
+    {
+      "key": "row-6",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c20d-emoji-button",
+      "name": "Choose Emoji…"
+    }
+  ]
+}

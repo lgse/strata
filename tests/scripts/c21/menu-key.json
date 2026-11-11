@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "browser/context-menu: Menu alone or Shift+F10 opens the menu of the focused selected entry in Columns, Icons, and List."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.15,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "ContextMenu"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "F10",
+      "shift": true
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c21-status",
+      "name": "Dismissed menu 2 on Notes.md"
+    }
+  ]
+}

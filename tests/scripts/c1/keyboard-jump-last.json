@@ -1,0 +1,59 @@
+{
+  "bullets": [
+    "browser/scrolling: Ctrl+Up and Ctrl+Down select the first or last entry of the focused pane or column and scroll to that edge.",
+    "browser/scrolling: Ctrl+Up or Ctrl+Down with Shift, Alt, or Super added does not jump."
+  ],
+  "scene": "c1-photos-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-10004"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down",
+      "ctrl": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Up",
+      "ctrl": true,
+      "alt": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Up",
+      "ctrl": true,
+      "logo": true
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Up",
+      "ctrl": true,
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-11998",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-11999",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: IMG_1999.jpg"
+    }
+  ]
+}

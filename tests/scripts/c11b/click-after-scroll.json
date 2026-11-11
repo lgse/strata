@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: After smooth scrolling, a click, drag selection, or link hover acts on the row under the pointer"
+  ],
+  "scene": "c11b-csv-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "wheel",
+      "key": "sheet-r2-c0",
+      "dy": -300
+    },
+    {
+      "t": 1.0,
+      "type": "drag",
+      "key": "sheet-r20-c0",
+      "dx": 0,
+      "dy": 28,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "c11b-range",
+      "name": "user12\nuser13"
+    }
+  ]
+}

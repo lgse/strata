@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "PageDown"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-100030",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

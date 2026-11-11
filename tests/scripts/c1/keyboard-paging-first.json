@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/scrolling: Paging stops at the first and last entry and keeps the selected item in view."
+  ],
+  "scene": "c1-photos-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-10002"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageUp"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "PageUp"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-10000",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: IMG_0001.jpg"
+    }
+  ]
+}

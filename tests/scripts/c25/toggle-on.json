@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "browser/thumbnails: Turning it back on restores thumbnails for rows still bound"
+  ],
+  "scene": "c25-filled-light",
+  "events": [
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "t"
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "s"
+    },
+    {
+      "t": 1.5,
+      "type": "key",
+      "name": "t"
+    },
+    {
+      "t": 1.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c25-snapshot",
+      "name": "Snapshot: Thumbnails off · 9 rows on screen: 0 show thumbnails, 9 show icons · 0.44 MiB of 8.00 MiB held | Rendered 9 · failed 1 · cancelled 0 · late results dropped 0 · stopped 0 · view ran 0 times while 9 thumbnails landed"
+    },
+    {
+      "key": "c25-status",
+      "name": "9 rows on screen: 6 show thumbnails, 3 show icons (0 waiting, 1 failed, 2 without thumbnails, 1 of them folders) · 0.44 MiB of 8.00 MiB held"
+    },
+    {
+      "key": "c25-work",
+      "name": "Rendered 9 · failed 1 · cancelled 0 · late results dropped 0 · stopped 0 · view ran 0 times while 9 thumbnails landed"
+    }
+  ]
+}

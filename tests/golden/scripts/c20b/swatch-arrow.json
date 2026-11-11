@@ -1,0 +1,340 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Color picker",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "CUSTOM FOLDER COLOR",
+                      "role": "label"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus"
+                          ],
+                          "key": "c20b-folder-plane",
+                          "name": "Saturation and value",
+                          "role": "slider",
+                          "value": "Saturation 91%, value 97%"
+                        },
+                        {
+                          "actions": [
+                            "focus",
+                            "increment",
+                            "decrement",
+                            "set-value"
+                          ],
+                          "key": "c20b-folder-hue",
+                          "name": "Hue",
+                          "range": [
+                            23.0,
+                            0.0,
+                            360.0,
+                            1.0
+                          ],
+                          "role": "slider",
+                          "value": "23°"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "c20b-folder-hex",
+                          "name": "Hex color",
+                          "role": "text-input",
+                          "value": "#f76b15"
+                        },
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-0-0",
+                              "name": "Red",
+                              "role": "radio-button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-0-1",
+                              "name": "Orange",
+                              "role": "radio-button",
+                              "states": [
+                                "focused",
+                                "checked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-0-2",
+                              "name": "Yellow",
+                              "role": "radio-button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-0-3",
+                              "name": "Green",
+                              "role": "radio-button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-0-4",
+                              "name": "Blue",
+                              "role": "radio-button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-0-5",
+                              "name": "Purple",
+                              "role": "radio-button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-0-6",
+                              "name": "Gray",
+                              "role": "radio-button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            }
+                          ],
+                          "key": "c20b-folder-swatches-0",
+                          "name": "Theme",
+                          "role": "radio-group"
+                        },
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-1-0",
+                              "name": "#f38ba8",
+                              "role": "radio-button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-1-1",
+                              "name": "#a6e3a1",
+                              "role": "radio-button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20b-folder-swatch-1-2",
+                              "name": "#808080",
+                              "role": "radio-button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            }
+                          ],
+                          "key": "c20b-folder-swatches-1",
+                          "name": "Recent",
+                          "role": "radio-group"
+                        }
+                      ],
+                      "key": "c20b-folder",
+                      "name": "Folder color",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20b-custom",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "ADD A THEME",
+                      "role": "label"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "expand"
+                              ],
+                              "description": "#1e1e2e",
+                              "key": "c20b-background-button",
+                              "name": "Background",
+                              "role": "button",
+                              "states": [
+                                "collapsed"
+                              ]
+                            }
+                          ],
+                          "key": "c20b-background-popover-trigger",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c20b-background-row",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "expand"
+                              ],
+                              "description": "#313244",
+                              "key": "c20b-surface-button",
+                              "name": "Surface",
+                              "role": "button",
+                              "states": [
+                                "collapsed"
+                              ]
+                            }
+                          ],
+                          "key": "c20b-surface-popover-trigger",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c20b-surface-row",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "expand"
+                              ],
+                              "description": "#cdd6f4",
+                              "key": "c20b-text-button",
+                              "name": "Text",
+                              "role": "button",
+                              "states": [
+                                "collapsed"
+                              ]
+                            }
+                          ],
+                          "key": "c20b-text-popover-trigger",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c20b-text-row",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "expand"
+                              ],
+                              "description": "#89b4fa",
+                              "key": "c20b-accent-button",
+                              "name": "Accent",
+                              "role": "button",
+                              "states": [
+                                "collapsed"
+                              ]
+                            }
+                          ],
+                          "key": "c20b-accent-popover-trigger",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c20b-accent-row",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20b-editor",
+                  "role": "group"
+                },
+                {
+                  "key": "c20b-log",
+                  "name": "Folder color Commit #f76b15",
+                  "role": "label"
+                }
+              ],
+              "key": "c20b",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: The current crumb's Copy path button copies the path and shows a check and \"Path copied\" for 2 seconds.",
+    "browser/navigation/location-bar: The Copy path button is named \"Copy path\"; after a click it is named \"Path copied\", then \"Copy path\" again 2 s later."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c6-loc-copy"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-loc-copy",
+      "name": "Path copied"
+    },
+    {
+      "key": "c6-log",
+      "name": "Copied ~/Projects/strata"
+    },
+    {
+      "key": "c6-loc-entry",
+      "absent": true
+    }
+  ]
+}

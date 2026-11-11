@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "browser/thumbnails: Only items in the viewport and a 25% margin around it are rendered"
+  ],
+  "scene": "c25-filled-light",
+  "events": [
+    {
+      "t": 1.2,
+      "type": "wheel",
+      "key": "c25-list",
+      "dx": 0,
+      "dy": -600
+    },
+    {
+      "t": 3.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c25-status",
+      "name": "10 rows on screen: 9 show thumbnails, 1 show icons (0 waiting, 0 failed, 1 without thumbnails, 1 of them folders) · 0.88 MiB of 8.00 MiB held"
+    },
+    {
+      "key": "c25-span",
+      "name": "Asked for rows 13–23 around rows 11–20 on screen"
+    },
+    {
+      "key": "c25-work",
+      "name": "Rendered 19 · failed 1 · cancelled 0 · late results dropped 0 · stopped 0 · view ran 0 times while 10 thumbnails landed"
+    }
+  ]
+}

@@ -1,0 +1,796 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "name": "file-0.rs",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-0.rs",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "file-1.rs",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-1.rs",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "file-2.rs",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-2.rs",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "file-3.rs",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-3.rs",
+                      "role": "list-box-option"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                },
+                {
+                  "key": "c10-last-intent",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c10-selection",
+                  "name": "None",
+                  "role": "label"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "table.rs",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "18 KB · Today 09:41 · Rust source",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand"
+                          ],
+                          "key": "preview-find",
+                          "name": "Find in preview (Ctrl+F)",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-wrap",
+                          "name": "Toggle word wrap",
+                          "role": "button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "scroll-left",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "// Wide lines: wrap is off, so they scroll sideways.",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l0",
+                                      "position": 1,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let names = [\"漢字かな漢字かな漢字かな漢字かな漢字かな漢字かな漢字かな漢字かな漢字かな漢字かな漢字かな漢字かな\", \"😀🎉\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l1",
+                                      "position": 2,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_0 = [\"cell 0.0\", \"cell 0.1\", \"cell 0.2\", \"cell 0.3\", \"cell 0.4\", \"cell 0.5\", \"cell 0.6\", \"cell 0.7\", \"cell 0.8\", \"cell 0.9\", \"cell 0.10\", \"cell 0.11\", \"cell 0.12\", \"cell 0.13\", \"cell 0.14\", \"cell 0.15\", \"cell 0.16\", \"cell 0.17\", \"cell 0.18\", \"cell 0.19\", \"cell 0.20\", \"cell 0.21\", \"cell 0.22\", \"cell 0.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l2",
+                                      "position": 3,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_1 = [\"cell 1.0\", \"cell 1.1\", \"cell 1.2\", \"cell 1.3\", \"cell 1.4\", \"cell 1.5\", \"cell 1.6\", \"cell 1.7\", \"cell 1.8\", \"cell 1.9\", \"cell 1.10\", \"cell 1.11\", \"cell 1.12\", \"cell 1.13\", \"cell 1.14\", \"cell 1.15\", \"cell 1.16\", \"cell 1.17\", \"cell 1.18\", \"cell 1.19\", \"cell 1.20\", \"cell 1.21\", \"cell 1.22\", \"cell 1.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l3",
+                                      "position": 4,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_2 = [\"cell 2.0\", \"cell 2.1\", \"cell 2.2\", \"cell 2.3\", \"cell 2.4\", \"cell 2.5\", \"cell 2.6\", \"cell 2.7\", \"cell 2.8\", \"cell 2.9\", \"cell 2.10\", \"cell 2.11\", \"cell 2.12\", \"cell 2.13\", \"cell 2.14\", \"cell 2.15\", \"cell 2.16\", \"cell 2.17\", \"cell 2.18\", \"cell 2.19\", \"cell 2.20\", \"cell 2.21\", \"cell 2.22\", \"cell 2.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l4",
+                                      "position": 5,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_3 = [\"cell 3.0\", \"cell 3.1\", \"cell 3.2\", \"cell 3.3\", \"cell 3.4\", \"cell 3.5\", \"cell 3.6\", \"cell 3.7\", \"cell 3.8\", \"cell 3.9\", \"cell 3.10\", \"cell 3.11\", \"cell 3.12\", \"cell 3.13\", \"cell 3.14\", \"cell 3.15\", \"cell 3.16\", \"cell 3.17\", \"cell 3.18\", \"cell 3.19\", \"cell 3.20\", \"cell 3.21\", \"cell 3.22\", \"cell 3.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l5",
+                                      "position": 6,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_4 = [\"cell 4.0\", \"cell 4.1\", \"cell 4.2\", \"cell 4.3\", \"cell 4.4\", \"cell 4.5\", \"cell 4.6\", \"cell 4.7\", \"cell 4.8\", \"cell 4.9\", \"cell 4.10\", \"cell 4.11\", \"cell 4.12\", \"cell 4.13\", \"cell 4.14\", \"cell 4.15\", \"cell 4.16\", \"cell 4.17\", \"cell 4.18\", \"cell 4.19\", \"cell 4.20\", \"cell 4.21\", \"cell 4.22\", \"cell 4.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l6",
+                                      "position": 7,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_5 = [\"cell 5.0\", \"cell 5.1\", \"cell 5.2\", \"cell 5.3\", \"cell 5.4\", \"cell 5.5\", \"cell 5.6\", \"cell 5.7\", \"cell 5.8\", \"cell 5.9\", \"cell 5.10\", \"cell 5.11\", \"cell 5.12\", \"cell 5.13\", \"cell 5.14\", \"cell 5.15\", \"cell 5.16\", \"cell 5.17\", \"cell 5.18\", \"cell 5.19\", \"cell 5.20\", \"cell 5.21\", \"cell 5.22\", \"cell 5.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l7",
+                                      "position": 8,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_6 = [\"cell 6.0\", \"cell 6.1\", \"cell 6.2\", \"cell 6.3\", \"cell 6.4\", \"cell 6.5\", \"cell 6.6\", \"cell 6.7\", \"cell 6.8\", \"cell 6.9\", \"cell 6.10\", \"cell 6.11\", \"cell 6.12\", \"cell 6.13\", \"cell 6.14\", \"cell 6.15\", \"cell 6.16\", \"cell 6.17\", \"cell 6.18\", \"cell 6.19\", \"cell 6.20\", \"cell 6.21\", \"cell 6.22\", \"cell 6.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l8",
+                                      "position": 9,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_7 = [\"cell 7.0\", \"cell 7.1\", \"cell 7.2\", \"cell 7.3\", \"cell 7.4\", \"cell 7.5\", \"cell 7.6\", \"cell 7.7\", \"cell 7.8\", \"cell 7.9\", \"cell 7.10\", \"cell 7.11\", \"cell 7.12\", \"cell 7.13\", \"cell 7.14\", \"cell 7.15\", \"cell 7.16\", \"cell 7.17\", \"cell 7.18\", \"cell 7.19\", \"cell 7.20\", \"cell 7.21\", \"cell 7.22\", \"cell 7.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l9",
+                                      "position": 10,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_8 = [\"cell 8.0\", \"cell 8.1\", \"cell 8.2\", \"cell 8.3\", \"cell 8.4\", \"cell 8.5\", \"cell 8.6\", \"cell 8.7\", \"cell 8.8\", \"cell 8.9\", \"cell 8.10\", \"cell 8.11\", \"cell 8.12\", \"cell 8.13\", \"cell 8.14\", \"cell 8.15\", \"cell 8.16\", \"cell 8.17\", \"cell 8.18\", \"cell 8.19\", \"cell 8.20\", \"cell 8.21\", \"cell 8.22\", \"cell 8.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l10",
+                                      "position": 11,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_9 = [\"cell 9.0\", \"cell 9.1\", \"cell 9.2\", \"cell 9.3\", \"cell 9.4\", \"cell 9.5\", \"cell 9.6\", \"cell 9.7\", \"cell 9.8\", \"cell 9.9\", \"cell 9.10\", \"cell 9.11\", \"cell 9.12\", \"cell 9.13\", \"cell 9.14\", \"cell 9.15\", \"cell 9.16\", \"cell 9.17\", \"cell 9.18\", \"cell 9.19\", \"cell 9.20\", \"cell 9.21\", \"cell 9.22\", \"cell 9.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l11",
+                                      "position": 12,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_10 = [\"cell 10.0\", \"cell 10.1\", \"cell 10.2\", \"cell 10.3\", \"cell 10.4\", \"cell 10.5\", \"cell 10.6\", \"cell 10.7\", \"cell 10.8\", \"cell 10.9\", \"cell 10.10\", \"cell 10.11\", \"cell 10.12\", \"cell 10.13\", \"cell 10.14\", \"cell 10.15\", \"cell 10.16\", \"cell 10.17\", \"cell 10.18\", \"cell 10.19\", \"cell 10.20\", \"cell 10.21\", \"cell 10.22\", \"cell 10.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l12",
+                                      "position": 13,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_11 = [\"cell 11.0\", \"cell 11.1\", \"cell 11.2\", \"cell 11.3\", \"cell 11.4\", \"cell 11.5\", \"cell 11.6\", \"cell 11.7\", \"cell 11.8\", \"cell 11.9\", \"cell 11.10\", \"cell 11.11\", \"cell 11.12\", \"cell 11.13\", \"cell 11.14\", \"cell 11.15\", \"cell 11.16\", \"cell 11.17\", \"cell 11.18\", \"cell 11.19\", \"cell 11.20\", \"cell 11.21\", \"cell 11.22\", \"cell 11.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l13",
+                                      "position": 14,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_12 = [\"cell 12.0\", \"cell 12.1\", \"cell 12.2\", \"cell 12.3\", \"cell 12.4\", \"cell 12.5\", \"cell 12.6\", \"cell 12.7\", \"cell 12.8\", \"cell 12.9\", \"cell 12.10\", \"cell 12.11\", \"cell 12.12\", \"cell 12.13\", \"cell 12.14\", \"cell 12.15\", \"cell 12.16\", \"cell 12.17\", \"cell 12.18\", \"cell 12.19\", \"cell 12.20\", \"cell 12.21\", \"cell 12.22\", \"cell 12.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l14",
+                                      "position": 15,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_13 = [\"cell 13.0\", \"cell 13.1\", \"cell 13.2\", \"cell 13.3\", \"cell 13.4\", \"cell 13.5\", \"cell 13.6\", \"cell 13.7\", \"cell 13.8\", \"cell 13.9\", \"cell 13.10\", \"cell 13.11\", \"cell 13.12\", \"cell 13.13\", \"cell 13.14\", \"cell 13.15\", \"cell 13.16\", \"cell 13.17\", \"cell 13.18\", \"cell 13.19\", \"cell 13.20\", \"cell 13.21\", \"cell 13.22\", \"cell 13.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l15",
+                                      "position": 16,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_14 = [\"cell 14.0\", \"cell 14.1\", \"cell 14.2\", \"cell 14.3\", \"cell 14.4\", \"cell 14.5\", \"cell 14.6\", \"cell 14.7\", \"cell 14.8\", \"cell 14.9\", \"cell 14.10\", \"cell 14.11\", \"cell 14.12\", \"cell 14.13\", \"cell 14.14\", \"cell 14.15\", \"cell 14.16\", \"cell 14.17\", \"cell 14.18\", \"cell 14.19\", \"cell 14.20\", \"cell 14.21\", \"cell 14.22\", \"cell 14.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l16",
+                                      "position": 17,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_15 = [\"cell 15.0\", \"cell 15.1\", \"cell 15.2\", \"cell 15.3\", \"cell 15.4\", \"cell 15.5\", \"cell 15.6\", \"cell 15.7\", \"cell 15.8\", \"cell 15.9\", \"cell 15.10\", \"cell 15.11\", \"cell 15.12\", \"cell 15.13\", \"cell 15.14\", \"cell 15.15\", \"cell 15.16\", \"cell 15.17\", \"cell 15.18\", \"cell 15.19\", \"cell 15.20\", \"cell 15.21\", \"cell 15.22\", \"cell 15.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l17",
+                                      "position": 18,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_16 = [\"cell 16.0\", \"cell 16.1\", \"cell 16.2\", \"cell 16.3\", \"cell 16.4\", \"cell 16.5\", \"cell 16.6\", \"cell 16.7\", \"cell 16.8\", \"cell 16.9\", \"cell 16.10\", \"cell 16.11\", \"cell 16.12\", \"cell 16.13\", \"cell 16.14\", \"cell 16.15\", \"cell 16.16\", \"cell 16.17\", \"cell 16.18\", \"cell 16.19\", \"cell 16.20\", \"cell 16.21\", \"cell 16.22\", \"cell 16.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l18",
+                                      "position": 19,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_17 = [\"cell 17.0\", \"cell 17.1\", \"cell 17.2\", \"cell 17.3\", \"cell 17.4\", \"cell 17.5\", \"cell 17.6\", \"cell 17.7\", \"cell 17.8\", \"cell 17.9\", \"cell 17.10\", \"cell 17.11\", \"cell 17.12\", \"cell 17.13\", \"cell 17.14\", \"cell 17.15\", \"cell 17.16\", \"cell 17.17\", \"cell 17.18\", \"cell 17.19\", \"cell 17.20\", \"cell 17.21\", \"cell 17.22\", \"cell 17.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l19",
+                                      "position": 20,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_18 = [\"cell 18.0\", \"cell 18.1\", \"cell 18.2\", \"cell 18.3\", \"cell 18.4\", \"cell 18.5\", \"cell 18.6\", \"cell 18.7\", \"cell 18.8\", \"cell 18.9\", \"cell 18.10\", \"cell 18.11\", \"cell 18.12\", \"cell 18.13\", \"cell 18.14\", \"cell 18.15\", \"cell 18.16\", \"cell 18.17\", \"cell 18.18\", \"cell 18.19\", \"cell 18.20\", \"cell 18.21\", \"cell 18.22\", \"cell 18.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l20",
+                                      "position": 21,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_19 = [\"cell 19.0\", \"cell 19.1\", \"cell 19.2\", \"cell 19.3\", \"cell 19.4\", \"cell 19.5\", \"cell 19.6\", \"cell 19.7\", \"cell 19.8\", \"cell 19.9\", \"cell 19.10\", \"cell 19.11\", \"cell 19.12\", \"cell 19.13\", \"cell 19.14\", \"cell 19.15\", \"cell 19.16\", \"cell 19.17\", \"cell 19.18\", \"cell 19.19\", \"cell 19.20\", \"cell 19.21\", \"cell 19.22\", \"cell 19.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l21",
+                                      "position": 22,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_20 = [\"cell 20.0\", \"cell 20.1\", \"cell 20.2\", \"cell 20.3\", \"cell 20.4\", \"cell 20.5\", \"cell 20.6\", \"cell 20.7\", \"cell 20.8\", \"cell 20.9\", \"cell 20.10\", \"cell 20.11\", \"cell 20.12\", \"cell 20.13\", \"cell 20.14\", \"cell 20.15\", \"cell 20.16\", \"cell 20.17\", \"cell 20.18\", \"cell 20.19\", \"cell 20.20\", \"cell 20.21\", \"cell 20.22\", \"cell 20.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l22",
+                                      "position": 23,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_21 = [\"cell 21.0\", \"cell 21.1\", \"cell 21.2\", \"cell 21.3\", \"cell 21.4\", \"cell 21.5\", \"cell 21.6\", \"cell 21.7\", \"cell 21.8\", \"cell 21.9\", \"cell 21.10\", \"cell 21.11\", \"cell 21.12\", \"cell 21.13\", \"cell 21.14\", \"cell 21.15\", \"cell 21.16\", \"cell 21.17\", \"cell 21.18\", \"cell 21.19\", \"cell 21.20\", \"cell 21.21\", \"cell 21.22\", \"cell 21.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l23",
+                                      "position": 24,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_22 = [\"cell 22.0\", \"cell 22.1\", \"cell 22.2\", \"cell 22.3\", \"cell 22.4\", \"cell 22.5\", \"cell 22.6\", \"cell 22.7\", \"cell 22.8\", \"cell 22.9\", \"cell 22.10\", \"cell 22.11\", \"cell 22.12\", \"cell 22.13\", \"cell 22.14\", \"cell 22.15\", \"cell 22.16\", \"cell 22.17\", \"cell 22.18\", \"cell 22.19\", \"cell 22.20\", \"cell 22.21\", \"cell 22.22\", \"cell 22.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l24",
+                                      "position": 25,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_23 = [\"cell 23.0\", \"cell 23.1\", \"cell 23.2\", \"cell 23.3\", \"cell 23.4\", \"cell 23.5\", \"cell 23.6\", \"cell 23.7\", \"cell 23.8\", \"cell 23.9\", \"cell 23.10\", \"cell 23.11\", \"cell 23.12\", \"cell 23.13\", \"cell 23.14\", \"cell 23.15\", \"cell 23.16\", \"cell 23.17\", \"cell 23.18\", \"cell 23.19\", \"cell 23.20\", \"cell 23.21\", \"cell 23.22\", \"cell 23.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l25",
+                                      "position": 26,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_24 = [\"cell 24.0\", \"cell 24.1\", \"cell 24.2\", \"cell 24.3\", \"cell 24.4\", \"cell 24.5\", \"cell 24.6\", \"cell 24.7\", \"cell 24.8\", \"cell 24.9\", \"cell 24.10\", \"cell 24.11\", \"cell 24.12\", \"cell 24.13\", \"cell 24.14\", \"cell 24.15\", \"cell 24.16\", \"cell 24.17\", \"cell 24.18\", \"cell 24.19\", \"cell 24.20\", \"cell 24.21\", \"cell 24.22\", \"cell 24.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l26",
+                                      "position": 27,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_25 = [\"cell 25.0\", \"cell 25.1\", \"cell 25.2\", \"cell 25.3\", \"cell 25.4\", \"cell 25.5\", \"cell 25.6\", \"cell 25.7\", \"cell 25.8\", \"cell 25.9\", \"cell 25.10\", \"cell 25.11\", \"cell 25.12\", \"cell 25.13\", \"cell 25.14\", \"cell 25.15\", \"cell 25.16\", \"cell 25.17\", \"cell 25.18\", \"cell 25.19\", \"cell 25.20\", \"cell 25.21\", \"cell 25.22\", \"cell 25.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l27",
+                                      "position": 28,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_26 = [\"cell 26.0\", \"cell 26.1\", \"cell 26.2\", \"cell 26.3\", \"cell 26.4\", \"cell 26.5\", \"cell 26.6\", \"cell 26.7\", \"cell 26.8\", \"cell 26.9\", \"cell 26.10\", \"cell 26.11\", \"cell 26.12\", \"cell 26.13\", \"cell 26.14\", \"cell 26.15\", \"cell 26.16\", \"cell 26.17\", \"cell 26.18\", \"cell 26.19\", \"cell 26.20\", \"cell 26.21\", \"cell 26.22\", \"cell 26.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l28",
+                                      "position": 29,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_27 = [\"cell 27.0\", \"cell 27.1\", \"cell 27.2\", \"cell 27.3\", \"cell 27.4\", \"cell 27.5\", \"cell 27.6\", \"cell 27.7\", \"cell 27.8\", \"cell 27.9\", \"cell 27.10\", \"cell 27.11\", \"cell 27.12\", \"cell 27.13\", \"cell 27.14\", \"cell 27.15\", \"cell 27.16\", \"cell 27.17\", \"cell 27.18\", \"cell 27.19\", \"cell 27.20\", \"cell 27.21\", \"cell 27.22\", \"cell 27.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l29",
+                                      "position": 30,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_28 = [\"cell 28.0\", \"cell 28.1\", \"cell 28.2\", \"cell 28.3\", \"cell 28.4\", \"cell 28.5\", \"cell 28.6\", \"cell 28.7\", \"cell 28.8\", \"cell 28.9\", \"cell 28.10\", \"cell 28.11\", \"cell 28.12\", \"cell 28.13\", \"cell 28.14\", \"cell 28.15\", \"cell 28.16\", \"cell 28.17\", \"cell 28.18\", \"cell 28.19\", \"cell 28.20\", \"cell 28.21\", \"cell 28.22\", \"cell 28.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l30",
+                                      "position": 31,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "t",
+                                          "name": "let row_29 = [\"cell 29.0\", \"cell 29.1\", \"cell 29.2\", \"cell 29.3\", \"cell 29.4\", \"cell 29.5\", \"cell 29.6\", \"cell 29.7\", \"cell 29.8\", \"cell 29.9\", \"cell 29.10\", \"cell 29.11\", \"cell 29.12\", \"cell 29.13\", \"cell 29.14\", \"cell 29.15\", \"cell 29.16\", \"cell 29.17\", \"cell 29.18\", \"cell 29.19\", \"cell 29.20\", \"cell 29.21\", \"cell 29.22\", \"cell 29.23\"];",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "code-l31",
+                                      "position": 32,
+                                      "role": "group"
+                                    }
+                                  ],
+                                  "key": "code-rows",
+                                  "role": "group",
+                                  "setSize": 32
+                                }
+                              ],
+                              "key": "code-scroll",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            }
+                          ],
+                          "key": "code",
+                          "name": "Source",
+                          "role": "document"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

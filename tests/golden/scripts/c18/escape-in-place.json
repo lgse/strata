@@ -1,0 +1,224 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "key": "c18-title",
+                      "name": "Trash",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click"
+                      ],
+                      "key": "c18-filter-toggle",
+                      "name": "Filter",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "c18-header",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "activeDescendant": "row-4",
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-1",
+                                  "name": "Projects",
+                                  "position": 1,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-2",
+                                  "name": "Receipts",
+                                  "position": 2,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-3",
+                                  "name": "reports",
+                                  "position": 3,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-4",
+                                  "name": "budget.ods",
+                                  "position": 4,
+                                  "role": "list-box-option",
+                                  "states": [
+                                    "selected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-5",
+                                  "name": "duck.txt",
+                                  "position": 5,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-6",
+                                  "name": "ducks_in_the_pool.txt",
+                                  "position": 6,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-7",
+                                  "name": "holiday.jpg",
+                                  "position": 7,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-8",
+                                  "name": "main.rs",
+                                  "position": 8,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-9",
+                                  "name": "notes.md",
+                                  "position": 9,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-10",
+                                  "name": "report-2025.ods",
+                                  "position": 10,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-11",
+                                  "name": "report.pdf",
+                                  "position": 11,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-12",
+                                  "name": "scan.pdf",
+                                  "position": 12,
+                                  "role": "list-box-option"
+                                }
+                              ],
+                              "key": "rows",
+                              "role": "group",
+                              "setSize": 12
+                            }
+                          ],
+                          "key": "viewport",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "key": "status",
+                          "name": "",
+                          "role": "label",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c18-list",
+                      "name": "Files",
+                      "role": "list-box"
+                    }
+                  ],
+                  "key": "c18-pane",
+                  "name": "Documents pane",
+                  "role": "group",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "key": "c18-footer",
+                  "role": "group"
+                },
+                {
+                  "key": "c18-outlined",
+                  "name": "Outlined: none",
+                  "role": "label"
+                },
+                {
+                  "key": "c18-log",
+                  "name": "Filter closed",
+                  "role": "label"
+                }
+              ],
+              "key": "c18",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

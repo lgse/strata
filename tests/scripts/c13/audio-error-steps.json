@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/audio: An undecodable track shows its error inside the audio view with previous and next still usable."
+  ],
+  "scene": "c13-audio-error-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-previous"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c13-status",
+      "name": "Showing 01 Low Tide.flac"
+    },
+    {
+      "key": "media-error-title",
+      "absent": true
+    }
+  ]
+}

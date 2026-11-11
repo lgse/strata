@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "preview/quick-preview/folder-peek: After keyboard navigation, hover peeks stay suppressed until the pointer moves again."
+  ],
+  "scene": "c22-list-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "row-9"
+    },
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-2"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 1.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "folder-peek",
+      "absent": true
+    },
+    {
+      "key": "row-10",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

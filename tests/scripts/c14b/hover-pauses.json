@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "preview/preview-panel/routes: Hovering either image pauses playback and moves both markers to the hovered point.",
+    "preview/preview-panel/routes: Playback resumes only on an explicit play; moving the pointer between the images leaves it paused.",
+    "preview/preview-panel/routes: During playback, hover, and seeking, the elevation heading also shows the marker's height"
+  ],
+  "scene": "c14b-route-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-route-play"
+    },
+    {
+      "t": 1.0,
+      "type": "move",
+      "key": "c14b-route-profile"
+    },
+    {
+      "t": 1.6,
+      "type": "move",
+      "key": "c14b-route-picture"
+    },
+    {
+      "t": 1.8,
+      "type": "move",
+      "key": "c14b-route-title"
+    },
+    {
+      "t": 2.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-route-play",
+      "states": [
+        "unchecked"
+      ]
+    },
+    {
+      "key": "c14b-route-height"
+    }
+  ]
+}

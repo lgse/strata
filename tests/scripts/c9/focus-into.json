@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "preview/quick-preview: With a file focused in List or Columns and the preview open, Right moves focus into the preview"
+  ],
+  "scene": "c9-columns-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Right"
+    }
+  ],
+  "expect": [
+    {
+      "key": "fake-content",
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: After the first image, a failed view render or image decode keeps the previous image and shows an error under the controls; the buttons retry."
+  ],
+  "scene": "c14b-model-view-error-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 1.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-error",
+      "absent": true
+    },
+    {
+      "key": "c14b-model-next"
+    }
+  ]
+}

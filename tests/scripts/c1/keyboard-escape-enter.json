@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "browser/selection: Enter after Escape opens the folder under the keyboard cursor."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-2"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c1-intent",
+      "name": "Opened Music"
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: Music"
+    }
+  ]
+}

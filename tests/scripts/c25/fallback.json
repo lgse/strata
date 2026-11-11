@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "browser/thumbnails: A file shows its type icon while its thumbnail loads, and keeps it when rendering fails or the type is unsupported",
+    "browser/thumbnails: Folders never get thumbnails and keep their folder icon"
+  ],
+  "scene": "c25-loading-light",
+  "events": [
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "s"
+    },
+    {
+      "t": 3.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c25-snapshot",
+      "name": "Snapshot: 9 rows on screen: 1 show thumbnails, 8 show icons (6 waiting, 0 failed, 2 without thumbnails, 1 of them folders) · 0.06 MiB of 8.00 MiB held | Rendered 1 · failed 0 · cancelled 0 · late results dropped 0 · stopped 0 · view ran 0 times while 1 thumbnails landed"
+    },
+    {
+      "key": "c25-status",
+      "name": "9 rows on screen: 6 show thumbnails, 3 show icons (0 waiting, 1 failed, 2 without thumbnails, 1 of them folders) · 0.44 MiB of 8.00 MiB held"
+    }
+  ]
+}

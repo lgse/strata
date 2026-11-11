@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "settings/themes: Changes to the file less than 75 ms apart trigger one reload, 75 ms after the last",
+    "settings/themes: Creating, editing, or deleting the file while Strata runs re-applies it"
+  ],
+  "scene": "x1-shell-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "e"
+    },
+    {
+      "t": 0.23,
+      "type": "key",
+      "name": "e"
+    },
+    {
+      "t": 0.26,
+      "type": "key",
+      "name": "e"
+    }
+  ],
+  "expect": [
+    {
+      "key": "x1-reloads",
+      "name": "Overrides reloaded 1 time"
+    },
+    {
+      "key": "x1-overrides",
+      "name": "Overrides: applied, 1 row with a problem · bar inset 4 pt"
+    }
+  ]
+}

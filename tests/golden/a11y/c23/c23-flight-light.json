@@ -1,0 +1,353 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c23-trash",
+                  "name": "Move to Trash",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c23-delete",
+                  "name": "Delete permanently",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c23-restore",
+                  "name": "Restore",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c23-release",
+                  "name": "Restore here",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c23-animations",
+                  "name": "Animations on",
+                  "role": "button"
+                },
+                {
+                  "key": "c23-log",
+                  "name": "Moved 3 to Trash",
+                  "role": "label"
+                }
+              ],
+              "key": "c23-header",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "actions": [
+                    "context-menu",
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "places-place-home",
+                              "name": "Home",
+                              "position": 1,
+                              "role": "list-item",
+                              "states": [
+                                "selected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "places-place-documents",
+                              "name": "Documents",
+                              "position": 2,
+                              "role": "list-item",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "places-place-downloads",
+                              "name": "Downloads",
+                              "position": 3,
+                              "role": "list-item",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "places-place-pictures",
+                              "name": "Pictures",
+                              "position": 4,
+                              "role": "list-item",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "places-place-trash",
+                              "name": "Trash",
+                              "position": 5,
+                              "role": "list-item",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "places-place-network",
+                              "name": "Network",
+                              "position": 6,
+                              "role": "list-item",
+                              "states": [
+                                "unselected"
+                              ]
+                            }
+                          ],
+                          "key": "places-places",
+                          "role": "group",
+                          "setSize": 6
+                        }
+                      ],
+                      "key": "places-list",
+                      "name": "Places",
+                      "role": "list"
+                    }
+                  ],
+                  "key": "places-scroll",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "places",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus",
+                    "context-menu"
+                  ],
+                  "activeDescendant": "row-8",
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-1",
+                              "name": "budget-2026.ods",
+                              "position": 1,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-2",
+                              "name": "cover-letter.odt",
+                              "position": 2,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-5",
+                              "name": "holiday-03.jpg",
+                              "position": 3,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-6",
+                              "name": "invoice-0412.pdf",
+                              "position": 4,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-8",
+                              "name": "notes.txt",
+                              "position": 5,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-9",
+                              "name": "plan.odt",
+                              "position": 6,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-10",
+                              "name": "receipt.png",
+                              "position": 7,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-11",
+                              "name": "report-q3.pdf",
+                              "position": 8,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-12",
+                              "name": "slides.odp",
+                              "position": 9,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-13",
+                              "name": "todo.txt",
+                              "position": 10,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-14",
+                              "name": "vacation.mp4",
+                              "position": 11,
+                              "role": "list-box-option"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group",
+                          "setSize": 11
+                        }
+                      ],
+                      "key": "viewport",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "key": "status",
+                      "name": "",
+                      "role": "label",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c23-files",
+                  "name": "Files",
+                  "role": "list-box"
+                }
+              ],
+              "key": "c23-pane",
+              "role": "group"
+            }
+          ],
+          "key": "c23-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

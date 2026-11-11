@@ -1,0 +1,21 @@
+{
+  "bullets": [
+    "browser/view-modes/thumbnail-size: A step up at 256 px stays at 256, and a step down at 32 px stays at 32."
+  ],
+  "scene": "c3-size-256-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "=",
+      "ctrl": true,
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-size",
+      "name": "Thumbnail size: 256px"
+    }
+  ]
+}

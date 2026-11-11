@@ -1,0 +1,50 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c14a-report",
+                  "name": "Actual · 100% · 1 report · render at 1200 × 800 px",
+                  "role": "label"
+                }
+              ],
+              "key": "c14a-status",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "key": "c14a-marker",
+                      "name": "Marker",
+                      "role": "image"
+                    }
+                  ],
+                  "key": "c14a-viewport",
+                  "name": "harbour.png",
+                  "role": "image",
+                  "value": "100%"
+                }
+              ],
+              "key": "c14a-stage",
+              "role": "group"
+            }
+          ],
+          "key": "c14a-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

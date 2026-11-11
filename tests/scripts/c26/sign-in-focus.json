@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "remote/file-providers/network-locations: When the backend asks for credentials"
+  ],
+  "scene": "c26-sign-in-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "pw"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-password-secret",
+      "role": "password-input",
+      "focused": true
+    },
+    {
+      "key": "c26-mount-password-user",
+      "value": "ann"
+    }
+  ]
+}

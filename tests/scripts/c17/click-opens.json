@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "browser/search: Enter or a single click on a result opens it and closes search."
+  ],
+  "scene": "c17-results-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c17-palette-option-3"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-log",
+      "name": "Opened /home/demo/Documents/Reports/report-notes.md"
+    },
+    {
+      "key": "c17-palette-dialog",
+      "absent": true
+    }
+  ]
+}

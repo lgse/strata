@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Ctrl+B focuses the categories, Ctrl+F the search field, and Ctrl+L the results"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "f",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "x"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "value": "x",
+      "focused": true
+    }
+  ]
+}

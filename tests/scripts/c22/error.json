@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "preview/quick-preview/folder-peek: A peek of a folder Strata may not read shows its error with no Open as Administrator button."
+  ],
+  "scene": "c22-list-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-5"
+    },
+    {
+      "t": 1.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "folder-peek",
+      "role": "group",
+      "name": "Folder peek"
+    },
+    {
+      "key": "peek-error",
+      "name": "Unable to read this directory"
+    },
+    {
+      "key": "peek-rows",
+      "absent": true
+    },
+    {
+      "key": "peek-error-message",
+      "name": "Permission denied"
+    }
+  ]
+}

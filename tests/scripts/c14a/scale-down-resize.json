@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel/gcode: In the drawer, the thumbnail scales down to fit the pane"
+  ],
+  "scene": "c14a-scale-down-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "resize",
+      "dw": -896,
+      "dh": 0,
+      "dur": 0.5
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14a-viewport",
+      "role": "image",
+      "name": "benchy.gcode",
+      "value": "50%"
+    }
+  ]
+}

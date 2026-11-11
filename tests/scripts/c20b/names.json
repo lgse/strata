@@ -1,0 +1,78 @@
+{
+  "bullets": [
+    "settings/themes: In that panel the name field is named",
+    "settings/themes: A swatch's color chooser draws its Cancel and Select buttons, hex entry, sliders"
+  ],
+  "scene": "c20b-opaque-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "mark",
+      "name": "start"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20b-background-button",
+      "name": "Background",
+      "states": [
+        "collapsed"
+      ]
+    },
+    {
+      "key": "c20b-surface-button",
+      "name": "Surface"
+    },
+    {
+      "key": "c20b-text-button",
+      "name": "Text"
+    },
+    {
+      "key": "c20b-accent-button",
+      "name": "Accent"
+    },
+    {
+      "key": "c20b-folder",
+      "name": "Folder color"
+    },
+    {
+      "key": "c20b-folder-plane",
+      "role": "slider",
+      "name": "Saturation and value",
+      "value": "Saturation 75%, value 83%"
+    },
+    {
+      "key": "c20b-folder-hue",
+      "role": "slider",
+      "name": "Hue",
+      "value": "158°"
+    },
+    {
+      "key": "c20b-folder-alpha",
+      "absent": true
+    },
+    {
+      "key": "c20b-folder-hex",
+      "name": "Hex color",
+      "value": "#34d399"
+    },
+    {
+      "key": "c20b-folder-swatches-0",
+      "name": "Theme"
+    },
+    {
+      "key": "c20b-folder-swatch-0-6",
+      "role": "radio-button",
+      "name": "Gray"
+    },
+    {
+      "key": "c20b-folder-swatch-1-2",
+      "name": "#808080"
+    }
+  ]
+}

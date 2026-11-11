@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "devices/volumes/release: A device row shows an eject button",
+    "devices/volumes/release: A row whose mount reports only `can_unmount` shows the same button",
+    "devices/volumes/release: The eject button's accessible name equals its tooltip",
+    "devices/volumes/release: A fixed internal disk that reports neither shows no eject button"
+  ],
+  "scene": "c8-devices-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "c8-files"
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-device-sandisk-eject",
+      "role": "button",
+      "name": "Eject"
+    },
+    {
+      "key": "places-device-data-eject",
+      "name": "Unmount"
+    },
+    {
+      "key": "places-device-system-eject",
+      "absent": true
+    }
+  ]
+}

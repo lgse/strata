@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/selection/click-modes: With Double set, two clicks slower than the double-click interval select without opening."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-2"
+    },
+    {
+      "t": 0.65,
+      "type": "tap",
+      "key": "row-2"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-2",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-intent",
+      "name": "Clicked Receipts"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "preview/quick-preview/folder-peek: With Folder peeking on, hovering a folder in Icons or List for 500 ms"
+  ],
+  "scene": "c22-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-2"
+    },
+    {
+      "t": 1.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "folder-peek",
+      "role": "group",
+      "name": "Folder peek"
+    },
+    {
+      "key": "peek-heading",
+      "role": "heading",
+      "name": "Music"
+    }
+  ]
+}

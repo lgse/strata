@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "app/shortcut-reference: The footer's \"F1 Shortcuts\" button toggles the reference"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-footer-shortcuts"
+    },
+    {
+      "t": 0.7,
+      "type": "type",
+      "text": "copy"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    },
+    {
+      "key": "c19-footer-shortcuts",
+      "role": "button",
+      "states": [
+        "unchecked"
+      ],
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "bullets": [
+    "operations/rename: Clicking inside the field moves the caret and keeps editing."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "rename-field"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "x": 480,
+      "y": 92
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "x": 480,
+      "y": 114
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "x": 949,
+      "y": 103
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "x": 33,
+      "y": 103
+    },
+    {
+      "t": 1.2,
+      "type": "type",
+      "text": "z"
+    }
+  ],
+  "expect": [
+    {
+      "key": "rename-field",
+      "value": "zNotes.md",
+      "focused": true
+    },
+    {
+      "key": "c5-log-0",
+      "absent": true
+    }
+  ]
+}

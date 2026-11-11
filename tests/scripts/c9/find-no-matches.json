@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: With zero matches, **Next match** and **Previous match** are insensitive."
+  ],
+  "scene": "c9-list-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "zzz"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "No matches"
+    },
+    {
+      "key": "preview-find-next",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "preview-find-previous",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

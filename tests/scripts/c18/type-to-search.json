@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/search/filter: With **Type to search** on, typing a printable character in a file view opens the filter"
+  ],
+  "scene": "c18-listing-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "rep",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.53
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-filter-field",
+      "value": "rep",
+      "focused": true
+    },
+    {
+      "key": "row-4",
+      "absent": true
+    },
+    {
+      "key": "row-11"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: Selecting another file resets the camera view to Front left.",
+    "preview/preview-panel/model-views: Selecting another model file mid-render keeps the header spinner showing for that file's first load."
+  ],
+  "scene": "c14b-model-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "n"
+    },
+    {
+      "t": 1.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-title",
+      "name": "gear.stl"
+    },
+    {
+      "key": "preview-busy",
+      "name": "Rendering 12,480 triangles…"
+    },
+    {
+      "key": "c14b-model-next",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: After closing find, the preview stays open and the selected match stays selected for Ctrl+C."
+  ],
+  "scene": "c12-searchable-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "strata report"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "c",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-field",
+      "absent": true
+    },
+    {
+      "key": "c12-copied",
+      "name": "Strata report"
+    }
+  ]
+}

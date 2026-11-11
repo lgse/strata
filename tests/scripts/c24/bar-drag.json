@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "browser/selection/marquee: In List, Icons, Columns, or inline search results, dragging a view's own scrollbar handle scrolls the view and selects nothing, even with Alt held. This includes an overlay scrollbar over blank row space."
+  ],
+  "scene": "c24-ten-k-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "x": 955,
+      "y": 56
+    },
+    {
+      "t": 0.5,
+      "type": "drag",
+      "x": 955,
+      "y": 56,
+      "dx": 0,
+      "dy": 300,
+      "dur": 0.5
+    },
+    {
+      "t": 1.5,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "absent": true
+    },
+    {
+      "key": "c24-intent",
+      "name": "Nothing yet"
+    },
+    {
+      "key": "marquee-band",
+      "absent": true
+    }
+  ]
+}

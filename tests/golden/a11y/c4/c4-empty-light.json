@@ -1,0 +1,201 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c4-title",
+                  "name": "Empty · 0 items",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-sort",
+                  "name": "Sorted by Name ↑",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-intent",
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "expand"
+                      ],
+                      "description": "Columns",
+                      "key": "c4-list-columns-button",
+                      "name": "Columns",
+                      "role": "button",
+                      "states": [
+                        "collapsed"
+                      ]
+                    }
+                  ],
+                  "key": "c4-list-columns-menu-trigger",
+                  "role": "group"
+                },
+                {
+                  "key": "c4-layout",
+                  "name": "Order: name, mode, size, type, modified; hidden: none; changes: 0",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-widths",
+                  "name": "Widths: default",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "focus",
+                        "context-menu",
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-name",
+                                  "name": "Name",
+                                  "role": "column-header",
+                                  "sort": "ascending"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-mode",
+                                  "name": "Mode",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-size",
+                                  "name": "Size",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-type",
+                                  "name": "Type",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-modified",
+                                  "name": "Modified",
+                                  "role": "column-header"
+                                }
+                              ],
+                              "key": "c4-list-headings",
+                              "name": "Name Mode Size Type Modified",
+                              "role": "row"
+                            }
+                          ],
+                          "key": "c4-list-headings-menu-trigger",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "rows",
+                              "role": "group",
+                              "setSize": 0
+                            }
+                          ],
+                          "key": "viewport",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "c4-empty-note",
+                          "name": "Folder is empty",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "status",
+                          "name": "",
+                          "role": "label",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c4-list",
+                      "name": "Empty",
+                      "role": "grid"
+                    }
+                  ],
+                  "key": "c4-list-scroll",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c4-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

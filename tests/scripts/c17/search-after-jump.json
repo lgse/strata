@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/search: Ctrl+Shift+K opens this dialog as a",
+    "browser/search: Opened with Ctrl+K, the search field's accessible name and placeholder are both",
+    "browser/search: The search field's accessible description lists the searched locations"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "k",
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "k",
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-field",
+      "name": "Search files and folders…",
+      "focused": true
+    },
+    {
+      "key": "c17-palette-dialog",
+      "name": "Search files and folders"
+    }
+  ]
+}

@@ -1,0 +1,337 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c3-title",
+              "name": "Pictures · 40 items",
+              "role": "label"
+            },
+            {
+              "key": "c3-size",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "key": "c3-intent",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "key": "c3-columns",
+              "name": "3 a row",
+              "role": "label"
+            },
+            {
+              "key": "c3-filled",
+              "name": "Visible 6: thumbnails 0 of 0, details 6",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Folder",
+                              "key": "row-1",
+                              "name": "Holidays",
+                              "position": 1,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Folder",
+                              "key": "row-2",
+                              "name": "Screenshots",
+                              "position": 2,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Folder",
+                              "key": "row-3",
+                              "name": "Wallpapers",
+                              "position": 3,
+                              "role": "grid-cell"
+                            }
+                          ],
+                          "key": "line-1",
+                          "name": "Holidays Screenshots Wallpapers",
+                          "position": 1,
+                          "role": "row",
+                          "setSize": 40
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Folder",
+                              "key": "row-4",
+                              "name": "Empty album",
+                              "position": 4,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Folder",
+                              "key": "row-5",
+                              "name": "Scans",
+                              "position": 5,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Folder",
+                              "key": "row-6",
+                              "name": "Raw",
+                              "position": 6,
+                              "role": "grid-cell"
+                            }
+                          ],
+                          "key": "line-4",
+                          "name": "Empty album Scans Raw",
+                          "position": 2,
+                          "role": "row",
+                          "setSize": 40
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-7",
+                              "name": "beach.jpg",
+                              "position": 7,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-8",
+                              "name": "sunset over the bay.jpg",
+                              "position": 8,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-9",
+                              "name": "cat.png",
+                              "position": 9,
+                              "role": "grid-cell"
+                            }
+                          ],
+                          "key": "line-7",
+                          "name": "beach.jpg sunset over the bay.jpg cat.png",
+                          "position": 3,
+                          "role": "row",
+                          "setSize": 40
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-10",
+                              "name": "IMG_2041.heic",
+                              "position": 10,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Archive",
+                              "key": "row-11",
+                              "name": "2026-10-07-release-candidate-build-final-v3-with-a-very-long-tail.tar.gz",
+                              "position": 11,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Video",
+                              "key": "row-12",
+                              "name": "clip.mp4",
+                              "position": 12,
+                              "role": "grid-cell"
+                            }
+                          ],
+                          "key": "line-10",
+                          "name": "IMG_2041.heic 2026-10-07-release-candidate-build-final-v3-with-a-very-long-tail.tar.gz clip.mp4",
+                          "position": 4,
+                          "role": "row",
+                          "setSize": 40
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Audio",
+                              "key": "row-13",
+                              "name": "song.flac",
+                              "position": 13,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Text document",
+                              "key": "row-14",
+                              "name": "notes.md",
+                              "position": 14,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "File",
+                              "key": "row-15",
+                              "name": "Quarterly report for the infrastructure committee, final revision.pdf",
+                              "position": 15,
+                              "role": "grid-cell"
+                            }
+                          ],
+                          "key": "line-13",
+                          "name": "song.flac notes.md Quarterly report for the infrastructure committee, final revision.pdf",
+                          "position": 5,
+                          "role": "row",
+                          "setSize": 40
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Text document",
+                              "key": "row-16",
+                              "name": "a.txt",
+                              "position": 16,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-100",
+                              "name": "photo-001.jpg",
+                              "position": 17,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-101",
+                              "name": "photo-002.jpg",
+                              "position": 18,
+                              "role": "grid-cell"
+                            }
+                          ],
+                          "key": "line-16",
+                          "name": "a.txt photo-001.jpg photo-002.jpg",
+                          "position": 6,
+                          "role": "row",
+                          "setSize": 40
+                        }
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 14
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "status",
+                  "name": "",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c3-grid",
+              "name": "Pictures",
+              "role": "grid"
+            }
+          ],
+          "key": "c3-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/thumbnails: Ctrl+F filter results"
+  ],
+  "scene": "c25-filled-light",
+  "events": [
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "f"
+    },
+    {
+      "t": 2.5,
+      "type": "key",
+      "name": "s"
+    },
+    {
+      "t": 2.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c25-status",
+      "name": "9 rows on screen: 9 show thumbnails, 0 show icons (0 waiting, 0 failed, 0 without thumbnails, 0 of them folders) · 0.61 MiB of 8.00 MiB held"
+    },
+    {
+      "key": "c25-work",
+      "name": "Rendered 13 · failed 1 · cancelled 0 · late results dropped 0 · stopped 0 · view ran 0 times while 4 thumbnails landed"
+    }
+  ]
+}

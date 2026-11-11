@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "operations/trash: Dropping files onto the sidebar Trash row moves them to Trash"
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/notes.txt"
+        ],
+        "key": "places-place-trash",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "Drop 1 into trash"
+    }
+  ]
+}

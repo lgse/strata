@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Enter or the Navigate button opens the typed location; Escape or the Cancel button restores the breadcrumbs without navigating."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "/usr/share",
+      "every": 0.01
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "c6-loc-navigate"
+    },
+    {
+      "t": 1.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-loc-entry",
+      "absent": true
+    },
+    {
+      "key": "c6-log",
+      "name": "Open /usr/share"
+    },
+    {
+      "key": "c6-loc-item-2",
+      "name": "share"
+    }
+  ]
+}

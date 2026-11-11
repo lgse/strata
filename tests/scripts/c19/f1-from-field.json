@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "app/shortcut-reference: F1 still opens the reference from a footer prompt or text field",
+    "app/shortcut-reference: Closing the reference returns focus to the widget that had it"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-location"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "abc"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "F1"
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    },
+    {
+      "key": "c19-location",
+      "value": "abc",
+      "focused": true
+    }
+  ]
+}

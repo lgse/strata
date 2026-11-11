@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: With focus in a rendered or large source document, Ctrl+A selects the whole loaded document."
+  ],
+  "scene": "c11-rtf-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "doc-u0/t"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c11-selection",
+      "name": "RTF keeps bold, italic, underline and strikethrough.\nA [😀] B, and Windows-1252: café, naïve.\n"
+    }
+  ]
+}

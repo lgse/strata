@@ -1,0 +1,61 @@
+{
+  "bullets": [
+    "browser/selection/marquee: Holding the pointer near a viewport edge scrolls the listing and extends the selection each frame.",
+    "browser/selection/marquee: Entries selected before they scrolled out of view stay selected; entries above the original anchor stay unselected."
+  ],
+  "scene": "c1-hundred-k-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "down",
+      "x": 800,
+      "y": 105
+    },
+    {
+      "t": 0.55,
+      "type": "move",
+      "x": 800,
+      "y": 200
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 800,
+      "y": 400
+    },
+    {
+      "t": 0.65,
+      "type": "move",
+      "x": 800,
+      "y": 634
+    },
+    {
+      "t": 10.65,
+      "type": "up",
+      "x": 800,
+      "y": 634
+    },
+    {
+      "t": 11.0,
+      "type": "move",
+      "x": 400,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "status",
+      "name": "560 items selected"
+    },
+    {
+      "key": "row-1000561",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-1000002",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "browser/tabs: Ctrl+Shift+T, or the window action",
+    "browser/tabs: Repeated Ctrl+Shift+T reopens closed tabs newest first"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "t-c7-2",
+      "button": "middle"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "t-c7-4",
+      "button": "middle"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "t",
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 1.1,
+      "type": "key",
+      "name": "t",
+      "cmd": true,
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "Reopen Documents at 1"
+    },
+    {
+      "key": "t-c7-8",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "t-c7-7",
+      "name": "Quarterly reports and invoices 2026"
+    }
+  ]
+}

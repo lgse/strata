@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/audio: Clicking the art or the spectrum toggles play and pause."
+  ],
+  "scene": "c13-audio-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-art-1"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "media-spectrum"
+    },
+    {
+      "t": 1.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c13-status",
+      "name": "Paused"
+    },
+    {
+      "key": "media-timeline",
+      "value": "0:00 of 4:05"
+    }
+  ]
+}

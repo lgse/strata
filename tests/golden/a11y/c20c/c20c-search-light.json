@@ -1,0 +1,255 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "context-menu"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c20c-search-field",
+                              "name": "Search settings",
+                              "placeholder": "Search settings",
+                              "role": "search-input",
+                              "value": "size"
+                            },
+                            {
+                              "actions": [
+                                "click"
+                              ],
+                              "key": "c20c-search-clear",
+                              "name": "Clear search",
+                              "role": "button"
+                            },
+                            {
+                              "key": "c20c-search-status",
+                              "name": "5 settings",
+                              "role": "status",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20c-search-frame",
+                          "role": "group"
+                        },
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-general",
+                              "name": "General",
+                              "role": "tab",
+                              "states": [
+                                "selected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-theme",
+                              "name": "Appearance",
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            }
+                          ],
+                          "key": "c20c-nav",
+                          "name": "Settings pages",
+                          "role": "tab-list"
+                        }
+                      ],
+                      "key": "c20c-side",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "c20c-title",
+                          "name": "General",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c20c-section-browsing",
+                              "name": "BROWSING",
+                              "role": "label"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Show sizes in Columns view",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c20c-switch-columns-sizes",
+                                  "name": "Show sizes in Columns view",
+                                  "role": "switch",
+                                  "states": [
+                                    "checked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-search-row-columns-sizes",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Remember sort and icon size per folder",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c20c-switch-folder-views",
+                                  "name": "Remember sort and icon size per folder",
+                                  "role": "switch",
+                                  "states": [
+                                    "checked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-search-row-folder-views",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Default sort",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c20c-switch-default-sort",
+                                  "name": "Default sort",
+                                  "role": "switch",
+                                  "states": [
+                                    "unchecked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-search-row-default-sort",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Forget all folder settings",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c20c-switch-forget-folder-views",
+                                  "name": "Forget all folder settings",
+                                  "role": "switch",
+                                  "states": [
+                                    "unchecked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-search-row-forget-folder-views",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c20c-page",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        }
+                      ],
+                      "key": "c20c-main",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20c-settings",
+                  "role": "group"
+                }
+              ],
+              "key": "c20c",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

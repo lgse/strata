@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Clicking a column's title focuses that column, keeps its selection, and leaves deeper columns open.",
+    "browser/view-modes/columns: Clicking a column heading focuses that column without changing its selection"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-1-title"
+    },
+    {
+      "t": 1.0,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1000001",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-2000001",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c2-path",
+      "name": "Home / Documents / Reports"
+    },
+    {
+      "key": "c2-refresh-0",
+      "role": "button"
+    }
+  ]
+}

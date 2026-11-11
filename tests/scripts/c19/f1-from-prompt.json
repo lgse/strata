@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "app/shortcut-reference: F1 still opens the reference from a footer prompt or text field",
+    "app/shortcut-reference: Closing the reference returns focus to the widget that had it"
+  ],
+  "scene": "c19-footer-prompt-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "F1"
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "x"
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    },
+    {
+      "key": "c19-reference-search",
+      "absent": true
+    },
+    {
+      "key": "c19-prompt-field",
+      "name": "Rename the focused item",
+      "value": "minutes.txt",
+      "focused": true
+    }
+  ]
+}

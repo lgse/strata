@@ -1,0 +1,120 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c10a-show-markdown",
+                  "name": "Markdown",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c10a-show-editor",
+                  "name": "Editor",
+                  "role": "button"
+                }
+              ],
+              "key": "c10a-tabs",
+              "role": "group"
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "b0",
+                      "name": "Code blocks coloured by syntect on the highlighter thread, through rune-kit's   ⁦Markdown⁩   highlight hook. TOML is a language rune-kit's own scanners don't know.",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "#[derive(Debug, Clone)]\nstruct Entry { name: String, size: u64 }\n\n/// The total size, in bytes.\nfn total(entries: &[Entry]) -> u64 {\n    entries.iter().map(|e| e.size).sum() // no overflow check\n}",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "b1",
+                      "role": "code"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "#include <stdio.h>\n#define LIMIT 42\n\nint main(void) {\n    printf(\"%d\\n\", LIMIT); /* done */\n    return 0;\n}",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "b2",
+                      "role": "code"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "[package]\nname = \"strata\"   # the app\nversion = \"0.1.0\"",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "b3",
+                      "role": "code"
+                    }
+                  ],
+                  "key": "c10a-markdown",
+                  "role": "group"
+                }
+              ],
+              "key": "c10a-body",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            }
+          ],
+          "key": "c10a",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

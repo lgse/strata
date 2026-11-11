@@ -1,0 +1,286 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "Pictures",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus"
+              ],
+              "children": [
+                {
+                  "name": "Holiday photos",
+                  "role": "label"
+                }
+              ],
+              "key": "c16-cursor",
+              "name": "Holiday photos",
+              "role": "button"
+            },
+            {
+              "name": "Raw footage",
+              "role": "label"
+            },
+            {
+              "name": "notes.md",
+              "role": "label"
+            },
+            {
+              "name": "photos.zip",
+              "role": "label"
+            },
+            {
+              "name": "node_modules",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-copy",
+              "name": "Copy",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-move",
+              "name": "Move (dialog)",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-move-stuck",
+              "name": "Move from a stalled device",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-compress",
+              "name": "Compress",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-delete",
+              "name": "Delete one folder",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-delete-stuck",
+              "name": "Delete on a stalled device",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-small-fast",
+              "name": "Small copy, 0.2 s",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-small-slow",
+              "name": "Small copy, 2 s",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-stuck",
+              "name": "Copy to a stalled device",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-notice",
+              "name": "Notice",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-notice-2",
+              "name": "Another notice",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-report",
+              "name": "Transfer report",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-job",
+              "name": "Run an action",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-probe",
+              "name": "Probe",
+              "role": "button"
+            },
+            {
+              "key": "c16-heard",
+              "name": " · probes 0",
+              "role": "label"
+            },
+            {
+              "children": [
+                {
+                  "name": "5 items",
+                  "role": "label"
+                }
+              ],
+              "key": "c16-footer",
+              "role": "group"
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "description": "Cancel operation",
+                      "key": "c16-dock-card-1-cancel",
+                      "name": "Cancel compressing",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c16-dock-card-1-info",
+                      "name": "photos.zip",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "description": "1 / 2 files",
+                      "key": "c16-dock-card-1-bar",
+                      "name": "Compressing items",
+                      "range": [
+                        0.0,
+                        0.0,
+                        1.0,
+                        null
+                      ],
+                      "role": "progress-indicator",
+                      "value": "0%"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c16-dock-card-1-phase",
+                      "name": "Compressing items",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c16-dock-card-1",
+                  "name": "Compressing items",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "description": "The provider accepted 12 of 12 files for upload. They will appear in your cloud folder once the transfer on the provider's side has finished, which can take a while for large files on a slow connection.",
+                  "key": "c16-dock-notice-1",
+                  "name": "Nextcloud",
+                  "role": "status",
+                  "states": [
+                    "live-polite"
+                  ]
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "key": "c16-dock-notice-2",
+                  "name": "Text size: 16px",
+                  "role": "status",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c16-dock",
+              "name": "Operations",
+              "role": "region",
+              "states": [
+                "clips"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

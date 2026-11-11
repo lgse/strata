@@ -1,0 +1,67 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar/completion: Down and Up move through suggestions, wrapping at the ends, and Page Down and Page Up move by 5."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "~/",
+      "every": 0.01
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "PageDown"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "PageDown"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "PageUp"
+    },
+    {
+      "t": 1.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-loc-option-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c6-loc-option-7",
+      "name": "Videos/"
+    },
+    {
+      "key": "input",
+      "value": "~/",
+      "focused": true
+    }
+  ]
+}

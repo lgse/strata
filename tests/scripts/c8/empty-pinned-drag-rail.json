@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/sidebar: In the icon rail, that drag shows the empty PINNED section's header row"
+  ],
+  "scene": "c8-rail-no-pins-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drag_files": {
+        "paths": [
+          "/home/demo/Work"
+        ],
+        "key": "places-place-documents"
+      }
+    },
+    {
+      "t": 0.6,
+      "drop_files": {
+        "paths": [
+          "/home/demo/Work"
+        ],
+        "key": "places-band-0",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-pin-work",
+      "name": "Work"
+    }
+  ]
+}

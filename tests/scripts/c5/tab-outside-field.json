@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "operations/rename: Tab is taken only while keyboard focus is in the rename field; otherwise it moves focus as before."
+  ],
+  "scene": "c5-browse-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-other",
+      "focused": true
+    },
+    {
+      "key": "rename-field",
+      "absent": true
+    }
+  ]
+}

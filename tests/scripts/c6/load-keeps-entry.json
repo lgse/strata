@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: A folder load that ends while the entry is open and focused, as in a new tab, leaves the entry open with its text."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "~/Mu",
+      "every": 0.01
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "F5"
+    },
+    {
+      "t": 1.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "input",
+      "value": "~/Mu",
+      "focused": true
+    },
+    {
+      "key": "c6-log",
+      "name": "Loaded ~/Projects/strata"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "browser/selection: In List, Icons, and Columns, plain Home, End, Page Up, and Page Down move the range anchor to the new cursor. Shift+Home after End selects every entry.",
+    "browser/scrolling: In the default key map, Home and End on a focused listing jump to the first or last entry like Ctrl+Up and Ctrl+Down.",
+    "browser/scrolling: Shift+Home and Shift+End extend"
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-4"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Home",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-4",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-10",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: Projects"
+    }
+  ]
+}

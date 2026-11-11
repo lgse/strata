@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "settings/preferences: Typing \"thumbnail workers\" in Search settings reveals the Thumbnail workers control"
+  ],
+  "scene": "c20c-settings-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20c-nav-about"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "c20c-search-field"
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "thumbnail workers"
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 1.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20c-title",
+      "name": "General"
+    },
+    {
+      "key": "c20c-search-row-thumbnail-workers"
+    },
+    {
+      "key": "c20c-workers-input",
+      "focused": true
+    },
+    {
+      "key": "c20c-search-field",
+      "value": "thumbnail workers"
+    }
+  ]
+}

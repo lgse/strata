@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "browser/sidebar: With no pins, the PINNED section that appears during a file drag is expanded even when saved collapsed"
+  ],
+  "scene": "c8-no-pins-collapsed-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drag_files": {
+        "paths": [
+          "/home/demo/Work"
+        ],
+        "key": "places-place-documents",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-heading-pinned",
+      "states": [
+        "expanded"
+      ]
+    }
+  ]
+}

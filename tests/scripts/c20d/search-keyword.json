@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "happy"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-status",
+      "name": "16 results"
+    },
+    {
+      "key": "row-100000",
+      "name": "grinning face",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c20d-emoji-name-keyword",
+      "name": "· happy"
+    }
+  ]
+}

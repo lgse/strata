@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/context-menu: Right-clicking an entry anywhere in a long, scrolled list shows its menu at the click."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-5"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "row-40",
+      "button": "secondary"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-40",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c21-status",
+      "name": "Dismissed menu 1 on scan-36.pdf"
+    }
+  ]
+}

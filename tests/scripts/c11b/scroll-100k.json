@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Tables over 200 rows or 512 cells render in full"
+  ],
+  "scene": "c11b-100k-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "sheet-r0-c0"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "End",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "sheet-r99999-c0",
+      "name": "99999"
+    },
+    {
+      "key": "sheet-r99999-n",
+      "name": "100001"
+    }
+  ]
+}

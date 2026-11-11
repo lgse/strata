@@ -1,0 +1,55 @@
+{
+  "bullets": [
+    "integration/10xer-mode/places: The entry is cleared on submit, Esc, focus loss, a replacing prompt, and mode exit"
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "g ",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "secret",
+      "every": 0.01,
+      "t": 0.42
+    },
+    {
+      "type": "key",
+      "name": "Escape",
+      "t": 0.68
+    },
+    {
+      "type": "type",
+      "text": "g ",
+      "every": 0.01,
+      "t": 0.88
+    },
+    {
+      "type": "type",
+      "text": "abc",
+      "every": 0.01,
+      "t": 1.1
+    },
+    {
+      "type": "key",
+      "name": "z",
+      "cmd": true,
+      "t": 1.33
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.63
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "value": "abc",
+      "focused": true
+    }
+  ]
+}

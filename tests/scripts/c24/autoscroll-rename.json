@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "browser/scrolling: Middle-clicking a text field, such as the filter field, pastes as usual and starts no autoscroll."
+  ],
+  "scene": "c24-rename-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "rename-field",
+      "button": "middle"
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-status",
+      "name": "Autoscroll: off"
+    },
+    {
+      "key": "c24-intent",
+      "name": "Nothing yet"
+    },
+    {
+      "key": "autoscroll-shield",
+      "absent": true
+    },
+    {
+      "key": "rename-field"
+    }
+  ]
+}

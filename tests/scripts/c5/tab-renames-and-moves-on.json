@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "operations/rename: With the editor open on an item, typing a new name and pressing Tab renames it.",
+    "operations/rename: The committed row does not pull the cursor back when its rename lands, so the editor stays on the neighbour."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "Memo"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "Box"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Renamed Notes.md to Memo.md (Tab)"
+    },
+    {
+      "key": "rename-field",
+      "value": "Box.gz",
+      "focused": true
+    },
+    {
+      "key": "row-4",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Ctrl+L replaces the breadcrumbs with an entry holding the current path, with the whole text selected."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "~/Mu",
+      "every": 0.01
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "input",
+      "value": "~/Mu",
+      "focused": true
+    },
+    {
+      "key": "c6-loc-entry",
+      "role": "combo-box"
+    }
+  ]
+}

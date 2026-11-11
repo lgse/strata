@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "preview/preview-panel/layout: Pointer-dragging the divider shows"
+  ],
+  "scene": "c9-list-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "down",
+      "key": "preview-grip"
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "key": "row-1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-minimum-outline",
+      "name": "Preview panel minimum width"
+    }
+  ]
+}

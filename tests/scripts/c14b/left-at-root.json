@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "operations/archives/preview: Left at the archive root returns focus to the listing without closing the preview"
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-8000000010"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-status",
+      "name": "Left at the root: focus returns to the listing"
+    },
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "Contents"
+    }
+  ]
+}

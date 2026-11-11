@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Parent breadcrumbs accept file drops.",
+    "browser/navigation/location-bar: Dropping onto a breadcrumb before 750 ms transfers into it without navigating."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/report.pdf"
+        ],
+        "key": "c6-loc-crumb-0",
+        "hover": 0.3
+      }
+    },
+    {
+      "t": 1.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-log",
+      "name": "Drop 1 into ~"
+    },
+    {
+      "key": "c6-loc-item-2",
+      "name": "strata"
+    }
+  ]
+}

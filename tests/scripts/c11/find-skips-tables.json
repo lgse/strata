@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Rendered table cells, PDF pages, images, archives, and media are not searched."
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "Preference"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "No matches"
+    }
+  ]
+}

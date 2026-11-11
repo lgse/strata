@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "operations/progress: A transfer whose item total is not yet known shows \"Preparing items…\"",
+    "operations/progress: When the byte total is unknown, the bar pulses"
+  ],
+  "scene": "c16-dialog-preparing-light",
+  "events": [
+    {
+      "t": 0.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-progress-items",
+      "name": "Preparing items…"
+    },
+    {
+      "key": "c16-progress-bar",
+      "role": "progress-indicator"
+    }
+  ]
+}

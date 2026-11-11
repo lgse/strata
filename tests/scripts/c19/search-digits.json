@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Searching `ctrl+0` finds the \"Ctrl++ / − / 0\" text-size row"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "1-9"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-row-2-4"
+    },
+    {
+      "key": "c19-reference-row-2-3",
+      "absent": true
+    },
+    {
+      "key": "c19-reference-status",
+      "name": "1 shortcut"
+    }
+  ]
+}

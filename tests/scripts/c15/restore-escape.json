@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "app/dialogs: Closing the last open dialog by any route"
+  ],
+  "scene": "c15-openers-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": " "
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-basic-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-open-basic",
+      "focused": true
+    },
+    {
+      "key": "c15-status",
+      "name": "Dismissed"
+    }
+  ]
+}

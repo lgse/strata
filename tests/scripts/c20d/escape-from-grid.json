@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "browser/folder-customization: With the emoji picker open, Escape closes only the picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-popover-content",
+      "absent": true
+    },
+    {
+      "key": "c20d-dialog-dialog",
+      "name": "Customize Folder"
+    },
+    {
+      "key": "c20d-emoji-button",
+      "focused": true
+    }
+  ]
+}

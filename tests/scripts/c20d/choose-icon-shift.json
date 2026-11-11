@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/folder-customization: Each choice updates the dialog's 56 px preview"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.1,
+      "hold": "shift"
+    },
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-9"
+    },
+    {
+      "t": 0.3,
+      "hold": ""
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-preview",
+      "name": "Preview: Network"
+    },
+    {
+      "key": "row-9",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

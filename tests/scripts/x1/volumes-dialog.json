@@ -1,0 +1,58 @@
+{
+  "bullets": [
+    "app/dialogs: Closing the last open dialog by any route returns focus to the widget focused before the first one opened"
+  ],
+  "scene": "x1-shell-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.15,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.25,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.35,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": " "
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "x1-volumes-dialog",
+      "absent": true
+    },
+    {
+      "key": "x1-mounts",
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: A limited table shows"
+  ],
+  "scene": "c11b-limits-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "sheet-r0-c0"
+    }
+  ],
+  "expect": [
+    {
+      "key": "sheet-limited",
+      "name": "Table preview reached its text, column, or value budget; open the file to see all data."
+    }
+  ]
+}

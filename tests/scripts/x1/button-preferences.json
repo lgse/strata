@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "app/window: Show minimize button, Show maximize button, and Show close button"
+  ],
+  "scene": "x1-shell-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "1"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "2"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "3"
+    }
+  ],
+  "expect": [
+    {
+      "key": "x1-header-minimize",
+      "absent": true
+    },
+    {
+      "key": "x1-header-maximize",
+      "absent": true
+    },
+    {
+      "key": "x1-header-close",
+      "absent": true
+    }
+  ]
+}

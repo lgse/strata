@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "browser/thumbnails/workers: Clicking the number edits it; there is no reset to the default"
+  ],
+  "scene": "c20a-controls-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20a-workers-input"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "abc"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-workers",
+      "value": "4"
+    },
+    {
+      "key": "c20a-workers-input",
+      "value": "4"
+    },
+    {
+      "key": "c20a-log",
+      "name": "—"
+    }
+  ]
+}

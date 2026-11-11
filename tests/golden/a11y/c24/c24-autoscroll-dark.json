@@ -1,0 +1,26 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "autoscroll-shield",
+              "name": "Autoscroll",
+              "role": "dialog",
+              "states": [
+                "focused",
+                "modal"
+              ]
+            }
+          ],
+          "key": "c24-page",
+          "role": "main"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

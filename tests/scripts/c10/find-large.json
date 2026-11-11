@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Find searches small source buffers, large virtualized source"
+  ],
+  "scene": "c10-large-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "ITEM 49994"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "Match 1 of 1"
+    },
+    {
+      "key": "c10-selection",
+      "name": "item 49994"
+    }
+  ]
+}

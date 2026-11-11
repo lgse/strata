@@ -1,0 +1,1443 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "c20d-emoji-field",
+                          "name": "Search",
+                          "placeholder": "Search",
+                          "role": "search-input",
+                          "states": [
+                            "focused"
+                          ],
+                          "value": ""
+                        }
+                      ],
+                      "key": "c20d-emoji-frame",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus",
+                            "context-menu"
+                          ],
+                          "activeDescendant": "row-101629",
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101629",
+                                          "name": "chequered flag",
+                                          "position": 1,
+                                          "role": "grid-cell",
+                                          "states": [
+                                            "selected"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101630",
+                                          "name": "triangular flag",
+                                          "position": 2,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101631",
+                                          "name": "crossed flags",
+                                          "position": 3,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101632",
+                                          "name": "black flag",
+                                          "position": 4,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101633",
+                                          "name": "white flag",
+                                          "position": 5,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101634",
+                                          "name": "rainbow flag",
+                                          "position": 6,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101629",
+                                      "name": "chequered flag triangular flag crossed flags black flag white flag rainbow flag",
+                                      "position": 1,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101635",
+                                          "name": "transgender flag",
+                                          "position": 7,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101636",
+                                          "name": "pirate flag",
+                                          "position": 8,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101637",
+                                          "name": "flag: Ascension Island",
+                                          "position": 9,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101638",
+                                          "name": "flag: Andorra",
+                                          "position": 10,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101639",
+                                          "name": "flag: United Arab Emirates",
+                                          "position": 11,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101640",
+                                          "name": "flag: Afghanistan",
+                                          "position": 12,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101635",
+                                      "name": "transgender flag pirate flag flag: Ascension Island flag: Andorra flag: United Arab Emirates flag: Afghanistan",
+                                      "position": 2,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101641",
+                                          "name": "flag: Antigua & Barbuda",
+                                          "position": 13,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101642",
+                                          "name": "flag: Anguilla",
+                                          "position": 14,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101643",
+                                          "name": "flag: Albania",
+                                          "position": 15,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101644",
+                                          "name": "flag: Armenia",
+                                          "position": 16,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101645",
+                                          "name": "flag: Angola",
+                                          "position": 17,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101646",
+                                          "name": "flag: Antarctica",
+                                          "position": 18,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101641",
+                                      "name": "flag: Antigua & Barbuda flag: Anguilla flag: Albania flag: Armenia flag: Angola flag: Antarctica",
+                                      "position": 3,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101647",
+                                          "name": "flag: Argentina",
+                                          "position": 19,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101648",
+                                          "name": "flag: American Samoa",
+                                          "position": 20,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101649",
+                                          "name": "flag: Austria",
+                                          "position": 21,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101650",
+                                          "name": "flag: Australia",
+                                          "position": 22,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101651",
+                                          "name": "flag: Aruba",
+                                          "position": 23,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101652",
+                                          "name": "flag: Åland Islands",
+                                          "position": 24,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101647",
+                                      "name": "flag: Argentina flag: American Samoa flag: Austria flag: Australia flag: Aruba flag: Åland Islands",
+                                      "position": 4,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101653",
+                                          "name": "flag: Azerbaijan",
+                                          "position": 25,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101654",
+                                          "name": "flag: Bosnia & Herzegovina",
+                                          "position": 26,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101655",
+                                          "name": "flag: Barbados",
+                                          "position": 27,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101656",
+                                          "name": "flag: Bangladesh",
+                                          "position": 28,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101657",
+                                          "name": "flag: Belgium",
+                                          "position": 29,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101658",
+                                          "name": "flag: Burkina Faso",
+                                          "position": 30,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101653",
+                                      "name": "flag: Azerbaijan flag: Bosnia & Herzegovina flag: Barbados flag: Bangladesh flag: Belgium flag: Burkina Faso",
+                                      "position": 5,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101659",
+                                          "name": "flag: Bulgaria",
+                                          "position": 31,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101660",
+                                          "name": "flag: Bahrain",
+                                          "position": 32,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101661",
+                                          "name": "flag: Burundi",
+                                          "position": 33,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101662",
+                                          "name": "flag: Benin",
+                                          "position": 34,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101663",
+                                          "name": "flag: St. Barthélemy",
+                                          "position": 35,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101664",
+                                          "name": "flag: Bermuda",
+                                          "position": 36,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101659",
+                                      "name": "flag: Bulgaria flag: Bahrain flag: Burundi flag: Benin flag: St. Barthélemy flag: Bermuda",
+                                      "position": 6,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101665",
+                                          "name": "flag: Brunei",
+                                          "position": 37,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101666",
+                                          "name": "flag: Bolivia",
+                                          "position": 38,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101667",
+                                          "name": "flag: Caribbean Netherlands",
+                                          "position": 39,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101668",
+                                          "name": "flag: Brazil",
+                                          "position": 40,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101669",
+                                          "name": "flag: Bahamas",
+                                          "position": 41,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101670",
+                                          "name": "flag: Bhutan",
+                                          "position": 42,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101665",
+                                      "name": "flag: Brunei flag: Bolivia flag: Caribbean Netherlands flag: Brazil flag: Bahamas flag: Bhutan",
+                                      "position": 7,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101671",
+                                          "name": "flag: Bouvet Island",
+                                          "position": 43,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101672",
+                                          "name": "flag: Botswana",
+                                          "position": 44,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101673",
+                                          "name": "flag: Belarus",
+                                          "position": 45,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101674",
+                                          "name": "flag: Belize",
+                                          "position": 46,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101675",
+                                          "name": "flag: Canada",
+                                          "position": 47,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101676",
+                                          "name": "flag: Cocos (Keeling) Islands",
+                                          "position": 48,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101671",
+                                      "name": "flag: Bouvet Island flag: Botswana flag: Belarus flag: Belize flag: Canada flag: Cocos (Keeling) Islands",
+                                      "position": 8,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101677",
+                                          "name": "flag: Congo - Kinshasa",
+                                          "position": 49,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101678",
+                                          "name": "flag: Central African Republic",
+                                          "position": 50,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101679",
+                                          "name": "flag: Congo - Brazzaville",
+                                          "position": 51,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101680",
+                                          "name": "flag: Switzerland",
+                                          "position": 52,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101681",
+                                          "name": "flag: Côte d’Ivoire",
+                                          "position": 53,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101682",
+                                          "name": "flag: Cook Islands",
+                                          "position": 54,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101677",
+                                      "name": "flag: Congo - Kinshasa flag: Central African Republic flag: Congo - Brazzaville flag: Switzerland flag: Côte d’Ivoire flag: Cook Islands",
+                                      "position": 9,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101683",
+                                          "name": "flag: Chile",
+                                          "position": 55,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101684",
+                                          "name": "flag: Cameroon",
+                                          "position": 56,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101685",
+                                          "name": "flag: China",
+                                          "position": 57,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101686",
+                                          "name": "flag: Colombia",
+                                          "position": 58,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101687",
+                                          "name": "flag: Clipperton Island",
+                                          "position": 59,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101688",
+                                          "name": "flag: Costa Rica",
+                                          "position": 60,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101683",
+                                      "name": "flag: Chile flag: Cameroon flag: China flag: Colombia flag: Clipperton Island flag: Costa Rica",
+                                      "position": 10,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101689",
+                                          "name": "flag: Cuba",
+                                          "position": 61,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101690",
+                                          "name": "flag: Cape Verde",
+                                          "position": 62,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101691",
+                                          "name": "flag: Curaçao",
+                                          "position": 63,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101692",
+                                          "name": "flag: Christmas Island",
+                                          "position": 64,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101693",
+                                          "name": "flag: Cyprus",
+                                          "position": 65,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101694",
+                                          "name": "flag: Czechia",
+                                          "position": 66,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101689",
+                                      "name": "flag: Cuba flag: Cape Verde flag: Curaçao flag: Christmas Island flag: Cyprus flag: Czechia",
+                                      "position": 11,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101695",
+                                          "name": "flag: Germany",
+                                          "position": 67,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101696",
+                                          "name": "flag: Diego Garcia",
+                                          "position": 68,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101697",
+                                          "name": "flag: Djibouti",
+                                          "position": 69,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101698",
+                                          "name": "flag: Denmark",
+                                          "position": 70,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101699",
+                                          "name": "flag: Dominica",
+                                          "position": 71,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101700",
+                                          "name": "flag: Dominican Republic",
+                                          "position": 72,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101695",
+                                      "name": "flag: Germany flag: Diego Garcia flag: Djibouti flag: Denmark flag: Dominica flag: Dominican Republic",
+                                      "position": 12,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101701",
+                                          "name": "flag: Algeria",
+                                          "position": 73,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101702",
+                                          "name": "flag: Ceuta & Melilla",
+                                          "position": 74,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101703",
+                                          "name": "flag: Ecuador",
+                                          "position": 75,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101704",
+                                          "name": "flag: Estonia",
+                                          "position": 76,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101705",
+                                          "name": "flag: Egypt",
+                                          "position": 77,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101706",
+                                          "name": "flag: Western Sahara",
+                                          "position": 78,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101701",
+                                      "name": "flag: Algeria flag: Ceuta & Melilla flag: Ecuador flag: Estonia flag: Egypt flag: Western Sahara",
+                                      "position": 13,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101707",
+                                          "name": "flag: Eritrea",
+                                          "position": 79,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101708",
+                                          "name": "flag: Spain",
+                                          "position": 80,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101709",
+                                          "name": "flag: Ethiopia",
+                                          "position": 81,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101710",
+                                          "name": "flag: European Union",
+                                          "position": 82,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101711",
+                                          "name": "flag: Finland",
+                                          "position": 83,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101712",
+                                          "name": "flag: Fiji",
+                                          "position": 84,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101707",
+                                      "name": "flag: Eritrea flag: Spain flag: Ethiopia flag: European Union flag: Finland flag: Fiji",
+                                      "position": 14,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101713",
+                                          "name": "flag: Falkland Islands",
+                                          "position": 85,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101714",
+                                          "name": "flag: Micronesia",
+                                          "position": 86,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101715",
+                                          "name": "flag: Faroe Islands",
+                                          "position": 87,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101716",
+                                          "name": "flag: France",
+                                          "position": 88,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101717",
+                                          "name": "flag: Gabon",
+                                          "position": 89,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101718",
+                                          "name": "flag: United Kingdom",
+                                          "position": 90,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101713",
+                                      "name": "flag: Falkland Islands flag: Micronesia flag: Faroe Islands flag: France flag: Gabon flag: United Kingdom",
+                                      "position": 15,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101719",
+                                          "name": "flag: Grenada",
+                                          "position": 91,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101720",
+                                          "name": "flag: Georgia",
+                                          "position": 92,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101721",
+                                          "name": "flag: French Guiana",
+                                          "position": 93,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101722",
+                                          "name": "flag: Guernsey",
+                                          "position": 94,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101723",
+                                          "name": "flag: Ghana",
+                                          "position": 95,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101724",
+                                          "name": "flag: Gibraltar",
+                                          "position": 96,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101719",
+                                      "name": "flag: Grenada flag: Georgia flag: French Guiana flag: Guernsey flag: Ghana flag: Gibraltar",
+                                      "position": 16,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101725",
+                                          "name": "flag: Greenland",
+                                          "position": 97,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101726",
+                                          "name": "flag: Gambia",
+                                          "position": 98,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101727",
+                                          "name": "flag: Guinea",
+                                          "position": 99,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101728",
+                                          "name": "flag: Guadeloupe",
+                                          "position": 100,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101729",
+                                          "name": "flag: Equatorial Guinea",
+                                          "position": 101,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101730",
+                                          "name": "flag: Greece",
+                                          "position": 102,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101725",
+                                      "name": "flag: Greenland flag: Gambia flag: Guinea flag: Guadeloupe flag: Equatorial Guinea flag: Greece",
+                                      "position": 17,
+                                      "role": "row",
+                                      "setSize": 269
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101731",
+                                          "name": "flag: South Georgia & South Sandwich Islands",
+                                          "position": 103,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101732",
+                                          "name": "flag: Guatemala",
+                                          "position": 104,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101733",
+                                          "name": "flag: Guam",
+                                          "position": 105,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101734",
+                                          "name": "flag: Guinea-Bissau",
+                                          "position": 106,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101735",
+                                          "name": "flag: Guyana",
+                                          "position": 107,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101736",
+                                          "name": "flag: Hong Kong SAR China",
+                                          "position": 108,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-101731",
+                                      "name": "flag: South Georgia & South Sandwich Islands flag: Guatemala flag: Guam flag: Guinea-Bissau flag: Guyana flag: Hong Kong SAR China",
+                                      "position": 18,
+                                      "role": "row",
+                                      "setSize": 269
+                                    }
+                                  ],
+                                  "key": "rows",
+                                  "role": "group",
+                                  "setSize": 45
+                                }
+                              ],
+                              "key": "viewport",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "key": "status",
+                              "name": "",
+                              "role": "label",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20d-emoji-grid",
+                          "name": "Emoji",
+                          "role": "grid"
+                        }
+                      ],
+                      "key": "c20d-emoji-panel",
+                      "name": "Flags",
+                      "role": "tab-panel"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "c20d-emoji-name-text",
+                          "name": "chequered flag",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c20d-emoji-name",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-smileys",
+                          "name": "Smileys & Emotion",
+                          "position": 1,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-people",
+                          "name": "People & Body",
+                          "position": 2,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-nature",
+                          "name": "Animals & Nature",
+                          "position": 3,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-food",
+                          "name": "Food & Drink",
+                          "position": 4,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-travel",
+                          "name": "Travel & Places",
+                          "position": 5,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-activities",
+                          "name": "Activities",
+                          "position": 6,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-objects",
+                          "name": "Objects",
+                          "position": 7,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-symbols",
+                          "name": "Symbols",
+                          "position": 8,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-flags",
+                          "name": "Flags",
+                          "position": 9,
+                          "role": "tab",
+                          "states": [
+                            "selected"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-emoji-tabs",
+                      "name": "Categories",
+                      "role": "tab-list",
+                      "setSize": 9
+                    },
+                    {
+                      "key": "c20d-emoji-status",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "body",
+                  "role": "group"
+                }
+              ],
+              "key": "c20d-emoji-popover-content",
+              "name": "Choose an emoji",
+              "role": "dialog"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

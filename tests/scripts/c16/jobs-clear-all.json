@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "operations/progress/jobs: Dismiss removes one finished job; Clear finished removes every finished job"
+  ],
+  "scene": "c16-jobs-finished-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c16-jobs-clear"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-jobs-list",
+      "absent": true
+    },
+    {
+      "key": "c16-jobs",
+      "absent": true
+    },
+    {
+      "key": "c16-cursor",
+      "focused": true
+    },
+    {
+      "key": "c16-heard",
+      "name": "Jobs: ClearFinished · probes 0"
+    }
+  ]
+}

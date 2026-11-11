@@ -1,0 +1,17 @@
+# fixture
+[Icon Theme]
+Name=Hicolor
+Name[de]=Hicolor (de)
+Directories=16x16/apps,48x48/apps,scalable/apps,
+
+[16x16/apps]
+Size=16
+
+[48x48/apps]
+Size=48
+
+[scalable/apps]
+Size=128
+MinSize=1
+MaxSize=256
+Type=Scalable

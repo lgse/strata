@@ -1,0 +1,60 @@
+{
+  "bullets": [
+    "browser/view-modes/density: Changing one slider leaves the other area's spacing unchanged",
+    "browser/view-modes/density: Clicking \"Compact\" or \"Airy\" snaps that slider",
+    "browser/view-modes/density: Each slider's value label reads \"Compact · N px\" or \"Airy · N px\" at a preset, otherwise \"Custom · N px\""
+  ],
+  "scene": "k2-defaults-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "k2-content-airy"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "k2-frame-more"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "k2-frame-more"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "k2-frame-more"
+    }
+  ],
+  "expect": [
+    {
+      "key": "k2-content-value",
+      "name": "Content: Airy · 8 px"
+    },
+    {
+      "key": "k2-frame-value",
+      "name": "Frame: Custom · 3 px"
+    },
+    {
+      "key": "k2-token-content-pad",
+      "name": "content.pad 8"
+    },
+    {
+      "key": "k2-token-row-list",
+      "name": "row.list 42"
+    },
+    {
+      "key": "k2-token-frame-inset",
+      "name": "frame.inset 3"
+    },
+    {
+      "key": "k2-token-row-sidebar",
+      "name": "row.sidebar 30"
+    },
+    {
+      "key": "k2-token-tab-height",
+      "name": "tabs.tab.height 42"
+    }
+  ]
+}

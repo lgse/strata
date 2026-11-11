@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/context-menu: With nothing selected, Menu or Shift+F10 opens the active pane's background menu."
+  ],
+  "scene": "c21-nothing-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "x": 480,
+      "y": 520
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "F10",
+      "shift": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "ContextMenu"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-status",
+      "name": "Dismissed menu 2 on the background"
+    }
+  ]
+}

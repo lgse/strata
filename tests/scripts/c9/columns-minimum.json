@@ -1,0 +1,22 @@
+{
+  "bullets": [
+    "preview/preview-panel/layout: Narrowing a filled preview, by pointer drag"
+  ],
+  "scene": "c9-columns-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "drag",
+      "key": "preview-grip",
+      "dx": 40,
+      "dy": 0,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-grip",
+      "value": "319"
+    }
+  ]
+}

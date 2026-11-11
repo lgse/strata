@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "browser/sidebar: Outside 10xer mode, Enter on a focused row opens the place with its first item selected; a pointer click",
+    "browser/sidebar: A plain click on a row navigates and never reorders."
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-place-downloads"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "Open downloads (pointer)"
+    },
+    {
+      "key": "places-place-downloads",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

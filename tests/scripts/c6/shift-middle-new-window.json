@@ -1,0 +1,16 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Ctrl+middle-click or Shift+middle-click on an ancestor crumb opens that folder in a new window."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {"t": 0.1, "hold": "shift"},
+    {"t": 0.2, "type": "tap", "key": "c6-loc-crumb-1", "button": "middle"},
+    {"t": 0.4, "hold": ""}
+  ],
+  "expect": [
+    {"key": "c6-log", "name": "New window ~/Projects"},
+    {"key": "c6-loc-item-2", "name": "strata"},
+    {"key": "c6-loc-entry", "absent": true}
+  ]
+}

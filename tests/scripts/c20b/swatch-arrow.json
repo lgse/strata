@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "settings/themes: Each picker change previews across the interface"
+  ],
+  "scene": "c20b-opaque-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20b-folder-hex"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20b-folder-swatch-0-1",
+      "focused": true
+    },
+    {
+      "key": "c20b-folder-swatch-0-1",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c20b-folder-hex",
+      "value": "#f76b15"
+    },
+    {
+      "key": "c20b-log",
+      "name": "Folder color Commit #f76b15"
+    }
+  ]
+}

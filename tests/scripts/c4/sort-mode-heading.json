@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "browser/view-modes/list: Clicking the Mode heading does not sort."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "head-mode"
+    },
+    {
+      "t": 0.9,
+      "type": "tap",
+      "key": "head-mode"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Name ↑"
+    }
+  ]
+}

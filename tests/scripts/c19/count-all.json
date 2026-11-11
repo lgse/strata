@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Selecting every item shows the folder and file breakdown without a size"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-select-all"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-count",
+      "name": "2 folders, 3 files selected"
+    }
+  ]
+}

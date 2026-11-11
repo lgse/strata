@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "browser/selection: A double middle-click on a folder opens one tab; a middle press dragged past the drag threshold opens nothing."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "row-1",
+      "button": "middle",
+      "dx": 0,
+      "dy": 30
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "c1-intent",
+      "name": ""
+    }
+  ]
+}

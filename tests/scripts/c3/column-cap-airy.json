@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/view-modes: Icons shows at most 20 columns at Content Compact and at most 16 at Airy."
+  ],
+  "scene": "c3-airy-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1000000/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Right"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-columns",
+      "name": "16 a row"
+    },
+    {
+      "key": "row-1000001",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

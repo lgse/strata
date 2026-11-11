@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/search: Ctrl+K or the header search button opens the search dialog over a blurred window; Ctrl+K again closes it.",
+    "browser/search: Opened with Ctrl+K, the search field's accessible name and placeholder are both",
+    "browser/search: On open, the empty query shows"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c17-search"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Down"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-field",
+      "role": "text-input",
+      "name": "Search files and folders…",
+      "focused": true
+    },
+    {
+      "key": "c17-palette-dialog",
+      "name": "Search files and folders"
+    },
+    {
+      "key": "c17-palette-status",
+      "name": "Type to search Home and mounted local drives"
+    }
+  ]
+}

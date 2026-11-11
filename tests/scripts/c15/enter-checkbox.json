@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "app/dialogs: With focus outside a text field, Enter activates the focused button"
+  ],
+  "scene": "c15-form-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-form-chars",
+      "states": [
+        "checked"
+      ],
+      "focused": true
+    },
+    {
+      "key": "c15-form-dialog",
+      "role": "dialog"
+    }
+  ]
+}

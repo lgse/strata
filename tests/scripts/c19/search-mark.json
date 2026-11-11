@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "integration/10xer-mode/search: The footer shows `search: …`, the hit count including zero"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-search"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-mark",
+      "name": "search: read"
+    },
+    {
+      "key": "c19-footer-count",
+      "name": "3 items"
+    },
+    {
+      "key": "c19-footer-hit",
+      "name": "git/trading/README.md"
+    }
+  ]
+}

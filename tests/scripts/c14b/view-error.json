@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: After the first image, a failed view render or image decode keeps the previous image and shows an error under the controls"
+  ],
+  "scene": "c14b-model-view-error-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-error",
+      "name": "The sandboxed preview renderer failed"
+    },
+    {
+      "key": "c14b-model-picture",
+      "name": "Model preview"
+    },
+    {
+      "key": "c14b-model-next"
+    }
+  ]
+}

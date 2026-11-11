@@ -1,0 +1,876 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "style.css",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "1",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "/* ~/.config/strata/style.css */",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "2",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": ".file-list row {",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "3",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "  margin: 1px 12px;",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "4",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "  border-radius: 10px;",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "5",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "}",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "6",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "7",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": ".sidebar-row:hover,",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "8",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": ".sidebar-device:hover {",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "9",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "  background: alpha(@strata_accent, 0.15);",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "10",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "}",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "11",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "12",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": ".sidebar-row.active {",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "13",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "  background: #ff9e6440;",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "14",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "  color: @strata_text;",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "15",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "}",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "16",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "17",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": ".sidebar-row.active image {",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "18",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "  color: #ff9e64;",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "19",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "}",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "20",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "21",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": ".sidebar-shell {",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "22",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "  border-radius: 14px;",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "23",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "}",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "24",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "25",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "@define-color strata_accent #ff9e64;",
+                  "role": "label"
+                }
+              ],
+              "key": "k4-source",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "Overrides on",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "CONVERTED: 2",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "1",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "# Converted from a user stylesheet (style.css): each row names the line it came from.",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "2",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "3",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "[sidebar.selected]",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "4",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "fill = \"#ff9e6440\" # style.css line 13",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "5",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "icon = \"#ff9e64\" # style.css line 18",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "NOT CONVERTED: 7",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 3, column 3: `.file-list row` { margin: 1px 12px }: its token also styles elements this selector doesn't",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 4, column 3: `.file-list row` { border-radius: 10px }: its token also styles elements this selector doesn't",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 8, column 1: `.sidebar-device:hover`: no token stands for this selector",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 9, column 3: `.sidebar-row:hover` { background: alpha(@strata_accent, 0.15) }: its token also styles elements this selector doesn't",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 14, column 3: `.sidebar-row.active` { color: @strata_text }: no token stands for this property here",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 21, column 1: `.sidebar-shell`: no token stands for this selector",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "line 25, column 1: `@define-color strata_accent #ff9e64`: it redefines a theme colour: make a custom theme instead",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "2 ROWS APPLY · 0 PROBLEMS",
+                  "role": "label"
+                }
+              ],
+              "key": "k4-report",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "context-menu",
+                            "scroll-into-view",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-place-home",
+                                      "name": "Home",
+                                      "position": 1,
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-place-documents",
+                                      "name": "Documents",
+                                      "position": 2,
+                                      "role": "list-item",
+                                      "states": [
+                                        "selected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-place-downloads",
+                                      "name": "Downloads",
+                                      "position": 3,
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-place-trash",
+                                      "name": "Trash",
+                                      "position": 4,
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "k4-sidebar-places",
+                                  "role": "group",
+                                  "setSize": 4
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "collapse",
+                                        "scroll-into-view"
+                                      ],
+                                      "description": "1 item",
+                                      "key": "k4-sidebar-heading-pinned",
+                                      "name": "PINNED",
+                                      "role": "button",
+                                      "states": [
+                                        "expanded"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "k4-sidebar-pin-projects",
+                                      "name": "Projects",
+                                      "position": 1,
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "k4-sidebar-section-pinned",
+                                  "name": "PINNED",
+                                  "role": "group",
+                                  "setSize": 1
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "collapse",
+                                        "scroll-into-view"
+                                      ],
+                                      "description": "1 item",
+                                      "key": "k4-sidebar-heading-devices",
+                                      "name": "DEVICES",
+                                      "role": "button",
+                                      "states": [
+                                        "expanded"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "description": "/",
+                                      "key": "k4-sidebar-device-system",
+                                      "name": "System",
+                                      "role": "list-item",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "k4-sidebar-section-devices",
+                                  "name": "DEVICES",
+                                  "role": "group"
+                                }
+                              ],
+                              "key": "k4-sidebar-list",
+                              "name": "Places",
+                              "role": "list"
+                            }
+                          ],
+                          "key": "k4-sidebar-scroll",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        }
+                      ],
+                      "key": "k4-sidebar",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "notes.md",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "photos (drop target)",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "name": "budget.ods (focused)",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "k4-focused",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "todo.txt",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "k4-files",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "k4-window",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "SET FOR THIS APPEARANCE: THEME → OVERRIDE",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "sidebar.selected.fill",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#007f9d46",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#ff9e6440",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "sidebar.selected.icon",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#007f9dff",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "→",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "#ff9e64ff",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k4-tokens",
+                  "role": "group"
+                }
+              ],
+              "key": "k4-specimen",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            }
+          ],
+          "key": "k4",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

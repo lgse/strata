@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Each column after the first has a \"Close this pane\" X button that closes it."
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-2-close"
+    },
+    {
+      "t": 1.5,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-path",
+      "name": "Home"
+    },
+    {
+      "key": "c2-col-2",
+      "absent": true
+    },
+    {
+      "key": "c2-col-3",
+      "absent": true
+    },
+    {
+      "key": "c2-col-2-close",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "preview/preview-panel/media: Previews play the whole source with no 30-second cap; files without a reported duration play to their end with seeking disabled until it is known."
+  ],
+  "scene": "c13-video-unknown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 1.8,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 2.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-timeline",
+      "value": "0:05 of 3:20"
+    },
+    {
+      "key": "c13-seeks",
+      "name": "1 seeks"
+    }
+  ]
+}

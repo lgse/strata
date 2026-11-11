@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/video: Previous and next, Ctrl+Alt+`<` and Ctrl+Alt+`>`, or `<` and `>` in 10xer mode step to the previous or next video. They skip audio files."
+  ],
+  "scene": "c13-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": ">",
+      "shift": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": ">",
+      "cmd": true,
+      "alt": true,
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "<",
+      "shift": true
+    },
+    {
+      "t": 1.1,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-eyebrow",
+      "name": "2 of 3 in folder"
+    }
+  ]
+}

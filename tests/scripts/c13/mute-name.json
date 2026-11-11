@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "preview/preview-panel/media: The mute button's tooltip and accessible name read \"Mute/unmute\" followed by its shortcut in parentheses."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-mute"
+    },
+    {
+      "t": 0.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-mute",
+      "name": "Mute/unmute (Ctrl+Alt+M)"
+    },
+    {
+      "key": "c13-status",
+      "name": "Muted"
+    },
+    {
+      "key": "media-volume",
+      "value": "0%"
+    }
+  ]
+}

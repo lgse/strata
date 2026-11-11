@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel: Other preview failures, such as a damaged PDF, show no Open button under the message."
+  ],
+  "scene": "c12-failed-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "move",
+      "key": "pdf-message"
+    }
+  ],
+  "expect": [
+    {
+      "key": "pdf-message",
+      "name": "The sandboxed preview renderer failed"
+    },
+    {
+      "key": "pdf-open",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "browser/selection: In List and Icons, a plain arrow"
+  ],
+  "scene": "c1-photos-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-10010"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "PageDown",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-10012",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-10033",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: IMG_0034.jpg"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "integration/10xer-mode/places: Esc cancels an armed chord, and any other unknown second key cancels it with `Unknown chord`."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-5",
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "g",
+      "every": 0.01,
+      "t": 0.35
+    },
+    {
+      "type": "type",
+      "text": "q",
+      "every": 0.01,
+      "t": 0.56
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.87
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-chord-panel",
+      "absent": true
+    },
+    {
+      "key": "c18-flash",
+      "name": "Unknown chord"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "bullets": [
+    "operations/archives/preview: Inside the preview, Up/Down move the highlight, Right and Enter open a folder, and Left goes to the parent."
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-8000000010"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 1.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "docs"
+    },
+    {
+      "key": "row-8000000007",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c14b-archive",
+      "focused": true
+    }
+  ]
+}

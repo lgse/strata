@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "operations/archives/preview: Double-clicking a folder opens exactly one level."
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "double-click",
+      "x": 700,
+      "y": 95
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "assets"
+    },
+    {
+      "key": "row-8000000002",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/context-menu: Right-clicking an unselected entry makes it the only selected entry and the keyboard cursor."
+  ],
+  "scene": "c1-selection-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "secondary-click",
+      "key": "row-2"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-2",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: Receipts"
+    },
+    {
+      "key": "c1-intent",
+      "name": "Menu on Receipts"
+    }
+  ]
+}

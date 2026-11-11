@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: In a column with no keyboard cursor yet, Home or Ctrl+Up lands on the first entry",
+    "browser/scrolling: In Columns, Ctrl+Up, Ctrl+Down, Home, and End also jump while focus is on a column's list"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-3-title"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 1.2,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-6000008",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-2000001",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

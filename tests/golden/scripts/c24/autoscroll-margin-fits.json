@@ -1,0 +1,189 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c24-title",
+              "name": "Scroll extras",
+              "role": "label"
+            },
+            {
+              "key": "c24-intent",
+              "name": "Nothing yet",
+              "role": "label"
+            },
+            {
+              "key": "c24-history",
+              "name": "No history button",
+              "role": "label"
+            },
+            {
+              "key": "c24-status",
+              "name": "Autoscroll: off",
+              "role": "label"
+            },
+            {
+              "key": "c24-chord",
+              "name": "No chord",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus",
+                "set-value",
+                "replace-selected-text",
+                "set-text-selection"
+              ],
+              "key": "c24-filter",
+              "name": "Filter",
+              "role": "multiline-text-input",
+              "value": ""
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1",
+                          "name": "item folder 00000",
+                          "position": 1,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-2",
+                          "name": "item file 00001.txt",
+                          "position": 2,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-3",
+                          "name": "item file 00002.txt",
+                          "position": 3,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-4",
+                          "name": "item file 00003.txt",
+                          "position": 4,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-5",
+                          "name": "item file 00004.txt",
+                          "position": 5,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-6",
+                          "name": "item file 00005.txt",
+                          "position": 6,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-7",
+                          "name": "item file 00006.txt",
+                          "position": 7,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-8",
+                          "name": "item file 00007.txt",
+                          "position": 8,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9",
+                          "name": "item file 00008.txt",
+                          "position": 9,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-10",
+                          "name": "item file 00009.txt",
+                          "position": 10,
+                          "role": "list-box-option"
+                        }
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 10
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "status",
+                  "name": "",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c24-files",
+              "name": "Files",
+              "role": "list-box"
+            }
+          ],
+          "key": "c24-page",
+          "role": "main"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

@@ -1,0 +1,245 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "actions": [
+                "focus"
+              ],
+              "children": [
+                {
+                  "name": "harbour.mp4",
+                  "role": "label"
+                },
+                {
+                  "name": "ferry.mkv",
+                  "role": "label"
+                },
+                {
+                  "name": "gulls.webm",
+                  "role": "label"
+                },
+                {
+                  "key": "c13-status",
+                  "name": "Decoding at 1256 × 707",
+                  "role": "label"
+                },
+                {
+                  "key": "c13-seeks",
+                  "name": "1 seeks",
+                  "role": "label"
+                }
+              ],
+              "key": "files",
+              "name": "Files",
+              "role": "list-box"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "media-bubble-time",
+                              "name": "1:40 · The harbour",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "media-bubble",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "media-frame",
+                      "name": "Video frame",
+                      "role": "button"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "media-eyebrow",
+                          "name": "1 of 3 in folder",
+                          "role": "label"
+                        },
+                        {
+                          "key": "media-title",
+                          "name": "harbour",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "media-details",
+                      "role": "group"
+                    },
+                    {
+                      "key": "media-error",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Mute/unmute (Ctrl+Alt+M)",
+                          "key": "media-mute",
+                          "name": "Mute/unmute (Ctrl+Alt+M)",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "focus",
+                            "increment",
+                            "decrement",
+                            "set-value"
+                          ],
+                          "key": "media-volume",
+                          "name": "Volume",
+                          "range": [
+                            0.6,
+                            0.0,
+                            1.0,
+                            0.1
+                          ],
+                          "role": "slider",
+                          "value": "60%"
+                        }
+                      ],
+                      "key": "media-volume-row",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "media-badge-0",
+                          "name": "1080p",
+                          "role": "label"
+                        },
+                        {
+                          "key": "media-badge-1",
+                          "name": "HDR10",
+                          "role": "label"
+                        },
+                        {
+                          "key": "media-badge-2",
+                          "name": "10-bit",
+                          "role": "label"
+                        },
+                        {
+                          "key": "media-badge-3",
+                          "name": "30 fps",
+                          "role": "label"
+                        },
+                        {
+                          "key": "media-badge-4",
+                          "name": "HEVC",
+                          "role": "label"
+                        },
+                        {
+                          "key": "media-badge-5",
+                          "name": "AAC Stereo",
+                          "role": "label"
+                        },
+                        {
+                          "key": "media-badge-6",
+                          "name": "CC ×2",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "media-badges",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "focus",
+                        "increment",
+                        "decrement",
+                        "set-value"
+                      ],
+                      "key": "media-timeline",
+                      "name": "Playback position",
+                      "range": [
+                        5.0,
+                        0.0,
+                        200.0,
+                        5.0
+                      ],
+                      "role": "slider",
+                      "states": [
+                        "focused"
+                      ],
+                      "value": "0:05 of 3:20"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "media-elapsed",
+                          "name": "1:40",
+                          "role": "label"
+                        },
+                        {
+                          "description": "Previous video (Ctrl+Alt+<)",
+                          "key": "media-previous",
+                          "name": "Previous video",
+                          "role": "button",
+                          "states": [
+                            "disabled"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Play/Pause (Ctrl+Alt+Space)",
+                          "key": "media-play",
+                          "name": "Play or pause",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Next video (Ctrl+Alt+>)",
+                          "key": "media-next",
+                          "name": "Next video",
+                          "role": "button"
+                        },
+                        {
+                          "key": "media-total",
+                          "name": "3:20",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "media-transport",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "media",
+                  "role": "group"
+                }
+              ],
+              "key": "c13-area",
+              "role": "group"
+            }
+          ],
+          "key": "c13",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

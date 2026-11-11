@@ -1,0 +1,20 @@
+{
+  "bullets": [
+    "preview/preview-panel/media: On the plain media bar, as for an animated GIF, the play button's tooltip and accessible name read \"Play/Pause\" and its shortcut in parentheses."
+  ],
+  "scene": "c13-plain-paused-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-play",
+      "role": "button",
+      "name": "Play/Pause (Ctrl+Alt+Space)"
+    }
+  ]
+}

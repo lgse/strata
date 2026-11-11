@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/video: mpv, VLC, Celluloid, and MPlayer start at the preview's position; other players, and positions within 1 s of either end, open the file plainly."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Home"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c13-status",
+      "name": "Opened in the default player"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "browser/sidebar: Clicking the PINNED or DEVICES heading in the full sidebar folds that section's rows away",
+    "browser/sidebar: Clicking a heading toggles its section without taking focus",
+    "browser/sidebar: The heading is a button named PINNED or DEVICES with an expanded state"
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c8-files"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "places-heading-pinned"
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-pin-projects",
+      "absent": true
+    },
+    {
+      "key": "places-pin-nas",
+      "absent": true
+    },
+    {
+      "key": "places-heading-pinned",
+      "role": "button",
+      "name": "PINNED",
+      "states": [
+        "collapsed"
+      ],
+      "focused": false
+    },
+    {
+      "key": "c8-files",
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/sidebar: With nothing pinned, the PINNED section stays hidden after every rail sync"
+  ],
+  "scene": "c8-no-pins-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "b",
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "b",
+      "cmd": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "b",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-heading-pinned",
+      "absent": true
+    },
+    {
+      "key": "places-place-home",
+      "name": "Home"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "operations/progress/dock: A finished copy, compression, or deletion retitles its card"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-copy"
+    },
+    {
+      "t": 4.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "name": "Copy complete"
+    },
+    {
+      "key": "c16-dock-card-1-complete",
+      "name": "Dismiss completed notification"
+    },
+    {
+      "key": "c16-dock-card-1-pin",
+      "name": "Keep notification"
+    },
+    {
+      "key": "c16-dock-card-1-cancel",
+      "name": "Dismiss notification"
+    },
+    {
+      "key": "c16-dock-card-1-phase",
+      "name": "Copy complete",
+      "states": [
+        "live-polite"
+      ]
+    }
+  ]
+}

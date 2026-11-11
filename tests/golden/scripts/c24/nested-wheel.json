@@ -1,0 +1,2492 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c24-title",
+              "name": "Scroll extras",
+              "role": "label"
+            },
+            {
+              "key": "c24-intent",
+              "name": "Nothing yet",
+              "role": "label"
+            },
+            {
+              "key": "c24-history",
+              "name": "No history button",
+              "role": "label"
+            },
+            {
+              "key": "c24-status",
+              "name": "Autoscroll: off",
+              "role": "label"
+            },
+            {
+              "key": "c24-chord",
+              "name": "No chord",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus",
+                "set-value",
+                "replace-selected-text",
+                "set-text-selection"
+              ],
+              "key": "c24-filter",
+              "name": "Filter",
+              "role": "multiline-text-input",
+              "value": ""
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "scroll-left",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "focus",
+                    "context-menu",
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view",
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100000",
+                              "name": "col folder 00000",
+                              "position": 1,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100001",
+                              "name": "col file 00001.txt",
+                              "position": 2,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100002",
+                              "name": "col file 00002.txt",
+                              "position": 3,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100003",
+                              "name": "col file 00003.txt",
+                              "position": 4,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100004",
+                              "name": "col file 00004.txt",
+                              "position": 5,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100005",
+                              "name": "col file 00005.txt",
+                              "position": 6,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100006",
+                              "name": "col file 00006.txt",
+                              "position": 7,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100007",
+                              "name": "col file 00007.txt",
+                              "position": 8,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100008",
+                              "name": "col file 00008.txt",
+                              "position": 9,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100009",
+                              "name": "col file 00009.txt",
+                              "position": 10,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100010",
+                              "name": "col folder 00010",
+                              "position": 11,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100011",
+                              "name": "col file 00011.txt",
+                              "position": 12,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100012",
+                              "name": "col file 00012.txt",
+                              "position": 13,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100013",
+                              "name": "col file 00013.txt",
+                              "position": 14,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100014",
+                              "name": "col file 00014.txt",
+                              "position": 15,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100015",
+                              "name": "col file 00015.txt",
+                              "position": 16,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100016",
+                              "name": "col file 00016.txt",
+                              "position": 17,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100017",
+                              "name": "col file 00017.txt",
+                              "position": 18,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100018",
+                              "name": "col file 00018.txt",
+                              "position": 19,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100019",
+                              "name": "col file 00019.txt",
+                              "position": 20,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100020",
+                              "name": "col folder 00020",
+                              "position": 21,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100021",
+                              "name": "col file 00021.txt",
+                              "position": 22,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100022",
+                              "name": "col file 00022.txt",
+                              "position": 23,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100023",
+                              "name": "col file 00023.txt",
+                              "position": 24,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100024",
+                              "name": "col file 00024.txt",
+                              "position": 25,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100025",
+                              "name": "col file 00025.txt",
+                              "position": 26,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100026",
+                              "name": "col file 00026.txt",
+                              "position": 27,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100027",
+                              "name": "col file 00027.txt",
+                              "position": 28,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100028",
+                              "name": "col file 00028.txt",
+                              "position": 29,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100029",
+                              "name": "col file 00029.txt",
+                              "position": 30,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100030",
+                              "name": "col folder 00030",
+                              "position": 31,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100031",
+                              "name": "col file 00031.txt",
+                              "position": 32,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100032",
+                              "name": "col file 00032.txt",
+                              "position": 33,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100033",
+                              "name": "col file 00033.txt",
+                              "position": 34,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100034",
+                              "name": "col file 00034.txt",
+                              "position": 35,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100035",
+                              "name": "col file 00035.txt",
+                              "position": 36,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100036",
+                              "name": "col file 00036.txt",
+                              "position": 37,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100037",
+                              "name": "col file 00037.txt",
+                              "position": 38,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100038",
+                              "name": "col file 00038.txt",
+                              "position": 39,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100039",
+                              "name": "col file 00039.txt",
+                              "position": 40,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100040",
+                              "name": "col folder 00040",
+                              "position": 41,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100041",
+                              "name": "col file 00041.txt",
+                              "position": 42,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100042",
+                              "name": "col file 00042.txt",
+                              "position": 43,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100043",
+                              "name": "col file 00043.txt",
+                              "position": 44,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100044",
+                              "name": "col file 00044.txt",
+                              "position": 45,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100045",
+                              "name": "col file 00045.txt",
+                              "position": 46,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100046",
+                              "name": "col file 00046.txt",
+                              "position": 47,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100047",
+                              "name": "col file 00047.txt",
+                              "position": 48,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100048",
+                              "name": "col file 00048.txt",
+                              "position": 49,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100049",
+                              "name": "col file 00049.txt",
+                              "position": 50,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100050",
+                              "name": "col folder 00050",
+                              "position": 51,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100051",
+                              "name": "col file 00051.txt",
+                              "position": 52,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100052",
+                              "name": "col file 00052.txt",
+                              "position": 53,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100053",
+                              "name": "col file 00053.txt",
+                              "position": 54,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100054",
+                              "name": "col file 00054.txt",
+                              "position": 55,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100055",
+                              "name": "col file 00055.txt",
+                              "position": 56,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100056",
+                              "name": "col file 00056.txt",
+                              "position": 57,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100057",
+                              "name": "col file 00057.txt",
+                              "position": 58,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100058",
+                              "name": "col file 00058.txt",
+                              "position": 59,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100059",
+                              "name": "col file 00059.txt",
+                              "position": 60,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100060",
+                              "name": "col folder 00060",
+                              "position": 61,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100061",
+                              "name": "col file 00061.txt",
+                              "position": 62,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100062",
+                              "name": "col file 00062.txt",
+                              "position": 63,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100063",
+                              "name": "col file 00063.txt",
+                              "position": 64,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100064",
+                              "name": "col file 00064.txt",
+                              "position": 65,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100065",
+                              "name": "col file 00065.txt",
+                              "position": 66,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100066",
+                              "name": "col file 00066.txt",
+                              "position": 67,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100067",
+                              "name": "col file 00067.txt",
+                              "position": 68,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-100068",
+                              "name": "col file 00068.txt",
+                              "position": 69,
+                              "role": "list-box-option"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group",
+                          "setSize": 1000
+                        }
+                      ],
+                      "key": "viewport",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "status",
+                      "name": "",
+                      "role": "label",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c24-col-0",
+                  "name": "Column 1",
+                  "role": "list-box"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "context-menu",
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view",
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200031",
+                              "name": "col file 00031.txt",
+                              "position": 32,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200032",
+                              "name": "col file 00032.txt",
+                              "position": 33,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200033",
+                              "name": "col file 00033.txt",
+                              "position": 34,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200034",
+                              "name": "col file 00034.txt",
+                              "position": 35,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200035",
+                              "name": "col file 00035.txt",
+                              "position": 36,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200036",
+                              "name": "col file 00036.txt",
+                              "position": 37,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200037",
+                              "name": "col file 00037.txt",
+                              "position": 38,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200038",
+                              "name": "col file 00038.txt",
+                              "position": 39,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200039",
+                              "name": "col file 00039.txt",
+                              "position": 40,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200040",
+                              "name": "col folder 00040",
+                              "position": 41,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200041",
+                              "name": "col file 00041.txt",
+                              "position": 42,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200042",
+                              "name": "col file 00042.txt",
+                              "position": 43,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200043",
+                              "name": "col file 00043.txt",
+                              "position": 44,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200044",
+                              "name": "col file 00044.txt",
+                              "position": 45,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200045",
+                              "name": "col file 00045.txt",
+                              "position": 46,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200046",
+                              "name": "col file 00046.txt",
+                              "position": 47,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200047",
+                              "name": "col file 00047.txt",
+                              "position": 48,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200048",
+                              "name": "col file 00048.txt",
+                              "position": 49,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200049",
+                              "name": "col file 00049.txt",
+                              "position": 50,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200050",
+                              "name": "col folder 00050",
+                              "position": 51,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200051",
+                              "name": "col file 00051.txt",
+                              "position": 52,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200052",
+                              "name": "col file 00052.txt",
+                              "position": 53,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200053",
+                              "name": "col file 00053.txt",
+                              "position": 54,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200054",
+                              "name": "col file 00054.txt",
+                              "position": 55,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200055",
+                              "name": "col file 00055.txt",
+                              "position": 56,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200056",
+                              "name": "col file 00056.txt",
+                              "position": 57,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200057",
+                              "name": "col file 00057.txt",
+                              "position": 58,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200058",
+                              "name": "col file 00058.txt",
+                              "position": 59,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200059",
+                              "name": "col file 00059.txt",
+                              "position": 60,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200060",
+                              "name": "col folder 00060",
+                              "position": 61,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200061",
+                              "name": "col file 00061.txt",
+                              "position": 62,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200062",
+                              "name": "col file 00062.txt",
+                              "position": 63,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200063",
+                              "name": "col file 00063.txt",
+                              "position": 64,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200064",
+                              "name": "col file 00064.txt",
+                              "position": 65,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200065",
+                              "name": "col file 00065.txt",
+                              "position": 66,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200066",
+                              "name": "col file 00066.txt",
+                              "position": 67,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200067",
+                              "name": "col file 00067.txt",
+                              "position": 68,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200068",
+                              "name": "col file 00068.txt",
+                              "position": 69,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200069",
+                              "name": "col file 00069.txt",
+                              "position": 70,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200070",
+                              "name": "col folder 00070",
+                              "position": 71,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200071",
+                              "name": "col file 00071.txt",
+                              "position": 72,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200072",
+                              "name": "col file 00072.txt",
+                              "position": 73,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200073",
+                              "name": "col file 00073.txt",
+                              "position": 74,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200074",
+                              "name": "col file 00074.txt",
+                              "position": 75,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200075",
+                              "name": "col file 00075.txt",
+                              "position": 76,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200076",
+                              "name": "col file 00076.txt",
+                              "position": 77,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200077",
+                              "name": "col file 00077.txt",
+                              "position": 78,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200078",
+                              "name": "col file 00078.txt",
+                              "position": 79,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200079",
+                              "name": "col file 00079.txt",
+                              "position": 80,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200080",
+                              "name": "col folder 00080",
+                              "position": 81,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200081",
+                              "name": "col file 00081.txt",
+                              "position": 82,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200082",
+                              "name": "col file 00082.txt",
+                              "position": 83,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200083",
+                              "name": "col file 00083.txt",
+                              "position": 84,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200084",
+                              "name": "col file 00084.txt",
+                              "position": 85,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200085",
+                              "name": "col file 00085.txt",
+                              "position": 86,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200086",
+                              "name": "col file 00086.txt",
+                              "position": 87,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200087",
+                              "name": "col file 00087.txt",
+                              "position": 88,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200088",
+                              "name": "col file 00088.txt",
+                              "position": 89,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200089",
+                              "name": "col file 00089.txt",
+                              "position": 90,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200090",
+                              "name": "col folder 00090",
+                              "position": 91,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200091",
+                              "name": "col file 00091.txt",
+                              "position": 92,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200092",
+                              "name": "col file 00092.txt",
+                              "position": 93,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200093",
+                              "name": "col file 00093.txt",
+                              "position": 94,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200094",
+                              "name": "col file 00094.txt",
+                              "position": 95,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200095",
+                              "name": "col file 00095.txt",
+                              "position": 96,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200096",
+                              "name": "col file 00096.txt",
+                              "position": 97,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200097",
+                              "name": "col file 00097.txt",
+                              "position": 98,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200098",
+                              "name": "col file 00098.txt",
+                              "position": 99,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200099",
+                              "name": "col file 00099.txt",
+                              "position": 100,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200100",
+                              "name": "col folder 00100",
+                              "position": 101,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200101",
+                              "name": "col file 00101.txt",
+                              "position": 102,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200102",
+                              "name": "col file 00102.txt",
+                              "position": 103,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200103",
+                              "name": "col file 00103.txt",
+                              "position": 104,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200104",
+                              "name": "col file 00104.txt",
+                              "position": 105,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200105",
+                              "name": "col file 00105.txt",
+                              "position": 106,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200106",
+                              "name": "col file 00106.txt",
+                              "position": 107,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200107",
+                              "name": "col file 00107.txt",
+                              "position": 108,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200108",
+                              "name": "col file 00108.txt",
+                              "position": 109,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200109",
+                              "name": "col file 00109.txt",
+                              "position": 110,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200110",
+                              "name": "col folder 00110",
+                              "position": 111,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200111",
+                              "name": "col file 00111.txt",
+                              "position": 112,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200112",
+                              "name": "col file 00112.txt",
+                              "position": 113,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200113",
+                              "name": "col file 00113.txt",
+                              "position": 114,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200114",
+                              "name": "col file 00114.txt",
+                              "position": 115,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200115",
+                              "name": "col file 00115.txt",
+                              "position": 116,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200116",
+                              "name": "col file 00116.txt",
+                              "position": 117,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200117",
+                              "name": "col file 00117.txt",
+                              "position": 118,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200118",
+                              "name": "col file 00118.txt",
+                              "position": 119,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200119",
+                              "name": "col file 00119.txt",
+                              "position": 120,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200120",
+                              "name": "col folder 00120",
+                              "position": 121,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200121",
+                              "name": "col file 00121.txt",
+                              "position": 122,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200122",
+                              "name": "col file 00122.txt",
+                              "position": 123,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200123",
+                              "name": "col file 00123.txt",
+                              "position": 124,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200124",
+                              "name": "col file 00124.txt",
+                              "position": 125,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200125",
+                              "name": "col file 00125.txt",
+                              "position": 126,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200126",
+                              "name": "col file 00126.txt",
+                              "position": 127,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200127",
+                              "name": "col file 00127.txt",
+                              "position": 128,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200128",
+                              "name": "col file 00128.txt",
+                              "position": 129,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200129",
+                              "name": "col file 00129.txt",
+                              "position": 130,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200130",
+                              "name": "col folder 00130",
+                              "position": 131,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200131",
+                              "name": "col file 00131.txt",
+                              "position": 132,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200132",
+                              "name": "col file 00132.txt",
+                              "position": 133,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200133",
+                              "name": "col file 00133.txt",
+                              "position": 134,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200134",
+                              "name": "col file 00134.txt",
+                              "position": 135,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200135",
+                              "name": "col file 00135.txt",
+                              "position": 136,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200136",
+                              "name": "col file 00136.txt",
+                              "position": 137,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200137",
+                              "name": "col file 00137.txt",
+                              "position": 138,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200138",
+                              "name": "col file 00138.txt",
+                              "position": 139,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200139",
+                              "name": "col file 00139.txt",
+                              "position": 140,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200140",
+                              "name": "col folder 00140",
+                              "position": 141,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200141",
+                              "name": "col file 00141.txt",
+                              "position": 142,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200142",
+                              "name": "col file 00142.txt",
+                              "position": 143,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200143",
+                              "name": "col file 00143.txt",
+                              "position": 144,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200144",
+                              "name": "col file 00144.txt",
+                              "position": 145,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-200145",
+                              "name": "col file 00145.txt",
+                              "position": 146,
+                              "role": "list-box-option"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group",
+                          "setSize": 1000
+                        }
+                      ],
+                      "key": "viewport",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "status",
+                      "name": "",
+                      "role": "label",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c24-col-1",
+                  "name": "Column 2",
+                  "role": "list-box"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "context-menu",
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view",
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300000",
+                              "name": "col folder 00000",
+                              "position": 1,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300001",
+                              "name": "col file 00001.txt",
+                              "position": 2,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300002",
+                              "name": "col file 00002.txt",
+                              "position": 3,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300003",
+                              "name": "col file 00003.txt",
+                              "position": 4,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300004",
+                              "name": "col file 00004.txt",
+                              "position": 5,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300005",
+                              "name": "col file 00005.txt",
+                              "position": 6,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300006",
+                              "name": "col file 00006.txt",
+                              "position": 7,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300007",
+                              "name": "col file 00007.txt",
+                              "position": 8,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300008",
+                              "name": "col file 00008.txt",
+                              "position": 9,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300009",
+                              "name": "col file 00009.txt",
+                              "position": 10,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300010",
+                              "name": "col folder 00010",
+                              "position": 11,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300011",
+                              "name": "col file 00011.txt",
+                              "position": 12,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300012",
+                              "name": "col file 00012.txt",
+                              "position": 13,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300013",
+                              "name": "col file 00013.txt",
+                              "position": 14,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300014",
+                              "name": "col file 00014.txt",
+                              "position": 15,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300015",
+                              "name": "col file 00015.txt",
+                              "position": 16,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300016",
+                              "name": "col file 00016.txt",
+                              "position": 17,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300017",
+                              "name": "col file 00017.txt",
+                              "position": 18,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300018",
+                              "name": "col file 00018.txt",
+                              "position": 19,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300019",
+                              "name": "col file 00019.txt",
+                              "position": 20,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300020",
+                              "name": "col folder 00020",
+                              "position": 21,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300021",
+                              "name": "col file 00021.txt",
+                              "position": 22,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300022",
+                              "name": "col file 00022.txt",
+                              "position": 23,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300023",
+                              "name": "col file 00023.txt",
+                              "position": 24,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300024",
+                              "name": "col file 00024.txt",
+                              "position": 25,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300025",
+                              "name": "col file 00025.txt",
+                              "position": 26,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300026",
+                              "name": "col file 00026.txt",
+                              "position": 27,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300027",
+                              "name": "col file 00027.txt",
+                              "position": 28,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300028",
+                              "name": "col file 00028.txt",
+                              "position": 29,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300029",
+                              "name": "col file 00029.txt",
+                              "position": 30,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300030",
+                              "name": "col folder 00030",
+                              "position": 31,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300031",
+                              "name": "col file 00031.txt",
+                              "position": 32,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300032",
+                              "name": "col file 00032.txt",
+                              "position": 33,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300033",
+                              "name": "col file 00033.txt",
+                              "position": 34,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300034",
+                              "name": "col file 00034.txt",
+                              "position": 35,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300035",
+                              "name": "col file 00035.txt",
+                              "position": 36,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300036",
+                              "name": "col file 00036.txt",
+                              "position": 37,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300037",
+                              "name": "col file 00037.txt",
+                              "position": 38,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300038",
+                              "name": "col file 00038.txt",
+                              "position": 39,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300039",
+                              "name": "col file 00039.txt",
+                              "position": 40,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300040",
+                              "name": "col folder 00040",
+                              "position": 41,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300041",
+                              "name": "col file 00041.txt",
+                              "position": 42,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300042",
+                              "name": "col file 00042.txt",
+                              "position": 43,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300043",
+                              "name": "col file 00043.txt",
+                              "position": 44,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300044",
+                              "name": "col file 00044.txt",
+                              "position": 45,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300045",
+                              "name": "col file 00045.txt",
+                              "position": 46,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300046",
+                              "name": "col file 00046.txt",
+                              "position": 47,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300047",
+                              "name": "col file 00047.txt",
+                              "position": 48,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300048",
+                              "name": "col file 00048.txt",
+                              "position": 49,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300049",
+                              "name": "col file 00049.txt",
+                              "position": 50,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300050",
+                              "name": "col folder 00050",
+                              "position": 51,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300051",
+                              "name": "col file 00051.txt",
+                              "position": 52,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300052",
+                              "name": "col file 00052.txt",
+                              "position": 53,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300053",
+                              "name": "col file 00053.txt",
+                              "position": 54,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300054",
+                              "name": "col file 00054.txt",
+                              "position": 55,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300055",
+                              "name": "col file 00055.txt",
+                              "position": 56,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300056",
+                              "name": "col file 00056.txt",
+                              "position": 57,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300057",
+                              "name": "col file 00057.txt",
+                              "position": 58,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300058",
+                              "name": "col file 00058.txt",
+                              "position": 59,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300059",
+                              "name": "col file 00059.txt",
+                              "position": 60,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300060",
+                              "name": "col folder 00060",
+                              "position": 61,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300061",
+                              "name": "col file 00061.txt",
+                              "position": 62,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300062",
+                              "name": "col file 00062.txt",
+                              "position": 63,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300063",
+                              "name": "col file 00063.txt",
+                              "position": 64,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300064",
+                              "name": "col file 00064.txt",
+                              "position": 65,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300065",
+                              "name": "col file 00065.txt",
+                              "position": 66,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300066",
+                              "name": "col file 00066.txt",
+                              "position": 67,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300067",
+                              "name": "col file 00067.txt",
+                              "position": 68,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-300068",
+                              "name": "col file 00068.txt",
+                              "position": 69,
+                              "role": "list-box-option"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group",
+                          "setSize": 1000
+                        }
+                      ],
+                      "key": "viewport",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "status",
+                      "name": "",
+                      "role": "label",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c24-col-2",
+                  "name": "Column 3",
+                  "role": "list-box"
+                }
+              ],
+              "key": "c24-strip",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            }
+          ],
+          "key": "c24-page",
+          "role": "main"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

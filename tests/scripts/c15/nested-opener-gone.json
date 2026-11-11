@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "app/dialogs: When that opener is gone, such as an action row",
+    "app/dialogs: That fallback skips boxes"
+  ],
+  "scene": "c15-openers-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c15-open-outer"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c15-outer-permissions"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-inner-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-outer-permissions",
+      "absent": true
+    },
+    {
+      "key": "c15-outer-applied",
+      "name": "Permissions changed"
+    },
+    {
+      "key": "c15-outer-secondary",
+      "focused": true
+    }
+  ]
+}

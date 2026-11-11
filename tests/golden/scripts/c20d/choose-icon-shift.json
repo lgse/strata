@@ -1,0 +1,312 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "name": "Customize Folder",
+                      "role": "label"
+                    },
+                    {
+                      "key": "c20d-preview",
+                      "name": "Preview: Network",
+                      "role": "image"
+                    },
+                    {
+                      "name": "ICON",
+                      "role": "label"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus",
+                            "context-menu"
+                          ],
+                          "activeDescendant": "row-9",
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-0",
+                                          "name": "Documents",
+                                          "position": 1,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-1",
+                                          "name": "Downloads",
+                                          "position": 2,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-2",
+                                          "name": "Code",
+                                          "position": 3,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-3",
+                                          "name": "Archive",
+                                          "position": 4,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-4",
+                                          "name": "Pictures",
+                                          "position": 5,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-5",
+                                          "name": "Videos",
+                                          "position": 6,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-6",
+                                          "name": "Terminal",
+                                          "position": 7,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-7",
+                                          "name": "Home",
+                                          "position": 8,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-0",
+                                      "name": "Documents Downloads Code Archive Pictures Videos Terminal Home",
+                                      "position": 1,
+                                      "role": "row",
+                                      "setSize": 16
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-8",
+                                          "name": "Storage",
+                                          "position": 9,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "description": "Current",
+                                          "key": "row-9",
+                                          "name": "Network",
+                                          "position": 10,
+                                          "role": "grid-cell",
+                                          "states": [
+                                            "selected"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-10",
+                                          "name": "Computer",
+                                          "position": 11,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-11",
+                                          "name": "Private",
+                                          "position": 12,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-12",
+                                          "name": "Pinned",
+                                          "position": 13,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-13",
+                                          "name": "Media",
+                                          "position": 14,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-14",
+                                          "name": "Settings",
+                                          "position": 15,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-15",
+                                          "name": "Tasks",
+                                          "position": 16,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-8",
+                                      "name": "Storage Network Computer Private Pinned Media Settings Tasks",
+                                      "position": 2,
+                                      "role": "row",
+                                      "setSize": 16
+                                    }
+                                  ],
+                                  "key": "rows",
+                                  "role": "group",
+                                  "setSize": 2
+                                }
+                              ],
+                              "key": "viewport",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "key": "status",
+                              "name": "",
+                              "role": "label",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20d-icons-grid",
+                          "name": "Icon",
+                          "role": "grid",
+                          "states": [
+                            "focused"
+                          ]
+                        },
+                        {
+                          "key": "c20d-icons-status",
+                          "role": "status",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-icons",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand"
+                          ],
+                          "description": "Choose any emoji for this item",
+                          "key": "c20d-emoji-button",
+                          "name": "Choose Emoji…",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-emoji-popover-trigger",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c20d-done",
+                      "name": "Done",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "c20d-customize",
+                  "role": "group"
+                }
+              ],
+              "key": "c20d-dialog-dialog",
+              "name": "Customize Folder",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    },
+    {
+      "name": "Network",
+      "role": "tooltip"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

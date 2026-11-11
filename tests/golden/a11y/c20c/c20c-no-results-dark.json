@@ -1,0 +1,113 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "context-menu"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c20c-search-field",
+                              "name": "Search settings",
+                              "placeholder": "Search settings",
+                              "role": "search-input",
+                              "value": "zzzz"
+                            },
+                            {
+                              "actions": [
+                                "click"
+                              ],
+                              "key": "c20c-search-clear",
+                              "name": "Clear search",
+                              "role": "button"
+                            },
+                            {
+                              "key": "c20c-search-status",
+                              "name": "No settings match your search.",
+                              "role": "status",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20c-search-frame",
+                          "role": "group"
+                        },
+                        {
+                          "key": "c20c-nav",
+                          "name": "Settings pages",
+                          "role": "tab-list"
+                        }
+                      ],
+                      "key": "c20c-side",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "c20c-title",
+                          "name": "Search results",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c20c-search-empty",
+                              "name": "No settings match your search.",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "c20c-page",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        }
+                      ],
+                      "key": "c20c-main",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20c-settings",
+                  "role": "group"
+                }
+              ],
+              "key": "c20c",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

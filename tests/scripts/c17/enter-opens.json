@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "browser/search: Enter or a single click on a result opens it and closes search."
+  ],
+  "scene": "c17-results-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-log",
+      "name": "Opened /home/demo/Projects/rune/README.md"
+    },
+    {
+      "key": "c17-palette-dialog",
+      "absent": true
+    }
+  ]
+}

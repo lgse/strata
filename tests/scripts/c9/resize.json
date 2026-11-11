@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "preview/preview-panel/layout: With a manual width, resizing the window keeps the preview's width",
+    "preview/preview-panel/layout: In Icons and List, a dragged width is the preview's width"
+  ],
+  "scene": "c9-list-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "drag",
+      "key": "preview-grip",
+      "dx": -100,
+      "dy": 0,
+      "dur": 0.3
+    },
+    {
+      "t": 0.6,
+      "type": "resize",
+      "dw": -100,
+      "dh": 0,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-grip",
+      "value": "532"
+    },
+    {
+      "key": "preview-drawer",
+      "role": "region",
+      "name": "Preview"
+    }
+  ]
+}

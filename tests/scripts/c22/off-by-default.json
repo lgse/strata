@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/quick-preview/folder-peek: A fresh installation, or a settings file without `folder_peeking`, starts with Folder peeking off"
+  ],
+  "scene": "c22-off-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-2"
+    },
+    {
+      "t": 1.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "folder-peek",
+      "absent": true
+    },
+    {
+      "key": "c22-peeking",
+      "name": "Folder peeking off"
+    }
+  ]
+}

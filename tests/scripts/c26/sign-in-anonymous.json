@@ -1,0 +1,56 @@
+{
+  "bullets": [
+    "remote/file-providers/network-locations: Choosing Anonymous disables the credential"
+  ],
+  "scene": "c26-sign-in-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "pw"
+    },
+    {
+      "t": 0.45,
+      "type": "tap",
+      "key": "c26-mount-password-connect-as/segment1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "segment1",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c26-mount-password-user",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "c26-mount-password-domain",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "c26-mount-password-secret",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "c26-mount-password-reveal",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "segment2",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

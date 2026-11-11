@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: Double-click selects a word, and triple-click selects a line without its line break."
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "double-click",
+      "key": "pdf-z2-p0/page"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c12-selection",
+      "name": "hand"
+    }
+  ]
+}

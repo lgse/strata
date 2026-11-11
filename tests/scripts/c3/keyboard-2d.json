@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "browser/selection/keyboard-navigation: In Icons, arrows move one tile in that direction, using rows as laid out.",
+    "browser/selection/keyboard-navigation: In Icons and List, Up and Down move focus and selection through entries without changing directory."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Up"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-9",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c3-intent",
+      "name": "Clicked Holidays"
+    }
+  ]
+}

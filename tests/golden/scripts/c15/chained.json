@@ -1,0 +1,80 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "The file is open in another application.",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c15-error-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-error-secondary",
+                  "name": "Close",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-error-primary",
+                  "name": "Retry",
+                  "role": "default-button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-error-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "description": "photo.raw",
+              "key": "c15-error-dialog",
+              "name": "Couldn't delete 1 item",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

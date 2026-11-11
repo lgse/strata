@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "browser/thumbnails/workers: Settings → General → Performance has a Thumbnail workers spin button from 1 to 16",
+    "browser/thumbnails/workers: Clicking − or +, or typing a count and pressing Return, saves `thumbnail_workers`"
+  ],
+  "scene": "c20a-controls-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20a-workers-decrease"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-workers",
+      "value": "3"
+    },
+    {
+      "key": "c20a-log",
+      "name": "Workers 3"
+    }
+  ]
+}

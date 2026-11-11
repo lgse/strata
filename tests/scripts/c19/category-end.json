@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In the categories, arrows and h/j/k/l select the previous or next category"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "b",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Left"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-category-3",
+      "states": [
+        "selected"
+      ],
+      "focused": true
+    }
+  ]
+}

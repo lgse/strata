@@ -1,0 +1,1443 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "c20d-emoji-field",
+                          "name": "Search",
+                          "placeholder": "Search",
+                          "role": "search-input",
+                          "states": [
+                            "focused"
+                          ],
+                          "value": ""
+                        }
+                      ],
+                      "key": "c20d-emoji-frame",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus",
+                            "context-menu"
+                          ],
+                          "activeDescendant": "row-100168",
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100168",
+                                          "name": "waving hand",
+                                          "position": 1,
+                                          "role": "grid-cell",
+                                          "states": [
+                                            "selected"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100169",
+                                          "name": "raised back of hand",
+                                          "position": 2,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100170",
+                                          "name": "hand with fingers splayed",
+                                          "position": 3,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100171",
+                                          "name": "raised hand",
+                                          "position": 4,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100172",
+                                          "name": "vulcan salute",
+                                          "position": 5,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100173",
+                                          "name": "rightwards hand",
+                                          "position": 6,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100168",
+                                      "name": "waving hand raised back of hand hand with fingers splayed raised hand vulcan salute rightwards hand",
+                                      "position": 1,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100174",
+                                          "name": "leftwards hand",
+                                          "position": 7,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100175",
+                                          "name": "palm down hand",
+                                          "position": 8,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100176",
+                                          "name": "palm up hand",
+                                          "position": 9,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100177",
+                                          "name": "leftwards pushing hand",
+                                          "position": 10,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100178",
+                                          "name": "rightwards pushing hand",
+                                          "position": 11,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100179",
+                                          "name": "OK hand",
+                                          "position": 12,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100174",
+                                      "name": "leftwards hand palm down hand palm up hand leftwards pushing hand rightwards pushing hand OK hand",
+                                      "position": 2,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100180",
+                                          "name": "pinched fingers",
+                                          "position": 13,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100181",
+                                          "name": "pinching hand",
+                                          "position": 14,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100182",
+                                          "name": "victory hand",
+                                          "position": 15,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100183",
+                                          "name": "crossed fingers",
+                                          "position": 16,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100184",
+                                          "name": "hand with index finger and thumb crossed",
+                                          "position": 17,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100185",
+                                          "name": "love-you gesture",
+                                          "position": 18,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100180",
+                                      "name": "pinched fingers pinching hand victory hand crossed fingers hand with index finger and thumb crossed love-you gesture",
+                                      "position": 3,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100186",
+                                          "name": "sign of the horns",
+                                          "position": 19,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100187",
+                                          "name": "call me hand",
+                                          "position": 20,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100188",
+                                          "name": "backhand index pointing left",
+                                          "position": 21,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100189",
+                                          "name": "backhand index pointing right",
+                                          "position": 22,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100190",
+                                          "name": "backhand index pointing up",
+                                          "position": 23,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100191",
+                                          "name": "middle finger",
+                                          "position": 24,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100186",
+                                      "name": "sign of the horns call me hand backhand index pointing left backhand index pointing right backhand index pointing up middle finger",
+                                      "position": 4,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100192",
+                                          "name": "backhand index pointing down",
+                                          "position": 25,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100193",
+                                          "name": "index pointing up",
+                                          "position": 26,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100194",
+                                          "name": "index pointing at the viewer",
+                                          "position": 27,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100195",
+                                          "name": "thumbs up",
+                                          "position": 28,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100196",
+                                          "name": "thumbs down",
+                                          "position": 29,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100197",
+                                          "name": "raised fist",
+                                          "position": 30,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100192",
+                                      "name": "backhand index pointing down index pointing up index pointing at the viewer thumbs up thumbs down raised fist",
+                                      "position": 5,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100198",
+                                          "name": "oncoming fist",
+                                          "position": 31,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100199",
+                                          "name": "left-facing fist",
+                                          "position": 32,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100200",
+                                          "name": "right-facing fist",
+                                          "position": 33,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100201",
+                                          "name": "clapping hands",
+                                          "position": 34,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100202",
+                                          "name": "raising hands",
+                                          "position": 35,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100203",
+                                          "name": "heart hands",
+                                          "position": 36,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100198",
+                                      "name": "oncoming fist left-facing fist right-facing fist clapping hands raising hands heart hands",
+                                      "position": 6,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100204",
+                                          "name": "open hands",
+                                          "position": 37,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100205",
+                                          "name": "palms up together",
+                                          "position": 38,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100206",
+                                          "name": "handshake",
+                                          "position": 39,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100207",
+                                          "name": "folded hands",
+                                          "position": 40,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100208",
+                                          "name": "writing hand",
+                                          "position": 41,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100209",
+                                          "name": "nail polish",
+                                          "position": 42,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100204",
+                                      "name": "open hands palms up together handshake folded hands writing hand nail polish",
+                                      "position": 7,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100210",
+                                          "name": "selfie",
+                                          "position": 43,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100211",
+                                          "name": "flexed biceps",
+                                          "position": 44,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100212",
+                                          "name": "mechanical arm",
+                                          "position": 45,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100213",
+                                          "name": "mechanical leg",
+                                          "position": 46,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100214",
+                                          "name": "leg",
+                                          "position": 47,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100215",
+                                          "name": "foot",
+                                          "position": 48,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100210",
+                                      "name": "selfie flexed biceps mechanical arm mechanical leg leg foot",
+                                      "position": 8,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100216",
+                                          "name": "ear",
+                                          "position": 49,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100217",
+                                          "name": "ear with hearing aid",
+                                          "position": 50,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100218",
+                                          "name": "nose",
+                                          "position": 51,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100219",
+                                          "name": "brain",
+                                          "position": 52,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100220",
+                                          "name": "anatomical heart",
+                                          "position": 53,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100221",
+                                          "name": "lungs",
+                                          "position": 54,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100216",
+                                      "name": "ear ear with hearing aid nose brain anatomical heart lungs",
+                                      "position": 9,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100222",
+                                          "name": "tooth",
+                                          "position": 55,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100223",
+                                          "name": "bone",
+                                          "position": 56,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100224",
+                                          "name": "eyes",
+                                          "position": 57,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100225",
+                                          "name": "eye",
+                                          "position": 58,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100226",
+                                          "name": "tongue",
+                                          "position": 59,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100227",
+                                          "name": "mouth",
+                                          "position": 60,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100222",
+                                      "name": "tooth bone eyes eye tongue mouth",
+                                      "position": 10,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100228",
+                                          "name": "biting lip",
+                                          "position": 61,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100229",
+                                          "name": "baby",
+                                          "position": 62,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100230",
+                                          "name": "child",
+                                          "position": 63,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100231",
+                                          "name": "boy",
+                                          "position": 64,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100232",
+                                          "name": "girl",
+                                          "position": 65,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100233",
+                                          "name": "person",
+                                          "position": 66,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100228",
+                                      "name": "biting lip baby child boy girl person",
+                                      "position": 11,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100234",
+                                          "name": "person: blond hair",
+                                          "position": 67,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100235",
+                                          "name": "man",
+                                          "position": 68,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100236",
+                                          "name": "person: beard",
+                                          "position": 69,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100237",
+                                          "name": "man: beard",
+                                          "position": 70,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100238",
+                                          "name": "woman: beard",
+                                          "position": 71,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100239",
+                                          "name": "man: red hair",
+                                          "position": 72,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100234",
+                                      "name": "person: blond hair man person: beard man: beard woman: beard man: red hair",
+                                      "position": 12,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100240",
+                                          "name": "man: curly hair",
+                                          "position": 73,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100241",
+                                          "name": "man: white hair",
+                                          "position": 74,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100242",
+                                          "name": "man: bald",
+                                          "position": 75,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100243",
+                                          "name": "woman",
+                                          "position": 76,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100244",
+                                          "name": "woman: red hair",
+                                          "position": 77,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100245",
+                                          "name": "person: red hair",
+                                          "position": 78,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100240",
+                                      "name": "man: curly hair man: white hair man: bald woman woman: red hair person: red hair",
+                                      "position": 13,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100246",
+                                          "name": "woman: curly hair",
+                                          "position": 79,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100247",
+                                          "name": "person: curly hair",
+                                          "position": 80,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100248",
+                                          "name": "woman: white hair",
+                                          "position": 81,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100249",
+                                          "name": "person: white hair",
+                                          "position": 82,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100250",
+                                          "name": "woman: bald",
+                                          "position": 83,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100251",
+                                          "name": "person: bald",
+                                          "position": 84,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100246",
+                                      "name": "woman: curly hair person: curly hair woman: white hair person: white hair woman: bald person: bald",
+                                      "position": 14,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100252",
+                                          "name": "woman: blond hair",
+                                          "position": 85,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100253",
+                                          "name": "man: blond hair",
+                                          "position": 86,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100254",
+                                          "name": "older person",
+                                          "position": 87,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100255",
+                                          "name": "old man",
+                                          "position": 88,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100256",
+                                          "name": "old woman",
+                                          "position": 89,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100257",
+                                          "name": "person frowning",
+                                          "position": 90,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100252",
+                                      "name": "woman: blond hair man: blond hair older person old man old woman person frowning",
+                                      "position": 15,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100258",
+                                          "name": "man frowning",
+                                          "position": 91,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100259",
+                                          "name": "woman frowning",
+                                          "position": 92,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100260",
+                                          "name": "person pouting",
+                                          "position": 93,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100261",
+                                          "name": "man pouting",
+                                          "position": 94,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100262",
+                                          "name": "woman pouting",
+                                          "position": 95,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100263",
+                                          "name": "person gesturing NO",
+                                          "position": 96,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100258",
+                                      "name": "man frowning woman frowning person pouting man pouting woman pouting person gesturing NO",
+                                      "position": 16,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100264",
+                                          "name": "man gesturing NO",
+                                          "position": 97,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100265",
+                                          "name": "woman gesturing NO",
+                                          "position": 98,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100266",
+                                          "name": "person gesturing OK",
+                                          "position": 99,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100267",
+                                          "name": "man gesturing OK",
+                                          "position": 100,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100268",
+                                          "name": "woman gesturing OK",
+                                          "position": 101,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100269",
+                                          "name": "person tipping hand",
+                                          "position": 102,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100264",
+                                      "name": "man gesturing NO woman gesturing NO person gesturing OK man gesturing OK woman gesturing OK person tipping hand",
+                                      "position": 17,
+                                      "role": "row",
+                                      "setSize": 385
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100270",
+                                          "name": "man tipping hand",
+                                          "position": 103,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100271",
+                                          "name": "woman tipping hand",
+                                          "position": 104,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100272",
+                                          "name": "person raising hand",
+                                          "position": 105,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100273",
+                                          "name": "man raising hand",
+                                          "position": 106,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100274",
+                                          "name": "woman raising hand",
+                                          "position": 107,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100275",
+                                          "name": "deaf person",
+                                          "position": 108,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100270",
+                                      "name": "man tipping hand woman tipping hand person raising hand man raising hand woman raising hand deaf person",
+                                      "position": 18,
+                                      "role": "row",
+                                      "setSize": 385
+                                    }
+                                  ],
+                                  "key": "rows",
+                                  "role": "group",
+                                  "setSize": 65
+                                }
+                              ],
+                              "key": "viewport",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "key": "status",
+                              "name": "",
+                              "role": "label",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20d-emoji-grid",
+                          "name": "Emoji",
+                          "role": "grid"
+                        }
+                      ],
+                      "key": "c20d-emoji-panel",
+                      "name": "People & Body",
+                      "role": "tab-panel"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "c20d-emoji-name-text",
+                          "name": "waving hand",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c20d-emoji-name",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-smileys",
+                          "name": "Smileys & Emotion",
+                          "position": 1,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-people",
+                          "name": "People & Body",
+                          "position": 2,
+                          "role": "tab",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-nature",
+                          "name": "Animals & Nature",
+                          "position": 3,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-food",
+                          "name": "Food & Drink",
+                          "position": 4,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-travel",
+                          "name": "Travel & Places",
+                          "position": 5,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-activities",
+                          "name": "Activities",
+                          "position": 6,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-objects",
+                          "name": "Objects",
+                          "position": 7,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-symbols",
+                          "name": "Symbols",
+                          "position": 8,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-flags",
+                          "name": "Flags",
+                          "position": 9,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-emoji-tabs",
+                      "name": "Categories",
+                      "role": "tab-list",
+                      "setSize": 9
+                    },
+                    {
+                      "key": "c20d-emoji-status",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "body",
+                  "role": "group"
+                }
+              ],
+              "key": "c20d-emoji-popover-content",
+              "name": "Choose an emoji",
+              "role": "dialog"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

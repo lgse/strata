@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker",
+    "browser/folder-customization: Each choice updates the dialog's 56 px preview"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-popover-content",
+      "absent": true
+    },
+    {
+      "key": "c20d-emoji-button",
+      "name": "Emoji  😃\ufe0f",
+      "focused": true
+    },
+    {
+      "key": "c20d-preview",
+      "name": "Preview: grinning face with big eyes"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: After closing find, the preview stays open"
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "signature"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-bar",
+      "absent": true
+    },
+    {
+      "key": "c11-selection",
+      "name": "signature"
+    }
+  ]
+}

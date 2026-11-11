@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "integration/10xer-mode: The footer shows a `10X` pill in its far right corner",
+    "integration/10xer-mode: The `10X` pill's accessible name is"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "m",
+      "ctrl": true,
+      "cmd": true,
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-tenxer",
+      "role": "status",
+      "name": "10xer mode (experimental feature, under active development)"
+    }
+  ]
+}

@@ -1,0 +1,175 @@
+{
+  "bullets": [
+    "browser/view-modes/position-restore: In Icons and List, these reloads keep the cursor row, selection, and scroll offset: F5",
+    "browser/view-modes/position-restore: In Icons and List, a refresh keeps focus on a focused row"
+  ],
+  "scene": "c1-photos-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.12,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.14,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.16,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.18,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.2,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.22,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.24,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.26,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.28,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.3,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.32,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.34,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.36,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.38,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.4,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.42,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.44,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.46,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.48,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "row-10310"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "F5"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-10310",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-list",
+      "focused": true
+    },
+    {
+      "key": "row-10000",
+      "absent": true
+    }
+  ]
+}

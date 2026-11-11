@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "browser/context-menu: In the file chooser's menus, Up, Down, Tab, and Shift+Tab move between enabled actions and wrap at either end."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.15,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "ContextMenu"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-status",
+      "name": "Chose delete on Notes.md"
+    }
+  ]
+}

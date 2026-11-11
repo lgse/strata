@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "browser/view-modes/list: Dragging a heading's right edge resizes that column and follows the pointer without an initial jump."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "head-size/resize",
+      "dx": 40,
+      "dy": 0,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-widths",
+      "name": "Widths: size 130"
+    },
+    {
+      "key": "c4-layout",
+      "name": "Order: name, mode, size, type, modified; hidden: none; changes: 0"
+    }
+  ]
+}

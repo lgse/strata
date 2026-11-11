@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "app/dialogs: The mount authentication dialog ignores backdrop clicks",
+    "app/dialogs: The Compress dialog ignores backdrop clicks",
+    "app/dialogs: The archive password dialog ignores backdrop clicks"
+  ],
+  "scene": "c15-form-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "nas"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "x": 4,
+      "y": 630
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-form-dialog",
+      "role": "dialog",
+      "states": [
+        "modal"
+      ]
+    }
+  ]
+}

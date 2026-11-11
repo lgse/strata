@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "operations/rename: A quick double-click opens the item instead"
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-4/label"
+    },
+    {
+      "t": 1.0,
+      "type": "double-click",
+      "key": "row-4/label"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "c1-intent",
+      "name": "Opened Notes.md"
+    },
+    {
+      "key": "c1-rename",
+      "absent": true
+    }
+  ]
+}

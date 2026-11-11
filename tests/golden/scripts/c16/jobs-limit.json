@@ -1,0 +1,520 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c16-jobs-finished",
+                  "name": "15 finished",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c16-jobs-clear",
+                  "name": "Clear finished",
+                  "role": "button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "description": "Minimize",
+                  "key": "c16-jobs-minimize",
+                  "name": "Minimize",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-1-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-1-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-1",
+                      "name": "Job 1",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-2-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-2-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-2",
+                      "name": "Job 2",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-3-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-3-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-3",
+                      "name": "Job 3",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-4-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-4-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-4",
+                      "name": "Job 4",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-5-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-5-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-5",
+                      "name": "Job 5",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-6-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-6-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-6",
+                      "name": "Job 6",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-7-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-7-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-7",
+                      "name": "Job 7",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-8-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-8-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-8",
+                      "name": "Job 8",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-9-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-9-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-9",
+                      "name": "Job 9",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-10-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-10-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-10",
+                      "name": "Job 10",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-11-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-11-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-11",
+                      "name": "Job 11",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-12-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-12-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 5s · ",
+                      "key": "c16-jobs-row-12",
+                      "name": "Job 12",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c16-jobs-note",
+                      "name": "3 older jobs are hidden",
+                      "role": "label"
+                    }
+                  ],
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c16-jobs-list",
+              "name": "Jobs",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

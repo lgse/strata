@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "browser/search: Ctrl+Shift+K opens this dialog as a",
+    "browser/search: Opened with Ctrl+Shift+K, the field's accessible name and placeholder are both"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "k",
+      "cmd": true,
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-field",
+      "name": "Jump to a folder…",
+      "focused": true
+    },
+    {
+      "key": "c17-palette-dialog",
+      "name": "Jump to a folder"
+    },
+    {
+      "key": "c17-palette-option-0",
+      "name": "/home/demo/Projects/strata",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

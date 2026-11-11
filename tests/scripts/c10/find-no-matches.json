@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Each edit to the query clears the document selection",
+    "preview/preview-panel/find: With zero matches, **Next match** and **Previous match** are insensitive.",
+    "preview/preview-panel/find: The status reads \"Match 1 of N\", or \"No matches\""
+  ],
+  "scene": "c10-rust-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "fnz"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "No matches"
+    },
+    {
+      "key": "c10-selection",
+      "name": "None"
+    },
+    {
+      "key": "preview-find-next",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "preview-find-previous",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "operations/archives/preview: Right or Enter on a member file does nothing."
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-8000000010"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "Contents"
+    },
+    {
+      "key": "row-8000000010",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c14b-archive",
+      "focused": true
+    }
+  ]
+}

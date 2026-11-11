@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "browser/scrolling: Middle-clicking an entry row starts no autoscroll; the row's open-in-new-tab or reveal action runs instead."
+  ],
+  "scene": "c24-ten-k-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "row-11",
+      "button": "middle"
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 480,
+      "y": 500
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-intent",
+      "name": "Opened item folder 00010 in a new tab"
+    },
+    {
+      "key": "c24-status",
+      "name": "Autoscroll: off"
+    },
+    {
+      "key": "autoscroll-shield",
+      "absent": true
+    }
+  ]
+}

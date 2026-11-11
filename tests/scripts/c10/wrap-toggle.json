@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel: **Toggle word wrap** in the header wraps text previews"
+  ],
+  "scene": "c10-rust-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-wrap"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c10-last-intent",
+      "name": "Wrap off"
+    }
+  ]
+}

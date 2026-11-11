@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "operations/archives/preview: A single click highlights a member when the button is released; on a folder it also opens the folder."
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-8000000010"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "row-8000000006"
+    },
+    {
+      "t": 0.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "docs"
+    },
+    {
+      "key": "row-8000000007",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: A code block split across several rows shows **Copy code** only on its first row"
+  ],
+  "scene": "c11-code-split-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "doc-u1/copy"
+    }
+  ],
+  "expect": [
+    {
+      "key": "copy",
+      "name": "Code copied"
+    }
+  ]
+}

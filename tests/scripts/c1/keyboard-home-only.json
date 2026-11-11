@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "browser/scrolling: Plain Home or End with several entries selected leaves only the target entry selected."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-4"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Home"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: Projects"
+    },
+    {
+      "key": "status",
+      "name": ""
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/search/filter/enter-target: In Trash, Recent, or a network share, where the filter narrows rows in place, a query edit keeps the selection but drops the pick."
+  ],
+  "scene": "c18-filter-in-place-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-6",
+      "t": 0.2
+    },
+    {
+      "type": "tap",
+      "key": "c18-filter-field",
+      "t": 0.35
+    },
+    {
+      "type": "type",
+      "text": "u",
+      "every": 0.01,
+      "t": 0.55
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.86
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-6",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c18-outlined",
+      "name": "Outlined: duck.txt"
+    }
+  ]
+}

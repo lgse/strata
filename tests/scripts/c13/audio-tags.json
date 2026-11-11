@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/audio: Title, artist, and album come from tags; a file without a title tag shows its name without the extension."
+  ],
+  "scene": "c13-audio-untitled-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-title",
+      "name": "02 Breakwater"
+    },
+    {
+      "key": "media-byline",
+      "name": "The Moorings — Tidelines"
+    }
+  ]
+}

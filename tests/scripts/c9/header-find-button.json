@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: The header shows a **Find in preview** button only while the preview has searchable text."
+  ],
+  "scene": "c9-list-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "preview-view-switch"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-view-switch",
+      "name": "View source"
+    },
+    {
+      "key": "preview-find",
+      "absent": true
+    }
+  ]
+}

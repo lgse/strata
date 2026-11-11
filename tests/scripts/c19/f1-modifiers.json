@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "app/shortcut-reference: F1 with Ctrl, Alt, Super, or Shift held does not toggle"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "F1",
+      "shift": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "F1",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "F1",
+      "alt": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "F1",
+      "logo": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    },
+    {
+      "key": "c19-list",
+      "focused": true
+    }
+  ]
+}

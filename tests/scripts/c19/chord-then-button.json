@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "app/shortcut-reference: The footer's \"F1 Shortcuts\" button toggles the reference",
+    "integration/10xer-mode: The panel lists each valid second key as a keycap beside its action"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "g"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c19-footer-shortcuts"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog"
+    },
+    {
+      "key": "c19-chord-panel",
+      "absent": true
+    },
+    {
+      "key": "c19-chord-pill",
+      "absent": true
+    }
+  ]
+}

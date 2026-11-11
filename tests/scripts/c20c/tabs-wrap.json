@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "integration/custom-actions: New action… opens an editor with General, Script, and Behavior tabs"
+  ],
+  "scene": "c20c-editor-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20c-editor-tab-0"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20c-editor-tab-2",
+      "focused": true,
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

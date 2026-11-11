@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "operations/rename: In a local folder, a name containing `/` is a path"
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "notes/todo.txt"
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Move Notes.md to notes/todo.txt (Enter)"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "bullets": [
+    "browser/context-menu: Text-input menu styling covers the filter and search fields"
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "f",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "rep",
+      "every": 0.01,
+      "t": 0.41
+    },
+    {
+      "type": "key",
+      "name": "F10",
+      "shift": true,
+      "t": 0.64
+    },
+    {
+      "type": "tap",
+      "key": "c18-field-menu-item5",
+      "t": 0.84
+    },
+    {
+      "type": "key",
+      "name": "F10",
+      "shift": true,
+      "t": 1.14
+    },
+    {
+      "type": "tap",
+      "key": "c18-field-menu-item3",
+      "t": 1.34
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.64
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-field-menu-menu",
+      "absent": true
+    },
+    {
+      "key": "c18-prompt-field",
+      "value": "",
+      "focused": true
+    },
+    {
+      "key": "row-4"
+    }
+  ]
+}

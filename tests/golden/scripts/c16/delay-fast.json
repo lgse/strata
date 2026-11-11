@@ -1,0 +1,196 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "Pictures",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus"
+              ],
+              "children": [
+                {
+                  "name": "Holiday photos",
+                  "role": "label"
+                }
+              ],
+              "key": "c16-cursor",
+              "name": "Holiday photos",
+              "role": "button"
+            },
+            {
+              "name": "Raw footage",
+              "role": "label"
+            },
+            {
+              "name": "notes.md",
+              "role": "label"
+            },
+            {
+              "name": "photos.zip",
+              "role": "label"
+            },
+            {
+              "name": "node_modules",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-copy",
+              "name": "Copy",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-move",
+              "name": "Move (dialog)",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-move-stuck",
+              "name": "Move from a stalled device",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-compress",
+              "name": "Compress",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-delete",
+              "name": "Delete one folder",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-delete-stuck",
+              "name": "Delete on a stalled device",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-small-fast",
+              "name": "Small copy, 0.2 s",
+              "role": "button",
+              "states": [
+                "focused"
+              ]
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-small-slow",
+              "name": "Small copy, 2 s",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-stuck",
+              "name": "Copy to a stalled device",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-notice",
+              "name": "Notice",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-notice-2",
+              "name": "Another notice",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-report",
+              "name": "Transfer report",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-start-job",
+              "name": "Run an action",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c16-probe",
+              "name": "Probe",
+              "role": "button"
+            },
+            {
+              "key": "c16-heard",
+              "name": " · probes 0",
+              "role": "label"
+            },
+            {
+              "children": [
+                {
+                  "name": "5 items",
+                  "role": "label"
+                }
+              ],
+              "key": "c16-footer",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

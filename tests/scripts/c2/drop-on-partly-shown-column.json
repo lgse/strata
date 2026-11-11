@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "operations/drag-and-drop/column-autoscroll: Dropping onto a partially visible column moves the file there"
+  ],
+  "scene": "c2-overflow-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/tmp/a.txt"
+        ],
+        "at": [
+          50,
+          580
+        ],
+        "hover": 0.3
+      }
+    },
+    {
+      "t": 1.2,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-intent",
+      "name": "Dropped 1 into level-2"
+    }
+  ]
+}

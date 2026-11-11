@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "browser/search: Up and Down move the highlight while the caret stays in the query field"
+  ],
+  "scene": "c17-results-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Up"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-field",
+      "value": "re",
+      "focused": true
+    },
+    {
+      "key": "c17-palette-option-2",
+      "name": "/home/demo/Projects/strata/README.md",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

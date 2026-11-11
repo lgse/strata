@@ -1,0 +1,52 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-tab-recent",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-100001",
+      "name": "grinning face with big eyes",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-100000",
+      "absent": true
+    }
+  ]
+}

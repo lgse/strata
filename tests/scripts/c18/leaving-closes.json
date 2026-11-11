@@ -1,0 +1,64 @@
+{
+  "bullets": [
+    "integration/10xer-mode: Leaving the mode closes footer prompts, armed chords"
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "g",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "key",
+      "name": "m",
+      "cmd": true,
+      "shift": true,
+      "t": 0.41
+    },
+    {
+      "type": "key",
+      "name": "m",
+      "cmd": true,
+      "shift": true,
+      "t": 0.61
+    },
+    {
+      "type": "type",
+      "text": "/",
+      "every": 0.01,
+      "t": 0.81
+    },
+    {
+      "type": "key",
+      "name": "m",
+      "cmd": true,
+      "shift": true,
+      "t": 1.02
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.32
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "absent": true
+    },
+    {
+      "key": "c18-chord-panel",
+      "absent": true
+    },
+    {
+      "key": "c18-chord-pill",
+      "absent": true
+    },
+    {
+      "key": "c18-log",
+      "name": "10xer mode off"
+    }
+  ]
+}

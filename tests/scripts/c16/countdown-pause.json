@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "operations/progress/dock: Hovering or focusing a completed card pauses its countdown"
+  ],
+  "scene": "c16-complete-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "move",
+      "key": "c16-dock-card-1"
+    },
+    {
+      "t": 7.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "name": "Copy complete"
+    },
+    {
+      "key": "c16-dock-card-1-meta",
+      "name": "· paused"
+    }
+  ]
+}

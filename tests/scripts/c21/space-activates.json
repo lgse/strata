@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "browser/context-menu: Enter or Space activates the focused action and closes the menu."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.15,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "ContextMenu"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": " "
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-status",
+      "name": "Chose trash on Notes.md"
+    },
+    {
+      "key": "c21-menu-menu",
+      "absent": true
+    }
+  ]
+}

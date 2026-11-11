@@ -1,0 +1,133 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "name": "/",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "x1-volume-0",
+                          "name": "System",
+                          "role": "list-item"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "name": "/run/media/ada/Photos 2024",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "x1-volume-1",
+                          "name": "Photos 2024",
+                          "role": "list-item"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "name": "smb://nas.local/projects",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "x1-volume-2",
+                          "name": "projects on nas.local",
+                          "role": "list-item"
+                        }
+                      ],
+                      "key": "x1-volumes-list",
+                      "name": "Mounted volumes",
+                      "role": "list"
+                    }
+                  ],
+                  "key": "x1-volumes-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "x1-volumes-secondary",
+                  "name": "Refresh",
+                  "role": "button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "x1-volumes-primary",
+                  "name": "Close",
+                  "role": "default-button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "x1-volumes-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "description": "Listed by GIO on the GLib bridge",
+              "key": "x1-volumes-dialog",
+              "name": "Mounted volumes",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

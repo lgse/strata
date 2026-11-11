@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "operations/rename: Tab or Shift+Tab with the name unchanged renames nothing and moves the editor to the neighbouring item."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Kept Notes.md (unchanged, Tab)"
+    },
+    {
+      "key": "rename-field",
+      "value": "archive.tar.gz",
+      "focused": true
+    }
+  ]
+}

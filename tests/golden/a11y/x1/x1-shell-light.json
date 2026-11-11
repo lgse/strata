@@ -1,0 +1,157 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-sidebar-toggle",
+                      "name": "Toggle sidebar",
+                      "role": "button"
+                    },
+                    {
+                      "key": "x1-location",
+                      "name": "~/Projects",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-new-tab",
+                      "name": "New tab",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-search",
+                      "name": "Search",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-appearance",
+                      "name": "Appearance",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-settings",
+                      "name": "Settings",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-mounts",
+                      "name": "Mounted volumes",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-header-minimize",
+                      "name": "Minimize window",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-header-maximize",
+                      "name": "Maximize window",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-header-close",
+                      "name": "Close window",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "x1-header",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "key": "x1-text-scale",
+                          "name": "Text scale 1 · interface text 13 pt",
+                          "role": "label"
+                        },
+                        {
+                          "key": "x1-double-click",
+                          "name": "Desktop double-click 400 ms (the header pairs within Rune's 0.5 s: U13)",
+                          "role": "label"
+                        },
+                        {
+                          "key": "x1-animations",
+                          "name": "Animations on",
+                          "role": "label"
+                        },
+                        {
+                          "key": "x1-overrides",
+                          "name": "Overrides: applied · bar inset 3 pt",
+                          "role": "label"
+                        },
+                        {
+                          "key": "x1-reloads",
+                          "name": "Overrides reloaded 0 times",
+                          "role": "label"
+                        },
+                        {
+                          "key": "x1-last",
+                          "name": "Last header button: none",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "x1-readout",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "x1-body",
+                  "role": "group"
+                }
+              ],
+              "key": "x1-frame",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

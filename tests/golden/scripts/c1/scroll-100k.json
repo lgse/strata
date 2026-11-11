@@ -1,0 +1,1141 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c1-title",
+              "name": "Archive · 100000 items",
+              "role": "label"
+            },
+            {
+              "key": "c1-preview",
+              "name": "Preview: entry-002453.dat",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c1-refresh",
+              "name": "Refresh",
+              "role": "button"
+            },
+            {
+              "key": "c1-intent",
+              "name": "Clicked entry-002453.dat",
+              "role": "label"
+            },
+            {
+              "key": "c1-last",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "activeDescendant": "row-1002452",
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002396",
+                          "name": "entry-002397.dat",
+                          "position": 2397,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002397",
+                          "name": "entry-002398.dat",
+                          "position": 2398,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002398",
+                          "name": "entry-002399.dat",
+                          "position": 2399,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002399",
+                          "name": "entry-002400.dat",
+                          "position": 2400,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002400",
+                          "name": "entry-002401.dat",
+                          "position": 2401,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002401",
+                          "name": "entry-002402.dat",
+                          "position": 2402,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002402",
+                          "name": "entry-002403.dat",
+                          "position": 2403,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002403",
+                          "name": "entry-002404.dat",
+                          "position": 2404,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002404",
+                          "name": "entry-002405.dat",
+                          "position": 2405,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002405",
+                          "name": "entry-002406.dat",
+                          "position": 2406,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002406",
+                          "name": "entry-002407.dat",
+                          "position": 2407,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002407",
+                          "name": "entry-002408.dat",
+                          "position": 2408,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002408",
+                          "name": "entry-002409.dat",
+                          "position": 2409,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002409",
+                          "name": "entry-002410.dat",
+                          "position": 2410,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002410",
+                          "name": "entry-002411.dat",
+                          "position": 2411,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002411",
+                          "name": "entry-002412.dat",
+                          "position": 2412,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002412",
+                          "name": "entry-002413.dat",
+                          "position": 2413,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002413",
+                          "name": "entry-002414.dat",
+                          "position": 2414,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002414",
+                          "name": "entry-002415.dat",
+                          "position": 2415,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002415",
+                          "name": "entry-002416.dat",
+                          "position": 2416,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002416",
+                          "name": "entry-002417.dat",
+                          "position": 2417,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002417",
+                          "name": "entry-002418.dat",
+                          "position": 2418,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002418",
+                          "name": "entry-002419.dat",
+                          "position": 2419,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002419",
+                          "name": "entry-002420.dat",
+                          "position": 2420,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002420",
+                          "name": "entry-002421.dat",
+                          "position": 2421,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002421",
+                          "name": "entry-002422.dat",
+                          "position": 2422,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002422",
+                          "name": "entry-002423.dat",
+                          "position": 2423,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002423",
+                          "name": "entry-002424.dat",
+                          "position": 2424,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002424",
+                          "name": "entry-002425.dat",
+                          "position": 2425,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002425",
+                          "name": "entry-002426.dat",
+                          "position": 2426,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002426",
+                          "name": "entry-002427.dat",
+                          "position": 2427,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002427",
+                          "name": "entry-002428.dat",
+                          "position": 2428,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002428",
+                          "name": "entry-002429.dat",
+                          "position": 2429,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002429",
+                          "name": "entry-002430.dat",
+                          "position": 2430,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002430",
+                          "name": "entry-002431.dat",
+                          "position": 2431,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002431",
+                          "name": "entry-002432.dat",
+                          "position": 2432,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002432",
+                          "name": "entry-002433.dat",
+                          "position": 2433,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002433",
+                          "name": "entry-002434.dat",
+                          "position": 2434,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002434",
+                          "name": "entry-002435.dat",
+                          "position": 2435,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002435",
+                          "name": "entry-002436.dat",
+                          "position": 2436,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002436",
+                          "name": "entry-002437.dat",
+                          "position": 2437,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002437",
+                          "name": "entry-002438.dat",
+                          "position": 2438,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002438",
+                          "name": "entry-002439.dat",
+                          "position": 2439,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002439",
+                          "name": "entry-002440.dat",
+                          "position": 2440,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002440",
+                          "name": "entry-002441.dat",
+                          "position": 2441,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002441",
+                          "name": "entry-002442.dat",
+                          "position": 2442,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002442",
+                          "name": "entry-002443.dat",
+                          "position": 2443,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002443",
+                          "name": "entry-002444.dat",
+                          "position": 2444,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002444",
+                          "name": "entry-002445.dat",
+                          "position": 2445,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002445",
+                          "name": "entry-002446.dat",
+                          "position": 2446,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002446",
+                          "name": "entry-002447.dat",
+                          "position": 2447,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002447",
+                          "name": "entry-002448.dat",
+                          "position": 2448,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002448",
+                          "name": "entry-002449.dat",
+                          "position": 2449,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002449",
+                          "name": "entry-002450.dat",
+                          "position": 2450,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002450",
+                          "name": "entry-002451.dat",
+                          "position": 2451,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002451",
+                          "name": "entry-002452.dat",
+                          "position": 2452,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002452",
+                          "name": "entry-002453.dat",
+                          "position": 2453,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002453",
+                          "name": "entry-002454.dat",
+                          "position": 2454,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002454",
+                          "name": "entry-002455.dat",
+                          "position": 2455,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002455",
+                          "name": "entry-002456.dat",
+                          "position": 2456,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002456",
+                          "name": "entry-002457.dat",
+                          "position": 2457,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002457",
+                          "name": "entry-002458.dat",
+                          "position": 2458,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002458",
+                          "name": "entry-002459.dat",
+                          "position": 2459,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002459",
+                          "name": "entry-002460.dat",
+                          "position": 2460,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002460",
+                          "name": "entry-002461.dat",
+                          "position": 2461,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002461",
+                          "name": "entry-002462.dat",
+                          "position": 2462,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002462",
+                          "name": "entry-002463.dat",
+                          "position": 2463,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002463",
+                          "name": "entry-002464.dat",
+                          "position": 2464,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002464",
+                          "name": "entry-002465.dat",
+                          "position": 2465,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002465",
+                          "name": "entry-002466.dat",
+                          "position": 2466,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002466",
+                          "name": "entry-002467.dat",
+                          "position": 2467,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002467",
+                          "name": "entry-002468.dat",
+                          "position": 2468,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002468",
+                          "name": "entry-002469.dat",
+                          "position": 2469,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002469",
+                          "name": "entry-002470.dat",
+                          "position": 2470,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002470",
+                          "name": "entry-002471.dat",
+                          "position": 2471,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002471",
+                          "name": "entry-002472.dat",
+                          "position": 2472,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002472",
+                          "name": "entry-002473.dat",
+                          "position": 2473,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002473",
+                          "name": "entry-002474.dat",
+                          "position": 2474,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002474",
+                          "name": "entry-002475.dat",
+                          "position": 2475,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002475",
+                          "name": "entry-002476.dat",
+                          "position": 2476,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002476",
+                          "name": "entry-002477.dat",
+                          "position": 2477,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002477",
+                          "name": "entry-002478.dat",
+                          "position": 2478,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002478",
+                          "name": "entry-002479.dat",
+                          "position": 2479,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002479",
+                          "name": "entry-002480.dat",
+                          "position": 2480,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002480",
+                          "name": "entry-002481.dat",
+                          "position": 2481,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002481",
+                          "name": "entry-002482.dat",
+                          "position": 2482,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002482",
+                          "name": "entry-002483.dat",
+                          "position": 2483,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002483",
+                          "name": "entry-002484.dat",
+                          "position": 2484,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002484",
+                          "name": "entry-002485.dat",
+                          "position": 2485,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002485",
+                          "name": "entry-002486.dat",
+                          "position": 2486,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002486",
+                          "name": "entry-002487.dat",
+                          "position": 2487,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002487",
+                          "name": "entry-002488.dat",
+                          "position": 2488,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002488",
+                          "name": "entry-002489.dat",
+                          "position": 2489,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002489",
+                          "name": "entry-002490.dat",
+                          "position": 2490,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002490",
+                          "name": "entry-002491.dat",
+                          "position": 2491,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002491",
+                          "name": "entry-002492.dat",
+                          "position": 2492,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002492",
+                          "name": "entry-002493.dat",
+                          "position": 2493,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002493",
+                          "name": "entry-002494.dat",
+                          "position": 2494,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002494",
+                          "name": "entry-002495.dat",
+                          "position": 2495,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002495",
+                          "name": "entry-002496.dat",
+                          "position": 2496,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002496",
+                          "name": "entry-002497.dat",
+                          "position": 2497,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002497",
+                          "name": "entry-002498.dat",
+                          "position": 2498,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002498",
+                          "name": "entry-002499.dat",
+                          "position": 2499,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002499",
+                          "name": "entry-002500.dat",
+                          "position": 2500,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002500",
+                          "name": "entry-002501.dat",
+                          "position": 2501,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002501",
+                          "name": "entry-002502.dat",
+                          "position": 2502,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002502",
+                          "name": "entry-002503.dat",
+                          "position": 2503,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002503",
+                          "name": "entry-002504.dat",
+                          "position": 2504,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002504",
+                          "name": "entry-002505.dat",
+                          "position": 2505,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002505",
+                          "name": "entry-002506.dat",
+                          "position": 2506,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002506",
+                          "name": "entry-002507.dat",
+                          "position": 2507,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002507",
+                          "name": "entry-002508.dat",
+                          "position": 2508,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002508",
+                          "name": "entry-002509.dat",
+                          "position": 2509,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002509",
+                          "name": "entry-002510.dat",
+                          "position": 2510,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002510",
+                          "name": "entry-002511.dat",
+                          "position": 2511,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1002511",
+                          "name": "entry-002512.dat",
+                          "position": 2512,
+                          "role": "list-box-option"
+                        }
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 100000
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "status",
+                  "name": "",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c1-list",
+              "name": "Archive",
+              "role": "list-box",
+              "states": [
+                "focused"
+              ]
+            }
+          ],
+          "key": "c1-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

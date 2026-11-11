@@ -1,0 +1,47 @@
+{
+  "bullets": [
+    "operations/rename: Tab on the last item, or Shift+Tab on the first, commits the name and closes the editor; keyboard focus stays in the listing."
+  ],
+  "scene": "c5-folder-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "F2"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Tab"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Kept a very long file name that runs past the column's edge.txt (unchanged, Tab)"
+    },
+    {
+      "key": "c5-log-1",
+      "name": "Kept Projects (unchanged, Shift+Tab)"
+    },
+    {
+      "key": "rename-field",
+      "absent": true
+    },
+    {
+      "key": "c5-files",
+      "focused": true
+    }
+  ]
+}

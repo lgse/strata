@@ -1,0 +1,47 @@
+{
+  "bullets": [
+    "operations/archives/preview: Moving the pointer over member rows tints the hovered row; the highlighted member and keyboard cursor stay where they were.",
+    "operations/archives/preview: After the pointer crosses other rows, Down moves from the highlighted member, not the hovered one."
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-8000000011"
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "key": "row-8000000006"
+    },
+    {
+      "t": 0.4,
+      "type": "move",
+      "key": "row-8000000009"
+    },
+    {
+      "t": 0.5,
+      "type": "move",
+      "key": "row-8000000013"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-8000000012",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

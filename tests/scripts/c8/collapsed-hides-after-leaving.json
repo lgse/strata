@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/sidebar: With PINNED collapsed, navigating to a pin shows only that pin's row; navigating away from every pin hides it again."
+  ],
+  "scene": "c8-collapsed-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Up",
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-pin-photos",
+      "absent": true
+    },
+    {
+      "key": "places-pin-projects",
+      "absent": true
+    },
+    {
+      "key": "places-place-home",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

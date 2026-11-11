@@ -1,0 +1,66 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Ctrl+B focuses the categories, Ctrl+F the search field, and Ctrl+L the results"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "b",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "l",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "f",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "l",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "b",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "f",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": "b",
+      "ctrl": true,
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-category-0",
+      "focused": true
+    },
+    {
+      "key": "c19-reference-dialog"
+    }
+  ]
+}

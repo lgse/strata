@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "app/shortcut-reference: F1 opens the \"Keyboard shortcuts\" panel",
+    "app/shortcut-reference: Closing the reference returns focus to the widget that had it"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "F1"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "F1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    },
+    {
+      "key": "c19-list",
+      "focused": true
+    }
+  ]
+}

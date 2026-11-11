@@ -1,0 +1,155 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "One or more applications are keeping the volume busy.",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c26-mount-processes-end-4242",
+                              "name": "End process",
+                              "role": "button"
+                            }
+                          ],
+                          "description": "PID 4242 · strata",
+                          "key": "c26-mount-processes-process-4242",
+                          "name": "Files",
+                          "position": 1,
+                          "role": "list-item"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c26-mount-processes-end-5120",
+                              "name": "End process",
+                              "role": "button"
+                            }
+                          ],
+                          "description": "PID 5120 · bash",
+                          "key": "c26-mount-processes-process-5120",
+                          "name": "bash",
+                          "position": 2,
+                          "role": "list-item"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c26-mount-processes-end-5133",
+                              "name": "End process",
+                              "role": "button"
+                            }
+                          ],
+                          "description": "PID 5133 · vim notes.md",
+                          "key": "c26-mount-processes-process-5133",
+                          "name": "vim",
+                          "position": 3,
+                          "role": "list-item"
+                        }
+                      ],
+                      "key": "c26-mount-processes-list",
+                      "name": "Programs using the volume",
+                      "role": "list",
+                      "setSize": 3
+                    }
+                  ],
+                  "key": "c26-mount-processes-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c26-mount-processes-secondary",
+                  "name": "Cancel",
+                  "role": "button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c26-mount-processes-primary",
+                  "name": "Unmount Anyway",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c26-mount-processes-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "key": "c26-mount-processes-dialog",
+              "name": "Volume is busy",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

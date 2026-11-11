@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "browser/view-modes/text-size: Settings → Appearance → Text has a \"Text size\" spin button, accessible name \"Text size in pixels\", accepting 8 to 48"
+  ],
+  "scene": "c20a-controls-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20a-text-size-input"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "60"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-text-size",
+      "value": "13 px"
+    },
+    {
+      "key": "c20a-text-size-input",
+      "value": "13"
+    },
+    {
+      "key": "c20a-log",
+      "name": "—"
+    }
+  ]
+}

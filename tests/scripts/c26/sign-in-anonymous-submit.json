@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "remote/file-providers/network-locations: An SMB sign-in can show Username, Domain, Password"
+  ],
+  "scene": "c26-sign-in-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "pw"
+    },
+    {
+      "t": 0.45,
+      "type": "tap",
+      "key": "c26-mount-password-connect-as/segment1"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "c26-mount-password-primary"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-password-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Connect as Anonymous"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "browser/search: Closing the palette with Escape returns focus to the control that opened it"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c17-files"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "k",
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-dialog",
+      "absent": true
+    },
+    {
+      "key": "c17-files",
+      "focused": true
+    }
+  ]
+}

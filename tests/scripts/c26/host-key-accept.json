@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "remote/file-providers/network-locations: An unknown or changed SFTP host key opens"
+  ],
+  "scene": "c26-host-key-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c26-mount-question-primary"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-question-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Choice 0: Log In Anyway"
+    }
+  ]
+}

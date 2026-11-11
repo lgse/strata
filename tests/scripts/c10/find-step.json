@@ -1,0 +1,59 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Enter and **Next match** move to the next match"
+  ],
+  "scene": "c10-rust-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "fn"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Enter",
+      "shift": true
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "preview-find-previous"
+    },
+    {
+      "t": 1.2,
+      "type": "tap",
+      "key": "preview-find-previous"
+    },
+    {
+      "t": 1.4,
+      "type": "tap",
+      "key": "preview-find-next"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "Match 1 of 4"
+    },
+    {
+      "key": "c10-selection",
+      "name": "fn"
+    }
+  ]
+}

@@ -1,0 +1,382 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c19-reference-search",
+                              "name": "Search actions or keys…",
+                              "placeholder": "Search actions or keys…",
+                              "role": "text-input",
+                              "value": ""
+                            }
+                          ],
+                          "key": "c19-reference-frame",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c19-reference-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "41 shortcuts",
+                                  "key": "c19-reference-category-0",
+                                  "name": "All",
+                                  "role": "tab",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "23 shortcuts",
+                                  "key": "c19-reference-category-1",
+                                  "name": "List navigation",
+                                  "role": "tab",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "9 shortcuts",
+                                  "key": "c19-reference-category-2",
+                                  "name": "Files and selection",
+                                  "role": "tab",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "7 shortcuts",
+                                  "key": "c19-reference-category-3",
+                                  "name": "Search and tools",
+                                  "role": "tab",
+                                  "states": [
+                                    "focused",
+                                    "selected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "2 shortcuts",
+                                  "key": "c19-reference-category-4",
+                                  "name": "Preview media",
+                                  "role": "tab",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                }
+                              ],
+                              "key": "c19-reference-categories",
+                              "name": "Categories",
+                              "role": "tab-list"
+                            }
+                          ],
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "focus",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "7 shortcuts",
+                                  "key": "c19-reference-heading-2-title",
+                                  "name": "Search and tools",
+                                  "role": "row-header"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Search everywhere",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+K",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-2-0",
+                                  "name": "Search everywhere Ctrl+K",
+                                  "position": 1,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Filter the list",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+F",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-2-1",
+                                  "name": "Filter the list Ctrl+F",
+                                  "position": 2,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Reopen the last closed tab",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+Shift+T",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-2-2",
+                                  "name": "Reopen the last closed tab Ctrl+Shift+T",
+                                  "position": 3,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Increase / decrease / reset text size",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl++ / − / 0",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-2-3",
+                                  "name": "Increase / decrease / reset text size Ctrl++ / − / 0",
+                                  "position": 4,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Go to tab 1–9 / the last tab",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+Shift+1–9 / 0",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-2-4",
+                                  "name": "Go to tab 1–9 / the last tab Ctrl+Shift+1–9 / 0",
+                                  "position": 5,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Open Settings",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+,",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-2-5",
+                                  "name": "Open Settings Ctrl+,",
+                                  "position": 6,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Show or hide hidden files",
+                                      "role": "cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "name": "Ctrl+H / Ctrl+.",
+                                      "role": "cell"
+                                    }
+                                  ],
+                                  "key": "c19-reference-row-2-6",
+                                  "name": "Show or hide hidden files Ctrl+H / Ctrl+.",
+                                  "position": 7,
+                                  "role": "row"
+                                }
+                              ],
+                              "key": "c19-reference-rows",
+                              "role": "row-group",
+                              "setSize": 7
+                            }
+                          ],
+                          "key": "c19-reference-results",
+                          "name": "Shortcuts",
+                          "role": "table",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "key": "c19-reference-status",
+                          "role": "status",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c19-reference-body",
+                      "role": "group"
+                    },
+                    {
+                      "key": "c19-reference-note",
+                      "name": "Ctrl+B categories · Ctrl+F search · Ctrl+L list · j / k / ↑ / ↓ move · Tab cycle · Escape close",
+                      "role": "note"
+                    }
+                  ],
+                  "key": "c19-reference-content",
+                  "role": "group"
+                }
+              ],
+              "key": "c19-reference-dialog",
+              "name": "Keyboard shortcuts",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

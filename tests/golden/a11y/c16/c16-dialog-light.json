@@ -1,0 +1,78 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "description": "20 MB / 120 MB · 20 MB/s · 6s left",
+                      "key": "c16-progress-bar",
+                      "name": "Moving items",
+                      "range": [
+                        0.1667,
+                        0.0,
+                        1.0,
+                        null
+                      ],
+                      "role": "progress-indicator",
+                      "value": "16%"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c16-progress-items",
+                      "name": "5 of 30 files · IMG_0006.jpg",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c16-progress-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c16-progress-primary",
+                  "name": "Cancel",
+                  "role": "default-button",
+                  "states": [
+                    "focused"
+                  ]
+                }
+              ],
+              "description": "Cancelling will not undo completed changes",
+              "key": "c16-progress-dialog",
+              "name": "Moving items",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "app/shortcut-reference: After the reference's category, search, or list key is rebound"
+  ],
+  "scene": "c19-reference-rebound-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "g",
+      "ctrl": true,
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-category-0",
+      "focused": true
+    },
+    {
+      "key": "c19-reference-note",
+      "name": "Ctrl+G categories · Ctrl+F search · Ctrl+L list · j / k / ↑ / ↓ move · Tab cycle · Escape close"
+    }
+  ]
+}

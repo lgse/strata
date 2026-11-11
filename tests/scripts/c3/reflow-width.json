@@ -1,0 +1,54 @@
+{
+  "bullets": [
+    "browser/view-modes/icons: The number of tile columns follows the viewport width and reflows when the window, sidebar, or preview panel changes width."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.9,
+      "type": "resize",
+      "dw": -420,
+      "dh": 0,
+      "dur": 0.4
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 5,
+      "y": 5
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-109",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

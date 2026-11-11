@@ -1,0 +1,3129 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c4-title",
+                  "name": "Mixed · 600 items",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-sort",
+                  "name": "Sorted by Name ↑",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-intent",
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "expand"
+                      ],
+                      "description": "Columns",
+                      "key": "c4-list-columns-button",
+                      "name": "Columns",
+                      "role": "button",
+                      "states": [
+                        "collapsed"
+                      ]
+                    }
+                  ],
+                  "key": "c4-list-columns-menu-trigger",
+                  "role": "group"
+                },
+                {
+                  "key": "c4-layout",
+                  "name": "Order: name, mode, size, type, modified; hidden: none; changes: 0",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-widths",
+                  "name": "Widths: default",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "focus",
+                        "context-menu",
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-name",
+                                  "name": "Name",
+                                  "role": "column-header",
+                                  "sort": "ascending"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-mode",
+                                  "name": "Mode",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-size",
+                                  "name": "Size",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-type",
+                                  "name": "Type",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-modified",
+                                  "name": "Modified",
+                                  "role": "column-header"
+                                }
+                              ],
+                              "key": "c4-list-headings",
+                              "name": "Name Mode Size Type Modified",
+                              "role": "row"
+                            }
+                          ],
+                          "key": "c4-list-headings-menu-trigger",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-8322393941",
+                                  "name": "Folder",
+                                  "position": 1,
+                                  "role": "heading"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Folder 0001",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-03 02:55",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500000",
+                                  "name": "Folder 0001",
+                                  "position": 1,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Folder 0002",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-01 11:53",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500001",
+                                  "name": "Folder 0002",
+                                  "position": 2,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Folder 0003",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-21 16:00",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500002",
+                                  "name": "Folder 0003",
+                                  "position": 3,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Folder 0004",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-18 02:58",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500003",
+                                  "name": "Folder 0004",
+                                  "position": 4,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Folder 0005",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-10 07:04",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500004",
+                                  "name": "Folder 0005",
+                                  "position": 5,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Folder 0006",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-08 17:02",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500005",
+                                  "name": "Folder 0006",
+                                  "position": 6,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Folder 0007",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-28 22:09",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500006",
+                                  "name": "Folder 0007",
+                                  "position": 7,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Folder 0008",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-25 07:07",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500007",
+                                  "name": "Folder 0008",
+                                  "position": 8,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-5275913533663713260",
+                                  "name": "Archive (gzip)",
+                                  "position": 10,
+                                  "role": "heading"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0001.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.3 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-03 02:17",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500354",
+                                  "name": "backup-0001.tar.gz",
+                                  "position": 9,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0002.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.3 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-23 07:23",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500355",
+                                  "name": "backup-0002.tar.gz",
+                                  "position": 10,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0003.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.3 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-21 17:21",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500356",
+                                  "name": "backup-0003.tar.gz",
+                                  "position": 11,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0004.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.3 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-13 22:28",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500357",
+                                  "name": "backup-0004.tar.gz",
+                                  "position": 12,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0005.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.3 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-10 08:26",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500358",
+                                  "name": "backup-0005.tar.gz",
+                                  "position": 13,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0006.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.3 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-08 17:24",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500359",
+                                  "name": "backup-0006.tar.gz",
+                                  "position": 14,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0007.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-28 22:31",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500360",
+                                  "name": "backup-0007.tar.gz",
+                                  "position": 15,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0008.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-25 08:29",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500361",
+                                  "name": "backup-0008.tar.gz",
+                                  "position": 16,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0009.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-17 13:35",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500362",
+                                  "name": "backup-0009.tar.gz",
+                                  "position": 17,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0010.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-15 23:33",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500363",
+                                  "name": "backup-0010.tar.gz",
+                                  "position": 18,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0011.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-07 04:40",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500364",
+                                  "name": "backup-0011.tar.gz",
+                                  "position": 19,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0012.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-04 13:38",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500365",
+                                  "name": "backup-0012.tar.gz",
+                                  "position": 20,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0013.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-02 23:36",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500366",
+                                  "name": "backup-0013.tar.gz",
+                                  "position": 21,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0014.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-22 04:43",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500367",
+                                  "name": "backup-0014.tar.gz",
+                                  "position": 22,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0015.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-19 14:40",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500368",
+                                  "name": "backup-0015.tar.gz",
+                                  "position": 23,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0016.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-11 19:47",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500369",
+                                  "name": "backup-0016.tar.gz",
+                                  "position": 24,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0017.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-09 04:45",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500370",
+                                  "name": "backup-0017.tar.gz",
+                                  "position": 25,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0018.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-01 10:52",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500371",
+                                  "name": "backup-0018.tar.gz",
+                                  "position": 26,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0019.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.4 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-26 19:50",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500372",
+                                  "name": "backup-0019.tar.gz",
+                                  "position": 27,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0020.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-18 01:57",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500373",
+                                  "name": "backup-0020.tar.gz",
+                                  "position": 28,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0021.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-16 10:54",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500374",
+                                  "name": "backup-0021.tar.gz",
+                                  "position": 29,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0022.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-13 19:52",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500375",
+                                  "name": "backup-0022.tar.gz",
+                                  "position": 30,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0023.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-05 01:59",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500376",
+                                  "name": "backup-0023.tar.gz",
+                                  "position": 31,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0024.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-03 10:57",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500377",
+                                  "name": "backup-0024.tar.gz",
+                                  "position": 32,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0025.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-23 16:04",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500378",
+                                  "name": "backup-0025.tar.gz",
+                                  "position": 33,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0026.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-20 01:02",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500379",
+                                  "name": "backup-0026.tar.gz",
+                                  "position": 34,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0027.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-12 06:08",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500380",
+                                  "name": "backup-0027.tar.gz",
+                                  "position": 35,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0028.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-10 16:06",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500381",
+                                  "name": "backup-0028.tar.gz",
+                                  "position": 36,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0029.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-07-07 01:04",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500382",
+                                  "name": "backup-0029.tar.gz",
+                                  "position": 37,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup-0030.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2.5 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-27 07:11",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500383",
+                                  "name": "backup-0030.tar.gz",
+                                  "position": 38,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-7764123731331818",
+                                  "name": "JPEG image",
+                                  "position": 41,
+                                  "role": "heading"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0001.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-23 17:05",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500008",
+                                  "name": "IMG_0001.jpg",
+                                  "position": 39,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0002.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-15 22:12",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500009",
+                                  "name": "IMG_0002.jpg",
+                                  "position": 40,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0003.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-07-12 08:10",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500010",
+                                  "name": "IMG_0003.jpg",
+                                  "position": 41,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0004.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-04 13:16",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500011",
+                                  "name": "IMG_0004.jpg",
+                                  "position": 42,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0005.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-02 22:14",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500012",
+                                  "name": "IMG_0005.jpg",
+                                  "position": 43,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0006.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-22 04:21",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500013",
+                                  "name": "IMG_0006.jpg",
+                                  "position": 44,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0007.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-07-19 13:19",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500014",
+                                  "name": "IMG_0007.jpg",
+                                  "position": 45,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0008.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-11 19:26",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500015",
+                                  "name": "IMG_0008.jpg",
+                                  "position": 46,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0009.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-09 04:24",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500016",
+                                  "name": "IMG_0009.jpg",
+                                  "position": 47,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0010.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-06 13:21",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500017",
+                                  "name": "IMG_0010.jpg",
+                                  "position": 48,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0011.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.6 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-07-26 19:28",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500018",
+                                  "name": "IMG_0011.jpg",
+                                  "position": 49,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0012.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.7 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-23 04:26",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500019",
+                                  "name": "IMG_0012.jpg",
+                                  "position": 50,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0013.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.7 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-16 10:33",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500020",
+                                  "name": "IMG_0013.jpg",
+                                  "position": 51,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0014.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.7 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-13 19:31",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500021",
+                                  "name": "IMG_0014.jpg",
+                                  "position": 52,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0015.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.7 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-07-05 00:38",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500022",
+                                  "name": "IMG_0015.jpg",
+                                  "position": 53,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0016.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.7 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-02 10:35",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500023",
+                                  "name": "IMG_0016.jpg",
+                                  "position": 54,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0017.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.7 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-28 19:33",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500024",
+                                  "name": "IMG_0017.jpg",
+                                  "position": 55,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0018.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.7 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-20 01:40",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500025",
+                                  "name": "IMG_0018.jpg",
+                                  "position": 56,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "IMG_0019.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4.7 MB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-17 10:38",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-500026",
+                                  "name": "IMG_0019.jpg",
+                                  "position": 57,
+                                  "role": "row"
+                                }
+                              ],
+                              "key": "rows",
+                              "role": "group",
+                              "setSize": 600
+                            }
+                          ],
+                          "key": "viewport",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "status",
+                          "name": "",
+                          "role": "label",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c4-list",
+                      "name": "Mixed",
+                      "role": "grid"
+                    }
+                  ],
+                  "key": "c4-list-scroll",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c4-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

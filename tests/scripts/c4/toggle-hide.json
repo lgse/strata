@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: Clicking a checked Mode, Size, Type, or Modified item hides that column's heading and cells in every row; clicking it again shows them. The check mark follows the saved state.",
+    "browser/view-modes/list/column-layout: Hiding, showing, reordering, or resetting columns never changes the sort key, direction, or file order."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c4-list-columns-button"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c4-list-columns-menu-item3"
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "head-size",
+      "absent": true
+    },
+    {
+      "key": "cell-size",
+      "absent": true
+    },
+    {
+      "key": "c4-layout",
+      "name": "Order: name, mode, size, type, modified; hidden: size; changes: 1 (Visibility)"
+    },
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Name ↑"
+    }
+  ]
+}

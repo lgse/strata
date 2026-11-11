@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Escape cancels the edit even while suggestions are showing, closing the popover with it."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "~/D",
+      "every": 0.01
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 1.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-loc-entry",
+      "absent": true
+    },
+    {
+      "key": "c6-loc-suggestions",
+      "absent": true
+    },
+    {
+      "key": "c6-log",
+      "name": "Cancelled"
+    }
+  ]
+}

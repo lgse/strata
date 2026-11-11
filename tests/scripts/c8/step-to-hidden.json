@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/sidebar/rail: In a browser window, each press of the header toggle or Ctrl+B steps the sidebar",
+    "browser/sidebar/rail: The accessible name is \"Toggle sidebar (Ctrl+B)\""
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "b",
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "b",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-place-home",
+      "absent": true
+    },
+    {
+      "key": "places-heading-pinned",
+      "absent": true
+    },
+    {
+      "key": "places-toggle",
+      "name": "Toggle sidebar (Ctrl+B)"
+    }
+  ]
+}

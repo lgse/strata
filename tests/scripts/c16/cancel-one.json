@@ -1,0 +1,55 @@
+{
+  "bullets": [
+    "operations/progress/dock: A card's X cancels only that card's operation",
+    "operations/progress/dock: After X, the card retitles",
+    "operations/progress/dock: Cancelling a docked transfer shows",
+    "operations/progress: Cancel during a transfer retitles"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-stuck"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c16-start-delete"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c16-dock-card-1-cancel"
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "name": "Cancelling transfer…"
+    },
+    {
+      "key": "c16-dock-card-1-cancel",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "c16-dock-card-1-info",
+      "name": "Device may still be writing. Do not unplug until the operation stops."
+    },
+    {
+      "key": "c16-dock-card-2",
+      "name": "Deleting items"
+    },
+    {
+      "key": "c16-heard",
+      "name": "Cancel 1 · probes 0"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "integration/10xer-mode/file-verbs: Esc, a clicked row, another prompt, or leaving the mode discards a `create ›` or `rename ›` entry."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-11",
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "r",
+      "every": 0.01,
+      "t": 0.35
+    },
+    {
+      "type": "type",
+      "text": "x",
+      "every": 0.01,
+      "t": 0.56
+    },
+    {
+      "type": "tap",
+      "key": "row-5",
+      "t": 0.77
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.07
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "absent": true
+    },
+    {
+      "key": "row-11",
+      "name": "report.pdf"
+    },
+    {
+      "key": "c18-log",
+      "name": "Dismissed Rename by Blur"
+    }
+  ]
+}

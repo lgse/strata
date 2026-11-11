@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/context-menu: A menu opens with keyboard focus on its first visible action"
+  ],
+  "scene": "c21-nothing-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-5",
+      "button": "secondary"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-menu-menu",
+      "role": "menu",
+      "name": "Context menu"
+    },
+    {
+      "key": "c21-menu-item3",
+      "name": "New Folder",
+      "focused": true
+    },
+    {
+      "key": "c21-menu-item7",
+      "name": "Open With…",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

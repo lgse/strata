@@ -1,0 +1,47 @@
+{
+  "bullets": [
+    "settings/themes/interface-font: Opening the picker lists Default first, then the installed font families sorted case-insensitively without duplicates"
+  ],
+  "scene": "k2-defaults-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "k2-font-open"
+    }
+  ],
+  "expect": [
+    {
+      "key": "k2-font-default",
+      "name": "Default"
+    },
+    {
+      "key": "k2-font-0",
+      "name": "Cantarell"
+    },
+    {
+      "key": "k2-font-1",
+      "name": "DejaVu Sans"
+    },
+    {
+      "key": "k2-font-2",
+      "name": "Inter"
+    },
+    {
+      "key": "k2-font-3",
+      "name": "Noto Sans"
+    },
+    {
+      "key": "k2-font-4",
+      "name": "Noto Sans CJK JP"
+    },
+    {
+      "key": "k2-font-5",
+      "name": "Other \"Quoted\" Sans"
+    },
+    {
+      "key": "k2-font-6",
+      "absent": true
+    }
+  ]
+}

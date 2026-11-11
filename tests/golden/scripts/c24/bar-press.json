@@ -1,0 +1,1143 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c24-title",
+              "name": "Scroll extras",
+              "role": "label"
+            },
+            {
+              "key": "c24-intent",
+              "name": "Nothing yet",
+              "role": "label"
+            },
+            {
+              "key": "c24-history",
+              "name": "No history button",
+              "role": "label"
+            },
+            {
+              "key": "c24-status",
+              "name": "Autoscroll: off",
+              "role": "label"
+            },
+            {
+              "key": "c24-chord",
+              "name": "No chord",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus",
+                "set-value",
+                "replace-selected-text",
+                "set-text-selection"
+              ],
+              "key": "c24-filter",
+              "name": "Filter",
+              "role": "multiline-text-input",
+              "value": ""
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9578",
+                          "name": "item file 09577.txt",
+                          "position": 9578,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9579",
+                          "name": "item file 09578.txt",
+                          "position": 9579,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9580",
+                          "name": "item file 09579.txt",
+                          "position": 9580,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9581",
+                          "name": "item folder 09580",
+                          "position": 9581,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9582",
+                          "name": "item file 09581.txt",
+                          "position": 9582,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9583",
+                          "name": "item file 09582.txt",
+                          "position": 9583,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9584",
+                          "name": "item file 09583.txt",
+                          "position": 9584,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9585",
+                          "name": "item file 09584.txt",
+                          "position": 9585,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9586",
+                          "name": "item file 09585.txt",
+                          "position": 9586,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9587",
+                          "name": "item file 09586.txt",
+                          "position": 9587,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9588",
+                          "name": "item file 09587.txt",
+                          "position": 9588,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9589",
+                          "name": "item file 09588.txt",
+                          "position": 9589,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9590",
+                          "name": "item file 09589.txt",
+                          "position": 9590,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9591",
+                          "name": "item folder 09590",
+                          "position": 9591,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9592",
+                          "name": "item file 09591.txt",
+                          "position": 9592,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9593",
+                          "name": "item file 09592.txt",
+                          "position": 9593,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9594",
+                          "name": "item file 09593.txt",
+                          "position": 9594,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9595",
+                          "name": "item file 09594.txt",
+                          "position": 9595,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9596",
+                          "name": "item file 09595.txt",
+                          "position": 9596,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9597",
+                          "name": "item file 09596.txt",
+                          "position": 9597,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9598",
+                          "name": "item file 09597.txt",
+                          "position": 9598,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9599",
+                          "name": "item file 09598.txt",
+                          "position": 9599,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9600",
+                          "name": "item file 09599.txt",
+                          "position": 9600,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9601",
+                          "name": "item folder 09600",
+                          "position": 9601,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9602",
+                          "name": "item file 09601.txt",
+                          "position": 9602,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9603",
+                          "name": "item file 09602.txt",
+                          "position": 9603,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9604",
+                          "name": "item file 09603.txt",
+                          "position": 9604,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9605",
+                          "name": "item file 09604.txt",
+                          "position": 9605,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9606",
+                          "name": "item file 09605.txt",
+                          "position": 9606,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9607",
+                          "name": "item file 09606.txt",
+                          "position": 9607,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9608",
+                          "name": "item file 09607.txt",
+                          "position": 9608,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9609",
+                          "name": "item file 09608.txt",
+                          "position": 9609,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9610",
+                          "name": "item file 09609.txt",
+                          "position": 9610,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9611",
+                          "name": "item folder 09610",
+                          "position": 9611,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9612",
+                          "name": "item file 09611.txt",
+                          "position": 9612,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9613",
+                          "name": "item file 09612.txt",
+                          "position": 9613,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9614",
+                          "name": "item file 09613.txt",
+                          "position": 9614,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9615",
+                          "name": "item file 09614.txt",
+                          "position": 9615,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9616",
+                          "name": "item file 09615.txt",
+                          "position": 9616,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9617",
+                          "name": "item file 09616.txt",
+                          "position": 9617,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9618",
+                          "name": "item file 09617.txt",
+                          "position": 9618,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9619",
+                          "name": "item file 09618.txt",
+                          "position": 9619,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9620",
+                          "name": "item file 09619.txt",
+                          "position": 9620,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9621",
+                          "name": "item folder 09620",
+                          "position": 9621,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9622",
+                          "name": "item file 09621.txt",
+                          "position": 9622,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9623",
+                          "name": "item file 09622.txt",
+                          "position": 9623,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9624",
+                          "name": "item file 09623.txt",
+                          "position": 9624,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9625",
+                          "name": "item file 09624.txt",
+                          "position": 9625,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9626",
+                          "name": "item file 09625.txt",
+                          "position": 9626,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9627",
+                          "name": "item file 09626.txt",
+                          "position": 9627,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9628",
+                          "name": "item file 09627.txt",
+                          "position": 9628,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9629",
+                          "name": "item file 09628.txt",
+                          "position": 9629,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9630",
+                          "name": "item file 09629.txt",
+                          "position": 9630,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9631",
+                          "name": "item folder 09630",
+                          "position": 9631,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9632",
+                          "name": "item file 09631.txt",
+                          "position": 9632,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9633",
+                          "name": "item file 09632.txt",
+                          "position": 9633,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9634",
+                          "name": "item file 09633.txt",
+                          "position": 9634,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9635",
+                          "name": "item file 09634.txt",
+                          "position": 9635,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9636",
+                          "name": "item file 09635.txt",
+                          "position": 9636,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9637",
+                          "name": "item file 09636.txt",
+                          "position": 9637,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9638",
+                          "name": "item file 09637.txt",
+                          "position": 9638,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9639",
+                          "name": "item file 09638.txt",
+                          "position": 9639,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9640",
+                          "name": "item file 09639.txt",
+                          "position": 9640,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9641",
+                          "name": "item folder 09640",
+                          "position": 9641,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9642",
+                          "name": "item file 09641.txt",
+                          "position": 9642,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9643",
+                          "name": "item file 09642.txt",
+                          "position": 9643,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9644",
+                          "name": "item file 09643.txt",
+                          "position": 9644,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9645",
+                          "name": "item file 09644.txt",
+                          "position": 9645,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9646",
+                          "name": "item file 09645.txt",
+                          "position": 9646,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9647",
+                          "name": "item file 09646.txt",
+                          "position": 9647,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9648",
+                          "name": "item file 09647.txt",
+                          "position": 9648,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9649",
+                          "name": "item file 09648.txt",
+                          "position": 9649,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9650",
+                          "name": "item file 09649.txt",
+                          "position": 9650,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9651",
+                          "name": "item folder 09650",
+                          "position": 9651,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9652",
+                          "name": "item file 09651.txt",
+                          "position": 9652,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9653",
+                          "name": "item file 09652.txt",
+                          "position": 9653,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9654",
+                          "name": "item file 09653.txt",
+                          "position": 9654,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9655",
+                          "name": "item file 09654.txt",
+                          "position": 9655,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9656",
+                          "name": "item file 09655.txt",
+                          "position": 9656,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9657",
+                          "name": "item file 09656.txt",
+                          "position": 9657,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9658",
+                          "name": "item file 09657.txt",
+                          "position": 9658,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9659",
+                          "name": "item file 09658.txt",
+                          "position": 9659,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9660",
+                          "name": "item file 09659.txt",
+                          "position": 9660,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9661",
+                          "name": "item folder 09660",
+                          "position": 9661,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9662",
+                          "name": "item file 09661.txt",
+                          "position": 9662,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9663",
+                          "name": "item file 09662.txt",
+                          "position": 9663,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9664",
+                          "name": "item file 09663.txt",
+                          "position": 9664,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9665",
+                          "name": "item file 09664.txt",
+                          "position": 9665,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9666",
+                          "name": "item file 09665.txt",
+                          "position": 9666,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9667",
+                          "name": "item file 09666.txt",
+                          "position": 9667,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9668",
+                          "name": "item file 09667.txt",
+                          "position": 9668,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9669",
+                          "name": "item file 09668.txt",
+                          "position": 9669,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9670",
+                          "name": "item file 09669.txt",
+                          "position": 9670,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9671",
+                          "name": "item folder 09670",
+                          "position": 9671,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9672",
+                          "name": "item file 09671.txt",
+                          "position": 9672,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9673",
+                          "name": "item file 09672.txt",
+                          "position": 9673,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9674",
+                          "name": "item file 09673.txt",
+                          "position": 9674,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9675",
+                          "name": "item file 09674.txt",
+                          "position": 9675,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9676",
+                          "name": "item file 09675.txt",
+                          "position": 9676,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9677",
+                          "name": "item file 09676.txt",
+                          "position": 9677,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9678",
+                          "name": "item file 09677.txt",
+                          "position": 9678,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9679",
+                          "name": "item file 09678.txt",
+                          "position": 9679,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9680",
+                          "name": "item file 09679.txt",
+                          "position": 9680,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9681",
+                          "name": "item folder 09680",
+                          "position": 9681,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9682",
+                          "name": "item file 09681.txt",
+                          "position": 9682,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9683",
+                          "name": "item file 09682.txt",
+                          "position": 9683,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9684",
+                          "name": "item file 09683.txt",
+                          "position": 9684,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9685",
+                          "name": "item file 09684.txt",
+                          "position": 9685,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9686",
+                          "name": "item file 09685.txt",
+                          "position": 9686,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9687",
+                          "name": "item file 09686.txt",
+                          "position": 9687,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9688",
+                          "name": "item file 09687.txt",
+                          "position": 9688,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9689",
+                          "name": "item file 09688.txt",
+                          "position": 9689,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9690",
+                          "name": "item file 09689.txt",
+                          "position": 9690,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9691",
+                          "name": "item folder 09690",
+                          "position": 9691,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9692",
+                          "name": "item file 09691.txt",
+                          "position": 9692,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-9693",
+                          "name": "item file 09692.txt",
+                          "position": 9693,
+                          "role": "list-box-option"
+                        }
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 10000
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "status",
+                  "name": "",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c24-files",
+              "name": "Files",
+              "role": "list-box"
+            }
+          ],
+          "key": "c24-page",
+          "role": "main"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

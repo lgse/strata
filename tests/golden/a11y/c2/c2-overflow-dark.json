@@ -1,0 +1,1040 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c2-path",
+              "name": "Home / deep / level-1 / level-2 / level-3 / level-4 / level-5",
+              "role": "label"
+            },
+            {
+              "key": "c2-intent",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus"
+              ],
+              "activeDescendant": "c2-col-7",
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "scroll-left",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c2-col-1-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "27 items",
+                                              "key": "row-1000001",
+                                              "name": "Documents",
+                                              "position": 1,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "62 items",
+                                              "key": "row-1000002",
+                                              "name": "Pictures",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "40 items",
+                                              "key": "row-1000003",
+                                              "name": "Music",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-1000004",
+                                              "name": "Projects",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "No items",
+                                              "key": "row-1000005",
+                                              "name": "Empty",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000006",
+                                              "name": "Slow",
+                                              "position": 6,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "100000 items",
+                                              "key": "row-1000007",
+                                              "name": "Big",
+                                              "position": 7,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-1000008",
+                                              "name": "deep",
+                                              "position": 8,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.1 MB",
+                                              "key": "row-1000009",
+                                              "name": "notes.txt",
+                                              "position": 9,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.3 MB",
+                                              "key": "row-1000010",
+                                              "name": "todo.md",
+                                              "position": 10,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "4.9 MB",
+                                              "key": "row-1000011",
+                                              "name": "photo.jpg",
+                                              "position": 11,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.1 MB",
+                                              "key": "row-1000012",
+                                              "name": "budget.ods",
+                                              "position": 12,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "2.4 MB",
+                                              "key": "row-1000013",
+                                              "name": "report-final.pdf",
+                                              "position": 13,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 13
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-1",
+                                  "name": "Home",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-1-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-1",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c2-col-2-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-20000001",
+                                              "name": "level-1",
+                                              "position": 1,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.5 MB",
+                                              "key": "row-20000002",
+                                              "name": "deep-0001.txt",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.0 MB",
+                                              "key": "row-20000003",
+                                              "name": "deep-0002.txt",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "1.0 MB",
+                                              "key": "row-20000004",
+                                              "name": "deep-0003.txt",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "2.6 MB",
+                                              "key": "row-20000005",
+                                              "name": "deep-0004.txt",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 5
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-2",
+                                  "name": "deep",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-2-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-2",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c2-col-3-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-21000001",
+                                              "name": "level-2",
+                                              "position": 1,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.7 MB",
+                                              "key": "row-21000002",
+                                              "name": "level-1-0001.txt",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "7.9 MB",
+                                              "key": "row-21000003",
+                                              "name": "level-1-0002.txt",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.9 MB",
+                                              "key": "row-21000004",
+                                              "name": "level-1-0003.txt",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "905.5 kB",
+                                              "key": "row-21000005",
+                                              "name": "level-1-0004.txt",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 5
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-3",
+                                  "name": "level-1",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-3-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-3",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c2-col-4-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-22000001",
+                                              "name": "level-3",
+                                              "position": 1,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.1 MB",
+                                              "key": "row-22000002",
+                                              "name": "level-2-0001.txt",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "4.0 MB",
+                                              "key": "row-22000003",
+                                              "name": "level-2-0002.txt",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.9 MB",
+                                              "key": "row-22000004",
+                                              "name": "level-2-0003.txt",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "352.8 kB",
+                                              "key": "row-22000005",
+                                              "name": "level-2-0004.txt",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 5
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-4",
+                                  "name": "level-2",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-4-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-4",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c2-col-5-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-23000001",
+                                              "name": "level-4",
+                                              "position": 1,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.2 MB",
+                                              "key": "row-23000002",
+                                              "name": "level-3-0001.txt",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "2.3 MB",
+                                              "key": "row-23000003",
+                                              "name": "level-3-0002.txt",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.9 MB",
+                                              "key": "row-23000004",
+                                              "name": "level-3-0003.txt",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.5 MB",
+                                              "key": "row-23000005",
+                                              "name": "level-3-0004.txt",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 5
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-5",
+                                  "name": "level-3",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-5-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-5",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c2-col-6-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-24000001",
+                                              "name": "level-5",
+                                              "position": 1,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.7 MB",
+                                              "key": "row-24000002",
+                                              "name": "level-4-0001.txt",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "4.3 MB",
+                                              "key": "row-24000003",
+                                              "name": "level-4-0002.txt",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "526.8 kB",
+                                              "key": "row-24000004",
+                                              "name": "level-4-0003.txt",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "7.3 MB",
+                                              "key": "row-24000005",
+                                              "name": "level-4-0004.txt",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 5
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-6",
+                                  "name": "level-4",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-6-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-6",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "c2-refresh-6",
+                                          "name": "Refresh",
+                                          "role": "button"
+                                        },
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "c2-col-7-close",
+                                          "name": "Close this pane",
+                                          "role": "button"
+                                        }
+                                      ],
+                                      "key": "c2-col-7-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-25000001",
+                                              "name": "level-6",
+                                              "position": 1,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.4 MB",
+                                              "key": "row-25000002",
+                                              "name": "level-5-0001.txt",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.4 MB",
+                                              "key": "row-25000003",
+                                              "name": "level-5-0002.txt",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "224.8 kB",
+                                              "key": "row-25000004",
+                                              "name": "level-5-0003.txt",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "1.7 MB",
+                                              "key": "row-25000005",
+                                              "name": "level-5-0004.txt",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 5
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-7",
+                                  "name": "level-5",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-7-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-7",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "columns",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c2-strip",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c2",
+              "name": "Columns",
+              "role": "group"
+            }
+          ],
+          "key": "c2-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

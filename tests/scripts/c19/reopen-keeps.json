@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Reopening the reference keeps the previous search text and selected category"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "F1"
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "e"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "c19-reference-category-2"
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 1.6,
+      "type": "key",
+      "name": "F1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "value": "e",
+      "focused": true
+    },
+    {
+      "key": "c19-reference-category-2",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "cat"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c20d-emoji-clear"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-field",
+      "value": ""
+    },
+    {
+      "key": "c20d-emoji-panel",
+      "name": "Smileys & Emotion"
+    },
+    {
+      "key": "row-100000",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c20d-emoji-tab-smileys",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

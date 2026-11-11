@@ -1,0 +1,70 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "3 items completed, 0 failed, 7 not attempted.\n\nCompleted changes were not reverted.",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c16-cancelled-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c16-cancelled-primary",
+                  "name": "Close",
+                  "role": "default-button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c16-cancelled-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "key": "c16-cancelled-dialog",
+              "name": "Operation cancelled",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

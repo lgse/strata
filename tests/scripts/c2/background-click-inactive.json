@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Clicking empty space in an inactive column closes deeper columns"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "x": 150,
+      "y": 560
+    },
+    {
+      "t": 1.5,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-path",
+      "name": "Home"
+    },
+    {
+      "key": "row-1000001",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "app/shortcut-reference: The category list shows All and each section with its row count"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-reference-category-3"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-category-0",
+      "name": "All",
+      "states": [
+        "unselected"
+      ]
+    },
+    {
+      "key": "c19-reference-category-3",
+      "name": "Search and tools",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c19-reference-row-2-0"
+    },
+    {
+      "key": "c19-reference-row-0-0",
+      "absent": true
+    },
+    {
+      "key": "c19-reference-row-1-0",
+      "absent": true
+    }
+  ]
+}

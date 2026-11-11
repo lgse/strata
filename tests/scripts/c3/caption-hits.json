@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "operations/rename: Clicking the name text of the only selected item again, after the double-click interval, opens the editor."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-7/label"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "row-7/label"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 5,
+      "y": 5
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-intent",
+      "name": "Renaming beach.jpg"
+    },
+    {
+      "key": "c3-rename",
+      "name": "beach.jpg"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Ascending sort puts numbers first, then case-insensitive text, then empty cells"
+  ],
+  "scene": "c11b-csv-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "sheet-h2"
+    }
+  ],
+  "expect": [
+    {
+      "key": "sheet-h0",
+      "name": "name"
+    },
+    {
+      "key": "sheet-r0",
+      "name": "5 Cleo c -3 2019-06-01 moved"
+    },
+    {
+      "key": "sheet-r1",
+      "name": "11 user00 a 0 Vienna 2024-01-01"
+    },
+    {
+      "key": "sheet-r35",
+      "name": "6 dev b 1e3 Oslo 2023-02-28"
+    },
+    {
+      "key": "sheet-r36",
+      "name": "8 eve a n/a Madrid 2021-08-09"
+    },
+    {
+      "key": "sheet-r37",
+      "name": "4 bob a Berlin 2022-01-15 late"
+    },
+    {
+      "key": "sheet-r38",
+      "name": "10 gus c"
+    }
+  ]
+}

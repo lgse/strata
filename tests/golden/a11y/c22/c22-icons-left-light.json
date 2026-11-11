@@ -1,0 +1,311 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c22-title",
+                  "name": "Home · Icons",
+                  "role": "label"
+                },
+                {
+                  "key": "c22-peeking",
+                  "name": "Folder peeking on",
+                  "role": "label"
+                },
+                {
+                  "key": "c22-heard",
+                  "name": "Peek Archive",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Drag me",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c22-drag-source",
+                  "name": "Drag me",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "context-menu"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-1",
+                                  "name": "Projects",
+                                  "position": 1,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-2",
+                                  "name": "Music",
+                                  "position": 2,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-3",
+                                  "name": "Photos",
+                                  "position": 3,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-4",
+                                  "name": "Empty",
+                                  "position": 4,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-5",
+                                  "name": "Locked",
+                                  "position": 5,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-6",
+                                  "name": "Slow",
+                                  "position": 6,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-7",
+                                  "name": "Archive",
+                                  "position": 7,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-8",
+                                  "name": "Downloads",
+                                  "position": 8,
+                                  "role": "grid-cell"
+                                }
+                              ],
+                              "key": "line-1",
+                              "name": "Projects Music Photos Empty Locked Slow Archive Downloads",
+                              "position": 1,
+                              "role": "row",
+                              "setSize": 13
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-13",
+                                  "name": "Quarterly reports for the infrastructure committee",
+                                  "position": 9,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-9",
+                                  "name": "notes.md",
+                                  "position": 10,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-10",
+                                  "name": "budget.ods",
+                                  "position": 11,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-11",
+                                  "name": "holiday.jpg",
+                                  "position": 12,
+                                  "role": "grid-cell"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-12",
+                                  "name": "README",
+                                  "position": 13,
+                                  "role": "grid-cell"
+                                }
+                              ],
+                              "key": "line-13",
+                              "name": "Quarterly reports for the infrastructure committee notes.md budget.ods holiday.jpg README",
+                              "position": 2,
+                              "role": "row",
+                              "setSize": 13
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group",
+                          "setSize": 2
+                        }
+                      ],
+                      "key": "viewport",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "key": "status",
+                      "name": "",
+                      "role": "label",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c22-icons",
+                  "name": "Home",
+                  "role": "grid"
+                }
+              ],
+              "key": "c22-page",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "key": "peek-heading",
+                      "name": "Archive",
+                      "role": "heading"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "peek-row-10000",
+                          "name": "backup-000.tar",
+                          "position": 1,
+                          "role": "list-item"
+                        },
+                        {
+                          "key": "peek-row-10001",
+                          "name": "backup-001.tar",
+                          "position": 2,
+                          "role": "list-item"
+                        },
+                        {
+                          "key": "peek-row-10002",
+                          "name": "backup-002.tar",
+                          "position": 3,
+                          "role": "list-item"
+                        },
+                        {
+                          "key": "peek-row-10003",
+                          "name": "backup-003.tar",
+                          "position": 4,
+                          "role": "list-item"
+                        },
+                        {
+                          "key": "peek-row-10004",
+                          "name": "backup-004.tar",
+                          "position": 5,
+                          "role": "list-item"
+                        },
+                        {
+                          "key": "peek-row-10005",
+                          "name": "backup-005.tar",
+                          "position": 6,
+                          "role": "list-item"
+                        },
+                        {
+                          "key": "peek-row-10006",
+                          "name": "backup-006.tar",
+                          "position": 7,
+                          "role": "list-item"
+                        },
+                        {
+                          "key": "peek-row-10007",
+                          "name": "backup-007.tar",
+                          "position": 8,
+                          "role": "list-item"
+                        }
+                      ],
+                      "key": "peek-rows",
+                      "role": "list",
+                      "setSize": 8
+                    },
+                    {
+                      "key": "peek-more",
+                      "name": "and 56 or more",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "folder-peek",
+                  "name": "Folder peek",
+                  "role": "group"
+                }
+              ],
+              "key": "c22-icons-peek-card",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

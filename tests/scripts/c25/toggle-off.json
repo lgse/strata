@@ -1,0 +1,57 @@
+{
+  "bullets": [
+    "browser/thumbnails: With **Show thumbnails** off, files show their file-type icons instead of thumbnails",
+    "browser/thumbnails: Turning it off cancels pending thumbnail requests; new requests read no cache and decode nothing"
+  ],
+  "scene": "c25-filled-light",
+  "events": [
+    {
+      "t": 1.2,
+      "type": "wheel",
+      "key": "c25-list",
+      "dx": 0,
+      "dy": -1200
+    },
+    {
+      "t": 1.24,
+      "type": "key",
+      "name": "t"
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "s"
+    },
+    {
+      "t": 1.6,
+      "type": "wheel",
+      "key": "c25-list",
+      "dx": 0,
+      "dy": -1200
+    },
+    {
+      "t": 3.0,
+      "type": "key",
+      "name": "s"
+    },
+    {
+      "t": 3.1,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c25-snapshot",
+      "name": "Snapshot: Thumbnails off · 10 rows on screen: 0 show thumbnails, 10 show icons · 0.44 MiB of 8.00 MiB held | Rendered 10 · failed 1 · cancelled 4 · late results dropped 1 · stopped 0 · view ran 1 times while 0 thumbnails landed"
+    },
+    {
+      "key": "c25-status",
+      "name": "Thumbnails off · 10 rows on screen: 0 show thumbnails, 10 show icons · 0.44 MiB of 8.00 MiB held"
+    },
+    {
+      "key": "c25-work",
+      "name": "Rendered 10 · failed 1 · cancelled 4 · late results dropped 1 · stopped 0 · view ran 1 times while 0 thumbnails landed"
+    }
+  ]
+}

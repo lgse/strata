@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "app/keyboard-shortcuts: With only a Russian layout configured, Ctrl with the keys that type"
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-2"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "ф",
+      "ctrl": true,
+      "code": "a"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-2",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-10",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

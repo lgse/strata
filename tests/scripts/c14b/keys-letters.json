@@ -1,0 +1,55 @@
+{
+  "bullets": [
+    "operations/archives/preview: With Type to search off, h, j, k, and l act as Left, Down, Up, and Right inside the preview."
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-8000000010"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "t"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "k"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "k"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "l"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "docs"
+    },
+    {
+      "key": "row-8000000008",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

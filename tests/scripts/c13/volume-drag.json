@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "preview/preview-panel/media: Dragging the volume slider sets any value, without snapping."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "media-volume",
+      "dx": -11.0,
+      "dur": 0.3
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-volume",
+      "value": "35%"
+    },
+    {
+      "key": "c13-status",
+      "name": "Volume 35%"
+    }
+  ]
+}

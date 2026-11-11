@@ -1,0 +1,35 @@
+# The Ubuntu packages .github/workflows/platform.yml installs for `mise run test-platform`.
+# One package per line; `#` starts a comment. A work package that needs more (a portal, python3-gi
+# for a fake service) adds its own block below. Keep the blank lines between blocks.
+
+# W3: Rune's build (Wayland, xkbcommon), the session (sway, Xwayland, a bus, dbus-send for the
+# bus test), lavapipe, and the X11 keyboard library a windowed Rune app loads.
+libwayland-dev
+libxkbcommon-dev
+libxkbcommon-x11-0
+xkb-data
+sway
+xwayland
+dbus-daemon
+dbus-bin
+mesa-vulkan-drivers
+libvulkan1
+
+# P9: `--all-features` builds glib-bridge, which links GLib and GIO.
+libglib2.0-dev
+
+# P0: the X11 client libraries winit loads at run time (x11-dl): Xlib, Xlib-xcb, Xcursor, XInput2
+# and Xrandr. Without them no Rune window opens on X11. The ubuntu:26.04 container image lacks
+# them (checked); whether GitHub's 26.04 runner image carries them isn't known, so name them.
+libx11-6
+libx11-xcb1
+libxcursor1
+libxi6
+libxrandr2
+
+# P7: `--all-features` builds media-audio, which links GStreamer and gstreamer-app; the ignored
+# tone test (skipped without STRATA_PLATFORM_TONE=1) builds with it. No sound server: the session
+# tests play nothing.
+libgstreamer1.0-dev
+libgstreamer-plugins-base1.0-dev
+gstreamer1.0-plugins-base

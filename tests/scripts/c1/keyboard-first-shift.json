@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "browser/selection: Shift+Down with nothing selected selects only the first entry; the next Shift+Down selects two."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "x": 480,
+      "y": 500
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-2",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: Receipts"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "settings/themes/interface-font: Typing in Search fonts keeps families whose name contains the query, ignoring case"
+  ],
+  "scene": "k2-defaults-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "k2-font-open"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "k2-font-search"
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "SANS"
+    }
+  ],
+  "expect": [
+    {
+      "key": "k2-font-default",
+      "absent": true
+    },
+    {
+      "key": "k2-font-0",
+      "absent": true
+    },
+    {
+      "key": "k2-font-1",
+      "name": "DejaVu Sans"
+    },
+    {
+      "key": "k2-font-2",
+      "absent": true
+    },
+    {
+      "key": "k2-font-3",
+      "name": "Noto Sans"
+    },
+    {
+      "key": "k2-font-none",
+      "absent": true
+    }
+  ]
+}

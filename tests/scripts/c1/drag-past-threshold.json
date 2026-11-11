@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "browser/selection/pointer-intent: A press that crosses the drag threshold never opens a preview, even after the drop."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "down",
+      "x": 45,
+      "y": 157
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "x": 45,
+      "y": 180
+    },
+    {
+      "t": 0.4,
+      "type": "move",
+      "x": 45,
+      "y": 157
+    },
+    {
+      "t": 0.5,
+      "type": "up",
+      "x": 45,
+      "y": 157
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-intent",
+      "name": "Dragging 1 items"
+    }
+  ]
+}

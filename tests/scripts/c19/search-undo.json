@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In the reference's search field, Ctrl+Z undoes and Ctrl+Y or Ctrl+Shift+Z redoes"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "open"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "z",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "z",
+      "ctrl": true,
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "z",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "y",
+      "ctrl": true,
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "value": "open",
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: A local G-code file loads with the same details and inactive camera controls; its badge reads"
+  ],
+  "scene": "c14b-gcode-load-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-format",
+      "name": "GCODE"
+    },
+    {
+      "key": "c14b-model-next",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "c14b-model-camera",
+      "name": "Camera position"
+    }
+  ]
+}

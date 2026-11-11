@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "browser/context-menu: Text-input menu styling covers the filter and search fields"
+  ],
+  "scene": "c18-filter-target-light",
+  "events": [
+    {
+      "type": "secondary-click",
+      "key": "c18-filter-field",
+      "t": 0.2
+    },
+    {
+      "type": "tap",
+      "key": "c18-field-menu-item5",
+      "t": 0.5
+    },
+    {
+      "type": "secondary-click",
+      "key": "c18-filter-field",
+      "t": 0.8
+    },
+    {
+      "type": "tap",
+      "key": "c18-field-menu-item3",
+      "t": 1.1
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.4
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-field-menu-menu",
+      "absent": true
+    },
+    {
+      "key": "c18-filter-field",
+      "value": "",
+      "focused": true
+    },
+    {
+      "key": "row-4"
+    },
+    {
+      "key": "c18-log",
+      "name": "Filter menu closed"
+    }
+  ]
+}

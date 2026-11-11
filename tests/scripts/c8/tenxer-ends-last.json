@@ -1,0 +1,144 @@
+{
+  "bullets": [
+    "browser/sidebar: In 10xer mode, Down on the last row and Up on the first keep focus on that row."
+  ],
+  "scene": "c8-tenxer-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.33999999999999997,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.38,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.42,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.45999999999999996,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.54,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.5800000000000001,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.62,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.6599999999999999,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.74,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.78,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.8200000000000001,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.8600000000000001,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.8999999999999999,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.94,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.98,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 1.02,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 1.06,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 1.1,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 1.14,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": "j"
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-device-share",
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: In rendered or large source documents, double-click selects a word"
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "double-click",
+      "key": "doc-u3/t"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c11-selection",
+      "name": "release"
+    }
+  ]
+}

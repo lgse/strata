@@ -1,0 +1,52 @@
+{
+  "bullets": [
+    "integration/10xer-mode: In the location field or an inline rename, letters such as"
+  ],
+  "scene": "c19-footer-prompt-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "1",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": ",",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "v",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "k",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "F5"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-log",
+      "name": "—"
+    },
+    {
+      "key": "c19-prompt-field",
+      "value": "minutes.txt",
+      "focused": true
+    }
+  ]
+}

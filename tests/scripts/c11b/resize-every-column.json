@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Every column, including the last, resizes by dragging its divider"
+  ],
+  "scene": "c11b-limits-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "sheet-h2-resize",
+      "dx": 60,
+      "dy": 0,
+      "dur": 0.3
+    },
+    {
+      "t": 0.8,
+      "type": "drag",
+      "key": "sheet-h0-resize",
+      "dx": -20,
+      "dy": 0,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "sheet-h2-resize",
+      "role": "splitter",
+      "value": "148"
+    },
+    {
+      "key": "sheet-h0-resize",
+      "role": "splitter",
+      "value": "52"
+    }
+  ]
+}

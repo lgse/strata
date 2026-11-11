@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Escape clearing the filter restores the directory count or selection summary"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-select-two"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c19-filter"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-count",
+      "name": "2 files selected (2.4 MB)"
+    }
+  ]
+}

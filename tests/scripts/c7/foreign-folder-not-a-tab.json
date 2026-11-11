@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "browser/tabs: Folders dragged from another application are not opened as tabs; dropped on a tab header, they transfer into that tab."
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/Pictures/"
+        ],
+        "key": "c7-new",
+        "hover": 0.2
+      }
+    },
+    {
+      "t": 0.6,
+      "drop_files": {
+        "paths": [
+          "/home/demo/Pictures/"
+        ],
+        "key": "t-c7-2",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "t-c7-7",
+      "absent": true
+    },
+    {
+      "key": "c7-log",
+      "name": "Move 1 into /home/demo/Documents"
+    },
+    {
+      "key": "t-c7-2",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

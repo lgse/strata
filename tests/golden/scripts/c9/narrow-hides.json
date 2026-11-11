@@ -1,0 +1,240 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-0.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-0",
+                      "name": "file-0.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-1.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-1",
+                      "name": "file-1.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "selected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-2.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-2",
+                      "name": "file-2.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-3.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-3",
+                      "name": "file-3.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-4.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-4",
+                      "name": "file-4.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-5.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-5",
+                      "name": "file-5.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-6.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-6",
+                      "name": "file-6.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-7.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-7",
+                      "name": "file-7.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-8.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-8",
+                      "name": "file-8.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-9.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-9",
+                      "name": "file-9.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-10.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-10",
+                      "name": "file-10.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-11.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-11",
+                      "name": "file-11.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                },
+                {
+                  "key": "demo-suspended",
+                  "name": "Preview paused: the window is too narrow",
+                  "role": "label"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

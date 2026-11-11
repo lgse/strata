@@ -1,0 +1,57 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: Before its first image, an STL or 3MF shows its filename, position eyebrow, and format badge.",
+    "preview/preview-panel/model-views: That first-load format badge is the uppercase extension",
+    "preview/preview-panel/model-views: On a first load, the triangle badge appears once rendering reports a count",
+    "preview/preview-panel/model-views: Previous and Next are insensitive until the first image is ready",
+    "preview/preview-panel/model-views: No loading card covers the model; the header spinner left of Open is the only indicator",
+    "preview/preview-panel/model-views: The header spinner's accessible label reads"
+  ],
+  "scene": "c14b-model-loading-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-busy",
+      "name": "Rendering 12,480 triangles…"
+    },
+    {
+      "key": "c14b-model-eyebrow",
+      "name": "2 of 4 in folder"
+    },
+    {
+      "key": "c14b-model-title",
+      "name": "gear.stl"
+    },
+    {
+      "key": "c14b-model-format",
+      "name": "STL"
+    },
+    {
+      "key": "c14b-model-triangles",
+      "name": "12,480 triangles"
+    },
+    {
+      "key": "c14b-model-next",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "c14b-model-previous",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

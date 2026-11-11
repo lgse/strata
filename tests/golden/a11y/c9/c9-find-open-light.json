@@ -1,0 +1,445 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-0.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-0",
+                      "name": "file-0.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-1.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-1",
+                      "name": "file-1.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "selected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-2.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-2",
+                      "name": "file-2.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-3.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-3",
+                      "name": "file-3.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-4.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-4",
+                      "name": "file-4.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-5.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-5",
+                      "name": "file-5.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-6.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-6",
+                      "name": "file-6.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-7.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-7",
+                      "name": "file-7.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-8.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-8",
+                      "name": "file-8.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-9.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-9",
+                      "name": "file-9.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-10.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-10",
+                      "name": "file-10.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "file-11.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "row-11",
+                      "name": "file-11.md",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "notes.md",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "2.4 KB · Today 09:41 · Markdown",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-view-switch",
+                          "name": "View rendered",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "collapse"
+                          ],
+                          "key": "preview-find",
+                          "name": "Find in preview (Ctrl+F)",
+                          "role": "button",
+                          "states": [
+                            "expanded"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-wrap",
+                          "name": "Toggle word wrap",
+                          "role": "button",
+                          "states": [
+                            "checked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "set-value",
+                                    "replace-selected-text",
+                                    "set-text-selection"
+                                  ],
+                                  "key": "input",
+                                  "name": "Find in preview",
+                                  "placeholder": "Find in preview",
+                                  "role": "text-input",
+                                  "states": [
+                                    "focused"
+                                  ],
+                                  "value": "preview"
+                                }
+                              ],
+                              "key": "value",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "preview-find-field",
+                          "role": "group"
+                        },
+                        {
+                          "key": "preview-find-status",
+                          "name": "Match 1 of 5",
+                          "role": "label",
+                          "states": [
+                            "live-polite"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-find-previous",
+                          "name": "Previous match",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-find-next",
+                          "name": "Next match",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-find-close",
+                          "name": "Close find",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-find-bar",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus"
+                          ],
+                          "children": [
+                            {
+                              "name": "# Preview drawer",
+                              "role": "label"
+                            },
+                            {
+                              "name": "The drawer hosts every preview beside the files.",
+                              "role": "label"
+                            },
+                            {
+                              "name": "Its header shows only what the preview supports.",
+                              "role": "label"
+                            },
+                            {
+                              "name": "Find in preview searches the text the preview shows.",
+                              "role": "label"
+                            },
+                            {
+                              "name": "Resize it from its leading edge; the width holds for the window.",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "fake-content",
+                          "name": "notes.md",
+                          "role": "document"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

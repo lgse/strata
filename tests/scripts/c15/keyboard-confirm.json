@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "app/dialogs: Confirmation dialogs open with the confirm button focused"
+  ],
+  "scene": "c15-openers-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.30000000000000004,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": " "
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-danger-dialog",
+      "role": "dialog",
+      "states": [
+        "modal"
+      ]
+    },
+    {
+      "key": "c15-danger-primary",
+      "focused": true
+    }
+  ]
+}

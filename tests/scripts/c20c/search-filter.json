@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "settings/preferences: Typing in Search settings shows only matching rows, hides navigation entries for pages without matches, and opens the best-matching page",
+    "settings/preferences: Queries match row titles and aliases, so \"font size\" finds Text size"
+  ],
+  "scene": "c20c-settings-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20c-search-field"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "font size"
+    },
+    {
+      "t": 1.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20c-title",
+      "name": "Appearance"
+    },
+    {
+      "key": "c20c-search-row-text"
+    },
+    {
+      "key": "c20c-search-row-interface-font",
+      "absent": true
+    },
+    {
+      "key": "c20c-nav-theme",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c20c-nav-general",
+      "absent": true
+    },
+    {
+      "key": "c20c-search-status",
+      "name": "1 setting"
+    }
+  ]
+}

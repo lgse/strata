@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "browser/search: Before any folder is recorded, the palette shows"
+  ],
+  "scene": "c17-jump-empty-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-status",
+      "name": "No folder history yet"
+    },
+    {
+      "key": "c17-palette-field",
+      "focused": true
+    }
+  ]
+}

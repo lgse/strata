@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "browser/view-modes/list: Clicking the Name, Size, Type, or Modified heading sorts by that field ascending; clicking the current sort heading reverses it, and an arrow marks it."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "head-size"
+    },
+    {
+      "t": 0.9,
+      "type": "tap",
+      "key": "head-size"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Size ↓"
+    },
+    {
+      "key": "head-size",
+      "role": "column-header"
+    }
+  ]
+}

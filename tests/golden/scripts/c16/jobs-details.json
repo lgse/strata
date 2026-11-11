@@ -1,0 +1,312 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c16-jobs-running",
+                  "name": "1 running · 1 queued",
+                  "role": "label"
+                },
+                {
+                  "key": "c16-jobs-finished",
+                  "name": "3 finished",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c16-jobs-clear",
+                  "name": "Clear finished",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "description": "Minimize",
+                  "key": "c16-jobs-minimize",
+                  "name": "Minimize",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Cancel",
+                          "key": "c16-jobs-row-4-cancel",
+                          "name": "Cancel",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "collapse",
+                            "scroll-into-view"
+                          ],
+                          "description": "Hide",
+                          "key": "c16-jobs-row-4-details",
+                          "name": "Hide",
+                          "role": "button",
+                          "states": [
+                            "expanded"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "c16-jobs-row-4-bar",
+                          "name": "Resize images",
+                          "range": [
+                            0.45,
+                            0.0,
+                            1.0,
+                            null
+                          ],
+                          "role": "progress-indicator",
+                          "value": "45%"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c16-jobs-row-4-output",
+                              "name": "resized IMG_0001.jpg\nresized IMG_0002.jpg",
+                              "role": "label"
+                            }
+                          ],
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        }
+                      ],
+                      "description": "Running for 14s · 4/10 · ~/Pictures",
+                      "key": "c16-jobs-row-4",
+                      "name": "Resize images",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Remove",
+                          "key": "c16-jobs-row-3-cancel",
+                          "name": "Remove",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "c16-jobs-row-3-bar",
+                          "name": "Batch rename",
+                          "role": "progress-indicator"
+                        }
+                      ],
+                      "description": "Queued · ~/Documents",
+                      "key": "c16-jobs-row-3",
+                      "name": "Batch rename",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "collapse",
+                            "scroll-into-view"
+                          ],
+                          "description": "Hide",
+                          "key": "c16-jobs-row-5-details",
+                          "name": "Hide",
+                          "role": "button",
+                          "states": [
+                            "focused",
+                            "expanded"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-5-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c16-jobs-row-5-output",
+                              "name": "No output yet.",
+                              "role": "label"
+                            }
+                          ],
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        }
+                      ],
+                      "description": "Done in 1s · ~/Projects",
+                      "key": "c16-jobs-row-5",
+                      "name": "Open terminal here",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-2-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-2-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Done in 1m 5s · ~/Downloads",
+                      "key": "c16-jobs-row-2",
+                      "name": "SHA-256 checksums",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand",
+                            "scroll-into-view"
+                          ],
+                          "description": "Details",
+                          "key": "c16-jobs-row-1-details",
+                          "name": "Details",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "scroll-into-view"
+                          ],
+                          "description": "Dismiss",
+                          "key": "c16-jobs-row-1-dismiss",
+                          "name": "Dismiss",
+                          "role": "button"
+                        }
+                      ],
+                      "description": "Failed after 10s · Home",
+                      "key": "c16-jobs-row-1",
+                      "name": "Strip EXIF",
+                      "role": "group"
+                    }
+                  ],
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c16-jobs-list",
+              "name": "Jobs",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    },
+    {
+      "name": "Hide",
+      "role": "tooltip"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

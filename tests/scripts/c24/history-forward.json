@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "browser/scrolling: Mouse buttons 8 and 9 still go back and forward in history."
+  ],
+  "scene": "c24-ten-k-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "x": 480,
+      "y": 300,
+      "button": "forward"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-history",
+      "name": "Forward"
+    },
+    {
+      "key": "c24-status",
+      "name": "Autoscroll: off"
+    }
+  ]
+}

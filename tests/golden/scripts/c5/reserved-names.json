@@ -1,0 +1,241 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c5-title",
+                  "name": "Documents · 10 items",
+                  "role": "label"
+                },
+                {
+                  "key": "c5-mode",
+                  "name": "View 1",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "set-value",
+                    "replace-selected-text",
+                    "set-text-selection"
+                  ],
+                  "key": "c5-other",
+                  "name": "Search",
+                  "placeholder": "Search",
+                  "role": "text-input",
+                  "value": ""
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c5-go",
+                  "name": "Go to Downloads",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "context-menu"
+                  ],
+                  "activeDescendant": "row-3",
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-1",
+                              "name": "Projects",
+                              "position": 1,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-2",
+                              "name": "photos.2024",
+                              "position": 2,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "context-menu",
+                                        "set-value",
+                                        "replace-selected-text",
+                                        "set-text-selection",
+                                        "scroll-into-view"
+                                      ],
+                                      "description": "That name is reserved",
+                                      "key": "rename-field",
+                                      "name": "Rename",
+                                      "role": "text-input",
+                                      "states": [
+                                        "focused",
+                                        "invalid"
+                                      ],
+                                      "value": ".."
+                                    }
+                                  ],
+                                  "key": "rename",
+                                  "role": "group"
+                                }
+                              ],
+                              "key": "row-3",
+                              "name": "Notes.md",
+                              "position": 3,
+                              "role": "list-box-option",
+                              "states": [
+                                "selected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-4",
+                              "name": "archive.tar.gz",
+                              "position": 4,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-5",
+                              "name": ".bashrc",
+                              "position": 5,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-6",
+                              "name": "README",
+                              "position": 6,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-7",
+                              "name": "photo.final.JPG",
+                              "position": 7,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-8",
+                              "name": "todo.txt",
+                              "position": 8,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-9",
+                              "name": "report.pdf",
+                              "position": 9,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-10",
+                              "name": "a very long file name that runs past the column's edge.txt",
+                              "position": 10,
+                              "role": "list-box-option"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group",
+                          "setSize": 10
+                        }
+                      ],
+                      "key": "viewport",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "key": "status",
+                      "name": "",
+                      "role": "label",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c5-files",
+                  "name": "Documents",
+                  "role": "list-box"
+                }
+              ],
+              "key": "c5-page",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "key": "rename-message-text",
+                  "name": "That name is reserved",
+                  "role": "label"
+                }
+              ],
+              "key": "rename-message",
+              "name": "That name is reserved",
+              "role": "status",
+              "states": [
+                "live-polite"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

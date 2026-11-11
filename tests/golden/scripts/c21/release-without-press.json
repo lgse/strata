@@ -1,0 +1,455 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c21-title",
+                  "name": "Documents",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "context-menu",
+                    "set-value",
+                    "replace-selected-text",
+                    "set-text-selection"
+                  ],
+                  "key": "c21-search",
+                  "name": "Search",
+                  "role": "text-input",
+                  "value": ""
+                },
+                {
+                  "key": "c21-status",
+                  "name": "Chose copy on Notes.md",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "context-menu"
+                  ],
+                  "activeDescendant": "row-5",
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-1",
+                              "name": "Projects",
+                              "position": 1,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-2",
+                              "name": "Receipts",
+                              "position": 2,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-3",
+                              "name": "Music",
+                              "position": 3,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-4",
+                              "name": "Holidays",
+                              "position": 4,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-5",
+                              "name": "Notes.md",
+                              "position": 5,
+                              "role": "list-box-option",
+                              "states": [
+                                "selected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-6",
+                              "name": "budget.ods",
+                              "position": 6,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-7",
+                              "name": "main.rs",
+                              "position": 7,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-8",
+                              "name": "scan-04.pdf",
+                              "position": 8,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-9",
+                              "name": "scan-05.pdf",
+                              "position": 9,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-10",
+                              "name": "scan-06.pdf",
+                              "position": 10,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-11",
+                              "name": "scan-07.pdf",
+                              "position": 11,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-12",
+                              "name": "scan-08.pdf",
+                              "position": 12,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-13",
+                              "name": "scan-09.pdf",
+                              "position": 13,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-14",
+                              "name": "scan-10.pdf",
+                              "position": 14,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-15",
+                              "name": "scan-11.pdf",
+                              "position": 15,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-16",
+                              "name": "scan-12.pdf",
+                              "position": 16,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-17",
+                              "name": "scan-13.pdf",
+                              "position": 17,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-18",
+                              "name": "scan-14.pdf",
+                              "position": 18,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-19",
+                              "name": "scan-15.pdf",
+                              "position": 19,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-20",
+                              "name": "scan-16.pdf",
+                              "position": 20,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-21",
+                              "name": "scan-17.pdf",
+                              "position": 21,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-22",
+                              "name": "scan-18.pdf",
+                              "position": 22,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-23",
+                              "name": "scan-19.pdf",
+                              "position": 23,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-24",
+                              "name": "scan-20.pdf",
+                              "position": 24,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-25",
+                              "name": "scan-21.pdf",
+                              "position": 25,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-26",
+                              "name": "scan-22.pdf",
+                              "position": 26,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-27",
+                              "name": "scan-23.pdf",
+                              "position": 27,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-28",
+                              "name": "scan-24.pdf",
+                              "position": 28,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-29",
+                              "name": "scan-25.pdf",
+                              "position": 29,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-30",
+                              "name": "scan-26.pdf",
+                              "position": 30,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-31",
+                              "name": "scan-27.pdf",
+                              "position": 31,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-32",
+                              "name": "scan-28.pdf",
+                              "position": 32,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-33",
+                              "name": "scan-29.pdf",
+                              "position": 33,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-34",
+                              "name": "scan-30.pdf",
+                              "position": 34,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-35",
+                              "name": "scan-31.pdf",
+                              "position": 35,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-36",
+                              "name": "scan-32.pdf",
+                              "position": 36,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-37",
+                              "name": "scan-33.pdf",
+                              "position": 37,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-38",
+                              "name": "scan-34.pdf",
+                              "position": 38,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-39",
+                              "name": "scan-35.pdf",
+                              "position": 39,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-40",
+                              "name": "scan-36.pdf",
+                              "position": 40,
+                              "role": "list-box-option"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group",
+                          "setSize": 40
+                        }
+                      ],
+                      "key": "viewport",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "key": "status",
+                      "name": "",
+                      "role": "label",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c21-list",
+                  "name": "Documents",
+                  "role": "list-box"
+                }
+              ],
+              "key": "c21-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

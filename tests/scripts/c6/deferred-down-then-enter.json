@@ -1,0 +1,62 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar/completion: Tab pressed during the listing waits for its list, and so do Down, Up, Page Down, and Page Up while suggestions show. Enter after one of them waits too; they then run in order."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "~/D",
+      "every": 0.01
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.7,
+      "type": "type",
+      "text": "~/nas/",
+      "every": 0.01
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.85,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 1.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-log",
+      "name": "Open ~/nas/backups"
+    },
+    {
+      "key": "c6-loc-entry",
+      "absent": true
+    }
+  ]
+}

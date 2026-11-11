@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: A plain click on a file in a parent column selects it and closes the deeper columns."
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1000009/label"
+    },
+    {
+      "t": 1.5,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-path",
+      "name": "Home"
+    },
+    {
+      "key": "row-1000009",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c2-intent",
+      "name": "Clicked notes.txt"
+    }
+  ]
+}

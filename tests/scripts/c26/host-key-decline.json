@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "remote/file-providers/network-locations: The host-key dialog opens with the rejecting choice",
+    "remote/file-providers/network-locations: Declining the host key by its rejecting choice, Escape, or close"
+  ],
+  "scene": "c26-host-key-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-question-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Choice 1: Cancel Login"
+    }
+  ]
+}

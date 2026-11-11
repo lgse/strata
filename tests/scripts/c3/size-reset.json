@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "browser/view-modes/thumbnail-size: With Remember sort and icon size per folder off, Ctrl+Alt+0 returns the size, which is the default, to 64 px."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-7/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "=",
+      "ctrl": true,
+      "alt": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "=",
+      "ctrl": true,
+      "alt": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "0",
+      "ctrl": true,
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-size",
+      "name": "Thumbnail size: 64px"
+    }
+  ]
+}

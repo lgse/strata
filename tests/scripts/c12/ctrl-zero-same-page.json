@@ -1,0 +1,79 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: With keyboard focus in a zoomed PDF, Ctrl+0 returns its pages to fitted width on the same page"
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.3,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": -400
+    },
+    {
+      "t": 0.35,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": -400
+    },
+    {
+      "t": 0.8,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.8400000000000001,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.88,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.92,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "0",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "pdf",
+      "value": "Page 3 of 12, 100%"
+    },
+    {
+      "key": "c12-text-size",
+      "name": "Text size 13"
+    },
+    {
+      "key": "c12-last",
+      "name": "None"
+    }
+  ]
+}

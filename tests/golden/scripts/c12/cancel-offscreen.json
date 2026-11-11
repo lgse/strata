@@ -1,0 +1,308 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "name": "report-0.pdf",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "report-0.pdf",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "report-1.pdf",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "report-1.pdf",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "report-2.pdf",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "report-2.pdf",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "report-3.pdf",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "report-3.pdf",
+                      "role": "list-box-option"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                },
+                {
+                  "key": "c12-log",
+                  "name": "Rendered p1 840 p500 840 p499 840 · Cancelled p2",
+                  "role": "label"
+                },
+                {
+                  "key": "c12-selection",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c12-copied",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c12-last",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c12-text-size",
+                  "name": "Text size 13",
+                  "role": "label"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "report.pdf",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "1.2 MB · Today 09:41 · PDF document",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "description": "Loading page",
+                                          "key": "page",
+                                          "name": "Page 497 of 500",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "pdf-z2-p496",
+                                      "position": 497,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "description": "Loading page",
+                                          "key": "page",
+                                          "name": "Page 498 of 500",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "pdf-z2-p497",
+                                      "position": 498,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "text",
+                                              "name": "Page 499 of the Strata report\nof copy draws jumping in paste its paste scroll query while find every\nglyph its copy you text in by you order folders draws folders and while\nwhile lines keep strata hand boxes quietly by you preview hand paste\nfolders hand sandbox paste you jumping pictures by sandbox jumping typed\nsandbox glyph hand page pictures hand renders strata jumping with\ntyped page boxes you and while paste glyph sandbox quietly boxes zoom\nzoom by zoom quietly while over order find every you every folders you\nthe with page words query glyph hand renders select glyph by find find\nquietly by while jumping copy query quietly keep while you their the\ntyped select draws while folders its select folders zoom typed zoom\nselect query preview over select boxes words folders and keep copy hand\nand boxes glyph every preview text renders glyph find sandbox and boxes\nwith hand text copy strata find zoom strata quietly every page its their\nhand strata text copy every and boxes typed quietly while hand keep hand\nwith boxes and scroll its text words typed hand in glyph with and in\nglyph folders typed renders every lines of preview zoom zoom hand\npictures zoom every every by and draws sandbox text and folders lines\ntheir every in every lines preview sandbox you and query lines zoom\nwhile while over keep query glyph with preview pictures every paste copy\nthe pictures copy scroll you their over jumping in its you the keep page\nlines the lines and their quietly you boxes folders keep sandbox you\nglyph typed sandbox words with order glyph with draws while query lines\nwith in zoom text jumping draws query select renders their while while\nthe of query zoom order query text jumping while with typed hand hand\nfolders sandbox order draws by by sandbox lines of its in page sandbox\nquietly in every over while zoom with preview while over copy the\ntyped and its you by scroll in paste while copy paste quietly words find\ntext draws its draws draws and renders jumping hand jumping quietly\nwith the their by words folders in words words you in copy text pictures\nof its preview pictures while in by typed lines typed draws in zoom\nboxes while every text and and pictures copy copy find copy hand select\ndraws scroll words select typed of page glyph zoom quietly typed preview\n\ncopy you paste jumping lines boxes scroll quietly sandbox the boxes with\nglyph the boxes strata text their sandbox with preview keep folders find\n\ntext copy its with draws sandbox their its preview jumping hand with you\n",
+                                              "role": "paragraph"
+                                            }
+                                          ],
+                                          "key": "page",
+                                          "name": "Page 499 of 500",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "pdf-z2-p498",
+                                      "position": 499,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "text",
+                                              "name": "Page 500 of the Strata report\npage words with typed renders and jumping order jumping of hand copy\npreview jumping draws folders typed paste in renders select the strata\npage you query hand you hand with boxes the preview lines query paste\nquietly preview draws preview preview keep typed draws by quietly while\n\njumping hand every quietly query page and find you boxes sandbox select\n\nboxes lines its the find jumping hand keep hand copy while its with\ncopy quietly hand boxes text zoom select query strata with strata the of\nzoom page typed every jumping hand and you quietly preview draws zoom by\nzoom with scroll and you the and renders folders copy lines zoom draws\n\norder quietly find every typed by the over glyph hand page glyph query\ncopy words pictures text in renders with you jumping and pictures find\nscroll every lines words by its folders you select query lines its\ntext keep every you you renders glyph every zoom quietly its select\nits renders strata lines query hand hand their preview text query boxes\nand the folders words strata and typed sandbox text renders preview\nkeep sandbox pictures paste over preview page renders lines its by\ndraws lines query over every and in glyph draws preview in over strata\nzoom folders its and their preview page with draws in jumping and hand\nselect copy boxes select words jumping page page scroll with glyph you\ntyped keep their keep jumping of scroll quietly order by copy hand its\nquietly find keep query strata sandbox find copy keep typed find while\nsandbox of copy zoom of words boxes their while sandbox zoom folders and\nfolders typed preview typed by query of order every renders typed copy\nyou renders jumping in page in you words typed quietly strata every find\nglyph typed and order query the you the order quietly draws paste copy\nzoom in zoom quietly and with their you pictures scroll lines hand\n\nsandbox and lines zoom sandbox by every over typed by order text in\nof its quietly draws by boxes its paste by renders and query of jumping\nyou in with paste order lines paste and find paste query keep lines\nover copy typed preview and hand of you pictures query folders over\nglyph jumping with typed boxes words glyph page lines over typed sandbox\nthe strata query folders over keep the you typed lines order folders\ndraws hand with order jumping typed glyph zoom quietly scroll of lines\n",
+                                              "role": "paragraph"
+                                            }
+                                          ],
+                                          "key": "page",
+                                          "name": "Page 500 of 500",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "pdf-z2-p499",
+                                      "position": 500,
+                                      "role": "group"
+                                    }
+                                  ],
+                                  "key": "pdf-pages",
+                                  "role": "group",
+                                  "setSize": 500
+                                }
+                              ],
+                              "key": "pdf-scroll",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            }
+                          ],
+                          "key": "pdf",
+                          "name": "PDF document",
+                          "role": "document",
+                          "states": [
+                            "focused"
+                          ],
+                          "value": "Page 500 of 500, 100%"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

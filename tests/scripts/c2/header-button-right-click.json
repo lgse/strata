@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Right-clicking a header button, menu button, or the filter field opens no folder menu"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "secondary-click",
+      "key": "c2-refresh-1"
+    },
+    {
+      "t": 1.0,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-intent",
+      "name": ""
+    }
+  ]
+}

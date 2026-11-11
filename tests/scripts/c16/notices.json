@@ -1,0 +1,67 @@
+{
+  "bullets": [
+    "operations/progress/dock: A notice shows as a row in the bottom-right dock",
+    "operations/progress/dock: A notice shows a check icon before its text and has no controls",
+    "operations/progress/dock: Showing a notice while another notice is visible",
+    "operations/progress/dock: A transfer report notice is the exception"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-notice"
+    },
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c16-start-copy"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "c16-start-notice-2"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "c16-start-report"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c16-dock-notice-2"
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-notice-1",
+      "absent": true
+    },
+    {
+      "key": "c16-dock-notice-2",
+      "role": "status",
+      "name": "Uploaded to Nextcloud",
+      "states": [
+        "live-polite"
+      ]
+    },
+    {
+      "key": "c16-dock-notice-3",
+      "name": "2 items were renamed to fit the device"
+    },
+    {
+      "key": "c16-dock-card-1",
+      "name": "Copying items"
+    },
+    {
+      "key": "c16-heard",
+      "name": " · probes 0"
+    }
+  ]
+}

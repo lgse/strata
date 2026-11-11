@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "operations/progress: An error dialog that opens as the progress dialog closes keeps its own focus"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-move"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c16-progress-primary"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-progress-dialog",
+      "absent": true
+    },
+    {
+      "key": "c16-cancelled-dialog",
+      "name": "Operation cancelled"
+    },
+    {
+      "key": "c16-cancelled-primary",
+      "focused": true
+    }
+  ]
+}

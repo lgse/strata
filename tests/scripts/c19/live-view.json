@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Switching views with Ctrl+1, 2, or 3 replaces the navigation section",
+    "app/shortcut-reference: With F1 open, unbinding Ctrl+K for global search removes its row"
+  ],
+  "scene": "c19-reference-live-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-reference-category-3"
+    },
+    {
+      "t": 0.95,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-category-1",
+      "name": "Icons navigation"
+    },
+    {
+      "key": "c19-reference-category-3",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c19-reference-row-2-0",
+      "name": "Filter the list Ctrl+F"
+    }
+  ]
+}

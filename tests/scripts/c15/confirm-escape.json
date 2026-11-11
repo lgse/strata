@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "app/dialogs: Confirmation dialogs open with the confirm button focused"
+  ],
+  "scene": "c15-danger-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-danger-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-status",
+      "name": "Dismissed"
+    }
+  ]
+}

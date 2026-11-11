@@ -1,0 +1,62 @@
+{
+  "bullets": [
+    "browser/selection/marquee: A plain marquee replaces the selection with the entries under the band."
+  ],
+  "scene": "c3-short-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-205/icon"
+    },
+    {
+      "t": 0.5,
+      "type": "down",
+      "key": "line-209"
+    },
+    {
+      "t": 0.55,
+      "type": "move",
+      "key": "row-206/icon"
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "key": "row-203/icon"
+    },
+    {
+      "t": 0.65,
+      "type": "move",
+      "key": "row-200/icon"
+    },
+    {
+      "t": 0.7,
+      "type": "up",
+      "key": "row-200/icon"
+    }
+  ],
+  "expect": [
+    {
+      "key": "status",
+      "name": "7 items selected"
+    },
+    {
+      "key": "row-200",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-209",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-201",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

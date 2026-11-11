@@ -1,0 +1,1861 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "scroll-left",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-1",
+                                      "name": "Folder 01",
+                                      "position": 1,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-2",
+                                      "name": "Folder 02",
+                                      "position": 2,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-3",
+                                      "name": "Folder 03",
+                                      "position": 3,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-4",
+                                      "name": "Folder 04",
+                                      "position": 4,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-5",
+                                      "name": "Folder 05",
+                                      "position": 5,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-6",
+                                      "name": "Folder 06",
+                                      "position": 6,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-7",
+                                      "name": "Folder 07",
+                                      "position": 7,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-8",
+                                      "name": "Folder 08",
+                                      "position": 8,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-9",
+                                      "name": "Folder 09",
+                                      "position": 9,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-10",
+                                      "name": "Folder 10",
+                                      "position": 10,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-11",
+                                      "name": "Folder 11",
+                                      "position": 11,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-12",
+                                      "name": "Folder 12",
+                                      "position": 12,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-13",
+                                      "name": "Folder 13",
+                                      "position": 13,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-14",
+                                      "name": "Folder 14",
+                                      "position": 14,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-15",
+                                      "name": "Folder 15",
+                                      "position": 15,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-16",
+                                      "name": "Folder 16",
+                                      "position": 16,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-17",
+                                      "name": "Folder 17",
+                                      "position": 17,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-18",
+                                      "name": "Folder 18",
+                                      "position": 18,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-19",
+                                      "name": "Folder 19",
+                                      "position": 19,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-20",
+                                      "name": "Folder 20",
+                                      "position": 20,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-21",
+                                      "name": "Folder 21",
+                                      "position": 21,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "ground",
+                                                  "role": "group"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-22",
+                                      "name": "Folder 22",
+                                      "position": 22,
+                                      "role": "tab",
+                                      "states": [
+                                        "selected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-23",
+                                      "name": "Folder 23",
+                                      "position": 23,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-24",
+                                      "name": "Folder 24",
+                                      "position": 24,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-25",
+                                      "name": "Folder 25",
+                                      "position": 25,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-26",
+                                      "name": "Folder 26",
+                                      "position": 26,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-27",
+                                      "name": "Folder 27",
+                                      "position": 27,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-28",
+                                      "name": "Folder 28",
+                                      "position": 28,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-29",
+                                      "name": "Folder 29",
+                                      "position": 29,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "title",
+                                              "role": "group"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "click",
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "name": "Close tab",
+                                                      "role": "button"
+                                                    }
+                                                  ],
+                                                  "key": "close",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "status",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "pill",
+                                          "role": "group"
+                                        }
+                                      ],
+                                      "key": "t-c7-30",
+                                      "name": "Folder 30",
+                                      "position": 30,
+                                      "role": "tab",
+                                      "states": [
+                                        "unselected"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c7-list",
+                                  "name": "Tabs",
+                                  "role": "tab-list",
+                                  "setSize": 30
+                                }
+                              ],
+                              "key": "c7-scroll",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "description": "New tab (Ctrl+T)",
+                              "key": "c7-new",
+                              "name": "New tab",
+                              "role": "button"
+                            }
+                          ],
+                          "key": "c7",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c7-band",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c7-bar",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "/home/demo/Folder 22",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c7-pane-22",
+                      "name": "Folder 22 view",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c7-panes",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "key": "c7-log",
+                      "name": "",
+                      "role": "label"
+                    },
+                    {
+                      "key": "c7-title",
+                      "name": "Folder 22 — Strata",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c7-lines",
+                  "role": "group"
+                }
+              ],
+              "key": "c7-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Folder 22 — Strata",
+  "role": "window"
+}

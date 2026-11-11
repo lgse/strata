@@ -1,0 +1,53 @@
+{
+  "bullets": [
+    "app/dialogs: Enter in a multi-line text field inserts a newline"
+  ],
+  "scene": "c15-form-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.25,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.35,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "a"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.7,
+      "type": "type",
+      "text": "b"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-form-dialog",
+      "role": "dialog"
+    },
+    {
+      "key": "c15-form-notes-lines",
+      "name": "2 lines"
+    }
+  ]
+}

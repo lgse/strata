@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "app/shortcut-reference: With the F1 button hidden and no other footer status visible"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-hide-button"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c19-no-listing"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "c19-copy"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer"
+    },
+    {
+      "key": "c19-footer-clipboard"
+    }
+  ]
+}

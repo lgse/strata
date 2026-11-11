@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "browser/sidebar: Stepping between the full sidebar and the rail with a section collapsed leaves its rows hidden"
+  ],
+  "scene": "c8-collapsed-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "b",
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "b",
+      "cmd": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "b",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-pin-projects",
+      "absent": true
+    },
+    {
+      "key": "places-pin-photos",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "places-heading-pinned",
+      "states": [
+        "collapsed"
+      ]
+    },
+    {
+      "key": "places-device-system",
+      "absent": true
+    }
+  ]
+}

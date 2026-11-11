@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Back, Forward, or Alt+Up to an ancestor selects the folder you came from",
+    "browser/view-modes/columns: The came-from folder's own column stays closed"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-3-title"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Up",
+      "alt": true
+    },
+    {
+      "t": 1.4,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-path",
+      "name": "Home / Documents"
+    },
+    {
+      "key": "row-2000001",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c2-col-3",
+      "absent": true
+    }
+  ]
+}

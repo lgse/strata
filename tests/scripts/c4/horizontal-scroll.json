@@ -1,0 +1,89 @@
+{
+  "bullets": [
+    "browser/view-modes/list: Name takes the width left after the metadata columns until it is resized by hand; below the minimum widths the table scrolls horizontally."
+  ],
+  "scene": "c4-narrow-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "wheel",
+      "x": 240,
+      "y": 300,
+      "dx": 40
+    },
+    {
+      "t": 0.25,
+      "type": "wheel",
+      "x": 240,
+      "y": 300,
+      "dx": 40
+    },
+    {
+      "t": 0.30000000000000004,
+      "type": "wheel",
+      "x": 240,
+      "y": 300,
+      "dx": 40
+    },
+    {
+      "t": 0.35000000000000003,
+      "type": "wheel",
+      "x": 240,
+      "y": 300,
+      "dx": 40
+    },
+    {
+      "t": 0.4,
+      "type": "wheel",
+      "x": 240,
+      "y": 300,
+      "dx": 40
+    },
+    {
+      "t": 0.8,
+      "type": "down",
+      "x": 150,
+      "y": 97
+    },
+    {
+      "t": 0.85,
+      "type": "move",
+      "x": 150,
+      "y": 115
+    },
+    {
+      "t": 0.9,
+      "type": "move",
+      "x": 150,
+      "y": 135
+    },
+    {
+      "t": 0.95,
+      "type": "move",
+      "x": 150,
+      "y": 150
+    },
+    {
+      "t": 1.0,
+      "type": "up",
+      "x": 150,
+      "y": 150
+    }
+  ],
+  "expect": [
+    {
+      "key": "status",
+      "name": "3 items selected"
+    },
+    {
+      "key": "c4-intent",
+      "name": ""
+    },
+    {
+      "key": "row-2",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

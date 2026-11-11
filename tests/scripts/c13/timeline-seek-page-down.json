@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "preview/quick-preview: With an audio or video timeline focused, Left/Right seek 5 s, and Shift+Left/Right or Page Down/Page Up seek 30 s back or forward."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageDown"
+    },
+    {
+      "t": 0.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-timeline",
+      "value": "1:10 of 3:20"
+    },
+    {
+      "key": "c13-seeks",
+      "name": "2 seeks"
+    }
+  ]
+}

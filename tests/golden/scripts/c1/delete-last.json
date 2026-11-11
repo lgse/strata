@@ -1,0 +1,96 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c1-title",
+              "name": "Documents · 0 items",
+              "role": "label"
+            },
+            {
+              "key": "c1-preview",
+              "name": "Preview: ",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c1-refresh",
+              "name": "Refresh",
+              "role": "button"
+            },
+            {
+              "key": "c1-intent",
+              "name": "Clicked Projects",
+              "role": "label"
+            },
+            {
+              "key": "c1-last",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 0
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "c1-empty-note",
+                  "name": "Folder is empty",
+                  "role": "label"
+                },
+                {
+                  "key": "status",
+                  "name": "",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c1-list",
+              "name": "Documents",
+              "role": "list-box",
+              "states": [
+                "focused"
+              ]
+            }
+          ],
+          "key": "c1-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

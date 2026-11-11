@@ -1,0 +1,52 @@
+{
+  "bullets": [
+    "browser/selection/marquee: A press on a button, text entry, label, image, slider, scrollbar, or sidebar place keeps that control's own behavior and starts no marquee."
+  ],
+  "scene": "c24-ten-k-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "x": 955,
+      "y": 600
+    },
+    {
+      "t": 0.5,
+      "type": "down",
+      "x": 955,
+      "y": 600
+    },
+    {
+      "t": 0.6,
+      "type": "up",
+      "x": 955,
+      "y": 600
+    },
+    {
+      "t": 1.0,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "absent": true
+    },
+    {
+      "key": "c24-intent",
+      "name": "Nothing yet"
+    },
+    {
+      "key": "marquee-band",
+      "absent": true
+    }
+  ]
+}

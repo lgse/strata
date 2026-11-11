@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/sidebar: After Alt+Up, Back, or location-bar navigation with the pointer left on the old row"
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-place-downloads"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Up",
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-place-home",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "places-place-downloads",
+      "states": [
+        "unselected"
+      ]
+    }
+  ]
+}

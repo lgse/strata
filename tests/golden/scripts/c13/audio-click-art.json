@@ -1,0 +1,194 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "actions": [
+                "focus"
+              ],
+              "children": [
+                {
+                  "name": "01 Low Tide.flac",
+                  "role": "label"
+                },
+                {
+                  "name": "02 Breakwater.flac",
+                  "role": "label"
+                },
+                {
+                  "name": "03 Lantern.ogg",
+                  "role": "label"
+                },
+                {
+                  "key": "c13-status",
+                  "name": "Playing",
+                  "role": "label"
+                },
+                {
+                  "key": "c13-seeks",
+                  "name": "0 seeks",
+                  "role": "label"
+                }
+              ],
+              "key": "files",
+              "name": "Files",
+              "role": "list-box"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click"
+                      ],
+                      "key": "media-art-1",
+                      "name": "Album art",
+                      "role": "image"
+                    },
+                    {
+                      "key": "media-eyebrow",
+                      "name": "Track 1 of 12",
+                      "role": "label"
+                    },
+                    {
+                      "key": "media-title",
+                      "name": "Low Tide",
+                      "role": "label"
+                    },
+                    {
+                      "key": "media-byline",
+                      "name": "The Moorings — Tidelines",
+                      "role": "label"
+                    },
+                    {
+                      "key": "media-error",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Mute/unmute (Ctrl+Alt+M)",
+                          "key": "media-mute",
+                          "name": "Mute/unmute (Ctrl+Alt+M)",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "focus",
+                            "increment",
+                            "decrement",
+                            "set-value"
+                          ],
+                          "key": "media-volume",
+                          "name": "Volume",
+                          "range": [
+                            0.6,
+                            0.0,
+                            1.0,
+                            0.1
+                          ],
+                          "role": "slider",
+                          "value": "60%"
+                        }
+                      ],
+                      "key": "media-volume-row",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "click"
+                      ],
+                      "key": "media-spectrum",
+                      "name": "Audio spectrum",
+                      "role": "image"
+                    },
+                    {
+                      "actions": [
+                        "focus",
+                        "increment",
+                        "decrement",
+                        "set-value"
+                      ],
+                      "key": "media-timeline",
+                      "name": "Playback position",
+                      "range": [
+                        2.0,
+                        0.0,
+                        245.0,
+                        5.0
+                      ],
+                      "role": "slider",
+                      "value": "0:02 of 4:05"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "media-elapsed",
+                          "name": "0:02",
+                          "role": "label"
+                        },
+                        {
+                          "description": "Previous audio file (Ctrl+Alt+<)",
+                          "key": "media-previous",
+                          "name": "Previous audio file",
+                          "role": "button",
+                          "states": [
+                            "disabled"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Play/Pause (Ctrl+Alt+Space)",
+                          "key": "media-play",
+                          "name": "Play or pause",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Next audio file (Ctrl+Alt+>)",
+                          "key": "media-next",
+                          "name": "Next audio file",
+                          "role": "button"
+                        },
+                        {
+                          "key": "media-total",
+                          "name": "4:05",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "media-transport",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "media",
+                  "role": "group"
+                }
+              ],
+              "key": "c13-area",
+              "role": "group"
+            }
+          ],
+          "key": "c13",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

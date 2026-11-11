@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Clicking a second column title sorts by it",
+    "preview/preview-panel/documents: Clicking the primary title again reverses its value groups"
+  ],
+  "scene": "c11b-ties-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "sheet-h1"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "sheet-h1"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "sheet-h0"
+    }
+  ],
+  "expect": [
+    {
+      "key": "sheet-h1",
+      "name": "group"
+    },
+    {
+      "key": "sheet-r0",
+      "name": "5 a 2"
+    },
+    {
+      "key": "sheet-r1",
+      "name": "3 a 1"
+    },
+    {
+      "key": "sheet-r2",
+      "name": "4 A 1"
+    },
+    {
+      "key": "sheet-r3",
+      "name": "6 b 2"
+    },
+    {
+      "key": "sheet-r4",
+      "name": "2 b 1"
+    }
+  ]
+}

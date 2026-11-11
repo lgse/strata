@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/navigation/folder-jump: Typing narrows the list to visited folders whose name or path fuzzily matches the text."
+  ],
+  "scene": "c17-jump-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "str"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-option-0",
+      "name": "/home/demo/Projects/strata",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c17-palette-option-1",
+      "name": "/home/demo/Pictures/Trips"
+    },
+    {
+      "key": "c17-palette-option-2",
+      "name": "/home/demo/Projects/strata/src"
+    },
+    {
+      "key": "c17-palette-option-3",
+      "name": "/home/demo/Projects/strata/docs"
+    },
+    {
+      "key": "c17-palette-option-4",
+      "absent": true
+    }
+  ]
+}

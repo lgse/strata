@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/video: The header shows the file's position among the listing's videos, such as \"2 of 5 in folder\", or \"in results\" while search results replace the listing. Local files named as video but holding text are not counted."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-next"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-eyebrow",
+      "name": "2 of 3 in folder"
+    },
+    {
+      "key": "media-title",
+      "name": "ferry"
+    }
+  ]
+}

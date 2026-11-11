@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "operations/progress: When the progress dialog closes, keyboard focus goes to the file list's cursor row"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-copy"
+    },
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c16-start-move"
+    },
+    {
+      "t": 5.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-progress-dialog",
+      "absent": true
+    },
+    {
+      "key": "c16-cursor",
+      "focused": true
+    }
+  ]
+}

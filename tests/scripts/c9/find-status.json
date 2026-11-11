@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: The status reads \"Match 1 of N\""
+  ],
+  "scene": "c9-list-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "preview"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "Match 1 of 5"
+    }
+  ]
+}

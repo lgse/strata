@@ -1,0 +1,21 @@
+{
+  "bullets": [
+    "operations/progress: The transfer view shows the percentage, transferred and total bytes",
+    "operations/progress: During a copy or move with a known byte total"
+  ],
+  "scene": "c16-dialog-light",
+  "events": [
+    {
+      "t": 1.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-progress-bar",
+      "role": "progress-indicator",
+      "name": "Moving items"
+    }
+  ]
+}

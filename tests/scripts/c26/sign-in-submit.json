@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "remote/file-providers/network-locations: When the backend asks for credentials",
+    "app/dialogs: Enter in a single-line text or password field"
+  ],
+  "scene": "c26-sign-in-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c26-mount-password-user"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "bob"
+    },
+    {
+      "t": 0.7,
+      "type": "tap",
+      "key": "c26-mount-password-secret"
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "hunter2"
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-password-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Connect: user bob, domain WORKGROUP, secret of 7 characters, remember Never"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Typing keeps rows whose keys, key context, or action contain the text"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "in a ren"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-row-1-4"
+    },
+    {
+      "key": "c19-reference-row-1-3",
+      "absent": true
+    },
+    {
+      "key": "c19-reference-status",
+      "name": "1 shortcut"
+    }
+  ]
+}

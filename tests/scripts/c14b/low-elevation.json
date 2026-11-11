@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/preview-panel/routes: Zero and negative altitudes count: a KML from −5 m to 20 m shows \"-5–20 m\".",
+    "preview/preview-panel/routes: An untimed route shows no duration badge."
+  ],
+  "scene": "c14b-route-low-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-route-range",
+      "name": "-5–20 m"
+    },
+    {
+      "key": "c14b-route-format",
+      "name": "KML"
+    },
+    {
+      "key": "c14b-route-duration",
+      "absent": true
+    }
+  ]
+}

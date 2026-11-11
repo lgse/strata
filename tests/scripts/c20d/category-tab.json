@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c20d-emoji-tab-nature"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-tab-nature",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c20d-emoji-panel",
+      "name": "Animals & Nature"
+    },
+    {
+      "key": "row-100553",
+      "name": "monkey face",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-100000",
+      "absent": true
+    }
+  ]
+}

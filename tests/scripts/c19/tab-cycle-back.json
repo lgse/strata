@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Tab cycles search, the selected category, and the results"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-category-0",
+      "focused": true
+    }
+  ]
+}

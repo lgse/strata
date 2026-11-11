@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: Right-clicking the List heading row opens the same popover at the pointer."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "secondary-click",
+      "key": "head-type"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-list-headings-menu-item1",
+      "name": "Name",
+      "states": [
+        "checked",
+        "disabled"
+      ]
+    },
+    {
+      "key": "c4-list-headings-menu-item7",
+      "name": "Reset to default columns"
+    }
+  ]
+}

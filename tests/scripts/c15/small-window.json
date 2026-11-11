@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "app/dialogs: A dialog larger than the window scrolls inside the window"
+  ],
+  "scene": "c15-small-window-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "wheel",
+      "key": "c15-small-body",
+      "dx": 0,
+      "dy": -600
+    },
+    {
+      "t": 0.4,
+      "type": "resize",
+      "dw": -560,
+      "dh": -340,
+      "dur": 0.3
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "c15-small-primary"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-small-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-status",
+      "name": "Deleted leftovers"
+    }
+  ]
+}

@@ -1,0 +1,247 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-sidebar",
+                      "name": "Show sidebar",
+                      "role": "button"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "set-value",
+                                        "replace-selected-text",
+                                        "set-text-selection"
+                                      ],
+                                      "activeDescendant": "c6-loc-option-5",
+                                      "key": "input",
+                                      "name": "Location (Ctrl+L)",
+                                      "placeholder": "Enter a path or URI…",
+                                      "role": "text-input",
+                                      "states": [
+                                        "focused"
+                                      ],
+                                      "value": "~/"
+                                    }
+                                  ],
+                                  "key": "value",
+                                  "role": "group"
+                                }
+                              ],
+                              "key": "c6-loc-field",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "click"
+                              ],
+                              "key": "c6-loc-navigate",
+                              "name": "Navigate (Enter)",
+                              "role": "button"
+                            },
+                            {
+                              "actions": [
+                                "click"
+                              ],
+                              "key": "c6-loc-cancel",
+                              "name": "Cancel (Escape)",
+                              "role": "button"
+                            }
+                          ],
+                          "key": "c6-loc-entry",
+                          "name": "Location (Ctrl+L)",
+                          "role": "combo-box",
+                          "states": [
+                            "expanded"
+                          ]
+                        }
+                      ],
+                      "key": "c6-loc",
+                      "name": "Location",
+                      "role": "navigation"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-new-tab",
+                      "name": "New tab",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "c6-header",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-files",
+                      "name": "Files pressed 0",
+                      "role": "list"
+                    },
+                    {
+                      "key": "c6-log",
+                      "name": "—",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c6-pane",
+                  "role": "group"
+                }
+              ],
+              "key": "c6",
+              "role": "group"
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "scroll-into-view"
+                      ],
+                      "description": "~",
+                      "key": "c6-loc-option-0",
+                      "name": "Desktop/",
+                      "position": 1,
+                      "role": "list-box-option"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "scroll-into-view"
+                      ],
+                      "description": "~",
+                      "key": "c6-loc-option-1",
+                      "name": "Documents/",
+                      "position": 2,
+                      "role": "list-box-option"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "scroll-into-view"
+                      ],
+                      "description": "~",
+                      "key": "c6-loc-option-2",
+                      "name": "Downloads/",
+                      "position": 3,
+                      "role": "list-box-option"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "scroll-into-view"
+                      ],
+                      "description": "~",
+                      "key": "c6-loc-option-3",
+                      "name": "Music/",
+                      "position": 4,
+                      "role": "list-box-option"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "scroll-into-view"
+                      ],
+                      "description": "~",
+                      "key": "c6-loc-option-4",
+                      "name": "nas/",
+                      "position": 5,
+                      "role": "list-box-option"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "scroll-into-view"
+                      ],
+                      "description": "~",
+                      "key": "c6-loc-option-5",
+                      "name": "Pictures/",
+                      "position": 6,
+                      "role": "list-box-option",
+                      "states": [
+                        "selected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "scroll-into-view"
+                      ],
+                      "description": "~",
+                      "key": "c6-loc-option-6",
+                      "name": "Projects/",
+                      "position": 7,
+                      "role": "list-box-option"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "scroll-into-view"
+                      ],
+                      "description": "~",
+                      "key": "c6-loc-option-7",
+                      "name": "Videos/",
+                      "position": 8,
+                      "role": "list-box-option"
+                    }
+                  ],
+                  "key": "rows",
+                  "role": "group",
+                  "setSize": 8
+                }
+              ],
+              "key": "c6-loc-suggestions",
+              "name": "Suggestions",
+              "role": "list-box",
+              "states": [
+                "clips"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

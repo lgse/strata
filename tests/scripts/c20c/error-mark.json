@@ -1,0 +1,66 @@
+{
+  "bullets": [
+    "integration/custom-actions: If a field is invalid, the editor switches to that field's tab"
+  ],
+  "scene": "c20c-editor-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20c-name"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "a",
+      "cmd": true,
+      "ctrl": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Backspace"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "c20c-editor-tab-2"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c20c-folders"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "c20c-save"
+    },
+    {
+      "t": 1.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20c-editor-tab-0",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c20c-name",
+      "focused": true,
+      "value": ""
+    },
+    {
+      "key": "c20c-description",
+      "value": "Scale pictures to a width"
+    },
+    {
+      "key": "c20c-error",
+      "name": "Enter a name"
+    }
+  ]
+}

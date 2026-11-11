@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "operations/progress/dock: When a docked operation is cancelled, its card closes"
+  ],
+  "scene": "c16-cancel-notice-light",
+  "events": [
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "c16-dock-card-1-cancel"
+    },
+    {
+      "t": 0.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "name": "Operation cancelled"
+    },
+    {
+      "key": "c16-dock-card-1-info",
+      "name": "3 items completed, 7 not attempted"
+    },
+    {
+      "key": "c16-cancelled-dialog",
+      "absent": true
+    }
+  ]
+}

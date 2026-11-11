@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/search: Pressing Ctrl+Shift+K while the search palette is open closes it."
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c17-files"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "k",
+      "cmd": true,
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-dialog",
+      "absent": true
+    },
+    {
+      "key": "c17-files",
+      "focused": true
+    }
+  ]
+}

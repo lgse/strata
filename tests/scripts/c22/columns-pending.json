@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "preview/quick-preview/folder-peek: Columns never shows a folder peek"
+  ],
+  "scene": "c22-list-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-2"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "3",
+      "cmd": true
+    },
+    {
+      "t": 1.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "folder-peek",
+      "absent": true
+    },
+    {
+      "key": "c22-heard",
+      "name": ""
+    }
+  ]
+}

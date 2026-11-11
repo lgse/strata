@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "preview/preview-panel/routes: Hovering either image pauses playback and moves both markers to the hovered point."
+  ],
+  "scene": "c14b-route-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-route-play"
+    },
+    {
+      "t": 1.0,
+      "type": "move",
+      "key": "c14b-route-profile"
+    },
+    {
+      "t": 1.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-route-elapsed",
+      "name": "6.0 km"
+    },
+    {
+      "key": "c14b-route-play",
+      "states": [
+        "unchecked"
+      ]
+    }
+  ]
+}

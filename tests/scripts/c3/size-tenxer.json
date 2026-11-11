@@ -1,0 +1,56 @@
+{
+  "bullets": [
+    "browser/view-modes/thumbnail-size: In 10xer mode, with the Icons listing focused, plain +, =, or − steps the size; Ctrl+Alt++ and Ctrl+Alt+− still work."
+  ],
+  "scene": "c3-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-7/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "+",
+      "shift": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "="
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "="
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "-",
+      "ctrl": true,
+      "alt": true
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "+",
+      "shift": true,
+      "ctrl": true,
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-size",
+      "name": "Thumbnail size: 96px"
+    },
+    {
+      "key": "row-7",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

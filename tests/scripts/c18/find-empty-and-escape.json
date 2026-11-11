@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "integration/10xer-mode/search: Enter on an empty find prompt changes nothing; Esc from the prompt cancels without leaving highlights."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "/",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 0.41
+    },
+    {
+      "type": "type",
+      "text": "/",
+      "every": 0.01,
+      "t": 0.61
+    },
+    {
+      "type": "type",
+      "text": "x",
+      "every": 0.01,
+      "t": 0.82
+    },
+    {
+      "type": "key",
+      "name": "Escape",
+      "t": 1.03
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.33
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "absent": true
+    },
+    {
+      "key": "c18-log",
+      "name": "Dismissed Find by Escape"
+    }
+  ]
+}

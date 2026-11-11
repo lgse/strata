@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Turning wrap off while a rendered Markdown, HTML, or RTF document is open returns rows"
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-wrap"
+    }
+  ],
+  "expect": [
+    {
+      "key": "wide",
+      "role": "scroll-view"
+    },
+    {
+      "key": "doc-u3",
+      "role": "group"
+    }
+  ]
+}

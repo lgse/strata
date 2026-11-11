@@ -1,0 +1,47 @@
+[package]
+name = "strata-kit"
+description = "Strata's look on rune-kit: theme mapping, icon catalogs, density and text size"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+readme = "README.md"
+# The bundled data ships with its licences: icons/, themes/ and fonts/ each hold theirs.
+include = [
+    "Cargo.toml",
+    "README.md",
+    "build.rs",
+    "src/**",
+    "icons/**",
+    "themes/**",
+    "fonts/**",
+]
+
+# Each work package adds its third-party dependencies in its own block below. Keep the blank
+# lines: git conflicts when two branches edit neighbouring lines. A crate appears once: one
+# already declared in any block is usable from every module, so use it as it is. The shared
+# block takes a crate two work packages would add at once (docs/testing.md).
+[dependencies]
+rune.workspace = true
+rune-kit.workspace = true
+
+# Shared by two or more work packages.
+
+# K1 theme mapping (syntect's Theme type, theme files). syntect with no features: the
+# `highlighting` types only, no regex backend (K1b).
+syntect.workspace = true
+toml.workspace = true
+
+# K2 shape, density and type
+
+# K3 icon catalogs
+
+# K4 user overrides (the overrides.toml parser)
+
+[build-dependencies]
+
+# K3 icon catalogs: build.rs, which generates the catalogs from the SVG sources
+
+[lints]
+workspace = true

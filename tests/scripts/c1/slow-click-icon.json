@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "operations/rename: A slow click on the icon, row padding, another List column, or a chevron does not rename"
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-4/icon"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "row-4/icon"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "c1-intent",
+      "name": "Clicked Notes.md"
+    },
+    {
+      "key": "c1-rename",
+      "absent": true
+    }
+  ]
+}

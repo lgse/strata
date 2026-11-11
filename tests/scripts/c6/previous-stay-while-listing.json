@@ -1,0 +1,47 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar/completion: While the typed folder is being listed, the previous suggestions stay; only the latest text's list replaces them."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "~/D",
+      "every": 0.01
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.7,
+      "type": "type",
+      "text": "~/nas/",
+      "every": 0.0
+    }
+  ],
+  "expect": [
+    {
+      "key": "input",
+      "value": "~/nas/",
+      "focused": true
+    },
+    {
+      "key": "c6-loc-option-0",
+      "name": "Desktop/"
+    },
+    {
+      "key": "c6-loc-option-2",
+      "name": "Downloads/"
+    }
+  ]
+}

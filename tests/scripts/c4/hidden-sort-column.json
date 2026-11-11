@@ -1,0 +1,54 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: Showing the hidden sort column again restores its arrow; clicking it then reverses the existing direction.",
+    "browser/view-modes/list/column-layout: A hidden sort column stays the active sort"
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "head-size"
+    },
+    {
+      "t": 0.9,
+      "type": "tap",
+      "key": "head-size"
+    },
+    {
+      "t": 1.6,
+      "type": "tap",
+      "key": "c4-list-columns-button"
+    },
+    {
+      "t": 2.2,
+      "type": "tap",
+      "key": "c4-list-columns-menu-item3"
+    },
+    {
+      "t": 2.8,
+      "type": "tap",
+      "key": "c4-list-columns-menu-item3"
+    },
+    {
+      "t": 3.3,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 4.0,
+      "type": "tap",
+      "key": "head-size"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Size ↑"
+    },
+    {
+      "key": "c4-layout",
+      "name": "Order: name, mode, size, type, modified; hidden: none; changes: 2 (Visibility)"
+    }
+  ]
+}

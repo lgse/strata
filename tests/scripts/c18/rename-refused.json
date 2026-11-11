@@ -1,0 +1,54 @@
+{
+  "bullets": [
+    "integration/10xer-mode/file-verbs: Enter renames the item and keeps its contents; a taken name keeps the prompt open"
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-11",
+      "t": 0.2
+    },
+    {
+      "type": "key",
+      "name": "F2",
+      "t": 0.35
+    },
+    {
+      "type": "key",
+      "name": "a",
+      "cmd": true,
+      "t": 0.45
+    },
+    {
+      "type": "type",
+      "text": "notes.md",
+      "every": 0.01,
+      "t": 0.55
+    },
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 0.83
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.13
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "value": "notes.md",
+      "states": [
+        "invalid"
+      ],
+      "focused": true
+    },
+    {
+      "key": "row-11",
+      "name": "report.pdf"
+    }
+  ]
+}

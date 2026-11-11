@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/sidebar: With nothing pinned, dragging files or folders over the sidebar shows the empty PINNED section",
+    "browser/sidebar/pins/drag-to-pin: With nothing pinned, dropping a folder on the gap of the empty PINNED section that a drag shows pins it."
+  ],
+  "scene": "c8-no-pins-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drag_files": {
+        "paths": [
+          "/home/demo/Work"
+        ],
+        "key": "places-place-documents"
+      }
+    },
+    {
+      "t": 0.6,
+      "drop_files": {
+        "paths": [
+          "/home/demo/Work"
+        ],
+        "key": "places-band-0",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-pin-work",
+      "name": "Work"
+    },
+    {
+      "key": "c8-log",
+      "name": "Pinned Work at 0"
+    }
+  ]
+}

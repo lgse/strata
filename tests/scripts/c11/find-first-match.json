@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Typing a query selects and reveals the first literal, case-insensitive match"
+  ],
+  "scene": "c11-long-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "THE END"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "Match 1 of 1"
+    },
+    {
+      "key": "c11-selection",
+      "name": "The end"
+    },
+    {
+      "key": "doc-u1999",
+      "role": "group"
+    }
+  ]
+}

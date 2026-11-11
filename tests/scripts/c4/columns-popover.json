@@ -1,0 +1,56 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: The popover is headed COLUMNS and lists check items Name, Mode, Size, Type, and Modified, a separator, then \"Reset to default columns\".",
+    "browser/view-modes/list/column-layout: The Name item is checked and insensitive, with the accessible description \"The Name column cannot be hidden\"."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c4-list-columns-button"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-list-columns-menu-item1",
+      "name": "Name",
+      "states": [
+        "checked",
+        "disabled"
+      ]
+    },
+    {
+      "key": "c4-list-columns-menu-item2",
+      "name": "Mode",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c4-list-columns-menu-item3",
+      "name": "Size",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c4-list-columns-menu-item4",
+      "name": "Type",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c4-list-columns-menu-item5",
+      "name": "Modified",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c4-list-columns-menu-item7",
+      "name": "Reset to default columns"
+    }
+  ]
+}

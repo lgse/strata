@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "browser/context-menu: Ctrl+Shift+F10, Shift+Menu, and Ctrl+Menu open no menu."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-5"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "F10",
+      "ctrl": true,
+      "shift": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "ContextMenu",
+      "shift": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "ContextMenu",
+      "ctrl": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c21-status",
+      "name": ""
+    },
+    {
+      "key": "c21-menu-menu",
+      "absent": true
+    }
+  ]
+}

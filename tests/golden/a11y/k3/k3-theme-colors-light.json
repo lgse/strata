@@ -1,0 +1,21 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "lucide · Theme colors · 354 file icons",
+              "role": "label"
+            }
+          ],
+          "key": "k3",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Enter or the Navigate button opens the typed location; Escape or the Cancel button restores the breadcrumbs without navigating.",
+    "browser/navigation/location-bar: Escape in the entry restores the folder the breadcrumbs name."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "~/Music",
+      "every": 0.01
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 1.1,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "input",
+      "value": "~/Projects/strata",
+      "focused": true
+    },
+    {
+      "key": "c6-log",
+      "name": "Cancelled"
+    }
+  ]
+}

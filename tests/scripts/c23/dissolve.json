@@ -1,0 +1,45 @@
+{
+  "bullets": [
+    "operations/delete/dissolve: After a successful permanent delete",
+    "operations/delete/dissolve: While a permanent delete runs"
+  ],
+  "scene": "c23-rest-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "row-3"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c23-delete"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "row-6"
+    },
+    {
+      "t": 1.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-3",
+      "absent": true
+    },
+    {
+      "key": "row-6",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c23-dissolve-1",
+      "absent": true
+    }
+  ]
+}

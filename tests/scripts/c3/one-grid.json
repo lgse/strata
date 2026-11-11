@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "browser/view-modes/icons: Icons shows one grid with no file-type groups."
+  ],
+  "scene": "c3-grouped-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1/icon"
+    }
+  ],
+  "expect": [
+    {
+      "key": "head-1",
+      "absent": true
+    },
+    {
+      "key": "head-2",
+      "absent": true
+    },
+    {
+      "key": "row-1",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c21-title",
+                  "name": "Documents",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "context-menu",
+                    "set-value",
+                    "replace-selected-text",
+                    "set-text-selection"
+                  ],
+                  "key": "c21-search",
+                  "name": "Search",
+                  "role": "text-input",
+                  "value": ""
+                },
+                {
+                  "key": "c21-status",
+                  "name": "Dismissed menu 1 on Notes.md",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "context-menu"
+                  ],
+                  "activeDescendant": "row-5",
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-1",
+                              "name": "Projects",
+                              "position": 1,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-2",
+                              "name": "Receipts",
+                              "position": 2,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-3",
+                              "name": "Music",
+                              "position": 3,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-4",
+                              "name": "Holidays",
+                              "position": 4,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-5",
+                              "name": "Notes.md",
+                              "position": 5,
+                              "role": "list-box-option",
+                              "states": [
+                                "selected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-6",
+                              "name": "budget.ods",
+                              "position": 6,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-7",
+                              "name": "main.rs",
+                              "position": 7,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "row-8",
+                              "name": "scan-04.pdf",
+                              "position": 8,
+                              "role": "list-box-option"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group",
+                          "setSize": 8
+                        }
+                      ],
+                      "key": "viewport",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "key": "status",
+                      "name": "",
+                      "role": "label",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c21-list",
+                  "name": "Documents",
+                  "role": "list-box"
+                }
+              ],
+              "key": "c21-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

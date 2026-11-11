@@ -1,0 +1,540 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "name": "people.csv",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "people.csv",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "budget.xlsx",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "budget.xlsx",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "notes.csv",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "notes.csv",
+                      "role": "list-box-option"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                },
+                {
+                  "key": "c11b-last-intent",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c11b-range",
+                  "name": "None",
+                  "role": "label"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "notes.csv",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "18 KB · Today 09:41 · CSV document",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-view-switch",
+                          "name": "View source",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "focus"
+                              ],
+                              "activeDescendant": "sheet-r0-c0",
+                              "children": [
+                                {
+                                  "key": "sheet-limited",
+                                  "name": "Table preview reached its text, column, or value budget; open the file to see all data.",
+                                  "role": "label"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "key": "sheet-corner",
+                                      "name": "Row",
+                                      "role": "column-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "click"
+                                      ],
+                                      "children": [
+                                        {
+                                          "key": "sheet-h0-resize",
+                                          "name": "Resize id",
+                                          "range": [
+                                            72.0,
+                                            48.0,
+                                            4000.0,
+                                            null
+                                          ],
+                                          "role": "splitter",
+                                          "value": "72"
+                                        }
+                                      ],
+                                      "description": "Column A",
+                                      "key": "sheet-h0",
+                                      "name": "id",
+                                      "role": "column-header",
+                                      "sort": "ascending"
+                                    },
+                                    {
+                                      "actions": [
+                                        "click"
+                                      ],
+                                      "children": [
+                                        {
+                                          "key": "sheet-h1-resize",
+                                          "name": "Resize note",
+                                          "range": [
+                                            237.0,
+                                            48.0,
+                                            4000.0,
+                                            null
+                                          ],
+                                          "role": "splitter",
+                                          "value": "237"
+                                        }
+                                      ],
+                                      "description": "Column B",
+                                      "key": "sheet-h1",
+                                      "name": "note",
+                                      "role": "column-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "click"
+                                      ],
+                                      "children": [
+                                        {
+                                          "key": "sheet-h2-resize",
+                                          "name": "Resize status",
+                                          "range": [
+                                            88.0,
+                                            48.0,
+                                            4000.0,
+                                            null
+                                          ],
+                                          "role": "splitter",
+                                          "value": "88"
+                                        }
+                                      ],
+                                      "description": "Column C",
+                                      "key": "sheet-h2",
+                                      "name": "status",
+                                      "role": "column-header"
+                                    }
+                                  ],
+                                  "key": "sheet-header",
+                                  "name": "Row id note status",
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r0-n",
+                                      "name": "2",
+                                      "role": "row-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "1",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r0-c0",
+                                      "name": "1",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet…",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "description": "Cell shortened for responsive preview; copying the table keeps the complete text.",
+                                      "key": "sheet-r0-c1",
+                                      "name": "lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit ",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "open",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r0-c2",
+                                      "name": "open",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "sheet-r0",
+                                  "name": "2 1 lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor sit amet lorem ipsum dolor ",
+                                  "position": 1,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r1-n",
+                                      "name": "3",
+                                      "role": "row-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "2",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r1-c0",
+                                      "name": "2",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "first line…",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "description": "Cell shortened for responsive preview; copying the table keeps the complete text.",
+                                      "key": "sheet-r1-c1",
+                                      "name": "first line…",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "done",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r1-c2",
+                                      "name": "done",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "sheet-r1",
+                                  "name": "3 2 first line… done",
+                                  "position": 2,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r2-n",
+                                      "name": "4",
+                                      "role": "row-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "3",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r2-c0",
+                                      "name": "3",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé…",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "description": "Cell shortened for responsive preview; copying the table keeps the complete text.",
+                                      "key": "sheet-r2-c1",
+                                      "name": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "open",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r2-c2",
+                                      "name": "open",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "sheet-r2",
+                                  "name": "4 3 éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+                                  "position": 3,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r3-n",
+                                      "name": "5",
+                                      "role": "row-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "4",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r3-c0",
+                                      "name": "4",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "short",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r3-c1",
+                                      "name": "short",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r3-c2",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "sheet-r3",
+                                  "name": "5 4 short",
+                                  "position": 4,
+                                  "role": "row"
+                                }
+                              ],
+                              "key": "sheet",
+                              "name": "notes.csv",
+                              "role": "grid",
+                              "states": [
+                                "focused"
+                              ]
+                            }
+                          ],
+                          "key": "sheet-box",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

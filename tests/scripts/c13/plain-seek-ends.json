@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "preview/preview-panel/media: On that seek slider, Home and End jump to the start and the last frame."
+  ],
+  "scene": "c13-plain-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Home"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-timeline",
+      "value": "1:14 of 1:15"
+    }
+  ]
+}

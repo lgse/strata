@@ -1,0 +1,52 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar/completion: While the typed folder is being listed, the previous suggestions stay; only the latest text's list replaces them."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "~/nas/",
+      "every": 0.01
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "~/Pi",
+      "every": 0.01
+    },
+    {
+      "t": 1.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "input",
+      "value": "~/Pi",
+      "focused": true
+    },
+    {
+      "key": "c6-loc-option-0",
+      "name": "Pictures/"
+    },
+    {
+      "key": "c6-loc-option-1",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/thumbnails: Visible items render in reading order, top to bottom, and scrolling re-ranks queued work toward the new viewport"
+  ],
+  "scene": "c25-filled-light",
+  "events": [
+    {
+      "t": 1.2,
+      "type": "wheel",
+      "key": "c25-list",
+      "dx": 0,
+      "dy": -2400
+    },
+    {
+      "t": 1.3,
+      "type": "wheel",
+      "key": "c25-list",
+      "dx": 0,
+      "dy": 900
+    },
+    {
+      "t": 3.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c25-order",
+      "name": "First requests: IMG_0043.jpg, IMG_0044.jpg, broken_0045.heic, IMG_0047.jpg, IMG_0027.jpg, IMG_0028.jpg · scrolled up"
+    },
+    {
+      "key": "c25-span",
+      "name": "Asked for rows 24–47 around rows 27–36 on screen"
+    },
+    {
+      "key": "c25-work",
+      "name": "Rendered 24 · failed 2 · cancelled 4 · late results dropped 2 · stopped 0 · view ran 0 times while 14 thumbnails landed"
+    }
+  ]
+}

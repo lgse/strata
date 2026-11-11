@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: Clicking a checked Mode, Size, Type, or Modified item hides that column's heading and cells in every row; clicking it again shows them. The check mark follows the saved state."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c4-list-columns-button"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c4-list-columns-menu-item3"
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 1.9,
+      "type": "tap",
+      "key": "c4-list-columns-button"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-list-columns-menu-item3",
+      "name": "Size",
+      "states": [
+        "unchecked"
+      ]
+    },
+    {
+      "key": "c4-list-columns-menu-item4",
+      "name": "Type",
+      "states": [
+        "checked"
+      ]
+    }
+  ]
+}

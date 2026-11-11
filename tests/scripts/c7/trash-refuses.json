@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/tabs: A Trash or Recent tab also refuses file drags"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/a.txt"
+        ],
+        "key": "t-c7-5",
+        "hover": 0.8
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "t-c7-3",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c7-log",
+      "name": ""
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/search: Arrow keys choose a row, and Enter opens the chosen folder."
+  ],
+  "scene": "c17-jump-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-log",
+      "name": "Opened /home/demo/Downloads"
+    },
+    {
+      "key": "c17-palette-dialog",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/tabs: Dropping files, or a selection mixing files and folders, on another tab"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/a.txt",
+          "/home/demo/Pictures/"
+        ],
+        "key": "t-c7-2",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "Move 2 into /home/demo/Documents"
+    },
+    {
+      "key": "t-c7-2",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

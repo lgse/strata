@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/view-modes/text-size: Ctrl++, Ctrl+="
+  ],
+  "scene": "k2-defaults-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "=",
+      "cmd": true
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "=",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "0",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "k2-text-size-value",
+      "name": "Text size: 13 px"
+    },
+    {
+      "key": "k2-token-type-ui",
+      "name": "type.ui.size 13"
+    }
+  ]
+}

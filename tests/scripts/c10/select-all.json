@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: With focus in a rendered or large source document, Ctrl+A selects the whole loaded document."
+  ],
+  "scene": "c10-large-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "code-l2/t"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c10-selection",
+      "name": "/// Item 0: a function and its body.\npub fn item_1(x: u32) -> u32 {\n    let name = \"item 2\";\n    let y = x.wrapping_mul(3); // scaled\n    if y > 4 { return y - 4; }\n    y + name.len() as u32\n}\n\n/// It… (1354166 bytes)"
+    }
+  ]
+}

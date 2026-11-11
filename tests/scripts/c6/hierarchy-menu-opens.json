@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Right-clicking the breadcrumb bar opens a menu of the current folder and its ancestors, current first; choosing one opens it."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "secondary-click",
+      "key": "c6-loc-crumb-0"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c6-loc-menu-item1"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-log",
+      "name": "Open from menu ~/Projects"
+    },
+    {
+      "key": "c6-loc-menu-item0",
+      "absent": true
+    },
+    {
+      "key": "c6-loc-item-1",
+      "name": "Projects"
+    }
+  ]
+}

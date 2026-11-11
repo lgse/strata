@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: Ctrl+0 on a focused PDF already at fitted width is consumed and does not reset interface text size.",
+    "browser/view-modes/text-size: The Ctrl+0 reset does not apply while a PDF's pages hold keyboard focus"
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "wheel",
+      "key": "files",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "0",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "pdf",
+      "value": "Page 1 of 12, 100%"
+    },
+    {
+      "key": "c12-text-size",
+      "name": "Text size 14"
+    },
+    {
+      "key": "c12-last",
+      "name": "None"
+    }
+  ]
+}

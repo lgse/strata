@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: A press within 8 px of a heading's right edge resizes the column and never reorders it."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "down",
+      "x": 678,
+      "y": 71
+    },
+    {
+      "t": 0.25,
+      "type": "move",
+      "x": 690,
+      "y": 71
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "x": 708,
+      "y": 71
+    },
+    {
+      "t": 0.35,
+      "type": "up",
+      "x": 708,
+      "y": 71
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-widths",
+      "name": "Widths: size 120"
+    },
+    {
+      "key": "c4-layout",
+      "name": "Order: name, mode, size, type, modified; hidden: none; changes: 0"
+    },
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Name ↑"
+    }
+  ]
+}

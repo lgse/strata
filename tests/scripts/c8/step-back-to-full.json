@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/sidebar/rail: In a browser window, each press of the header toggle or Ctrl+B steps the sidebar",
+    "browser/sidebar/rail: The accessible name is \"Toggle sidebar (Ctrl+B)\""
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-toggle"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "places-toggle"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "places-toggle"
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-place-home",
+      "name": "Home"
+    },
+    {
+      "key": "places-device-sandisk-eject",
+      "name": "Eject"
+    },
+    {
+      "key": "places-toggle",
+      "name": "Toggle sidebar (Ctrl+B)"
+    }
+  ]
+}

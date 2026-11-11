@@ -1,0 +1,196 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "name": "report-0.pdf",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "report-0.pdf",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "report-1.pdf",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "report-1.pdf",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "report-2.pdf",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "report-2.pdf",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "report-3.pdf",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "report-3.pdf",
+                      "role": "list-box-option"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                },
+                {
+                  "key": "c12-log",
+                  "name": "Rendered none · Cancelled none",
+                  "role": "label"
+                },
+                {
+                  "key": "c12-selection",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c12-copied",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c12-last",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c12-text-size",
+                  "name": "Text size 13",
+                  "role": "label"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "report.pdf",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "1.2 MB · Today 09:41 · PDF document",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus"
+                          ],
+                          "children": [
+                            {
+                              "key": "pdf-unavailable",
+                              "name": "Preview unavailable",
+                              "role": "label"
+                            },
+                            {
+                              "key": "pdf-message",
+                              "name": "This PDF is password protected.",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "pdf",
+                          "name": "Preview unavailable",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

@@ -1,0 +1,846 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c22-title",
+                  "name": "Home · List",
+                  "role": "label"
+                },
+                {
+                  "key": "c22-peeking",
+                  "name": "Folder peeking on",
+                  "role": "label"
+                },
+                {
+                  "key": "c22-heard",
+                  "name": "Dragging 1 items, peek closed",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Drag me",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c22-drag-source",
+                  "name": "Drag me",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "focus",
+                        "context-menu",
+                        "scroll-into-view"
+                      ],
+                      "activeDescendant": "row-10",
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-name",
+                                  "name": "Name",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-mode",
+                                  "name": "Mode",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-size",
+                                  "name": "Size",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-type",
+                                  "name": "Type",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-modified",
+                                  "name": "Modified",
+                                  "role": "column-header"
+                                }
+                              ],
+                              "key": "c22-list-headings",
+                              "name": "Name Mode Size Type Modified",
+                              "role": "row"
+                            }
+                          ],
+                          "key": "c22-list-headings-menu-trigger",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Projects",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-26 09:57",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1",
+                                  "name": "Projects",
+                                  "position": 1,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Music",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-23 18:55",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-2",
+                                  "name": "Music",
+                                  "position": 2,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Photos",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-15 00:02",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-3",
+                                  "name": "Photos",
+                                  "position": 3,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Empty",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-13 09:00",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-4",
+                                  "name": "Empty",
+                                  "position": 4,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Locked",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-05 15:07",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-5",
+                                  "name": "Locked",
+                                  "position": 5,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Slow",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-02 00:05",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-6",
+                                  "name": "Slow",
+                                  "position": 6,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Archive",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-22 05:11",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-7",
+                                  "name": "Archive",
+                                  "position": 7,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Downloads",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-20 15:09",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-8",
+                                  "name": "Downloads",
+                                  "position": 8,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Quarterly reports for the infrastructure committee",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-24 06:17",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-13",
+                                  "name": "Quarterly reports for the infrastructure committee",
+                                  "position": 9,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "notes.md",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "71.3 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Markdown document",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-17 00:07",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-9",
+                                  "name": "notes.md",
+                                  "position": 10,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "budget.ods",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "79.2 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Spreadsheet",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-09 06:14",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-10",
+                                  "name": "budget.ods",
+                                  "position": 11,
+                                  "role": "row",
+                                  "states": [
+                                    "selected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "holiday.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "87.1 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-07 15:12",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-11",
+                                  "name": "holiday.jpg",
+                                  "position": 12,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "README",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "95.0 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Other",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-27 20:19",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-12",
+                                  "name": "README",
+                                  "position": 13,
+                                  "role": "row"
+                                }
+                              ],
+                              "key": "rows",
+                              "role": "group",
+                              "setSize": 13
+                            }
+                          ],
+                          "key": "viewport",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "status",
+                          "name": "",
+                          "role": "label",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c22-list",
+                      "name": "Home",
+                      "role": "grid",
+                      "states": [
+                        "focused"
+                      ]
+                    }
+                  ],
+                  "key": "c22-list-scroll",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c22-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

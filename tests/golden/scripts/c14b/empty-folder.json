@@ -1,0 +1,237 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "name": "Documents",
+                      "role": "label"
+                    },
+                    {
+                      "name": "harbour.png",
+                      "role": "label"
+                    },
+                    {
+                      "name": "notes.md",
+                      "role": "label"
+                    },
+                    {
+                      "name": "project.zip",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "project.zip",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "1.4 MB · Today 08:30 · ZIP archive",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c14b-archive-up",
+                                      "name": "Go up one level",
+                                      "role": "button"
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c14b-archive-crumb-0",
+                                      "name": "Contents",
+                                      "role": "button"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c14b-archive-crumb-current",
+                                      "name": "empty",
+                                      "role": "label"
+                                    }
+                                  ],
+                                  "key": "c14b-archive-crumbs",
+                                  "role": "group"
+                                }
+                              ],
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "key": "c14b-archive-count",
+                              "name": "Empty folder",
+                              "role": "label"
+                            },
+                            {
+                              "actions": [
+                                "focus",
+                                "context-menu"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-up",
+                                    "scroll-down",
+                                    "set-scroll-offset"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "rows",
+                                      "role": "group",
+                                      "setSize": 0
+                                    }
+                                  ],
+                                  "key": "viewport",
+                                  "role": "scroll-view",
+                                  "states": [
+                                    "clips"
+                                  ]
+                                },
+                                {
+                                  "key": "c14b-archive-empty",
+                                  "name": "This folder is empty",
+                                  "role": "label"
+                                },
+                                {
+                                  "key": "status",
+                                  "name": "",
+                                  "role": "label",
+                                  "states": [
+                                    "live-polite"
+                                  ]
+                                }
+                              ],
+                              "key": "c14b-archive",
+                              "name": "Archive contents",
+                              "role": "list-box",
+                              "states": [
+                                "focused"
+                              ]
+                            }
+                          ],
+                          "key": "c14b-archive-preview",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

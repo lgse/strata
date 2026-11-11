@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Each ancestor crumb is a button that opens that folder."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-log",
+      "name": "Open ~"
+    },
+    {
+      "key": "c6-loc-item-0",
+      "name": "~"
+    },
+    {
+      "key": "c6-loc-item-1",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: In Rendered view, a document holding only tables shows no find button"
+  ],
+  "scene": "c11-table-only-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "doc-u0/r1c0"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "f",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find",
+      "absent": true
+    },
+    {
+      "key": "preview-find-bar",
+      "absent": true
+    }
+  ]
+}

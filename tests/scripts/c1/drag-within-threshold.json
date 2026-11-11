@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Pressing a row and moving less than GTK's drag threshold starts no file drag."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "down",
+      "x": 45,
+      "y": 157
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "x": 51,
+      "y": 162
+    },
+    {
+      "t": 0.4,
+      "type": "up",
+      "x": 51,
+      "y": 162
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-intent",
+      "name": "Clicked budget.ods"
+    }
+  ]
+}

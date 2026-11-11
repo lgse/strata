@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "settings/themes: Changes to the file less than 75 ms apart trigger one reload, 75 ms after the last (a read that finds the file unchanged changes nothing: K4's host rule)"
+  ],
+  "scene": "x1-shell-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "t"
+    }
+  ],
+  "expect": [
+    {
+      "key": "x1-reloads",
+      "name": "Overrides reloaded 0 times"
+    },
+    {
+      "key": "x1-overrides",
+      "name": "Overrides: applied · bar inset 3 pt"
+    }
+  ]
+}

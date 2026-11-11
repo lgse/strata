@@ -1,0 +1,81 @@
+{
+  "bullets": [
+    "browser/selection: Deleting the last visible entry clears focus and selection."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 1.1,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "Delete"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "absent": true
+    },
+    {
+      "key": "row-10",
+      "absent": true
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: "
+    },
+    {
+      "key": "c1-title",
+      "name": "Documents · 0 items"
+    }
+  ]
+}

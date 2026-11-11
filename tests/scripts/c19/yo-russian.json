@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In 10xer mode with Russian active and a text field focused",
+    "app/shortcut-reference: In 10xer mode, Russian ё reads as `~` only through the layout fallback"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-location"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Ё",
+      "shift": true,
+      "code": "shift+backquote",
+      "base": "ё"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Ё",
+      "shift": true,
+      "code": "shift+backquote",
+      "base": "ё"
+    },
+    {
+      "t": 1.1,
+      "type": "key",
+      "name": "Ё",
+      "shift": true,
+      "code": "shift+backquote",
+      "base": "ё"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "value": "Ё",
+      "focused": true
+    }
+  ]
+}

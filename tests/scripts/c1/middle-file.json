@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/selection: Middle-clicking a file row selects the file in its parent folder and opens nothing."
+  ],
+  "scene": "c1-selection-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-7",
+      "button": "middle"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-7",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-intent",
+      "name": ""
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: holiday.jpg"
+    }
+  ]
+}

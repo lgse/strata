@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "browser/search/filter/enter-target: Moving focus from the field to a result or elsewhere removes the outline."
+  ],
+  "scene": "c18-filter-target-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-10",
+      "t": 0.2
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.5
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-outlined",
+      "name": "Outlined: none"
+    },
+    {
+      "key": "c18-pane",
+      "focused": true
+    }
+  ]
+}

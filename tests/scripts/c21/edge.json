@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/context-menu: In a small window, right-clicking an entry near the bottom edge opens the menu at the click."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "x": 900,
+      "y": 610,
+      "button": "secondary"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-status",
+      "name": "Chose delete on scan-18.pdf"
+    }
+  ]
+}

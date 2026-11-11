@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "operations/trash/animation: Restoring while viewing Trash lifts the icons off their rows"
+  ],
+  "scene": "c23-rest-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "row-5"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c23-release"
+    },
+    {
+      "t": 1.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-5",
+      "absent": true
+    },
+    {
+      "key": "c23-flyer-1-0",
+      "absent": true
+    }
+  ]
+}

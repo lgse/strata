@@ -1,0 +1,20 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Copying or cutting files shows a \"Files on clipboard\" badge"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-copy"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-clipboard",
+      "role": "status",
+      "name": "Files on clipboard"
+    }
+  ]
+}

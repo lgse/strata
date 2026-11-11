@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/video: Hovering or dragging the timeline shows a bubble with the nearest storyboard cell, the pointer's time, and that time's chapter title."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-bubble-time",
+      "name": "1:40 · The harbour"
+    },
+    {
+      "key": "media-elapsed",
+      "name": "1:40"
+    }
+  ]
+}

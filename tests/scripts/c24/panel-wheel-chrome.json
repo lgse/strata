@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/scrolling: The tick that closes a panel also scrolls the listing under the pointer, and no other; over the sidebar or chrome it only closes the panel."
+  ],
+  "scene": "c24-panel-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "wheel",
+      "key": "c24-sidebar",
+      "dx": 0,
+      "dy": -400,
+      "precise": false
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 90,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-panel",
+      "absent": true
+    },
+    {
+      "key": "row-1"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "bullets": [
+    "integration/10xer-mode/search: `f` opens a `filter:` prompt that hides non-matching items of the current folder as you type.",
+    "integration/10xer-mode/search: Enter commits the filter and focuses the first result without opening it"
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "f",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "rep",
+      "every": 0.01,
+      "t": 0.41
+    },
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 0.64
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.94
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "absent": true
+    },
+    {
+      "key": "row-4",
+      "absent": true
+    },
+    {
+      "key": "row-11"
+    },
+    {
+      "key": "c18-log",
+      "name": "Filter “rep”"
+    },
+    {
+      "key": "c18-pane",
+      "focused": true
+    }
+  ]
+}

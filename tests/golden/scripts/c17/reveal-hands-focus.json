@@ -1,0 +1,85 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "name": "demo",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c17-search",
+                      "name": "Search (Ctrl+K)",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "c17-header",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "name": "Documents",
+                      "role": "label"
+                    },
+                    {
+                      "name": "Downloads",
+                      "role": "label"
+                    },
+                    {
+                      "name": "Music",
+                      "role": "label"
+                    },
+                    {
+                      "name": "Pictures",
+                      "role": "label"
+                    },
+                    {
+                      "name": "Projects",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c17-files",
+                  "name": "Files",
+                  "role": "list",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "key": "c17-log",
+                  "name": "Revealed /home/demo/Documents/Notes in its folder",
+                  "role": "label"
+                }
+              ],
+              "key": "c17-window",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    },
+    {
+      "name": "Search (Ctrl+K)",
+      "role": "tooltip"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

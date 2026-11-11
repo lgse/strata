@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "browser/scrolling: Ctrl+Up and Ctrl+Down select the first or last entry of the focused pane or column and scroll to that edge."
+  ],
+  "scene": "c1-photos-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-10004"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down",
+      "ctrl": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Up",
+      "ctrl": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-10000",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: IMG_0001.jpg"
+    }
+  ]
+}

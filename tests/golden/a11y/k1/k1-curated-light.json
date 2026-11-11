@@ -1,0 +1,1731 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "key": "k1-theme-name",
+                      "name": "Omarchy Light",
+                      "role": "label"
+                    },
+                    {
+                      "name": "Bundled · light",
+                      "role": "label"
+                    },
+                    {
+                      "name": "background #edf2f6",
+                      "role": "label"
+                    },
+                    {
+                      "name": "surface #f8fafc",
+                      "role": "label"
+                    },
+                    {
+                      "name": "text #1f2d38",
+                      "role": "label"
+                    },
+                    {
+                      "name": "accent #007f9d",
+                      "role": "label"
+                    },
+                    {
+                      "name": "danger #e5484d",
+                      "role": "label"
+                    },
+                    {
+                      "name": "muted #d8e2e8",
+                      "role": "label"
+                    },
+                    {
+                      "name": "highlight #b9e1e9",
+                      "role": "label"
+                    },
+                    {
+                      "name": "border #526b7a",
+                      "role": "label"
+                    },
+                    {
+                      "name": "dim_text #526674",
+                      "role": "label"
+                    },
+                    {
+                      "name": "syntax_keyword #7544a0",
+                      "role": "label"
+                    },
+                    {
+                      "name": "syntax_string #287344",
+                      "role": "label"
+                    },
+                    {
+                      "name": "syntax_constant #a44f22",
+                      "role": "label"
+                    },
+                    {
+                      "name": "syntax_type #006b82",
+                      "role": "label"
+                    },
+                    {
+                      "name": "syntax_preprocessor #806000",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k1-colours",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "input",
+                          "name": "Search themes",
+                          "placeholder": "Search themes",
+                          "role": "text-input",
+                          "value": ""
+                        }
+                      ],
+                      "key": "value",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "k1-search",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-neutral",
+                      "name": "Neutral",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-0x96f",
+                      "name": "0x96f",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-3024",
+                      "name": "3024",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-cave",
+                      "name": "Atelier Cave",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-cave-light",
+                      "name": "Atelier Cave Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-dune",
+                      "name": "Atelier Dune",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-dune-light",
+                      "name": "Atelier Dune Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-forest",
+                      "name": "Atelier Forest",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-forest-light",
+                      "name": "Atelier Forest Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-heath",
+                      "name": "Atelier Heath",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-heath-light",
+                      "name": "Atelier Heath Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-lakeside",
+                      "name": "Atelier Lakeside",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-lakeside-light",
+                      "name": "Atelier Lakeside Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-seaside",
+                      "name": "Atelier Seaside",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-atelier-seaside-light",
+                      "name": "Atelier Seaside Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-ayu-dark",
+                      "name": "Ayu Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-ayu-light",
+                      "name": "Ayu Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-ayu-mirage",
+                      "name": "Ayu Mirage",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-azure-glow",
+                      "name": "Azure Glow",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-bright",
+                      "name": "Bright",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-catppuccin",
+                      "name": "Catppuccin",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-catppuccin-frappe",
+                      "name": "Catppuccin Frappe",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-catppuccin-latte",
+                      "name": "Catppuccin Latte",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-catppuccin-macchiato",
+                      "name": "Catppuccin Macchiato",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-catppuccin-mocha",
+                      "name": "Catppuccin Mocha",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-chalk",
+                      "name": "Chalk",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-classic-dark",
+                      "name": "Classic Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-classic-light",
+                      "name": "Classic Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-cupertino",
+                      "name": "Cupertino",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-darcula",
+                      "name": "Darcula",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-decaf",
+                      "name": "Decaf",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-dracula",
+                      "name": "Dracula",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-eighties",
+                      "name": "Eighties",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-embers",
+                      "name": "Embers",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-espresso",
+                      "name": "Espresso",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-everforest",
+                      "name": "Everforest",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-everforest-dark-hard",
+                      "name": "Everforest Dark Hard",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-everforest-dark-soft",
+                      "name": "Everforest Dark Soft",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-everforest-light-hard",
+                      "name": "Everforest Light (Hard)",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-everforest-light-medium",
+                      "name": "Everforest Light (Soft)",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-flexoki-dark",
+                      "name": "Flexoki Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-flexoki-light",
+                      "name": "Flexoki Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-github",
+                      "name": "Github",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-github-dark",
+                      "name": "Github Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-github-dark-dimmed",
+                      "name": "Github Dark Dimmed",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-github-dark-high-contrast",
+                      "name": "Github Dark High Contrast",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-github-light-high-contrast",
+                      "name": "Github Light High Contrast",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-google-dark",
+                      "name": "Google Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-google-light",
+                      "name": "Google Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-gotham",
+                      "name": "Gotham",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-grayscale-dark",
+                      "name": "Grayscale Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-grayscale-light",
+                      "name": "Grayscale Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-greenscreen",
+                      "name": "Green Screen",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-gruvbox-dark-hard",
+                      "name": "Gruvbox Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-gruvbox-light-hard",
+                      "name": "Gruvbox Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-gruvbox-material-dark-medium",
+                      "name": "Gruvbox Material Dark, Medium",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-gruvbox-material-light-medium",
+                      "name": "Gruvbox Material Light, Medium",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-horizon-dark",
+                      "name": "Horizon Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-horizon-light",
+                      "name": "Horizon Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-irblack",
+                      "name": "IR Black",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-kanagawa",
+                      "name": "Kanagawa",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-kanagawa-dragon",
+                      "name": "Kanagawa Dragon",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-material-darker",
+                      "name": "Material Darker",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-material-lighter",
+                      "name": "Material Lighter",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-material-palenight",
+                      "name": "Material Palenight",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-material-vivid",
+                      "name": "Material Vivid",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-monokai",
+                      "name": "Monokai",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-moonlight",
+                      "name": "Moonlight",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-neovim-dark",
+                      "name": "Neovim Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-neovim-light",
+                      "name": "Neovim Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-nord",
+                      "name": "Nord",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-nord-light",
+                      "name": "Nord Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-oceanicnext",
+                      "name": "OceanicNext",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-omarchy-light",
+                      "name": "Omarchy Light",
+                      "role": "button",
+                      "states": [
+                        "checked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-one-light",
+                      "name": "One Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-onedark-dark",
+                      "name": "OneDark Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-outrun-dark",
+                      "name": "Outrun Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-oxocarbon-dark",
+                      "name": "Oxocarbon Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-oxocarbon-light",
+                      "name": "Oxocarbon Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-papercolor-dark",
+                      "name": "PaperColor Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-papercolor-light",
+                      "name": "PaperColor Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-railscasts",
+                      "name": "Railscasts",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-rose-pine",
+                      "name": "Rosé Pine",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-rose-pine-dawn",
+                      "name": "Rosé Pine Dawn",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-rose-pine-moon",
+                      "name": "Rosé Pine Moon",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-snazzy",
+                      "name": "Snazzy",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-solarized-dark",
+                      "name": "Solarized Dark",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-solarized-light",
+                      "name": "Solarized Light",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-spacemacs",
+                      "name": "Spacemacs",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-tokyo-night",
+                      "name": "Tokyo Night",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-tokyo-night-moon",
+                      "name": "Tokyo Night Moon",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-tokyo-night-storm",
+                      "name": "Tokyo Night Storm",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-tomorrow",
+                      "name": "Tomorrow",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-tomorrow-night",
+                      "name": "Tomorrow Night",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-twilight",
+                      "name": "Twilight",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-pick-zenburn",
+                      "name": "Zenburn",
+                      "role": "button",
+                      "states": [
+                        "unchecked"
+                      ]
+                    }
+                  ],
+                  "key": "k1-theme-list",
+                  "name": "Themes",
+                  "role": "list",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "k1-roles",
+              "role": "group"
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Projects",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Projects",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Downloads",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "PINNED",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "Home",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "Documents (hover)",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "Trash",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "k1-sidebar",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "notes.md (selected)",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "2 KB",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "budget.ods (hover)",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "14 KB",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "photos (drop target)",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "—",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "todo.txt",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "1 KB",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "k1-files",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "k1-window",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Open",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Open With… (hover)",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Rename",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Move to Trash",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k1-menu",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Replace “notes.md”?",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "A file with this name already exists in Projects.",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-cancel",
+                      "name": "Cancel",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-submit",
+                      "name": "Keep both",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "key": "k1-danger",
+                      "name": "Replace",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "k1-glow",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "scroll-into-view"
+                          ],
+                          "key": "input",
+                          "name": "Location",
+                          "role": "text-input",
+                          "states": [
+                            "read-only"
+                          ],
+                          "value": "~/Projects"
+                        }
+                      ],
+                      "key": "value",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "k1-field",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k1-switch-on",
+                  "name": "Glow",
+                  "role": "switch",
+                  "states": [
+                    "checked"
+                  ]
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k1-switch-off",
+                  "name": "Thumbnails",
+                  "role": "switch",
+                  "states": [
+                    "unchecked"
+                  ]
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k1-check",
+                  "name": "Hidden files",
+                  "role": "check-box",
+                  "states": [
+                    "checked"
+                  ]
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Couldn't move 2 items",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k1-danger-role",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Showing 120 of 4,812 items",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k1-info-role",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "// Count the entries under a folder.\n#[derive(Debug)]\nstruct Tally { files: u64, bytes: u64 }\nfn tally(dir: &Path) -> io::Result<Tally> {\n    let t = Tally { files: 0, bytes: 0x400 };\n    println!(\"{t:?}\"); // a string, then a comment\n    Ok(t)\n}",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k1-code",
+                  "role": "group"
+                }
+              ],
+              "key": "k1-specimen",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            }
+          ],
+          "key": "k1",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

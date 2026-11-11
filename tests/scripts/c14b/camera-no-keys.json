@@ -1,0 +1,91 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: Only the two buttons change the view; no key binding does."
+  ],
+  "scene": "c14b-model-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-model-picture"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.35,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 0.45,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "PageUp"
+    },
+    {
+      "t": 0.55,
+      "type": "key",
+      "name": "PageDown"
+    },
+    {
+      "t": 0.6000000000000001,
+      "type": "key",
+      "name": "Home"
+    },
+    {
+      "t": 0.65,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "+"
+    },
+    {
+      "t": 0.75,
+      "type": "key",
+      "name": "-"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "0"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Right",
+      "ctrl": true
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Left",
+      "alt": true
+    },
+    {
+      "t": 1.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-camera",
+      "name": "Camera position"
+    }
+  ]
+}

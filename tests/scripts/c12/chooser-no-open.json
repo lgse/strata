@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel: Under that message, an **Open** button hands the PDF to the default application."
+  ],
+  "scene": "c12-chooser-locked-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "move",
+      "key": "pdf-message"
+    }
+  ],
+  "expect": [
+    {
+      "key": "pdf-message",
+      "name": "This PDF is password protected."
+    },
+    {
+      "key": "pdf-open",
+      "absent": true
+    }
+  ]
+}

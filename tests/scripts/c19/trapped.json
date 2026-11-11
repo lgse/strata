@@ -1,0 +1,107 @@
+{
+  "bullets": [
+    "app/shortcut-reference: While the reference is open, Delete, Ctrl+V, and other browsing shortcuts do nothing",
+    "app/shortcut-reference: Switching views with Ctrl+1, 2, or 3 replaces the navigation section"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "F1"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "v",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "1",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.1,
+      "type": "key",
+      "name": "l",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": "v",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.5,
+      "type": "key",
+      "name": "2",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.6,
+      "type": "key",
+      "name": "F5"
+    },
+    {
+      "t": 1.7,
+      "type": "key",
+      "name": "b",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.8,
+      "type": "key",
+      "name": "Delete"
+    },
+    {
+      "t": 1.9,
+      "type": "key",
+      "name": "3",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 2.1,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-log",
+      "name": "—"
+    },
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    },
+    {
+      "key": "c19-list",
+      "focused": true
+    }
+  ]
+}

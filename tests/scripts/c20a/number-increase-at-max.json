@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "browser/thumbnails/workers: At 16, clicking + leaves the count at 16"
+  ],
+  "scene": "c20a-max-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20a-workers-increase"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-workers",
+      "value": "16"
+    },
+    {
+      "key": "c20a-log",
+      "name": "—"
+    }
+  ]
+}

@@ -1,0 +1,256 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "c20d-emoji-field",
+                          "name": "Search",
+                          "placeholder": "Search",
+                          "role": "search-input",
+                          "states": [
+                            "focused"
+                          ],
+                          "value": "zzzz"
+                        },
+                        {
+                          "actions": [
+                            "click"
+                          ],
+                          "key": "c20d-emoji-clear",
+                          "name": "Clear search",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "c20d-emoji-frame",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus",
+                            "context-menu"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "rows",
+                                  "role": "group",
+                                  "setSize": 0
+                                }
+                              ],
+                              "key": "viewport",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "key": "c20d-emoji-empty",
+                              "name": "No results",
+                              "role": "label"
+                            },
+                            {
+                              "key": "status",
+                              "name": "",
+                              "role": "label",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20d-emoji-grid",
+                          "name": "Search results",
+                          "role": "grid"
+                        }
+                      ],
+                      "key": "c20d-emoji-panel",
+                      "name": "Search results",
+                      "role": "tab-panel"
+                    },
+                    {
+                      "key": "c20d-emoji-name",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-smileys",
+                          "name": "Smileys & Emotion",
+                          "position": 1,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-people",
+                          "name": "People & Body",
+                          "position": 2,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-nature",
+                          "name": "Animals & Nature",
+                          "position": 3,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-food",
+                          "name": "Food & Drink",
+                          "position": 4,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-travel",
+                          "name": "Travel & Places",
+                          "position": 5,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-activities",
+                          "name": "Activities",
+                          "position": 6,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-objects",
+                          "name": "Objects",
+                          "position": 7,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-symbols",
+                          "name": "Symbols",
+                          "position": 8,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-flags",
+                          "name": "Flags",
+                          "position": 9,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-emoji-tabs",
+                      "name": "Categories",
+                      "role": "tab-list",
+                      "setSize": 9
+                    },
+                    {
+                      "key": "c20d-emoji-status",
+                      "name": "No results",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "body",
+                  "role": "group"
+                }
+              ],
+              "key": "c20d-emoji-popover-content",
+              "name": "Choose an emoji",
+              "role": "dialog"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

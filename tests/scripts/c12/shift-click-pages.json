@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: Shift+click extends the selection, across pages."
+  ],
+  "scene": "c12-landscape-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.4,
+      "hold": "shift"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "pdf-z2-p1/page"
+    },
+    {
+      "t": 0.6,
+      "hold": ""
+    }
+  ]
+}

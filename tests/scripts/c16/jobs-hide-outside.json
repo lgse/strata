@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "operations/progress/jobs: Minimize, Escape, or a click outside hides the dashboard"
+  ],
+  "scene": "c16-jobs-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "x": 100,
+      "y": 300
+    },
+    {
+      "t": 0.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-jobs-list",
+      "absent": true
+    },
+    {
+      "key": "c16-jobs",
+      "name": "1 job running · 1 queued",
+      "states": [
+        "collapsed"
+      ]
+    },
+    {
+      "key": "c16-jobs-row-4-status",
+      "absent": true
+    },
+    {
+      "key": "c16-heard",
+      "name": " · probes 0"
+    }
+  ]
+}

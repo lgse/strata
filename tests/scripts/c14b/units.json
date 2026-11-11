@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "preview/preview-panel/routes: Distances show in kilometres and heights in metres by default. With Settings → General → Units on Imperial, they show in miles and feet.",
+    "preview/preview-panel/routes: Changing Units updates open route previews in every window, including the chooser, without resetting playback."
+  ],
+  "scene": "c14b-route-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-route-play"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "u"
+    },
+    {
+      "t": 1.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-route-play",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c14b-route-total",
+      "name": "7.5 mi"
+    },
+    {
+      "key": "c14b-route-distance",
+      "name": "7.5 mi"
+    },
+    {
+      "key": "c14b-route-range",
+      "name": "33–98 ft"
+    }
+  ]
+}

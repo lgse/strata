@@ -1,0 +1,8 @@
+# fixture
+[Icon Theme]
+Name=DepthA
+Inherits=DepthB,DepthC
+Directories=48x48/apps
+
+[48x48/apps]
+Size=48

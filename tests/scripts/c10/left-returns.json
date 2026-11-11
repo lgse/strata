@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: In the default key map, plain Left in a document returns focus to the listing."
+  ],
+  "scene": "c10-rust-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "code-l2/t"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Left"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c10-last-intent",
+      "name": "Leave"
+    },
+    {
+      "key": "files",
+      "focused": true
+    }
+  ]
+}

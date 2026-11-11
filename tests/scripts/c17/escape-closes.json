@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "browser/search: Escape, or a click outside the dialog panel, closes search.",
+    "browser/search: Closing search with Escape, Ctrl+K, or a click outside the panel returns focus to its opener"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c17-files"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "no"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-dialog",
+      "absent": true
+    },
+    {
+      "key": "c17-files",
+      "focused": true
+    },
+    {
+      "key": "c17-log",
+      "name": "Closed (Escape)"
+    }
+  ]
+}

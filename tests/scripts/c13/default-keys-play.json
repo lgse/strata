@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "preview/preview-panel/media: In the default key map, Ctrl+Alt+Space plays or pauses, Ctrl+Alt+Left/Right seek 5 s, Ctrl+Alt+Up/Down change volume by 10%, and Ctrl+Alt+M mutes."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": " ",
+      "cmd": true,
+      "alt": true
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": " ",
+      "cmd": true,
+      "alt": true
+    },
+    {
+      "t": 1.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c13-status",
+      "name": "Paused"
+    },
+    {
+      "key": "media-timeline",
+      "value": "0:01 of 3:20"
+    }
+  ]
+}

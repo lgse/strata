@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: After smooth scrolling, a click, drag selection, or link hover acts on the row under the pointer.",
+    "preview/preview-panel/documents: Clicking an `http` or `https` link opens it externally"
+  ],
+  "scene": "c11-long-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "doc-u0/t"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "End",
+      "ctrl": true
+    },
+    {
+      "t": 1.2,
+      "type": "tap",
+      "key": "link-0"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c11-last-intent",
+      "name": "Open https://example.org/strata"
+    }
+  ]
+}

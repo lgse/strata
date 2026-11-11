@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Hovering or selecting a folder row, or a folder on the open path, shows \"No items\" or \"N items\"",
+    "browser/view-modes/columns: Files show their size",
+    "browser/view-modes/columns: A row with no size or count to show"
+  ],
+  "scene": "c2-home-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1000001/label"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "row-2000004/label"
+    },
+    {
+      "t": 1.4,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-path",
+      "name": "Home / Documents"
+    },
+    {
+      "key": "row-1000001",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-2000004",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

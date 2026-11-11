@@ -1,0 +1,61 @@
+{
+  "bullets": [
+    "app/dialogs: Changing a field's limit or unit trims"
+  ],
+  "scene": "c15-form-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": " "
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "ÉTÉ-2026ab"
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 1.5,
+      "type": "key",
+      "name": " "
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-form-chars",
+      "states": [
+        "unchecked"
+      ]
+    },
+    {
+      "key": "c15-form-label-left",
+      "name": "0 chars remaining"
+    }
+  ]
+}

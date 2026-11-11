@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/scrolling: A page is the number of rows that fit the viewport minus one, kept as overlap; in Icons it is those rows times the tiles per row.",
+    "browser/selection: In List, Icons, and Columns, plain Home, End, Page Up, and Page Down move the range anchor to the new cursor. Shift+Home after End selects every entry."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-2/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageDown"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "PageUp"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-2",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c3-columns",
+      "name": "8 a row"
+    }
+  ]
+}

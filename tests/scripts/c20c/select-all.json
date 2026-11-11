@@ -1,0 +1,87 @@
+{
+  "bullets": [
+    "settings/preferences: In Search settings, Search themes, and Search templates, Ctrl+A selects the query on any keyboard layout. Ctrl+Shift+A, Ctrl+Alt+A, and Ctrl+Super+A do not"
+  ],
+  "scene": "c20c-settings-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20c-search-field"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "zzz"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "a",
+      "cmd": true,
+      "ctrl": true
+    },
+    {
+      "t": 0.6,
+      "type": "type",
+      "text": "license"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "a",
+      "cmd": true,
+      "ctrl": true,
+      "code": "a",
+      "base": "ф"
+    },
+    {
+      "t": 1.0,
+      "type": "type",
+      "text": "unit"
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "a",
+      "cmd": true,
+      "ctrl": true,
+      "shift": true
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "a",
+      "cmd": true,
+      "ctrl": true,
+      "alt": true
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": "a",
+      "cmd": true,
+      "ctrl": true,
+      "logo": true
+    },
+    {
+      "t": 1.5,
+      "type": "type",
+      "text": "s"
+    },
+    {
+      "t": 2.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20c-search-field",
+      "value": "units"
+    },
+    {
+      "key": "c20c-search-row-units"
+    }
+  ]
+}

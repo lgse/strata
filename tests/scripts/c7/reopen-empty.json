@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/tabs: With no closed tab recorded"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "t",
+      "cmd": true,
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "Nothing to reopen"
+    },
+    {
+      "key": "t-c7-3",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "t-c7-7",
+      "absent": true
+    }
+  ]
+}

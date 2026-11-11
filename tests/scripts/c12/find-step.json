@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Enter and **Next match** move to the next match, Shift+Enter and **Previous match** to the previous one, wrapping at either end."
+  ],
+  "scene": "c12-searchable-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "of the strata"
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 1.5,
+      "type": "key",
+      "name": "Enter",
+      "shift": true
+    },
+    {
+      "t": 1.6,
+      "type": "key",
+      "name": "Enter",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "Match 12 of 12"
+    },
+    {
+      "key": "c12-selection",
+      "name": "of the Strata"
+    },
+    {
+      "key": "pdf",
+      "value": "Page 12 of 12, 100%"
+    }
+  ]
+}

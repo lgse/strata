@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "operations/rename: Tab with an invalid name keeps the original name and still moves the editor to the next item."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "a//b"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Tab"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Kept Notes.md (invalid, Tab)"
+    },
+    {
+      "key": "rename-field",
+      "value": "archive.tar.gz",
+      "focused": true
+    }
+  ]
+}

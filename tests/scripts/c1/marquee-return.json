@@ -1,0 +1,81 @@
+{
+  "bullets": [
+    "browser/selection/marquee: Holding the pointer near a viewport edge scrolls the listing and extends the selection each frame.",
+    "browser/selection/marquee: A plain marquee replaces the selection with the entries under the band."
+  ],
+  "scene": "c1-hundred-k-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "down",
+      "x": 800,
+      "y": 105
+    },
+    {
+      "t": 0.55,
+      "type": "move",
+      "x": 800,
+      "y": 200
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 800,
+      "y": 400
+    },
+    {
+      "t": 0.65,
+      "type": "move",
+      "x": 800,
+      "y": 634
+    },
+    {
+      "t": 3.65,
+      "type": "move",
+      "x": 800,
+      "y": 400
+    },
+    {
+      "t": 3.7,
+      "type": "move",
+      "x": 800,
+      "y": 200
+    },
+    {
+      "t": 3.75,
+      "type": "move",
+      "x": 800,
+      "y": 42
+    },
+    {
+      "t": 8.0,
+      "type": "move",
+      "x": 800,
+      "y": 53
+    },
+    {
+      "t": 8.2,
+      "type": "up",
+      "x": 800,
+      "y": 53
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1000000",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-1000002",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "status",
+      "name": "3 items selected"
+    }
+  ]
+}

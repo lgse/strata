@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "devices/volumes/release: Until the release finishes, the row stays in Devices, insensitive"
+  ],
+  "scene": "c8-devices-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-device-sandisk-eject"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "Eject sandisk"
+    },
+    {
+      "key": "places-device-sandisk",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "places-device-sandisk-eject",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/video: The timeline is the audio waveform slider, with chapter starts as ticks."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-timeline",
+      "role": "slider",
+      "name": "Playback position",
+      "value": "0:00 of 3:20"
+    }
+  ]
+}

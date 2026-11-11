@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "operations/progress/jobs: The dashboard lists at most 12 jobs"
+  ],
+  "scene": "c16-jobs-many-light",
+  "events": [
+    {
+      "t": 0.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-jobs-note",
+      "name": "3 older jobs are hidden"
+    },
+    {
+      "key": "c16-jobs-row-12",
+      "role": "group"
+    },
+    {
+      "key": "c16-jobs-row-13",
+      "absent": true
+    }
+  ]
+}

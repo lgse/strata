@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/search/filter: Down from the field focuses a result; in Icons and List, the outlined top result",
+    "browser/view-modes/columns: Down from a column's filter field selects the outlined top result and makes it the pick."
+  ],
+  "scene": "c18-filter-target-light",
+  "events": [
+    {
+      "type": "key",
+      "name": "Down",
+      "t": 0.2
+    },
+    {
+      "type": "key",
+      "name": "Up",
+      "t": 0.4
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.7
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-filter-field",
+      "value": "rep",
+      "focused": true
+    },
+    {
+      "key": "row-3",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c18-outlined",
+      "name": "Outlined: none"
+    }
+  ]
+}

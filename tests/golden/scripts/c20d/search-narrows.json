@@ -1,0 +1,492 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "c20d-emoji-field",
+                          "name": "Search",
+                          "placeholder": "Search",
+                          "role": "search-input",
+                          "states": [
+                            "focused"
+                          ],
+                          "value": "cat"
+                        },
+                        {
+                          "actions": [
+                            "click"
+                          ],
+                          "key": "c20d-emoji-clear",
+                          "name": "Clear search",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "c20d-emoji-frame",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus",
+                            "context-menu"
+                          ],
+                          "activeDescendant": "row-100117",
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100117",
+                                          "name": "grinning cat",
+                                          "position": 1,
+                                          "role": "grid-cell",
+                                          "states": [
+                                            "selected"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100118",
+                                          "name": "grinning cat with smiling eyes",
+                                          "position": 2,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100119",
+                                          "name": "cat with tears of joy",
+                                          "position": 3,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100120",
+                                          "name": "smiling cat with heart-eyes",
+                                          "position": 4,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100121",
+                                          "name": "cat with wry smile",
+                                          "position": 5,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100122",
+                                          "name": "kissing cat",
+                                          "position": 6,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100117",
+                                      "name": "grinning cat grinning cat with smiling eyes cat with tears of joy smiling cat with heart-eyes cat with wry smile kissing cat",
+                                      "position": 1,
+                                      "role": "row",
+                                      "setSize": 20
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100123",
+                                          "name": "weary cat",
+                                          "position": 7,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100124",
+                                          "name": "crying cat",
+                                          "position": 8,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100125",
+                                          "name": "pouting cat",
+                                          "position": 9,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100176",
+                                          "name": "palm up hand",
+                                          "position": 10,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100495",
+                                          "name": "person playing handball",
+                                          "position": 11,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100496",
+                                          "name": "man playing handball",
+                                          "position": 12,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100123",
+                                      "name": "weary cat crying cat pouting cat palm up hand person playing handball man playing handball",
+                                      "position": 2,
+                                      "role": "row",
+                                      "setSize": 20
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100497",
+                                          "name": "woman playing handball",
+                                          "position": 13,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100565",
+                                          "name": "cat face",
+                                          "position": 14,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100566",
+                                          "name": "cat",
+                                          "position": 15,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100567",
+                                          "name": "black cat",
+                                          "position": 16,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100569",
+                                          "name": "tiger face",
+                                          "position": 17,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100570",
+                                          "name": "tiger",
+                                          "position": 18,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100497",
+                                      "name": "woman playing handball cat face cat black cat tiger face tiger",
+                                      "position": 3,
+                                      "role": "row",
+                                      "setSize": 20
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-100571",
+                                          "name": "leopard",
+                                          "position": 19,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-101354",
+                                          "name": "hook",
+                                          "position": 20,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-100571",
+                                      "name": "leopard hook",
+                                      "position": 4,
+                                      "role": "row",
+                                      "setSize": 20
+                                    }
+                                  ],
+                                  "key": "rows",
+                                  "role": "group",
+                                  "setSize": 4
+                                }
+                              ],
+                              "key": "viewport",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "key": "status",
+                              "name": "",
+                              "role": "label",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20d-emoji-grid",
+                          "name": "Search results",
+                          "role": "grid"
+                        }
+                      ],
+                      "key": "c20d-emoji-panel",
+                      "name": "Search results",
+                      "role": "tab-panel"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "c20d-emoji-name-text",
+                          "name": "grinning cat",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c20d-emoji-name",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-smileys",
+                          "name": "Smileys & Emotion",
+                          "position": 1,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-people",
+                          "name": "People & Body",
+                          "position": 2,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-nature",
+                          "name": "Animals & Nature",
+                          "position": 3,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-food",
+                          "name": "Food & Drink",
+                          "position": 4,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-travel",
+                          "name": "Travel & Places",
+                          "position": 5,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-activities",
+                          "name": "Activities",
+                          "position": 6,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-objects",
+                          "name": "Objects",
+                          "position": 7,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-symbols",
+                          "name": "Symbols",
+                          "position": 8,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-emoji-tab-flags",
+                          "name": "Flags",
+                          "position": 9,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-emoji-tabs",
+                      "name": "Categories",
+                      "role": "tab-list",
+                      "setSize": 9
+                    },
+                    {
+                      "key": "c20d-emoji-status",
+                      "name": "20 results",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "body",
+                  "role": "group"
+                }
+              ],
+              "key": "c20d-emoji-popover-content",
+              "name": "Choose an emoji",
+              "role": "dialog"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

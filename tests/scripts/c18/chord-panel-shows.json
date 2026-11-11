@@ -1,0 +1,47 @@
+{
+  "bullets": [
+    "integration/10xer-mode: Arming a chord (`g`, `c`, `,`, `;`, or `t`) shows its pill",
+    "integration/10xer-mode: The panel never takes focus, so the next key still completes the chord."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-5",
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "g",
+      "every": 0.01,
+      "t": 0.35
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.66
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-chord-pill",
+      "name": "g-"
+    },
+    {
+      "key": "c18-chord-panel",
+      "name": "Keys after g"
+    },
+    {
+      "key": "c18-chord-option-0",
+      "name": "g: First item"
+    },
+    {
+      "key": "c18-chord-option-14",
+      "name": "Space: Type a path"
+    },
+    {
+      "key": "c18-pane",
+      "focused": true
+    }
+  ]
+}

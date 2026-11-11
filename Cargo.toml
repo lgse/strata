@@ -1,10 +1,18 @@
-# One workspace for the GTK app and the crates extracted from it. The root package stays
-# the GTK app; extracted crates join under crates/.
+# One workspace for the GTK app, the crates extracted from it and the Rune side. The root
+# package stays the GTK app; every other crate joins under crates/ (docs/workspace.md).
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = [
+    "crates/*",
+    # The peer process of strata-platform's compositor tests: test tooling, never published.
+    "crates/strata-platform/tests/support/strata-test-peer",
+]
 
 [workspace.package]
+# The Rune-side crates inherit these two. The shared crates and the application set their own
+# version.
+version = "0.0.1"
+rust-version = "1.99.1"
 edition = "2024"
 authors = ["LGSE Ltd."]
 license = "MIT"
@@ -70,6 +78,38 @@ strata-fs = { version = "0.0.0", path = "crates/strata-fs", default-features = f
 strata-preview = { version = "0.0.0", path = "crates/strata-preview", default-features = false }
 strata-qa = { version = "0.0.0", path = "crates/strata-qa" }
 strata-test-support = { version = "0.0.0", path = "crates/strata-test-support" }
+
+# The Rune side. The GTK application depends on none of it, and deny.toml keeps it so.
+# Rune is pre-release and not on crates.io. Every Rune crate pins the same `dev` rev; move
+# them together, on purpose (docs/rune/plan.md §0).
+# Rune's defaults minus the macOS-only `metal-backend` and `ogg-audio` (MPL-2.0 decoders).
+rune = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "2a44156b21d63b0342a366b26d9222a6edd4622c", default-features = false, features = ["accessibility", "dbus", "embedded-fonts", "svg"] }
+rune-kit = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "2a44156b21d63b0342a366b26d9222a6edd4622c" }
+
+strata-components = { version = "0.0.1", path = "crates/strata-components" }
+strata-kit = { version = "0.0.1", path = "crates/strata-kit" }
+strata-platform = { version = "0.0.1", path = "crates/strata-platform" }
+# Test-only and never published; cargo-deny's `wildcards` ban needs its version.
+strata-test-peer = { version = "0.0.1", path = "crates/strata-platform/tests/support/strata-test-peer" }
+
+# Third-party crates only the Rune side uses. zbus and x11rb are a major behind or ahead of
+# the application's own: Rune's `dbus` feature builds zbus 6 on tokio.
+futures-util = { version = "0.3", default-features = false }
+png = "0.18"
+swash = "0.2.10"
+syntect = { version = "5.3.0", default-features = false }
+tokio = { version = "1", default-features = false }
+two-face = { version = "0.5.2", default-features = false, features = ["syntect-onig"] }
+unicode-segmentation = "1.13"
+unicode-width = "0.2"
+wayland-backend = "0.3"
+wayland-client = "0.31"
+wayland-protocols = "0.32"
+wayland-protocols-misc = "0.3"
+wayland-protocols-wlr = "0.3"
+x11rb = "0.13"
+xkbcommon = "0.9"
+zbus = { version = "6", default-features = false }
 
 [package]
 name = "strata"
@@ -176,6 +216,16 @@ glib-build-tools.workspace = true
 lto = true
 codegen-units = 1
 
+# The Rune side's perf tests (`cargo test --profile perf … -- --ignored`), as Rune's own
+# workspace sets it.
+[profile.perf]
+inherits = "release"
+opt-level = 3
+codegen-units = 16
+lto = false
+debug = false
+incremental = false
+
 [workspace.lints.rust]
 unsafe_code = "deny"
 unsafe_op_in_unsafe_fn = "deny"
@@ -185,6 +235,8 @@ unused_unsafe = "deny"
 [workspace.lints.clippy]
 allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
 dbg_macro = "deny"
 missing_safety_doc = "deny"
 multiple_unsafe_ops_per_block = "deny"

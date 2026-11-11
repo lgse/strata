@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "operations/rename: A name whose only `.` is its first character, such as `.bashrc`, opens fully selected."
+  ],
+  "scene": "c5-dotfile-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "profile"
+    },
+    {
+      "t": 0.75,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Renamed .bashrc to profile (Enter)"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/scrolling: Middle-clicking an entry row starts no autoscroll; the row's open-in-new-tab or reveal action runs instead."
+  ],
+  "scene": "c4-grouped-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "row-500000",
+      "button": "middle"
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 480,
+      "y": 400
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-intent",
+      "name": "Opened Folder 0001 in a new tab"
+    },
+    {
+      "key": "autoscroll-shield",
+      "absent": true
+    }
+  ]
+}

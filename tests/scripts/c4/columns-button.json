@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: A List pane header has a Columns menu button with the tooltip \"Columns\".",
+    "browser/view-modes: The List view's Columns menu button is named \"Columns\"."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c4-list-columns-button"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-list-columns-button",
+      "role": "button",
+      "name": "Columns",
+      "states": [
+        "collapsed"
+      ]
+    },
+    {
+      "key": "c4-list-columns-menu-item1",
+      "absent": true
+    }
+  ]
+}

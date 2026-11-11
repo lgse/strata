@@ -1,0 +1,47 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/audio: Hovering the waveform shows the target time in the elapsed label, and clicking or dragging seeks."
+  ],
+  "scene": "c13-audio-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Home"
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "key": "files"
+    },
+    {
+      "t": 0.7,
+      "type": "move",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-elapsed",
+      "name": "2:02"
+    },
+    {
+      "key": "media-timeline",
+      "value": "0:00 of 4:05"
+    },
+    {
+      "key": "c13-seeks",
+      "name": "2 seeks"
+    }
+  ]
+}

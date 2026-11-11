@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "integration/10xer-mode/preview-keys: `j` and `l` also focus a preview message's Open button from the content box."
+  ],
+  "scene": "c12-letters-locked-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "pdf-message"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "l"
+    },
+    {
+      "t": 0.6,
+      "type": "type",
+      "text": "h"
+    }
+  ],
+  "expect": [
+    {
+      "key": "files",
+      "focused": true
+    },
+    {
+      "key": "c12-last",
+      "name": "Leave"
+    }
+  ]
+}

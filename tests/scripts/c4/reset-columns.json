@@ -1,0 +1,61 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: \"Reset to default columns\" restores Name, Mode, Size, Type, Modified, shows every column, and removes `list_hidden_columns` and `list_column_order` from `settings.toml`.",
+    "browser/view-modes/list/column-layout: Hiding, showing, reordering, or resetting columns never changes the sort key, direction, or file order."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c4-list-columns-button"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "c4-list-columns-menu-item2"
+    },
+    {
+      "t": 1.3,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 1.8,
+      "type": "drag",
+      "key": "head-type",
+      "dx": -600,
+      "dy": 0,
+      "dur": 0.4
+    },
+    {
+      "t": 2.8,
+      "type": "tap",
+      "key": "c4-list-columns-button"
+    },
+    {
+      "t": 3.4,
+      "type": "tap",
+      "key": "c4-list-columns-menu-item7"
+    },
+    {
+      "t": 4.0,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-layout",
+      "name": "Order: name, mode, size, type, modified; hidden: none; changes: 3 (Reset)"
+    },
+    {
+      "key": "head-mode",
+      "role": "column-header"
+    },
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Name ↑"
+    }
+  ]
+}

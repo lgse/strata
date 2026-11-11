@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "browser/search: On open, the empty query shows"
+  ],
+  "scene": "c17-closed-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "k",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "no"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Backspace"
+    },
+    {
+      "t": 0.85,
+      "type": "key",
+      "name": "Backspace"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-status",
+      "name": "Type to search Home and mounted local drives\nFuzzy matching · try a name or path fragment"
+    },
+    {
+      "key": "c17-palette-field",
+      "value": ""
+    }
+  ]
+}

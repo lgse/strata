@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Typing keeps rows whose keys, key context, or action contain the text",
+    "app/shortcut-reference: With no match, \"No matching shortcuts\" wraps"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "zzz"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-row-0-0",
+      "absent": true
+    },
+    {
+      "key": "c19-reference-status",
+      "name": "No matching shortcuts"
+    }
+  ]
+}

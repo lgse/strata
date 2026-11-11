@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "app/dialogs: A widget that takes focus while a dialog closes keeps it"
+  ],
+  "scene": "c15-openers-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c15-open-take"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-take-dialog",
+      "absent": true
+    },
+    {
+      "key": "input",
+      "name": "Path",
+      "focused": true
+    },
+    {
+      "key": "c15-status",
+      "name": "Editing the path"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "bullets": [
+    "browser/tabs: Dropping a tab on the New tab button moves it to the right end"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "t-c7-2",
+      "dx": 700,
+      "dy": 0,
+      "dur": 0.8
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "Move Documents to 5"
+    }
+  ]
+}

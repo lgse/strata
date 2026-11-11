@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/thumbnails/workers: Assistive technologies read the control as one spin button named \"Thumbnail workers\"",
+    "settings/themes/corner-roundness: The Shape group sits after Text and before File icons, and its stepper's accessible name is",
+    "browser/view-modes/text-size: Settings → Appearance → Text has a \"Text size\" spin button, accessible name \"Text size in pixels\", accepting 8 to 48"
+  ],
+  "scene": "c20a-controls-light",
+  "events": [
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-workers",
+      "role": "spin-button",
+      "name": "Thumbnail workers",
+      "value": "4"
+    },
+    {
+      "key": "c20a-roundness",
+      "role": "spin-button",
+      "name": "Corner roundness in percent",
+      "value": "60%"
+    },
+    {
+      "key": "c20a-text-size",
+      "role": "spin-button",
+      "name": "Text size in pixels",
+      "value": "13 px"
+    }
+  ]
+}

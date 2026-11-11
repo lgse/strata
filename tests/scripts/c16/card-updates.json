@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "operations/progress/dock: A card shows the operation title, percentage",
+    "operations/progress/dock: A card shows its percentage once",
+    "operations/progress/dock: The footer's left label shows a copy's speed",
+    "operations/progress/dock: A docked copy also shows files done of total",
+    "operations/progress: During a copy or move with a known byte total"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-copy"
+    },
+    {
+      "t": 0.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "role": "group",
+      "name": "Copying items"
+    },
+    {
+      "key": "c16-dock-card-1-bar",
+      "role": "progress-indicator"
+    },
+    {
+      "key": "c16-dock-card-1-cancel",
+      "name": "Cancel copying"
+    }
+  ]
+}

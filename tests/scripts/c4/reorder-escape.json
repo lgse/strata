@@ -1,0 +1,63 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: Pressing Escape mid-drag and then releasing leaves the column order and the saved `list_column_order` unchanged, and keeps the file selection.",
+    "browser/view-modes/list/column-layout: After a drag cancelled with Escape, the next heading drag reorders and saves as usual."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-5"
+    },
+    {
+      "t": 0.6,
+      "type": "down",
+      "x": 511,
+      "y": 71
+    },
+    {
+      "t": 0.65,
+      "type": "move",
+      "x": 540,
+      "y": 71
+    },
+    {
+      "t": 0.7,
+      "type": "move",
+      "x": 700,
+      "y": 71
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.9,
+      "type": "up",
+      "x": 700,
+      "y": 71
+    },
+    {
+      "t": 1.5,
+      "type": "drag",
+      "key": "head-mode",
+      "dx": 180,
+      "dy": 0,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-layout",
+      "name": "Order: name, size, mode, type, modified; hidden: none; changes: 1 (Reorder)"
+    },
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "integration/10xer-mode: The `,` panel lists Name, Modified, Size, Type, Extension, Created, Unsorted, Natural, Alphabetical, Case-sensitive names, Folders first, and Shift for Reverse."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-5",
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": ",",
+      "every": 0.01,
+      "t": 0.35
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.56
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-chord-option-0",
+      "name": "a: Name"
+    },
+    {
+      "key": "c18-chord-option-10",
+      "name": "f: Folders first"
+    },
+    {
+      "key": "c18-chord-option-11",
+      "name": "Shift: Reverse"
+    }
+  ]
+}

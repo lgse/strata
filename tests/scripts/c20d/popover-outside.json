@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "c20d-done"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-popover-content",
+      "absent": true
+    },
+    {
+      "key": "c20d-dialog-dialog",
+      "name": "Customize Folder"
+    },
+    {
+      "key": "c20d-preview",
+      "name": "Preview: Pinned"
+    },
+    {
+      "key": "c20d-emoji-button",
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "bullets": [
+    "browser/scrolling: Paging stops at the first and last entry and keeps the selected item in view."
+  ],
+  "scene": "c1-photos-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-10002"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "PageUp"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "PageDown"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "PageDown"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-11999",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: IMG_2000.jpg"
+    }
+  ]
+}

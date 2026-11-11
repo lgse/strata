@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker",
+    "browser/folder-customization: Each choice updates the dialog's 56 px preview"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "row-100003"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-popover-content",
+      "absent": true
+    },
+    {
+      "key": "c20d-emoji-button",
+      "name": "Emoji  😁\ufe0f"
+    },
+    {
+      "key": "c20d-preview",
+      "name": "Preview: beaming face with smiling eyes"
+    }
+  ]
+}

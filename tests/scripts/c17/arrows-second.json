@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "browser/search: When the first result is preselected, one Down highlights the second result.",
+    "browser/search: Up and Down move the highlight while the caret stays in the query field"
+  ],
+  "scene": "c17-results-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Down"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-field",
+      "value": "re",
+      "focused": true
+    },
+    {
+      "key": "c17-palette-option-1",
+      "name": "/home/demo/Projects/rune/README.md",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

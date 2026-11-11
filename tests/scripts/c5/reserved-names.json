@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "operations/rename: For `.` or `..` the description is"
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": ".."
+    }
+  ],
+  "expect": [
+    {
+      "key": "rename-field",
+      "value": "..",
+      "states": [
+        "invalid"
+      ]
+    },
+    {
+      "key": "rename-message-text",
+      "name": "That name is reserved"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "preview/quick-preview: A key added to `media_seek_end`, shipped as Shift+G in both maps, seeks a focused timeline to its last frame."
+  ],
+  "scene": "c13-rebound-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "F9"
+    },
+    {
+      "t": 0.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-timeline",
+      "value": "3:19 of 3:20"
+    }
+  ]
+}

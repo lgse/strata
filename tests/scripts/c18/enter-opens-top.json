@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "browser/search/filter/enter-target: In Icons and List, Enter in the field with no pick opens the outlined top result.",
+    "browser/view-modes/columns: Enter in a column's filter field with no pick since the last query edit opens the top result."
+  ],
+  "scene": "c18-filter-target-light",
+  "events": [
+    {
+      "type": "key",
+      "name": "Enter",
+      "t": 0.2
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.5
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-log",
+      "name": "Opened reports"
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+{
+  "bullets": [
+    "browser/selection/marquee: Wheel scrolling during a held marquee extends the selection without moving the anchor."
+  ],
+  "scene": "c1-photos-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "down",
+      "x": 800,
+      "y": 105
+    },
+    {
+      "t": 0.55,
+      "type": "move",
+      "x": 800,
+      "y": 200
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 800,
+      "y": 300
+    },
+    {
+      "t": 1.0,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 1.05,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 1.1,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 1.15,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 1.2,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 1.25,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 1.3,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 1.35,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 1.4,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 1.45,
+      "type": "wheel",
+      "x": 800,
+      "y": 300,
+      "dy": -40
+    },
+    {
+      "t": 2.0,
+      "type": "up",
+      "x": 800,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-10002",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-10025",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "status",
+      "name": "24 items selected"
+    }
+  ]
+}

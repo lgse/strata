@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c20d-emoji-tab-smileys"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Right"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-tab-people",
+      "states": [
+        "selected"
+      ],
+      "focused": true
+    },
+    {
+      "key": "c20d-emoji-panel",
+      "name": "People & Body"
+    },
+    {
+      "key": "row-100168",
+      "name": "waving hand",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

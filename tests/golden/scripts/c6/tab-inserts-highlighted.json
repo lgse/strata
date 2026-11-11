@@ -1,0 +1,130 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-sidebar",
+                      "name": "Show sidebar",
+                      "role": "button"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "set-value",
+                                        "replace-selected-text",
+                                        "set-text-selection"
+                                      ],
+                                      "key": "input",
+                                      "name": "Location (Ctrl+L)",
+                                      "placeholder": "Enter a path or URI…",
+                                      "role": "text-input",
+                                      "states": [
+                                        "focused"
+                                      ],
+                                      "value": "~/Documents/"
+                                    }
+                                  ],
+                                  "key": "value",
+                                  "role": "group"
+                                }
+                              ],
+                              "key": "c6-loc-field",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "click"
+                              ],
+                              "key": "c6-loc-navigate",
+                              "name": "Navigate (Enter)",
+                              "role": "button"
+                            },
+                            {
+                              "actions": [
+                                "click"
+                              ],
+                              "key": "c6-loc-cancel",
+                              "name": "Cancel (Escape)",
+                              "role": "button"
+                            }
+                          ],
+                          "key": "c6-loc-entry",
+                          "name": "Location (Ctrl+L)",
+                          "role": "combo-box",
+                          "states": [
+                            "collapsed"
+                          ]
+                        }
+                      ],
+                      "key": "c6-loc",
+                      "name": "Location",
+                      "role": "navigation"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-new-tab",
+                      "name": "New tab",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "c6-header",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-files",
+                      "name": "Files pressed 0",
+                      "role": "list"
+                    },
+                    {
+                      "key": "c6-log",
+                      "name": "—",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c6-pane",
+                  "role": "group"
+                }
+              ],
+              "key": "c6",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

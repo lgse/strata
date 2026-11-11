@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: In the default key map, plain Left in a document returns focus to the listing."
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "doc-u1/t"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Left"
+    }
+  ],
+  "expect": [
+    {
+      "key": "files",
+      "focused": true
+    },
+    {
+      "key": "c11-last-intent",
+      "name": "Leave"
+    }
+  ]
+}

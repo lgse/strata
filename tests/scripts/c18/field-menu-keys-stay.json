@@ -1,0 +1,57 @@
+{
+  "bullets": [
+    "browser/context-menu: A menu opens with keyboard focus on its first visible action"
+  ],
+  "scene": "c18-listing-light",
+  "events": [
+    {
+      "type": "key",
+      "name": "f",
+      "cmd": true,
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "rep",
+      "every": 0.01,
+      "t": 0.3
+    },
+    {
+      "type": "key",
+      "name": "F10",
+      "shift": true,
+      "t": 0.63
+    },
+    {
+      "type": "type",
+      "text": "x",
+      "every": 0.01,
+      "t": 0.83
+    },
+    {
+      "type": "key",
+      "name": "Escape",
+      "t": 1.04
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.34
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-field-menu-menu",
+      "absent": true
+    },
+    {
+      "key": "c18-filter-field",
+      "value": "rep",
+      "focused": true
+    },
+    {
+      "key": "c18-log",
+      "name": "Filter menu closed"
+    }
+  ]
+}

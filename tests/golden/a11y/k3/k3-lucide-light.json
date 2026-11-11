@@ -1,0 +1,513 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "lucide · 123 icons",
+              "role": "label"
+            },
+            {
+              "name": "app-window",
+              "role": "label"
+            },
+            {
+              "name": "arrow-down",
+              "role": "label"
+            },
+            {
+              "name": "arrow-down-wide-narrow",
+              "role": "label"
+            },
+            {
+              "name": "arrow-left",
+              "role": "label"
+            },
+            {
+              "name": "arrow-right",
+              "role": "label"
+            },
+            {
+              "name": "arrow-up",
+              "role": "label"
+            },
+            {
+              "name": "arrow-up-narrow-wide",
+              "role": "label"
+            },
+            {
+              "name": "audio-lines",
+              "role": "label"
+            },
+            {
+              "name": "blocks",
+              "role": "label"
+            },
+            {
+              "name": "box",
+              "role": "label"
+            },
+            {
+              "name": "bug",
+              "role": "label"
+            },
+            {
+              "name": "caret",
+              "role": "label"
+            },
+            {
+              "name": "check",
+              "role": "label"
+            },
+            {
+              "name": "check-on-primary",
+              "role": "label"
+            },
+            {
+              "name": "chevron-down",
+              "role": "label"
+            },
+            {
+              "name": "chevron-down-symbolic",
+              "role": "label"
+            },
+            {
+              "name": "chevron-right",
+              "role": "label"
+            },
+            {
+              "name": "circle-check",
+              "role": "label"
+            },
+            {
+              "name": "circle-x",
+              "role": "label"
+            },
+            {
+              "name": "clipboard-paste",
+              "role": "label"
+            },
+            {
+              "name": "clock",
+              "role": "label"
+            },
+            {
+              "name": "cloud",
+              "role": "label"
+            },
+            {
+              "name": "code-xml",
+              "role": "label"
+            },
+            {
+              "name": "cog",
+              "role": "label"
+            },
+            {
+              "name": "columns",
+              "role": "label"
+            },
+            {
+              "name": "copy",
+              "role": "label"
+            },
+            {
+              "name": "copy-plus",
+              "role": "label"
+            },
+            {
+              "name": "corner-down-left",
+              "role": "label"
+            },
+            {
+              "name": "corner-down-right",
+              "role": "label"
+            },
+            {
+              "name": "disc",
+              "role": "label"
+            },
+            {
+              "name": "download",
+              "role": "label"
+            },
+            {
+              "name": "eject",
+              "role": "label"
+            },
+            {
+              "name": "external-link",
+              "role": "label"
+            },
+            {
+              "name": "eye",
+              "role": "label"
+            },
+            {
+              "name": "eye-off",
+              "role": "label"
+            },
+            {
+              "name": "file-archive",
+              "role": "label"
+            },
+            {
+              "name": "file-code",
+              "role": "label"
+            },
+            {
+              "name": "file-plus",
+              "role": "label"
+            },
+            {
+              "name": "file-spreadsheet",
+              "role": "label"
+            },
+            {
+              "name": "file-terminal",
+              "role": "label"
+            },
+            {
+              "name": "file-text",
+              "role": "label"
+            },
+            {
+              "name": "file-type",
+              "role": "label"
+            },
+            {
+              "name": "folder",
+              "role": "label"
+            },
+            {
+              "name": "folder-archive",
+              "role": "label"
+            },
+            {
+              "name": "folder-input",
+              "role": "label"
+            },
+            {
+              "name": "folder-lock",
+              "role": "label"
+            },
+            {
+              "name": "folder-open",
+              "role": "label"
+            },
+            {
+              "name": "folder-output",
+              "role": "label"
+            },
+            {
+              "name": "folder-plus",
+              "role": "label"
+            },
+            {
+              "name": "funnel",
+              "role": "label"
+            },
+            {
+              "name": "git-branch",
+              "role": "label"
+            },
+            {
+              "name": "globe",
+              "role": "label"
+            },
+            {
+              "name": "hard-drive",
+              "role": "label"
+            },
+            {
+              "name": "house",
+              "role": "label"
+            },
+            {
+              "name": "icons",
+              "role": "label"
+            },
+            {
+              "name": "image",
+              "role": "label"
+            },
+            {
+              "name": "info",
+              "role": "label"
+            },
+            {
+              "name": "key",
+              "role": "label"
+            },
+            {
+              "name": "key-round",
+              "role": "label"
+            },
+            {
+              "name": "keyboard",
+              "role": "label"
+            },
+            {
+              "name": "kit-chevron-left",
+              "role": "label"
+            },
+            {
+              "name": "kit-chevron-up",
+              "role": "label"
+            },
+            {
+              "name": "kit-circle-question-mark",
+              "role": "label"
+            },
+            {
+              "name": "kit-clipboard",
+              "role": "label"
+            },
+            {
+              "name": "kit-ellipsis",
+              "role": "label"
+            },
+            {
+              "name": "kit-grip-vertical",
+              "role": "label"
+            },
+            {
+              "name": "kit-link",
+              "role": "label"
+            },
+            {
+              "name": "kit-menu",
+              "role": "label"
+            },
+            {
+              "name": "kit-repeat",
+              "role": "label"
+            },
+            {
+              "name": "kit-rotate-cw",
+              "role": "label"
+            },
+            {
+              "name": "kit-scan",
+              "role": "label"
+            },
+            {
+              "name": "kit-zoom-in",
+              "role": "label"
+            },
+            {
+              "name": "kit-zoom-out",
+              "role": "label"
+            },
+            {
+              "name": "library",
+              "role": "label"
+            },
+            {
+              "name": "list",
+              "role": "label"
+            },
+            {
+              "name": "list-checks",
+              "role": "label"
+            },
+            {
+              "name": "lock",
+              "role": "label"
+            },
+            {
+              "name": "lock-open",
+              "role": "label"
+            },
+            {
+              "name": "maximize",
+              "role": "label"
+            },
+            {
+              "name": "minimize",
+              "role": "label"
+            },
+            {
+              "name": "minus",
+              "role": "label"
+            },
+            {
+              "name": "minus-symbolic",
+              "role": "label"
+            },
+            {
+              "name": "monitor",
+              "role": "label"
+            },
+            {
+              "name": "music-2",
+              "role": "label"
+            },
+            {
+              "name": "network",
+              "role": "label"
+            },
+            {
+              "name": "package-open",
+              "role": "label"
+            },
+            {
+              "name": "package-plus",
+              "role": "label"
+            },
+            {
+              "name": "palette",
+              "role": "label"
+            },
+            {
+              "name": "panel-left-symbolic",
+              "role": "label"
+            },
+            {
+              "name": "panel-right-close",
+              "role": "label"
+            },
+            {
+              "name": "pause",
+              "role": "label"
+            },
+            {
+              "name": "pencil",
+              "role": "label"
+            },
+            {
+              "name": "pin",
+              "role": "label"
+            },
+            {
+              "name": "play",
+              "role": "label"
+            },
+            {
+              "name": "plus",
+              "role": "label"
+            },
+            {
+              "name": "plus-symbolic",
+              "role": "label"
+            },
+            {
+              "name": "presentation",
+              "role": "label"
+            },
+            {
+              "name": "printer",
+              "role": "label"
+            },
+            {
+              "name": "refresh",
+              "role": "label"
+            },
+            {
+              "name": "route",
+              "role": "label"
+            },
+            {
+              "name": "scale",
+              "role": "label"
+            },
+            {
+              "name": "scissors",
+              "role": "label"
+            },
+            {
+              "name": "search",
+              "role": "label"
+            },
+            {
+              "name": "send-horizontal",
+              "role": "label"
+            },
+            {
+              "name": "settings",
+              "role": "label"
+            },
+            {
+              "name": "settings-2",
+              "role": "label"
+            },
+            {
+              "name": "settings-active",
+              "role": "label"
+            },
+            {
+              "name": "shredder",
+              "role": "label"
+            },
+            {
+              "name": "skip-back",
+              "role": "label"
+            },
+            {
+              "name": "skip-forward",
+              "role": "label"
+            },
+            {
+              "name": "sliders-horizontal",
+              "role": "label"
+            },
+            {
+              "name": "smartphone",
+              "role": "label"
+            },
+            {
+              "name": "stethoscope",
+              "role": "label"
+            },
+            {
+              "name": "terminal",
+              "role": "label"
+            },
+            {
+              "name": "trash",
+              "role": "label"
+            },
+            {
+              "name": "triangle-alert",
+              "role": "label"
+            },
+            {
+              "name": "undo-2",
+              "role": "label"
+            },
+            {
+              "name": "unplug",
+              "role": "label"
+            },
+            {
+              "name": "video",
+              "role": "label"
+            },
+            {
+              "name": "volume-2",
+              "role": "label"
+            },
+            {
+              "name": "volume-x",
+              "role": "label"
+            },
+            {
+              "name": "wrap-text",
+              "role": "label"
+            },
+            {
+              "name": "x",
+              "role": "label"
+            }
+          ],
+          "key": "k3",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

@@ -1,0 +1,671 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "color",
+                  "role": "label"
+                },
+                {
+                  "name": "page",
+                  "role": "label"
+                },
+                {
+                  "name": "bg_base",
+                  "role": "label"
+                },
+                {
+                  "name": "bg_deep",
+                  "role": "label"
+                },
+                {
+                  "name": "layer_01",
+                  "role": "label"
+                },
+                {
+                  "name": "layer_02",
+                  "role": "label"
+                },
+                {
+                  "name": "layer_03",
+                  "role": "label"
+                },
+                {
+                  "name": "layer_04",
+                  "role": "label"
+                },
+                {
+                  "name": "bg_inverse",
+                  "role": "label"
+                },
+                {
+                  "name": "bg_contrast",
+                  "role": "label"
+                },
+                {
+                  "name": "bg_button_neutral",
+                  "role": "label"
+                },
+                {
+                  "name": "bg_icon_button_contrast",
+                  "role": "label"
+                },
+                {
+                  "name": "bg_accent",
+                  "role": "label"
+                },
+                {
+                  "name": "submit_highlight",
+                  "role": "label"
+                },
+                {
+                  "name": "submit_hover",
+                  "role": "label"
+                },
+                {
+                  "name": "submit_fg",
+                  "role": "label"
+                },
+                {
+                  "name": "submit_icon",
+                  "role": "label"
+                },
+                {
+                  "name": "text_base",
+                  "role": "label"
+                },
+                {
+                  "name": "text_muted",
+                  "role": "label"
+                },
+                {
+                  "name": "text_faint",
+                  "role": "label"
+                },
+                {
+                  "name": "text_inverse",
+                  "role": "label"
+                },
+                {
+                  "name": "text_contrast",
+                  "role": "label"
+                },
+                {
+                  "name": "text_accent",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_base",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_muted",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_faint",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_inverse",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_contrast",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_accent",
+                  "role": "label"
+                },
+                {
+                  "name": "border_muted",
+                  "role": "label"
+                },
+                {
+                  "name": "border_base",
+                  "role": "label"
+                },
+                {
+                  "name": "border_strong",
+                  "role": "label"
+                },
+                {
+                  "name": "border_focus",
+                  "role": "label"
+                },
+                {
+                  "name": "hover",
+                  "role": "label"
+                },
+                {
+                  "name": "pressed",
+                  "role": "label"
+                },
+                {
+                  "name": "contrast_hover",
+                  "role": "label"
+                },
+                {
+                  "name": "contrast_pressed",
+                  "role": "label"
+                },
+                {
+                  "name": "scrim",
+                  "role": "label"
+                },
+                {
+                  "name": "depth_top",
+                  "role": "label"
+                },
+                {
+                  "name": "depth_bottom",
+                  "role": "label"
+                },
+                {
+                  "name": "white",
+                  "role": "label"
+                },
+                {
+                  "name": "black",
+                  "role": "label"
+                },
+                {
+                  "name": "knob",
+                  "role": "label"
+                },
+                {
+                  "name": "knob_on",
+                  "role": "label"
+                },
+                {
+                  "name": "surface_base",
+                  "role": "label"
+                },
+                {
+                  "name": "surface_weak",
+                  "role": "label"
+                },
+                {
+                  "name": "surface_hover",
+                  "role": "label"
+                },
+                {
+                  "name": "surface_raised",
+                  "role": "label"
+                },
+                {
+                  "name": "surface_raised_base",
+                  "role": "label"
+                },
+                {
+                  "name": "surface_raised_hover",
+                  "role": "label"
+                },
+                {
+                  "name": "surface_float",
+                  "role": "label"
+                },
+                {
+                  "name": "surface_disabled",
+                  "role": "label"
+                },
+                {
+                  "name": "border_weak",
+                  "role": "label"
+                },
+                {
+                  "name": "border_hover",
+                  "role": "label"
+                },
+                {
+                  "name": "border_active",
+                  "role": "label"
+                },
+                {
+                  "name": "border_disabled",
+                  "role": "label"
+                },
+                {
+                  "name": "text_strong",
+                  "role": "label"
+                },
+                {
+                  "name": "text_weak",
+                  "role": "label"
+                },
+                {
+                  "name": "text_invert_strong",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_weaker",
+                  "role": "label"
+                },
+                {
+                  "name": "std_border",
+                  "role": "label"
+                },
+                {
+                  "name": "std_icon",
+                  "role": "label"
+                },
+                {
+                  "name": "std_icon_invert",
+                  "role": "label"
+                },
+                {
+                  "name": "std_icon_strong",
+                  "role": "label"
+                },
+                {
+                  "name": "std_text",
+                  "role": "label"
+                },
+                {
+                  "name": "success.bg",
+                  "role": "label"
+                },
+                {
+                  "name": "success.fg",
+                  "role": "label"
+                },
+                {
+                  "name": "success.border",
+                  "role": "label"
+                },
+                {
+                  "name": "success.icon",
+                  "role": "label"
+                },
+                {
+                  "name": "warning.bg",
+                  "role": "label"
+                },
+                {
+                  "name": "warning.fg",
+                  "role": "label"
+                },
+                {
+                  "name": "warning.border",
+                  "role": "label"
+                },
+                {
+                  "name": "warning.icon",
+                  "role": "label"
+                },
+                {
+                  "name": "danger.bg",
+                  "role": "label"
+                },
+                {
+                  "name": "danger.fg",
+                  "role": "label"
+                },
+                {
+                  "name": "danger.border",
+                  "role": "label"
+                },
+                {
+                  "name": "danger.icon",
+                  "role": "label"
+                },
+                {
+                  "name": "info.bg",
+                  "role": "label"
+                },
+                {
+                  "name": "info.fg",
+                  "role": "label"
+                },
+                {
+                  "name": "info.border",
+                  "role": "label"
+                },
+                {
+                  "name": "info.icon",
+                  "role": "label"
+                }
+              ],
+              "key": "w2-color",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "syntax",
+                  "role": "label"
+                },
+                {
+                  "name": "keyword",
+                  "role": "label"
+                },
+                {
+                  "name": "string",
+                  "role": "label"
+                },
+                {
+                  "name": "number",
+                  "role": "label"
+                },
+                {
+                  "name": "comment",
+                  "role": "label"
+                },
+                {
+                  "name": "type",
+                  "role": "label"
+                },
+                {
+                  "name": "function",
+                  "role": "label"
+                },
+                {
+                  "name": "property",
+                  "role": "label"
+                },
+                {
+                  "name": "punctuation",
+                  "role": "label"
+                },
+                {
+                  "name": "inserted",
+                  "role": "label"
+                },
+                {
+                  "name": "deleted",
+                  "role": "label"
+                },
+                {
+                  "name": "parameter",
+                  "role": "label"
+                },
+                {
+                  "name": "heading",
+                  "role": "label"
+                },
+                {
+                  "name": "link",
+                  "role": "label"
+                },
+                {
+                  "name": "operator",
+                  "role": "label"
+                },
+                {
+                  "name": "regex",
+                  "role": "label"
+                },
+                {
+                  "name": "attribute",
+                  "role": "label"
+                },
+                {
+                  "name": "variable",
+                  "role": "label"
+                },
+                {
+                  "name": "preprocessor",
+                  "role": "label"
+                }
+              ],
+              "key": "w2-syntax",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "radius",
+                  "role": "label"
+                },
+                {
+                  "name": "xs 1.8",
+                  "role": "label"
+                },
+                {
+                  "name": "sm 3",
+                  "role": "label"
+                },
+                {
+                  "name": "md 3.6",
+                  "role": "label"
+                },
+                {
+                  "name": "lg 5.4",
+                  "role": "label"
+                },
+                {
+                  "name": "xl 8.4",
+                  "role": "label"
+                }
+              ],
+              "key": "w2-radius",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "ladders",
+                  "role": "label"
+                },
+                {
+                  "name": "tiles 32 36 40 44 48 56 64 72 80 96 112 128 144 160 192 224 256 (default 64)",
+                  "role": "label"
+                },
+                {
+                  "name": "thumbnails 32 64 128 256",
+                  "role": "label"
+                }
+              ],
+              "key": "w2-ladders",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "type",
+                  "role": "label"
+                },
+                {
+                  "name": "title 15/22",
+                  "role": "label"
+                },
+                {
+                  "name": "heading 11/16",
+                  "role": "label"
+                },
+                {
+                  "name": "body 14/21",
+                  "role": "label"
+                },
+                {
+                  "name": "body_medium 14/21",
+                  "role": "label"
+                },
+                {
+                  "name": "ui 13/20",
+                  "role": "label"
+                },
+                {
+                  "name": "ui_medium 13/20",
+                  "role": "label"
+                },
+                {
+                  "name": "ui_compact 13/16",
+                  "role": "label"
+                },
+                {
+                  "name": "text_small 13/19.5",
+                  "role": "label"
+                },
+                {
+                  "name": "text_small_medium 13/19.5",
+                  "role": "label"
+                },
+                {
+                  "name": "text_xsmall 12/18",
+                  "role": "label"
+                },
+                {
+                  "name": "text_xsmall_medium 12/18",
+                  "role": "label"
+                },
+                {
+                  "name": "small 11/12",
+                  "role": "label"
+                },
+                {
+                  "name": "small_medium 11/12",
+                  "role": "label"
+                },
+                {
+                  "name": "mono 12/18",
+                  "role": "label"
+                }
+              ],
+              "key": "w2-type",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "space",
+                  "role": "label"
+                },
+                {
+                  "name": "space.xxs 2",
+                  "role": "label"
+                },
+                {
+                  "name": "space.xs 4",
+                  "role": "label"
+                },
+                {
+                  "name": "space.sm 6",
+                  "role": "label"
+                },
+                {
+                  "name": "space.md 8",
+                  "role": "label"
+                },
+                {
+                  "name": "space.lg 12",
+                  "role": "label"
+                },
+                {
+                  "name": "space.xl 16",
+                  "role": "label"
+                },
+                {
+                  "name": "space.xxl 24",
+                  "role": "label"
+                },
+                {
+                  "name": "content.pad 4",
+                  "role": "label"
+                }
+              ],
+              "key": "w2-space",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "sizes",
+                  "role": "label"
+                },
+                {
+                  "name": "frame.inset 0",
+                  "role": "label"
+                },
+                {
+                  "name": "frame.bar 36",
+                  "role": "label"
+                },
+                {
+                  "name": "frame.control 24",
+                  "role": "label"
+                },
+                {
+                  "name": "row.list 26",
+                  "role": "label"
+                },
+                {
+                  "name": "row.columns 26",
+                  "role": "label"
+                },
+                {
+                  "name": "row.sidebar 24",
+                  "role": "label"
+                },
+                {
+                  "name": "row.palette 53",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_size.sm 12",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_size.md 16",
+                  "role": "label"
+                },
+                {
+                  "name": "icon_size.lg 20",
+                  "role": "label"
+                }
+              ],
+              "key": "w2-sizes",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "glow",
+                  "role": "label"
+                },
+                {
+                  "name": "color",
+                  "role": "label"
+                },
+                {
+                  "name": "on true, radius 14, opacity 0.24",
+                  "role": "label"
+                }
+              ],
+              "key": "w2-glow",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "shape and motion",
+                  "role": "label"
+                },
+                {
+                  "name": "roundness 0.6",
+                  "role": "label"
+                },
+                {
+                  "name": "animations true",
+                  "role": "label"
+                }
+              ],
+              "key": "w2-shape-and-motion",
+              "role": "group"
+            }
+          ],
+          "key": "w2-tokens",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

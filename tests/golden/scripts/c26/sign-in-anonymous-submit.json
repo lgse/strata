@@ -1,0 +1,93 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "Mount prompts",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c26-open-sign-in",
+              "name": "Sign in",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c26-open-retry",
+              "name": "Sign in again",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c26-open-key",
+              "name": "Key passphrase",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c26-open-luks",
+              "name": "Unlock volume",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c26-open-host-key",
+              "name": "Host key",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c26-open-question",
+              "name": "Question",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c26-open-processes",
+              "name": "Busy volume",
+              "role": "button"
+            },
+            {
+              "key": "c26-status",
+              "name": "Connect as Anonymous",
+              "role": "label",
+              "states": [
+                "live-polite"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

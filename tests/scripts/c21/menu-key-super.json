@@ -1,0 +1,47 @@
+{
+  "bullets": [
+    "browser/context-menu: Menu or Shift+F10 with Hyper or Meta held opens the menu as without them."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.15,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "ContextMenu",
+      "logo": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "F10",
+      "shift": true,
+      "logo": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-status",
+      "name": "Dismissed menu 2 on Notes.md"
+    }
+  ]
+}

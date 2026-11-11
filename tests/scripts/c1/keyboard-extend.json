@@ -1,0 +1,55 @@
+{
+  "bullets": [
+    "browser/selection: Shift+Up and Shift+Down extend the selection by one entry from the range anchor.",
+    "browser/selection: A click re-anchors Shift+Down and Shift+Up, so keyboard extension continues from the clicked entry."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-6"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "row-3"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Down",
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Up",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-3",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-4",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: Notes.md"
+    }
+  ]
+}

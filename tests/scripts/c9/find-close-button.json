@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Escape anywhere in the drawer, or the **Close find** button, hides the bar and returns keys to the document."
+  ],
+  "scene": "c9-list-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "drawer"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "preview-find-close"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-bar",
+      "absent": true
+    },
+    {
+      "key": "fake-content",
+      "focused": true
+    },
+    {
+      "key": "preview-drawer",
+      "role": "region"
+    }
+  ]
+}

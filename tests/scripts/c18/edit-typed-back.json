@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/search/filter/enter-target: Editing the query and typing it back, such as adding then removing a trailing space"
+  ],
+  "scene": "c18-filter-picked-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "x",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "key",
+      "name": "Backspace",
+      "t": 0.21
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.51
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-outlined",
+      "name": "Outlined: reports"
+    },
+    {
+      "key": "c18-filter-field",
+      "value": "rep"
+    },
+    {
+      "key": "c18-log",
+      "name": "Query “rep”, 1 shown"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: PDF pages render at the preview pane's width, at most 1280 px"
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.9,
+      "type": "move",
+      "key": "files"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c12-log",
+      "name": "Rendered p1 840 p2 840 p3 840 · Cancelled none"
+    }
+  ]
+}

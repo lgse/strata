@@ -1,0 +1,161 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "key": "c18-title",
+                      "name": "Documents",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c18-header",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-3",
+                                  "name": "reports",
+                                  "position": 1,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-10",
+                                  "name": "report-2025.ods",
+                                  "position": 2,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-11",
+                                  "name": "report.pdf",
+                                  "position": 3,
+                                  "role": "list-box-option"
+                                }
+                              ],
+                              "key": "rows",
+                              "role": "group",
+                              "setSize": 3
+                            }
+                          ],
+                          "key": "viewport",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "key": "status",
+                          "name": "",
+                          "role": "label",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c18-list",
+                      "name": "Files",
+                      "role": "list-box"
+                    }
+                  ],
+                  "key": "c18-pane",
+                  "name": "Documents pane",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "context-menu"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c18-prompt-field",
+                              "name": "Filter this listing",
+                              "role": "text-input",
+                              "states": [
+                                "focused"
+                              ],
+                              "value": "rep"
+                            }
+                          ],
+                          "key": "c18-prompt-box",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c18-prompt",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c18-footer",
+                  "role": "group"
+                },
+                {
+                  "key": "c18-outlined",
+                  "name": "Outlined: none",
+                  "role": "label"
+                },
+                {
+                  "key": "c18-log",
+                  "name": "—",
+                  "role": "label"
+                }
+              ],
+              "key": "c18",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

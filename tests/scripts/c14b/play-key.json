@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "preview/preview-panel/routes: The play button or the media play key, Ctrl+Alt+Space by default"
+  ],
+  "scene": "c14b-route-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": " ",
+      "ctrl": true,
+      "alt": true
+    },
+    {
+      "t": 1.95,
+      "type": "key",
+      "name": " ",
+      "ctrl": true,
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-route-elapsed",
+      "name": "1.4 km"
+    },
+    {
+      "key": "c14b-route-play",
+      "states": [
+        "unchecked"
+      ]
+    }
+  ]
+}

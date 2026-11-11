@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "operations/trash/animation: A Move to Trash that succeeds before its progress card appears flies its icons"
+  ],
+  "scene": "c23-rest-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "row-3"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c23-trash"
+    },
+    {
+      "t": 1.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-3",
+      "absent": true
+    },
+    {
+      "key": "c23-flyer-1-0",
+      "absent": true
+    },
+    {
+      "key": "c23-launch-1-0",
+      "absent": true
+    },
+    {
+      "key": "row-4",
+      "role": "list-box-option"
+    }
+  ]
+}

@@ -1,0 +1,173 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "key": "c18-title",
+                      "name": "Documents",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click"
+                      ],
+                      "key": "c18-filter-toggle",
+                      "name": "Filter",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "c18-header",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "c18-filter-field",
+                          "name": "Filter list (Ctrl+F)",
+                          "placeholder": "Filter 12 items…",
+                          "role": "text-input",
+                          "value": "rep"
+                        }
+                      ],
+                      "key": "c18-filter-box",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c18-filter",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "activeDescendant": "row-10",
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-3",
+                                  "name": "reports",
+                                  "position": 1,
+                                  "role": "list-box-option"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-10",
+                                  "name": "report-2025.ods",
+                                  "position": 2,
+                                  "role": "list-box-option",
+                                  "states": [
+                                    "selected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "row-11",
+                                  "name": "report.pdf",
+                                  "position": 3,
+                                  "role": "list-box-option"
+                                }
+                              ],
+                              "key": "rows",
+                              "role": "group",
+                              "setSize": 3
+                            }
+                          ],
+                          "key": "viewport",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "key": "status",
+                          "name": "",
+                          "role": "label",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c18-list",
+                      "name": "Files",
+                      "role": "list-box"
+                    }
+                  ],
+                  "key": "c18-pane",
+                  "name": "Documents pane",
+                  "role": "group",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "key": "c18-footer",
+                  "role": "group"
+                },
+                {
+                  "key": "c18-outlined",
+                  "name": "Outlined: none",
+                  "role": "label"
+                },
+                {
+                  "key": "c18-log",
+                  "name": "—",
+                  "role": "label"
+                }
+              ],
+              "key": "c18",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

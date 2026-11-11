@@ -1,0 +1,54 @@
+{
+  "bullets": [
+    "browser/selection: Returning to a column with the keyboard keeps its multi-selection.",
+    "browser/selection/keyboard-navigation: During keyboard navigation in Columns or List, the keyboard cursor row shows a 1 px accent outline"
+  ],
+  "scene": "c2-keyboard-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-1-title"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 1.5,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2",
+      "focused": true
+    },
+    {
+      "key": "row-1000002",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-3000005",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-3000008",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "app/dialogs: Closing a dialog by keyboard as a dialog chained on it opens"
+  ],
+  "scene": "c15-openers-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c15-open-chained"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-danger-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-error-primary",
+      "focused": true
+    },
+    {
+      "key": "c15-error-dialog",
+      "states": [
+        "modal"
+      ]
+    }
+  ]
+}

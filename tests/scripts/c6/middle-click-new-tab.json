@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Middle-clicking an ancestor crumb",
+    "browser/navigation/location-bar: Middle-clicking the current crumb opens no tab."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c6-loc-crumb-1",
+      "button": "middle"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c6-loc-current",
+      "button": "middle"
+    },
+    {
+      "t": 0.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-log",
+      "name": "New tab ~/Projects"
+    },
+    {
+      "key": "c6-loc-entry",
+      "absent": true
+    },
+    {
+      "key": "c6-loc-item-2",
+      "name": "strata"
+    }
+  ]
+}

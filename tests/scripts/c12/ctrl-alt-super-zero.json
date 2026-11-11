@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: With focus in a PDF, Ctrl+Alt+0 and Ctrl+Super+0 leave its zoom unchanged."
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.3,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.33999999999999997,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "0",
+      "cmd": true,
+      "alt": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "0",
+      "cmd": true,
+      "logo": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "pdf",
+      "value": "Page 1 of 12, 132%"
+    }
+  ]
+}

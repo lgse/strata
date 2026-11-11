@@ -1,0 +1,233 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "activeDescendant": "c17-palette-option-0",
+                          "description": "Folders previously visited in Strata",
+                          "key": "c17-palette-field",
+                          "name": "Jump to a folder…",
+                          "placeholder": "Jump to a folder…",
+                          "role": "text-input",
+                          "states": [
+                            "focused"
+                          ],
+                          "value": ""
+                        }
+                      ],
+                      "key": "c17-palette-combobox",
+                      "name": "Jump to a folder…",
+                      "role": "combo-box",
+                      "states": [
+                        "expanded"
+                      ]
+                    }
+                  ],
+                  "key": "c17-palette-bar",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-0",
+                              "name": "/home/demo/Projects/strata",
+                              "position": 1,
+                              "role": "list-box-option",
+                              "states": [
+                                "selected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-1",
+                              "name": "/home/demo/Downloads",
+                              "position": 2,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-2",
+                              "name": "/home/demo/Documents",
+                              "position": 3,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-3",
+                              "name": "/home/demo/Projects/strata/src",
+                              "position": 4,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-4",
+                              "name": "/home/demo/Pictures/Trips",
+                              "position": 5,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-5",
+                              "name": "/home/demo/Documents/Reports",
+                              "position": 6,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-6",
+                              "name": "/home/demo/Projects/rune",
+                              "position": 7,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-7",
+                              "name": "/home/demo/Music",
+                              "position": 8,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-8",
+                              "name": "/home/demo/Documents/Notes",
+                              "position": 9,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-9",
+                              "name": "/home/demo/Projects/strata/docs",
+                              "position": 10,
+                              "role": "list-box-option"
+                            }
+                          ],
+                          "key": "c17-palette-rows",
+                          "role": "group",
+                          "setSize": 10
+                        }
+                      ],
+                      "key": "c17-palette-results",
+                      "name": "Visited folders",
+                      "role": "list-box",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "key": "c17-palette-status",
+                      "name": "10 results",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c17-palette-body",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "↑↓  navigate",
+                      "role": "label"
+                    },
+                    {
+                      "name": "open",
+                      "role": "label"
+                    },
+                    {
+                      "name": "Alt+Enter  open containing folder",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c17-palette-footer",
+                  "role": "group"
+                }
+              ],
+              "key": "c17-palette-dialog",
+              "name": "Jump to a folder",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

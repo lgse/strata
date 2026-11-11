@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "integration/10xer-mode: The panel lists each valid second key as a keycap beside its action"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "g"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "F1"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 1.5,
+      "type": "key",
+      "name": "h"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    },
+    {
+      "key": "c19-chord-pill",
+      "absent": true
+    },
+    {
+      "key": "c19-flash",
+      "absent": true
+    },
+    {
+      "key": "c19-log",
+      "name": "—"
+    }
+  ]
+}

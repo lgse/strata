@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "browser/scrolling: A wheel tick outside an open Sort by, Appearance, or Icons Thumbnail size panel closes it.",
+    "browser/scrolling: The tick that closes a panel also scrolls the listing under the pointer, and no other; over the sidebar or chrome it only closes the panel."
+  ],
+  "scene": "c24-panel-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "wheel",
+      "x": 300,
+      "y": 500,
+      "dx": 0,
+      "dy": -2600,
+      "precise": false
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 300,
+      "y": 500
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-panel",
+      "absent": true
+    },
+    {
+      "key": "row-1",
+      "absent": true
+    },
+    {
+      "key": "row-101"
+    }
+  ]
+}

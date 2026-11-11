@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Turning 10xer mode on or off in any window updates an open reference",
+    "app/shortcut-reference: In 10xer mode, the reference lists only the 10xer map"
+  ],
+  "scene": "c19-reference-live-mode-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-reference-category-3"
+    },
+    {
+      "t": 0.8,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-category-4",
+      "name": "10xer mode"
+    },
+    {
+      "key": "c19-reference-category-0",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c19-reference-category-3",
+      "name": "Places"
+    }
+  ]
+}

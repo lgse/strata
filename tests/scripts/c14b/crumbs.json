@@ -1,0 +1,55 @@
+{
+  "bullets": [
+    "operations/archives/preview: Previewing a `.zip`, `.7z`, `.tar`, `.tar.gz`, or `.tgz` shows its members as a folder tree starting at \"Contents\"",
+    "operations/archives/preview: A breadcrumb row starts at \"Contents\"; clicking a crumb, or the back arrow \"Go up one level\", returns to that level."
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-8000000001"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "row-8000000002"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "c14b-archive-crumb-0"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "row-8000000006"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "c14b-archive-up"
+    },
+    {
+      "t": 1.1,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "Contents"
+    },
+    {
+      "key": "row-8000000006",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c14b-archive-up",
+      "absent": true
+    }
+  ]
+}

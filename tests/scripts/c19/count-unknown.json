@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "app/shortcut-reference: When some selected file sizes are unknown"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-select-mixed"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-count",
+      "name": "1 folder, 2 files selected (1.2 kB known; size incomplete)"
+    }
+  ]
+}

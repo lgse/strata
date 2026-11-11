@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/selection/marquee: A press on a button, text entry, label, image, slider, scrollbar, or sidebar place keeps that control's own behavior and starts no marquee."
+  ],
+  "scene": "c3-bar-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c3-grid-bar"
+    },
+    {
+      "t": 0.8,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1000000",
+      "absent": true
+    },
+    {
+      "key": "marquee-band",
+      "absent": true
+    }
+  ]
+}

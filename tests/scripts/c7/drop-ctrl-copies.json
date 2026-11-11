@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/tabs: Dropping files, or a selection mixing files and folders, on another tab"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.1,
+      "hold": "ctrl"
+    },
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/a.txt"
+        ],
+        "key": "t-c7-4",
+        "hover": 0.2
+      }
+    },
+    {
+      "t": 0.6,
+      "hold": ""
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "Copy 1 into /home/demo/Quarterly reports and invoices 2026"
+    },
+    {
+      "key": "t-c7-4",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "app/dialogs: A dialog registered as changing the listing"
+  ],
+  "scene": "c15-openers-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c15-open-return"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-return-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-cursor",
+      "focused": true
+    },
+    {
+      "key": "c15-status",
+      "name": "Moved to Trash"
+    }
+  ]
+}

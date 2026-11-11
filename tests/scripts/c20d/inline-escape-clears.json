@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-catalog-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-catalog-field"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "fold"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-catalog-field",
+      "value": "",
+      "focused": true
+    },
+    {
+      "key": "c20d-catalog-panel",
+      "name": "Interface"
+    },
+    {
+      "key": "c20d",
+      "role": "group"
+    }
+  ]
+}

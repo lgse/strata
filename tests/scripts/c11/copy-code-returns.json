@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: After a click, **Copy code** shows a check icon"
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "doc-u6/copy"
+    },
+    {
+      "t": 2.4,
+      "type": "mark",
+      "name": "after"
+    }
+  ],
+  "expect": [
+    {
+      "key": "copy",
+      "name": "Copy code"
+    }
+  ]
+}

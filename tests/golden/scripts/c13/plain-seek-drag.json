@@ -1,0 +1,150 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "actions": [
+                "focus"
+              ],
+              "children": [
+                {
+                  "name": "waves.gif",
+                  "role": "label"
+                },
+                {
+                  "key": "c13-status",
+                  "name": "Decoding at 1256 × 707",
+                  "role": "label"
+                },
+                {
+                  "key": "c13-seeks",
+                  "name": "3 seeks",
+                  "role": "label"
+                }
+              ],
+              "key": "files",
+              "name": "Files",
+              "role": "list-box"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "media-frame",
+                      "name": "Video frame",
+                      "role": "button"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "media-title",
+                          "name": "waves.gif",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "media-details",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Play/Pause (Ctrl+Alt+Space)",
+                          "key": "media-play",
+                          "name": "Play/Pause (Ctrl+Alt+Space)",
+                          "role": "button"
+                        },
+                        {
+                          "key": "media-time",
+                          "name": "0:26/1:15",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "focus",
+                            "increment",
+                            "decrement",
+                            "set-value"
+                          ],
+                          "key": "media-timeline",
+                          "name": "Playback position",
+                          "range": [
+                            26.0,
+                            0.0,
+                            75.0,
+                            5.0
+                          ],
+                          "role": "slider",
+                          "states": [
+                            "focused"
+                          ],
+                          "value": "0:26 of 1:15"
+                        },
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "description": "Mute/unmute (Ctrl+Alt+M)",
+                              "key": "media-mute",
+                              "name": "Mute/unmute (Ctrl+Alt+M)",
+                              "role": "button"
+                            },
+                            {
+                              "actions": [
+                                "focus",
+                                "increment",
+                                "decrement",
+                                "set-value"
+                              ],
+                              "key": "media-volume",
+                              "name": "Volume",
+                              "range": [
+                                0.6,
+                                0.0,
+                                1.0,
+                                0.1
+                              ],
+                              "role": "slider",
+                              "value": "60%"
+                            }
+                          ],
+                          "key": "media-volume-row",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "media-bar",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "media",
+                  "role": "group"
+                }
+              ],
+              "key": "c13-area",
+              "role": "group"
+            }
+          ],
+          "key": "c13",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

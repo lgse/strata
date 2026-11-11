@@ -1,0 +1,115 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: Ctrl+wheel over a PDF, including its scrollbars, zooms its pages between 1× and 4× its fitted width",
+    "app/window/key-dispatch: Ctrl+wheel over a PDF preview, including its scrollbars, leaves the text size unchanged and reaches the PDF."
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.24000000000000002,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.28,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.32,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.36,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.44,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.48000000000000004,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.52,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.56,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.6000000000000001,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    },
+    {
+      "t": 0.64,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": 40,
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "pdf",
+      "value": "Page 1 of 12, 400%"
+    },
+    {
+      "key": "c12-text-size",
+      "name": "Text size 13"
+    }
+  ]
+}

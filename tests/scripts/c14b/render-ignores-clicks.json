@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: Clicking a camera button during a render is ignored; the button keeps focus"
+  ],
+  "scene": "c14b-model-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 0.35,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 0.45,
+      "type": "tap",
+      "key": "c14b-model-previous"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c14b-model-next"
+    },
+    {
+      "t": 1.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-next",
+      "focused": true
+    }
+  ]
+}

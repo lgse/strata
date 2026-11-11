@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "browser/tabs: Ctrl+W, a tab's X button, or 10xer",
+    "browser/tabs: Closing the active tab selects its right neighbour"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "t-c7-6/pill/status/close"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "t-c7-3/pill/status/close"
+    }
+  ],
+  "expect": [
+    {
+      "key": "t-c7-6",
+      "absent": true
+    },
+    {
+      "key": "t-c7-3",
+      "absent": true
+    },
+    {
+      "key": "c7-log",
+      "name": "Close Music"
+    },
+    {
+      "key": "t-c7-4",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In 10xer mode with Russian active and a text field focused"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-location"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Ё",
+      "shift": true,
+      "code": "shift+backquote",
+      "base": "ё"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    },
+    {
+      "key": "c19-location",
+      "value": "Ё",
+      "focused": true
+    }
+  ]
+}

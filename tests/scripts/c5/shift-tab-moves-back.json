@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "operations/rename: Shift+Tab does the same toward the previous item."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "Memo"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "Pics"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Renamed Notes.md to Memo.md (Shift+Tab)"
+    },
+    {
+      "key": "rename-field",
+      "value": "Pics",
+      "focused": true
+    },
+    {
+      "key": "row-2",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

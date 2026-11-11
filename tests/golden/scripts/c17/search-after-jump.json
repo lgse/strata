@@ -1,0 +1,95 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "description": "Search locations:\n/home/demo\n/run/media/demo/USB\nRemote shares are not included.",
+                          "key": "c17-palette-field",
+                          "name": "Search files and folders…",
+                          "placeholder": "Search files and folders…",
+                          "role": "text-input",
+                          "states": [
+                            "focused"
+                          ],
+                          "value": ""
+                        }
+                      ],
+                      "key": "c17-palette-combobox",
+                      "name": "Search files and folders…",
+                      "role": "combo-box",
+                      "states": [
+                        "collapsed"
+                      ]
+                    }
+                  ],
+                  "key": "c17-palette-bar",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "key": "c17-palette-status",
+                      "name": "Type to search Home and mounted local drives",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c17-palette-body",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "↑↓  navigate",
+                      "role": "label"
+                    },
+                    {
+                      "name": "open",
+                      "role": "label"
+                    },
+                    {
+                      "name": "Alt+Enter  open containing folder",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c17-palette-footer",
+                  "role": "group"
+                }
+              ],
+              "key": "c17-palette-dialog",
+              "name": "Search files and folders",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

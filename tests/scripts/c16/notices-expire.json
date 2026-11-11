@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "operations/progress/dock: When a notice expires and the dock holds no other row"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-notice"
+    },
+    {
+      "t": 3.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-notice-1",
+      "absent": true
+    },
+    {
+      "key": "c16-dock",
+      "absent": true
+    }
+  ]
+}

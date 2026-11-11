@@ -1,0 +1,815 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c4-title",
+                  "name": "Documents · 12 items",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-sort",
+                  "name": "Sorted by Name ↑",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-intent",
+                  "name": "Clicked budget.ods",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "expand"
+                      ],
+                      "description": "Columns",
+                      "key": "c4-list-columns-button",
+                      "name": "Columns",
+                      "role": "button",
+                      "states": [
+                        "collapsed"
+                      ]
+                    }
+                  ],
+                  "key": "c4-list-columns-menu-trigger",
+                  "role": "group"
+                },
+                {
+                  "key": "c4-layout",
+                  "name": "Order: name, size, mode, type, modified; hidden: none; changes: 1 (Reorder)",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-widths",
+                  "name": "Widths: default",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "focus",
+                        "context-menu",
+                        "scroll-into-view"
+                      ],
+                      "activeDescendant": "row-5",
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-name",
+                                  "name": "Name",
+                                  "role": "column-header",
+                                  "sort": "ascending"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-size",
+                                  "name": "Size",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-mode",
+                                  "name": "Mode",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-type",
+                                  "name": "Type",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-modified",
+                                  "name": "Modified",
+                                  "role": "column-header"
+                                }
+                              ],
+                              "key": "c4-list-headings",
+                              "name": "Name Size Mode Type Modified",
+                              "role": "row"
+                            }
+                          ],
+                          "key": "c4-list-headings-menu-trigger",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Music",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-15 00:02",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-3",
+                                  "name": "Music",
+                                  "position": 1,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Projects",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-26 09:57",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1",
+                                  "name": "Projects",
+                                  "position": 2,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Receipts",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-23 18:55",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-2",
+                                  "name": "Receipts",
+                                  "position": 3,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "backup.tar.gz",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "63.4 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Archive (gzip)",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-20 15:09",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-8",
+                                  "name": "backup.tar.gz",
+                                  "position": 4,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "budget.ods",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "39.6 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Spreadsheet",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-05 15:07",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-5",
+                                  "name": "budget.ods",
+                                  "position": 5,
+                                  "role": "row",
+                                  "states": [
+                                    "selected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "holiday.jpg",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "55.4 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "JPEG image",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-22 05:11",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-7",
+                                  "name": "holiday.jpg",
+                                  "position": 6,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "letter.odt",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "71.3 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Text document",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-17 00:07",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-9",
+                                  "name": "letter.odt",
+                                  "position": 7,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "main.rs",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "47.5 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Rust source code",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-02 00:05",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-6",
+                                  "name": "main.rs",
+                                  "position": 8,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Notes.md",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "31.7 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Markdown document",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-13 09:00",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-4",
+                                  "name": "Notes.md",
+                                  "position": 9,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "Quarterly report for the infrastructure committee, final revision with all appendices.pdf",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "95.0 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "PDF document",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-27 20:19",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-12",
+                                  "name": "Quarterly report for the infrastructure committee, final revision with all appendices.pdf",
+                                  "position": 10,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "README",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "87.1 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Other",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-07 15:12",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-11",
+                                  "name": "README",
+                                  "position": 11,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "scan.pdf",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "79.2 kB",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "-rw-r--r--  644",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "PDF document",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-09 06:14",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-10",
+                                  "name": "scan.pdf",
+                                  "position": 12,
+                                  "role": "row"
+                                }
+                              ],
+                              "key": "rows",
+                              "role": "group",
+                              "setSize": 12
+                            }
+                          ],
+                          "key": "viewport",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "status",
+                          "name": "",
+                          "role": "label",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c4-list",
+                      "name": "Documents",
+                      "role": "grid",
+                      "states": [
+                        "focused"
+                      ]
+                    }
+                  ],
+                  "key": "c4-list-scroll",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c4-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

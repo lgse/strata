@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: In rendered or large source documents, double-click selects a word and triple-click its logical line"
+  ],
+  "scene": "c10-rust-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "triple-click",
+      "key": "code-l13/t"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c10-selection",
+      "name": "    let mut out = Vec::new();"
+    }
+  ]
+}

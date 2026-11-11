@@ -1,0 +1,378 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-sidebar",
+                      "name": "Show sidebar",
+                      "role": "button"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~",
+                                  "key": "c6-loc-crumb-0",
+                                  "name": "~",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-0",
+                              "name": "~",
+                              "position": 1,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects",
+                                  "key": "c6-loc-crumb-1",
+                                  "name": "Projects",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-1",
+                              "name": "Projects",
+                              "position": 2,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata",
+                                  "key": "c6-loc-crumb-2",
+                                  "name": "strata",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-2",
+                              "name": "strata",
+                              "position": 3,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src",
+                                  "key": "c6-loc-crumb-3",
+                                  "name": "src",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-3",
+                              "name": "src",
+                              "position": 4,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src/ui",
+                                  "key": "c6-loc-crumb-4",
+                                  "name": "ui",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-4",
+                              "name": "ui",
+                              "position": 5,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src/ui/browser",
+                                  "key": "c6-loc-crumb-5",
+                                  "name": "browser",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-5",
+                              "name": "browser",
+                              "position": 6,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src/ui/browser/location",
+                                  "key": "c6-loc-crumb-6",
+                                  "name": "location",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-6",
+                              "name": "location",
+                              "position": 7,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src/ui/browser/location/breadcrumbs",
+                                  "key": "c6-loc-crumb-7",
+                                  "name": "breadcrumbs",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-7",
+                              "name": "breadcrumbs",
+                              "position": 8,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src/ui/browser/location/breadcrumbs/a-rather-long-folder-name-to-shorten-in-the-middle",
+                                  "key": "c6-loc-crumb-8",
+                                  "name": "a-rather-long-folder-name-to-shorten-in-the-middle",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-8",
+                              "name": "a-rather-long-folder-name-to-shorten-in-the-middle",
+                              "position": 9,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src/ui/browser/location/breadcrumbs/a-rather-long-folder-name-to-shorten-in-the-middle/deeper",
+                                  "key": "c6-loc-crumb-9",
+                                  "name": "deeper",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-9",
+                              "name": "deeper",
+                              "position": 10,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src/ui/browser/location/breadcrumbs/a-rather-long-folder-name-to-shorten-in-the-middle/deeper/still-deeper",
+                                  "key": "c6-loc-crumb-10",
+                                  "name": "still-deeper",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-10",
+                              "name": "still-deeper",
+                              "position": 11,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src/ui/browser/location/breadcrumbs/a-rather-long-folder-name-to-shorten-in-the-middle/deeper/still-deeper/even-deeper",
+                                  "key": "c6-loc-crumb-11",
+                                  "name": "even-deeper",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-11",
+                              "name": "even-deeper",
+                              "position": 12,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata/src/ui/browser/location/breadcrumbs/a-rather-long-folder-name-to-shorten-in-the-middle/deeper/still-deeper/even-deeper/leaf",
+                                  "name": "leaf",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c6-loc-copy",
+                                  "name": "Copy path",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-12",
+                              "name": "leaf",
+                              "position": 13,
+                              "role": "list-item"
+                            }
+                          ],
+                          "key": "c6-loc-trail-0",
+                          "name": "Path",
+                          "role": "list",
+                          "setSize": 13
+                        }
+                      ],
+                      "key": "c6-loc",
+                      "name": "Location",
+                      "role": "navigation"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-new-tab",
+                      "name": "New tab",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "c6-header",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-files",
+                      "name": "Files pressed 0",
+                      "role": "list"
+                    },
+                    {
+                      "key": "c6-log",
+                      "name": "—",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c6-pane",
+                  "role": "group"
+                }
+              ],
+              "key": "c6",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: XLS, XLSX, and ODS files show their first worksheet as a table with no Source view"
+  ],
+  "scene": "c11b-book-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "sheet-r0-c0"
+    }
+  ],
+  "expect": [
+    {
+      "key": "sheet",
+      "role": "grid",
+      "name": "Summary"
+    },
+    {
+      "key": "t-sheet-sheet0",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "preview-view-switch",
+      "absent": true
+    }
+  ]
+}

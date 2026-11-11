@@ -1,0 +1,8 @@
+# fixture
+[Icon Theme]
+Name=Grand
+Name[de]=Grand (de)
+Directories=48x48/apps,
+
+[48x48/apps]
+Size=48

@@ -1,0 +1,22 @@
+{
+  "bullets": [
+    "browser/view-modes/list/column-layout: Releasing over the headings moves the column to the marked point; one drag can move it several positions."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "head-modified",
+      "dx": -800,
+      "dy": 0,
+      "dur": 0.4
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-layout",
+      "name": "Order: modified, name, mode, size, type; hidden: none; changes: 1 (Reorder)"
+    }
+  ]
+}

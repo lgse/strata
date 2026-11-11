@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel/layout: With the preview hidden, such as with a folder selected, the grip and the divider's resize cursor are absent"
+  ],
+  "scene": "c9-columns-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "preview-close"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-grip",
+      "absent": true
+    },
+    {
+      "key": "preview-drawer",
+      "absent": true
+    }
+  ]
+}

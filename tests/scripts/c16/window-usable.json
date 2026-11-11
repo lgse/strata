@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "operations/progress/dock: Copying, compressing, and deleting, to Trash or permanently, show a card",
+    "operations/progress/dock: A docked card does not blur or unblur the window"
+  ],
+  "scene": "c16-card-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c16-probe"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c16-cursor"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-heard",
+      "name": " · probes 1"
+    },
+    {
+      "key": "c16-cursor",
+      "focused": true
+    },
+    {
+      "key": "c16-dock-card-1",
+      "name": "Copying items"
+    },
+    {
+      "key": "strata-dialog-backdrop",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "operations/progress/dock: Complete or X on a completed card dismisses only that card"
+  ],
+  "scene": "c16-complete-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c16-dock-card-2-cancel"
+    },
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-2",
+      "absent": true
+    },
+    {
+      "key": "c16-dock-card-1",
+      "name": "Copy complete"
+    },
+    {
+      "key": "c16-heard",
+      "name": "Dismissed 2 · probes 0"
+    }
+  ]
+}

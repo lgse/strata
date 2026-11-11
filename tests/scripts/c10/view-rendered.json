@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: **View source** and **View rendered** in the preview header switch the current document without changing the saved preference."
+  ],
+  "scene": "c10-markdown-source-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-view-switch"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c10-last-intent",
+      "name": "Show Rendered"
+    },
+    {
+      "key": "preview-view-switch",
+      "name": "View rendered"
+    }
+  ]
+}

@@ -1,0 +1,405 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "key": "title",
+          "level": 1,
+          "name": "Strata components",
+          "role": "heading"
+        },
+        {
+          "children": [
+            {
+              "level": 2,
+              "name": "Groundwork",
+              "role": "heading"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-w1",
+              "name": "W1 Component contracts",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-w2",
+              "name": "W2 Look contract",
+              "role": "button"
+            },
+            {
+              "level": 2,
+              "name": "Look",
+              "role": "heading"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-k1",
+              "name": "K1 Theme mapping",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-k2",
+              "name": "K2 Shape, density and type",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-k3",
+              "name": "K3 Icon catalogs",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-k4",
+              "name": "K4 User overrides",
+              "role": "button"
+            },
+            {
+              "level": 2,
+              "name": "Collection",
+              "role": "heading"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c1",
+              "name": "C1e Collection element",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c2",
+              "name": "C2 ColumnsView",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c3",
+              "name": "C3 IconsGrid",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c4",
+              "name": "C4 ListTable",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c5",
+              "name": "C5 InlineRenameEditor",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c24",
+              "name": "C24 Scroll extras",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c25",
+              "name": "C25 ThumbnailStore",
+              "role": "button"
+            },
+            {
+              "level": 2,
+              "name": "Chrome",
+              "role": "heading"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c6",
+              "name": "C6 LocationBar",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c7",
+              "name": "C7 BrowserTabs",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c8",
+              "name": "C8 PlacesSidebar",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c15",
+              "name": "C15 StrataDialog",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c16",
+              "name": "C16 ProgressDock",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c17",
+              "name": "C17 SearchPalette",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c18",
+              "name": "C18 FilterBar and FooterPrompt",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c19",
+              "name": "C19 Footer and ShortcutReference",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c21",
+              "name": "C21 Context menus",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c22",
+              "name": "C22 Folder peek",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c23",
+              "name": "C23 Motion effects",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c26",
+              "name": "C26 MountPrompts",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-x1",
+              "name": "X1 Shell demo",
+              "role": "button"
+            },
+            {
+              "level": 2,
+              "name": "Preview",
+              "role": "heading"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c9",
+              "name": "C9 PreviewDrawer",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c10",
+              "name": "C10b CodeView",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c10a",
+              "name": "C10a Highlighter",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c11",
+              "name": "C11 DocumentView",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c11b",
+              "name": "C11b SheetGrid",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c12",
+              "name": "C12 PdfView",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c13",
+              "name": "C13 MediaPlayer",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c14a",
+              "name": "C14a Pixels viewport",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c14b",
+              "name": "C14b Viewers and archive preview",
+              "role": "button"
+            },
+            {
+              "level": 2,
+              "name": "Controls",
+              "role": "heading"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c20a",
+              "name": "C20a Slider and NumberField",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c20b",
+              "name": "C20b ColorPicker",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c20c",
+              "name": "C20c Tabbed form and settings search",
+              "role": "button"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "index-c20d",
+              "name": "C20d IconPicker",
+              "role": "button"
+            }
+          ],
+          "key": "index",
+          "name": "Components",
+          "role": "navigation"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "operations/rename: Clicking the name text of the only selected item again, after the double-click interval, opens the editor."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-4/label"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "row-4/label"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "c1-intent",
+      "name": "Renaming Notes.md"
+    },
+    {
+      "key": "c1-rename",
+      "focused": true
+    }
+  ]
+}

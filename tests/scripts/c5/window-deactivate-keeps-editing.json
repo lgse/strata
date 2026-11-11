@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "operations/rename: When another window or an input method switcher takes activation, the editor stays open and nothing is renamed."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "Memo"
+    },
+    {
+      "t": 0.6,
+      "focus": false
+    },
+    {
+      "t": 1.1,
+      "type": "mark",
+      "name": "away"
+    }
+  ],
+  "expect": [
+    {
+      "key": "rename-field",
+      "value": "Memo.md",
+      "focused": true
+    },
+    {
+      "key": "c5-log-0",
+      "absent": true
+    }
+  ]
+}

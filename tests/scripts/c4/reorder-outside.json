@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/selection/marquee: A press on a button, text entry, label, image, slider, scrollbar, or sidebar place keeps that control's own behavior and starts no marquee."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-5"
+    },
+    {
+      "t": 0.8,
+      "type": "drag",
+      "key": "head-type",
+      "dx": -60,
+      "dy": 200,
+      "dur": 0.4
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-layout",
+      "name": "Order: name, mode, size, type, modified; hidden: none; changes: 0"
+    },
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "status",
+      "name": ""
+    },
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Name ↑"
+    }
+  ]
+}

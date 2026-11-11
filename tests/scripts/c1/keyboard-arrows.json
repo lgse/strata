@@ -1,0 +1,58 @@
+{
+  "bullets": [
+    "browser/selection/keyboard-navigation: In Icons and List, Up and Down move focus and selection through entries without changing directory.",
+    "browser/selection/keyboard-navigation: In List, Right keeps focus on the current entry and never opens it or changes directory."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-3"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Right"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-4",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: Notes.md"
+    },
+    {
+      "key": "c1-intent",
+      "name": "Edge Right"
+    },
+    {
+      "key": "c1-title",
+      "name": "Documents · 10 items"
+    },
+    {
+      "key": "c1-list",
+      "focused": true
+    }
+  ]
+}

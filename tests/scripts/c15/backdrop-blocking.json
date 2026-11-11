@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "app/dialogs: A dialog in a non-cancellable in-progress state"
+  ],
+  "scene": "c15-openers-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c15-open-progress"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "x": 4,
+      "y": 630
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-progress-dialog",
+      "role": "dialog",
+      "states": [
+        "modal"
+      ]
+    },
+    {
+      "key": "c15-progress-loading",
+      "name": "Copying…"
+    }
+  ]
+}

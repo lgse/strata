@@ -1,0 +1,362 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "A fresh profile",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-fresh-sidebar-toggle",
+                      "name": "Toggle sidebar",
+                      "role": "button"
+                    },
+                    {
+                      "key": "x1-fresh-location",
+                      "name": "~/Projects",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-fresh-new-tab",
+                      "name": "New tab",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-fresh-search",
+                      "name": "Search",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-fresh-appearance",
+                      "name": "Appearance",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-fresh-settings",
+                      "name": "Settings",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-fresh-header-close",
+                      "name": "Close window",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "x1-fresh-header",
+                  "role": "group"
+                }
+              ],
+              "key": "x1-state-fresh",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "X11, every button",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-x11-sidebar-toggle",
+                      "name": "Toggle sidebar",
+                      "role": "button"
+                    },
+                    {
+                      "key": "x1-x11-location",
+                      "name": "~/Projects",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-x11-new-tab",
+                      "name": "New tab",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-x11-search",
+                      "name": "Search",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-x11-appearance",
+                      "name": "Appearance",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-x11-settings",
+                      "name": "Settings",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-x11-header-minimize",
+                      "name": "Minimize window",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-x11-header-maximize",
+                      "name": "Maximize window",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-x11-header-close",
+                      "name": "Close window",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "x1-x11-header",
+                  "role": "group"
+                }
+              ],
+              "key": "x1-state-x11",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "X11, maximised",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-maximized-sidebar-toggle",
+                      "name": "Toggle sidebar",
+                      "role": "button"
+                    },
+                    {
+                      "key": "x1-maximized-location",
+                      "name": "~/Projects",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-maximized-new-tab",
+                      "name": "New tab",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-maximized-search",
+                      "name": "Search",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-maximized-appearance",
+                      "name": "Appearance",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-maximized-settings",
+                      "name": "Settings",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-maximized-header-minimize",
+                      "name": "Minimize window",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-maximized-header-maximize",
+                      "name": "Restore window",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-maximized-header-close",
+                      "name": "Close window",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "x1-maximized-header",
+                  "role": "group"
+                }
+              ],
+              "key": "x1-state-maximized",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "name": "Wayland, every button turned on",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-wayland-sidebar-toggle",
+                      "name": "Toggle sidebar",
+                      "role": "button"
+                    },
+                    {
+                      "key": "x1-wayland-location",
+                      "name": "~/Projects",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-wayland-new-tab",
+                      "name": "New tab",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-wayland-search",
+                      "name": "Search",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-wayland-appearance",
+                      "name": "Appearance",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-wayland-settings",
+                      "name": "Settings",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-wayland-header-maximize",
+                      "name": "Maximize or restore window",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "x1-wayland-header-close",
+                      "name": "Close window",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "x1-wayland-header",
+                  "role": "group"
+                }
+              ],
+              "key": "x1-state-wayland",
+              "role": "group"
+            }
+          ],
+          "key": "x1-header-states",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

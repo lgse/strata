@@ -1,0 +1,71 @@
+{
+  "bullets": [
+    "browser/context-menu: Left in a submenu closes only the submenu and refocuses its row; Up and Down then move within the parent menu."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.15,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "ContextMenu"
+    },
+    {
+      "t": 0.45,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.55,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Down"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-menu-item9",
+      "name": "Send to",
+      "states": [
+        "collapsed"
+      ]
+    },
+    {
+      "key": "c21-menu-item9-sub-menu",
+      "absent": true
+    },
+    {
+      "key": "c21-menu-item11",
+      "name": "Cut",
+      "focused": true
+    }
+  ]
+}

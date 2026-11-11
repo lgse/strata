@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: With focus in a PDF, Ctrl+A selects the text of every loaded page."
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    }
+  ]
+}

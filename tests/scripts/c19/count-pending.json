@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "app/shortcut-reference: While a typed query's search has not reported back"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-pending"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-count",
+      "name": "5 items"
+    }
+  ]
+}

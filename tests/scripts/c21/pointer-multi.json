@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "browser/context-menu: Right-clicking an entry inside a multi-selection keeps the whole selection."
+  ],
+  "scene": "c21-three-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-6",
+      "button": "secondary"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-6",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-7",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c21-status",
+      "name": "Dismissed menu 1 on budget.ods"
+    }
+  ]
+}

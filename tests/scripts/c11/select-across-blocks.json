@@ -1,0 +1,22 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Dragging across headings, paragraphs, lists, code, and tables"
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "doc-u0/t",
+      "dx": 0,
+      "dy": 420,
+      "dur": 0.4
+    }
+  ],
+  "expect": [
+    {
+      "key": "c11-selection",
+      "name": "Strata 1.2 draws documents natively: bold, italic, struck, code and a link.\nInstall\n• Download the release\n• Check its signature\n1. Run the installer\nfn main() {\n    let name = \"Strata\";\n    println!(\"hello, {name}\");\n}\nPreviews never run the document's own code.\nFormat\tSource view\tWraps\nMarkdown\tYes\tPreference\nODT\tNo\tAlways\n"
+    }
+  ]
+}

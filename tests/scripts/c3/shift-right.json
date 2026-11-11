@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "browser/view-modes: Click the first of five entries and Ctrl+click the third. Shift+Down in List or Shift+Right in Icons then selects only the third and fourth, as in Columns."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1/icon"
+    },
+    {
+      "t": 0.4,
+      "hold": "ctrl"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "row-3/icon"
+    },
+    {
+      "t": 0.7,
+      "hold": ""
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Right",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "status",
+      "name": "2 items selected"
+    },
+    {
+      "key": "row-3",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-4",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

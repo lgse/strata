@@ -1,0 +1,1347 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c1-title",
+              "name": "Archive · 100000 items",
+              "role": "label"
+            },
+            {
+              "key": "c1-preview",
+              "name": "Preview: entry-000003.dat",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "click",
+                "focus"
+              ],
+              "key": "c1-refresh",
+              "name": "Refresh",
+              "role": "button"
+            },
+            {
+              "key": "c1-intent",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "key": "c1-last",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000492",
+                          "name": "entry-000493.dat",
+                          "position": 493,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000493",
+                          "name": "entry-000494.dat",
+                          "position": 494,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000494",
+                          "name": "entry-000495.dat",
+                          "position": 495,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000495",
+                          "name": "entry-000496.dat",
+                          "position": 496,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000496",
+                          "name": "entry-000497.dat",
+                          "position": 497,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000497",
+                          "name": "entry-000498.dat",
+                          "position": 498,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000498",
+                          "name": "entry-000499.dat",
+                          "position": 499,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000499",
+                          "name": "entry-000500.dat",
+                          "position": 500,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000500",
+                          "name": "entry-000501.dat",
+                          "position": 501,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000501",
+                          "name": "entry-000502.dat",
+                          "position": 502,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000502",
+                          "name": "entry-000503.dat",
+                          "position": 503,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000503",
+                          "name": "entry-000504.dat",
+                          "position": 504,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000504",
+                          "name": "entry-000505.dat",
+                          "position": 505,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000505",
+                          "name": "entry-000506.dat",
+                          "position": 506,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000506",
+                          "name": "entry-000507.dat",
+                          "position": 507,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000507",
+                          "name": "entry-000508.dat",
+                          "position": 508,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000508",
+                          "name": "entry-000509.dat",
+                          "position": 509,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000509",
+                          "name": "entry-000510.dat",
+                          "position": 510,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000510",
+                          "name": "entry-000511.dat",
+                          "position": 511,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000511",
+                          "name": "entry-000512.dat",
+                          "position": 512,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000512",
+                          "name": "entry-000513.dat",
+                          "position": 513,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000513",
+                          "name": "entry-000514.dat",
+                          "position": 514,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000514",
+                          "name": "entry-000515.dat",
+                          "position": 515,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000515",
+                          "name": "entry-000516.dat",
+                          "position": 516,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000516",
+                          "name": "entry-000517.dat",
+                          "position": 517,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000517",
+                          "name": "entry-000518.dat",
+                          "position": 518,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000518",
+                          "name": "entry-000519.dat",
+                          "position": 519,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000519",
+                          "name": "entry-000520.dat",
+                          "position": 520,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000520",
+                          "name": "entry-000521.dat",
+                          "position": 521,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000521",
+                          "name": "entry-000522.dat",
+                          "position": 522,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000522",
+                          "name": "entry-000523.dat",
+                          "position": 523,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000523",
+                          "name": "entry-000524.dat",
+                          "position": 524,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000524",
+                          "name": "entry-000525.dat",
+                          "position": 525,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000525",
+                          "name": "entry-000526.dat",
+                          "position": 526,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000526",
+                          "name": "entry-000527.dat",
+                          "position": 527,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000527",
+                          "name": "entry-000528.dat",
+                          "position": 528,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000528",
+                          "name": "entry-000529.dat",
+                          "position": 529,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000529",
+                          "name": "entry-000530.dat",
+                          "position": 530,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000530",
+                          "name": "entry-000531.dat",
+                          "position": 531,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000531",
+                          "name": "entry-000532.dat",
+                          "position": 532,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000532",
+                          "name": "entry-000533.dat",
+                          "position": 533,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000533",
+                          "name": "entry-000534.dat",
+                          "position": 534,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000534",
+                          "name": "entry-000535.dat",
+                          "position": 535,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000535",
+                          "name": "entry-000536.dat",
+                          "position": 536,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000536",
+                          "name": "entry-000537.dat",
+                          "position": 537,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000537",
+                          "name": "entry-000538.dat",
+                          "position": 538,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000538",
+                          "name": "entry-000539.dat",
+                          "position": 539,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000539",
+                          "name": "entry-000540.dat",
+                          "position": 540,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000540",
+                          "name": "entry-000541.dat",
+                          "position": 541,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000541",
+                          "name": "entry-000542.dat",
+                          "position": 542,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000542",
+                          "name": "entry-000543.dat",
+                          "position": 543,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000543",
+                          "name": "entry-000544.dat",
+                          "position": 544,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000544",
+                          "name": "entry-000545.dat",
+                          "position": 545,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000545",
+                          "name": "entry-000546.dat",
+                          "position": 546,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000546",
+                          "name": "entry-000547.dat",
+                          "position": 547,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000547",
+                          "name": "entry-000548.dat",
+                          "position": 548,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000548",
+                          "name": "entry-000549.dat",
+                          "position": 549,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000549",
+                          "name": "entry-000550.dat",
+                          "position": 550,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000550",
+                          "name": "entry-000551.dat",
+                          "position": 551,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000551",
+                          "name": "entry-000552.dat",
+                          "position": 552,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000552",
+                          "name": "entry-000553.dat",
+                          "position": 553,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000553",
+                          "name": "entry-000554.dat",
+                          "position": 554,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000554",
+                          "name": "entry-000555.dat",
+                          "position": 555,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000555",
+                          "name": "entry-000556.dat",
+                          "position": 556,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000556",
+                          "name": "entry-000557.dat",
+                          "position": 557,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000557",
+                          "name": "entry-000558.dat",
+                          "position": 558,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000558",
+                          "name": "entry-000559.dat",
+                          "position": 559,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000559",
+                          "name": "entry-000560.dat",
+                          "position": 560,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000560",
+                          "name": "entry-000561.dat",
+                          "position": 561,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000561",
+                          "name": "entry-000562.dat",
+                          "position": 562,
+                          "role": "list-box-option",
+                          "states": [
+                            "selected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000562",
+                          "name": "entry-000563.dat",
+                          "position": 563,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000563",
+                          "name": "entry-000564.dat",
+                          "position": 564,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000564",
+                          "name": "entry-000565.dat",
+                          "position": 565,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000565",
+                          "name": "entry-000566.dat",
+                          "position": 566,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000566",
+                          "name": "entry-000567.dat",
+                          "position": 567,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000567",
+                          "name": "entry-000568.dat",
+                          "position": 568,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000568",
+                          "name": "entry-000569.dat",
+                          "position": 569,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000569",
+                          "name": "entry-000570.dat",
+                          "position": 570,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000570",
+                          "name": "entry-000571.dat",
+                          "position": 571,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000571",
+                          "name": "entry-000572.dat",
+                          "position": 572,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000572",
+                          "name": "entry-000573.dat",
+                          "position": 573,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000573",
+                          "name": "entry-000574.dat",
+                          "position": 574,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000574",
+                          "name": "entry-000575.dat",
+                          "position": 575,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000575",
+                          "name": "entry-000576.dat",
+                          "position": 576,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000576",
+                          "name": "entry-000577.dat",
+                          "position": 577,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000577",
+                          "name": "entry-000578.dat",
+                          "position": 578,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000578",
+                          "name": "entry-000579.dat",
+                          "position": 579,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000579",
+                          "name": "entry-000580.dat",
+                          "position": 580,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000580",
+                          "name": "entry-000581.dat",
+                          "position": 581,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000581",
+                          "name": "entry-000582.dat",
+                          "position": 582,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000582",
+                          "name": "entry-000583.dat",
+                          "position": 583,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000583",
+                          "name": "entry-000584.dat",
+                          "position": 584,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000584",
+                          "name": "entry-000585.dat",
+                          "position": 585,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000585",
+                          "name": "entry-000586.dat",
+                          "position": 586,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000586",
+                          "name": "entry-000587.dat",
+                          "position": 587,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000587",
+                          "name": "entry-000588.dat",
+                          "position": 588,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000588",
+                          "name": "entry-000589.dat",
+                          "position": 589,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000589",
+                          "name": "entry-000590.dat",
+                          "position": 590,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000590",
+                          "name": "entry-000591.dat",
+                          "position": 591,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000591",
+                          "name": "entry-000592.dat",
+                          "position": 592,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000592",
+                          "name": "entry-000593.dat",
+                          "position": 593,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000593",
+                          "name": "entry-000594.dat",
+                          "position": 594,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000594",
+                          "name": "entry-000595.dat",
+                          "position": 595,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000595",
+                          "name": "entry-000596.dat",
+                          "position": 596,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000596",
+                          "name": "entry-000597.dat",
+                          "position": 597,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000597",
+                          "name": "entry-000598.dat",
+                          "position": 598,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000598",
+                          "name": "entry-000599.dat",
+                          "position": 599,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000599",
+                          "name": "entry-000600.dat",
+                          "position": 600,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000600",
+                          "name": "entry-000601.dat",
+                          "position": 601,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000601",
+                          "name": "entry-000602.dat",
+                          "position": 602,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000602",
+                          "name": "entry-000603.dat",
+                          "position": 603,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000603",
+                          "name": "entry-000604.dat",
+                          "position": 604,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000604",
+                          "name": "entry-000605.dat",
+                          "position": 605,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000605",
+                          "name": "entry-000606.dat",
+                          "position": 606,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000606",
+                          "name": "entry-000607.dat",
+                          "position": 607,
+                          "role": "list-box-option"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "row-1000607",
+                          "name": "entry-000608.dat",
+                          "position": 608,
+                          "role": "list-box-option"
+                        }
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 100000
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "status",
+                  "name": "560 items selected",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c1-list",
+              "name": "Archive",
+              "role": "list-box",
+              "states": [
+                "focused"
+              ]
+            }
+          ],
+          "key": "c1-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

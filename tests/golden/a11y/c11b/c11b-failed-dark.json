@@ -1,0 +1,349 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "name": "people.csv",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "people.csv",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "budget.xlsx",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "budget.xlsx",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "notes.csv",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "notes.csv",
+                      "role": "list-box-option"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                },
+                {
+                  "key": "c11b-last-intent",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c11b-range",
+                  "name": "None",
+                  "role": "label"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "budget.xlsx",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "18 KB · Today 09:41 · Excel spreadsheet",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "focus"
+                              ],
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "name": "Preview unavailable",
+                                      "role": "label"
+                                    },
+                                    {
+                                      "name": "The sandboxed preview renderer failed",
+                                      "role": "label"
+                                    },
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus"
+                                      ],
+                                      "key": "sheet-retry",
+                                      "name": "Try again",
+                                      "role": "button"
+                                    }
+                                  ],
+                                  "key": "sheet-failed",
+                                  "role": "group"
+                                }
+                              ],
+                              "key": "sheet",
+                              "name": "Inventory",
+                              "role": "group"
+                            },
+                            {
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-up",
+                                    "scroll-down",
+                                    "scroll-left",
+                                    "set-scroll-offset"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "focus",
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "title",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "pill",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "t-sheet-sheet0",
+                                          "name": "Summary",
+                                          "position": 1,
+                                          "role": "tab",
+                                          "states": [
+                                            "unselected"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "focus",
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "title",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "pill",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "t-sheet-sheet1",
+                                          "name": "Q1 sales",
+                                          "position": 2,
+                                          "role": "tab",
+                                          "states": [
+                                            "unselected"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "focus",
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "title",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "pill",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "t-sheet-sheet2",
+                                          "name": "Empty",
+                                          "position": 3,
+                                          "role": "tab",
+                                          "states": [
+                                            "unselected"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "focus",
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "title",
+                                                  "role": "group"
+                                                }
+                                              ],
+                                              "key": "pill",
+                                              "role": "group"
+                                            }
+                                          ],
+                                          "key": "t-sheet-sheet3",
+                                          "name": "Inventory",
+                                          "position": 4,
+                                          "role": "tab",
+                                          "states": [
+                                            "selected"
+                                          ]
+                                        }
+                                      ],
+                                      "key": "sheet-tabs-list",
+                                      "name": "Sheets",
+                                      "role": "tab-list",
+                                      "setSize": 4
+                                    }
+                                  ],
+                                  "key": "sheet-tabs-scroll",
+                                  "role": "scroll-view",
+                                  "states": [
+                                    "clips"
+                                  ]
+                                }
+                              ],
+                              "key": "sheet-tabs",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "sheet-box",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

@@ -1,0 +1,54 @@
+{
+  "bullets": [
+    "preview/preview-panel/media: For media that is neither audio nor video, the seek slider steps 5 s with the arrow keys and 30 s with Page Up/Down."
+  ],
+  "scene": "c13-plain-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "PageUp"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "PageDown"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 1.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-timeline",
+      "role": "slider",
+      "value": "0:32 of 1:15"
+    },
+    {
+      "key": "c13-seeks",
+      "name": "6 seeks"
+    }
+  ]
+}

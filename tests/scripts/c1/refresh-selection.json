@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/selection: F5 or the pane Refresh button keeps a multi-selection; entries gone from disk are dropped."
+  ],
+  "scene": "c1-selection-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Delete",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "F5"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-4",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-6",
+      "absent": true
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: backup.tar.gz"
+    }
+  ]
+}

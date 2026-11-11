@@ -1,0 +1,58 @@
+{
+  "bullets": [
+    "browser/selection/marquee: A drag from blank space in a pane header, List's heading strip, a Columns header, or beside the last column starts a marquee."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "head-name/resize",
+      "dx": -250,
+      "dy": 0,
+      "dur": 0.3
+    },
+    {
+      "t": 1.0,
+      "type": "down",
+      "x": 850,
+      "y": 71
+    },
+    {
+      "t": 1.05,
+      "type": "move",
+      "x": 850,
+      "y": 90
+    },
+    {
+      "t": 1.1,
+      "type": "move",
+      "x": 850,
+      "y": 140
+    },
+    {
+      "t": 1.15,
+      "type": "move",
+      "x": 850,
+      "y": 175
+    },
+    {
+      "t": 1.2,
+      "type": "up",
+      "x": 850,
+      "y": 175
+    }
+  ],
+  "expect": [
+    {
+      "key": "status",
+      "name": "4 items selected"
+    },
+    {
+      "key": "row-8",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

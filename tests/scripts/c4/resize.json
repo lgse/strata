@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "browser/view-modes/list: A drag cannot shrink a column below its minimum: Name 160, Mode 80, Size 70, Type 80, and Modified 110 px.",
+    "browser/view-modes/list: Resized widths are saved as `[browser_list_columns]`"
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "head-size/resize",
+      "dx": 40,
+      "dy": 0,
+      "dur": 0.3
+    },
+    {
+      "t": 1.0,
+      "type": "drag",
+      "key": "head-size/resize",
+      "dx": -200,
+      "dy": 0,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-widths",
+      "name": "Widths: size 70"
+    },
+    {
+      "key": "c4-layout",
+      "name": "Order: name, mode, size, type, modified; hidden: none; changes: 0"
+    },
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Name ↑"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "operations/rename: Returning to the window keeps focus in the field, and Enter then commits."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "Memo"
+    },
+    {
+      "t": 0.6,
+      "focus": false
+    },
+    {
+      "t": 0.8,
+      "focus": true
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Renamed Notes.md to Memo.md (Enter)"
+    }
+  ]
+}

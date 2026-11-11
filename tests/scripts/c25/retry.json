@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "browser/thumbnails: A file whose render failed is not retried for 30 seconds"
+  ],
+  "scene": "c25-filled-light",
+  "events": [
+    {
+      "t": 5.0,
+      "type": "wheel",
+      "key": "c25-list",
+      "dx": 0,
+      "dy": -1200
+    },
+    {
+      "t": 6.0,
+      "type": "wheel",
+      "key": "c25-list",
+      "dx": 0,
+      "dy": 1200
+    },
+    {
+      "t": 30.0,
+      "type": "key",
+      "name": "s"
+    },
+    {
+      "t": 31.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c25-snapshot",
+      "name": "Snapshot: 9 rows on screen: 6 show thumbnails, 3 show icons (0 waiting, 1 failed, 2 without thumbnails, 1 of them folders) · 1.14 MiB of 8.00 MiB held | Rendered 24 · failed 1 · cancelled 0 · late results dropped 0 · stopped 0 · view ran 0 times while 15 thumbnails landed"
+    },
+    {
+      "key": "c25-order",
+      "name": "First requests: broken_0008.heic · scrolled up"
+    },
+    {
+      "key": "c25-work",
+      "name": "Rendered 24 · failed 2 · cancelled 0 · late results dropped 0 · stopped 0 · view ran 0 times while 0 thumbnails landed"
+    }
+  ]
+}

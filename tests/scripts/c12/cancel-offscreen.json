@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: Queued PDF pages that leave the view are cancelled before rendering."
+  ],
+  "scene": "c12-long-light",
+  "events": [
+    {
+      "t": 0.05,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "End",
+      "cmd": true
+    },
+    {
+      "t": 1.2,
+      "type": "move",
+      "key": "files"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c12-log",
+      "name": "Rendered p1 840 p500 840 p499 840 · Cancelled p2"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+* linguist-generated=true
+generate.py -linguist-generated
+README.md -linguist-generated
+.gitattributes -linguist-generated

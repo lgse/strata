@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "operations/progress: Escape in the progress dialog acts as Cancel"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-move-stuck"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-progress-dialog",
+      "name": "Cancelling transfer…"
+    },
+    {
+      "key": "c16-progress-primary",
+      "name": "Cancellation requested",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

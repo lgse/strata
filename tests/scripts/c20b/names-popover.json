@@ -1,0 +1,51 @@
+{
+  "bullets": [
+    "settings/themes: A swatch's color chooser draws its Cancel and Select buttons, hex entry, sliders"
+  ],
+  "scene": "c20b-popover-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "mark",
+      "name": "open"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20b-accent-popover-content",
+      "role": "dialog",
+      "name": "Accent"
+    },
+    {
+      "key": "c20b-accent",
+      "absent": true
+    },
+    {
+      "key": "c20b-accent-plane",
+      "role": "slider",
+      "name": "Saturation and value",
+      "value": "Saturation 45%, value 98%",
+      "focused": true
+    },
+    {
+      "key": "c20b-accent-hue",
+      "role": "slider",
+      "name": "Hue",
+      "value": "217\u00b0"
+    },
+    {
+      "key": "c20b-accent-hex",
+      "name": "Hex color",
+      "value": "#89b4fa"
+    },
+    {
+      "key": "c20b-background-button",
+      "absent": true
+    }
+  ]
+}

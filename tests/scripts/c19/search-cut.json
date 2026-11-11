@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In the reference's search field, typing, Delete, and Ctrl+A"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "paste"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "a",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "x",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "x"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "value": "x",
+      "focused": true
+    }
+  ]
+}

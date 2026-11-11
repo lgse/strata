@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: A click, then a Shift-click farther along, selects from the first click to the second."
+  ],
+  "scene": "c10-rust-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "code-l1/t"
+    },
+    {
+      "t": 0.4,
+      "hold": "shift"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "code-l5/t"
+    },
+    {
+      "t": 0.7,
+      "hold": ""
+    }
+  ],
+  "expect": [
+    {
+      "key": "c10-selection",
+      "name": "use std::path::Path;\n\n/// One entry: its name and size in bytes.\n#[derive(Debug, Clone)]"
+    }
+  ]
+}

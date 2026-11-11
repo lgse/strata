@@ -1,0 +1,109 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "These items will be permanently deleted. This action cannot be undone.",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "report.pdf, 2.1 MB",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "photo.raw, 1.9 MB",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "notes.md, 200 kB",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c15-danger-files",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c15-danger-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-danger-secondary",
+                  "name": "Cancel",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-danger-primary",
+                  "name": "Permanently delete 3 items",
+                  "role": "default-button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-danger-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "description": "3 items · 4.2 MB will be permanently deleted",
+              "key": "c15-danger-dialog",
+              "name": "Permanently delete 3 items?",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

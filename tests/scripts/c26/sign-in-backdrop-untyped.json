@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "app/dialogs: The mount authentication dialog ignores backdrop clicks",
+    "app/dialogs: Clicking the backdrop outside a dialog dismisses it"
+  ],
+  "scene": "c26-luks-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "tap",
+      "x": 4,
+      "y": 630
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-password-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Aborted"
+    }
+  ]
+}

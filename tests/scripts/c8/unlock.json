@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "devices/volumes/encrypted: A locked encrypted row shows a lock button",
+    "devices/volumes/encrypted: The lock button is named after its action",
+    "devices/volumes/encrypted: Rows for non-encrypted devices have no lock button.",
+    "devices/volumes: Clicking the Lock or Unlock button with the mouse leaves no focus ring"
+  ],
+  "scene": "c8-devices-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-device-vault-lock"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "Unlock vault"
+    },
+    {
+      "key": "places-device-vault-lock",
+      "name": "Lock",
+      "focused": false
+    },
+    {
+      "key": "places-device-backup-lock",
+      "name": "Lock"
+    },
+    {
+      "key": "places-device-sandisk-lock",
+      "absent": true
+    }
+  ]
+}

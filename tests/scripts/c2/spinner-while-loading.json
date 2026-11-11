@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: The header spinner shows only while that column is loading"
+  ],
+  "scene": "c2-home-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1000006/label"
+    },
+    {
+      "t": 0.4,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-col-2-spinner",
+      "role": "progress-indicator",
+      "name": "Loading"
+    }
+  ]
+}

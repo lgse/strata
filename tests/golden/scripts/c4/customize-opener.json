@@ -1,0 +1,148 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "COLUMNS",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "label0",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "The Name column cannot be hidden",
+                              "key": "c4-list-headings-menu-item1",
+                              "name": "Name",
+                              "role": "menu-item-check-box",
+                              "states": [
+                                "disabled",
+                                "checked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c4-list-headings-menu-item2",
+                              "name": "Mode",
+                              "role": "menu-item-check-box",
+                              "states": [
+                                "focused",
+                                "checked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c4-list-headings-menu-item3",
+                              "name": "Size",
+                              "role": "menu-item-check-box",
+                              "states": [
+                                "checked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c4-list-headings-menu-item4",
+                              "name": "Type",
+                              "role": "menu-item-check-box",
+                              "states": [
+                                "checked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c4-list-headings-menu-item5",
+                              "name": "Modified",
+                              "role": "menu-item-check-box",
+                              "states": [
+                                "checked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c4-list-headings-menu-item7",
+                              "name": "Reset to default columns",
+                              "role": "menu-item"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "c4-list-headings-menu-scroll-area",
+                  "role": "group"
+                }
+              ],
+              "key": "c4-list-headings-menu-menu",
+              "role": "menu",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

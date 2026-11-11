@@ -1,0 +1,90 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c15-progress-loading",
+                  "name": "Copying…",
+                  "role": "progress-indicator"
+                },
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Copied",
+                      "range": [
+                        0.34,
+                        0.0,
+                        1.0,
+                        null
+                      ],
+                      "role": "progress-indicator",
+                      "value": "34%"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "412 of 1,204 files · 1.2 GB of 3.4 GB",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c15-progress-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-progress-secondary",
+                  "name": "Cancel",
+                  "role": "button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-progress-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "description": "To /mnt/backup",
+              "key": "c15-progress-dialog",
+              "name": "Copying 1,204 files",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

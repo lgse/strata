@@ -1,0 +1,74 @@
+{
+  "bullets": [
+    "browser/sidebar: In the icon rail, 10xer `j`/`k` and Tab also stop on the chevron-only headings."
+  ],
+  "scene": "c8-tenxer-rail-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.35,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.45,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.55,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.6000000000000001,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.65,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.75,
+      "type": "key",
+      "name": "j"
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-heading-pinned",
+      "focused": true
+    }
+  ]
+}

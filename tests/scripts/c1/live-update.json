@@ -1,0 +1,189 @@
+{
+  "bullets": [
+    "browser/selection: Background changes to an open directory keep the selection and scroll position and do not take focus."
+  ],
+  "scene": "c1-photos-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.12,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.14,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.16,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.18,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.2,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.22,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.24,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.26,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.28,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.3,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.32,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.34,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.36,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.38,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.4,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.42,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.44,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.46,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.48,
+      "type": "wheel",
+      "x": 480,
+      "y": 360,
+      "dy": -400
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "row-10310"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "i",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-10310",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-10000",
+      "absent": true
+    },
+    {
+      "key": "c1-title",
+      "name": "Photos · 2003 items"
+    },
+    {
+      "key": "c1-refresh",
+      "focused": true
+    },
+    {
+      "key": "c1-list",
+      "focused": false
+    }
+  ]
+}

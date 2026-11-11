@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In the default map, a Ctrl+F query shows the displayed result total"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-filter-miss"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-count",
+      "name": "0 items"
+    }
+  ]
+}

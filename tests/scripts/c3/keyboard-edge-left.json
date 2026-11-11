@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/selection/keyboard-navigation: In Icons, Left on the first tile focuses the visible sidebar; in List, Left from any entry does."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-2/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Left"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-intent",
+      "name": "Edge Left"
+    },
+    {
+      "key": "row-1",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

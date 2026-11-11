@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar/completion: A key added to `focus_next` or `focus_previous`, such as F7 or Ctrl+F7, completes the path as Tab does."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "~/Pr",
+      "every": 0.01
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "F7"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "input",
+      "value": "~/Projects/",
+      "focused": true
+    },
+    {
+      "key": "c6-loc-suggestions",
+      "absent": true
+    }
+  ]
+}

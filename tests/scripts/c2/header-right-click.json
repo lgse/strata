@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Right-clicking a column's title or empty header space opens that column's folder menu at the click"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "secondary-click",
+      "key": "c2-col-3-title"
+    },
+    {
+      "t": 1.0,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-intent",
+      "name": "Folder menu for Reports"
+    }
+  ]
+}

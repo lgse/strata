@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/audio: An undecodable track shows its error inside the audio view with previous and next still usable."
+  ],
+  "scene": "c13-audio-error-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-error-title",
+      "name": "Can't play this file"
+    },
+    {
+      "key": "media-play",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

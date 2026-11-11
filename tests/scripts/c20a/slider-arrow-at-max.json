@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/view-modes/density: Left and Right step a focused slider by 1 px; Page Up and Page Down step it by 4 px"
+  ],
+  "scene": "c20a-max-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20a-frame-knob"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-frame",
+      "value": "Custom · 12 px"
+    },
+    {
+      "key": "c20a-log",
+      "name": "—"
+    }
+  ]
+}

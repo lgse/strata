@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/selection/click-modes: With Double set, one click on a folder only selects it."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-intent",
+      "name": "Clicked Projects"
+    }
+  ]
+}

@@ -1,0 +1,273 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Notes.md",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "label0",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "~/Documents",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "label1",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item3",
+                              "name": "New Folder",
+                              "role": "menu-item",
+                              "states": [
+                                "focused"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item4",
+                              "name": "New File",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item6",
+                              "name": "Open",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Looking for compatible applications…",
+                              "key": "c21-menu-item7",
+                              "name": "Open With…",
+                              "role": "menu-item",
+                              "states": [
+                                "disabled"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "collapse",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item9",
+                              "name": "Send to",
+                              "role": "menu-item",
+                              "states": [
+                                "expanded"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item11",
+                              "name": "Cut",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item12",
+                              "name": "Copy",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item13",
+                              "name": "Rename",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item15",
+                              "name": "Properties",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item17",
+                              "name": "Move to Trash",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item18",
+                              "name": "Permanently delete",
+                              "role": "menu-item"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "c21-menu-scroll-area",
+                  "role": "group"
+                }
+              ],
+              "key": "c21-menu-menu",
+              "name": "Context menu",
+              "role": "menu",
+              "states": [
+                "modal"
+              ]
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item9-sub-item0",
+                              "name": "Desktop",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item9-sub-item1",
+                              "name": "Mail recipient",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item9-sub-item2",
+                              "name": "Compressed archive",
+                              "role": "menu-item"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "c21-menu-item9-sub-scroll-area",
+                  "role": "group"
+                }
+              ],
+              "key": "c21-menu-item9-sub-menu",
+              "name": "Send to",
+              "role": "menu"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

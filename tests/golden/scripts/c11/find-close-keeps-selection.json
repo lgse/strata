@@ -1,0 +1,857 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "name": "file-0.md",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-0.md",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "file-1.md",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-1.md",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "file-2.md",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-2.md",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "file-3.md",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "file-3.md",
+                      "role": "list-box-option"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                },
+                {
+                  "key": "c11-last-intent",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c11-selection",
+                  "name": "signature",
+                  "role": "label"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "notes.md",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "2.4 KB · Today 09:41 · Markdown",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-view-switch",
+                          "name": "View source",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "expand"
+                          ],
+                          "key": "preview-find",
+                          "name": "Find in preview (Ctrl+F)",
+                          "role": "button",
+                          "states": [
+                            "collapsed"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-wrap",
+                          "name": "Toggle word wrap",
+                          "role": "button",
+                          "states": [
+                            "checked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "Release notes",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "level": 1,
+                                          "name": "Release notes",
+                                          "role": "heading"
+                                        }
+                                      ],
+                                      "key": "doc-u0",
+                                      "position": 1,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "focus",
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "click",
+                                                    "focus"
+                                                  ],
+                                                  "key": "link-0",
+                                                  "name": "a link",
+                                                  "role": "link"
+                                                }
+                                              ],
+                                              "key": "t",
+                                              "name": "Strata 1.2 draws documents natively: bold, italic, struck, code and a link.",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "role": "paragraph"
+                                        }
+                                      ],
+                                      "key": "doc-u1",
+                                      "position": 2,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "Install",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "level": 2,
+                                          "name": "Install",
+                                          "role": "heading"
+                                        }
+                                      ],
+                                      "key": "doc-u2",
+                                      "position": 3,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "• Download the release",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "level": 1,
+                                          "name": "• Download the release",
+                                          "role": "list-item"
+                                        }
+                                      ],
+                                      "key": "doc-u3",
+                                      "position": 4,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "• Check its signature",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "level": 2,
+                                          "name": "• Check its signature",
+                                          "role": "list-item"
+                                        }
+                                      ],
+                                      "key": "doc-u4",
+                                      "position": 5,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "1. Run the installer",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "level": 1,
+                                          "name": "1. Run the installer",
+                                          "role": "list-item"
+                                        }
+                                      ],
+                                      "key": "doc-u5",
+                                      "position": 6,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "fn main() {\n    let name = \"Strata\";\n    println!(\"hello, {name}\");\n}",
+                                              "role": "label"
+                                            },
+                                            {
+                                              "actions": [
+                                                "click",
+                                                "focus",
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "copy",
+                                              "name": "Copy code",
+                                              "role": "button"
+                                            }
+                                          ],
+                                          "role": "code"
+                                        }
+                                      ],
+                                      "key": "doc-u6",
+                                      "position": 7,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "Previews never run the document's own code.",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "role": "blockquote"
+                                        }
+                                      ],
+                                      "key": "doc-u7",
+                                      "position": 8,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view",
+                                            "scroll-up",
+                                            "scroll-down",
+                                            "set-scroll-offset"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "children": [
+                                                        {
+                                                          "actions": [
+                                                            "scroll-into-view"
+                                                          ],
+                                                          "key": "r0c0",
+                                                          "name": "Format",
+                                                          "role": "label"
+                                                        }
+                                                      ],
+                                                      "name": "Format",
+                                                      "role": "column-header"
+                                                    },
+                                                    {
+                                                      "actions": [
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "children": [
+                                                        {
+                                                          "actions": [
+                                                            "scroll-into-view"
+                                                          ],
+                                                          "key": "r0c1",
+                                                          "name": "Source view",
+                                                          "role": "label"
+                                                        }
+                                                      ],
+                                                      "name": "Source view",
+                                                      "role": "column-header"
+                                                    },
+                                                    {
+                                                      "actions": [
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "children": [
+                                                        {
+                                                          "actions": [
+                                                            "scroll-into-view"
+                                                          ],
+                                                          "key": "r0c2",
+                                                          "name": "Wraps",
+                                                          "role": "label"
+                                                        }
+                                                      ],
+                                                      "name": "Wraps",
+                                                      "role": "column-header"
+                                                    }
+                                                  ],
+                                                  "name": "Format Source view Wraps",
+                                                  "role": "row"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "children": [
+                                                        {
+                                                          "actions": [
+                                                            "scroll-into-view"
+                                                          ],
+                                                          "key": "r1c0",
+                                                          "name": "Markdown",
+                                                          "role": "label"
+                                                        }
+                                                      ],
+                                                      "name": "Markdown",
+                                                      "role": "cell"
+                                                    },
+                                                    {
+                                                      "actions": [
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "children": [
+                                                        {
+                                                          "actions": [
+                                                            "scroll-into-view"
+                                                          ],
+                                                          "key": "r1c1",
+                                                          "name": "Yes",
+                                                          "role": "label"
+                                                        }
+                                                      ],
+                                                      "name": "Yes",
+                                                      "role": "cell"
+                                                    },
+                                                    {
+                                                      "actions": [
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "children": [
+                                                        {
+                                                          "actions": [
+                                                            "scroll-into-view"
+                                                          ],
+                                                          "key": "r1c2",
+                                                          "name": "Preference",
+                                                          "role": "label"
+                                                        }
+                                                      ],
+                                                      "name": "Preference",
+                                                      "role": "cell"
+                                                    }
+                                                  ],
+                                                  "name": "Markdown Yes Preference",
+                                                  "role": "row"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "children": [
+                                                    {
+                                                      "actions": [
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "children": [
+                                                        {
+                                                          "actions": [
+                                                            "scroll-into-view"
+                                                          ],
+                                                          "key": "r2c0",
+                                                          "name": "ODT",
+                                                          "role": "label"
+                                                        }
+                                                      ],
+                                                      "name": "ODT",
+                                                      "role": "cell"
+                                                    },
+                                                    {
+                                                      "actions": [
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "children": [
+                                                        {
+                                                          "actions": [
+                                                            "scroll-into-view"
+                                                          ],
+                                                          "key": "r2c1",
+                                                          "name": "No",
+                                                          "role": "label"
+                                                        }
+                                                      ],
+                                                      "name": "No",
+                                                      "role": "cell"
+                                                    },
+                                                    {
+                                                      "actions": [
+                                                        "scroll-into-view"
+                                                      ],
+                                                      "children": [
+                                                        {
+                                                          "actions": [
+                                                            "scroll-into-view"
+                                                          ],
+                                                          "key": "r2c2",
+                                                          "name": "Always",
+                                                          "role": "label"
+                                                        }
+                                                      ],
+                                                      "name": "Always",
+                                                      "role": "cell"
+                                                    }
+                                                  ],
+                                                  "name": "ODT No Always",
+                                                  "role": "row"
+                                                }
+                                              ],
+                                              "role": "table"
+                                            }
+                                          ],
+                                          "role": "scroll-view",
+                                          "states": [
+                                            "clips"
+                                          ]
+                                        }
+                                      ],
+                                      "key": "doc-u8",
+                                      "position": 9,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "doc-u9",
+                                      "position": 10,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "Equations",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "level": 3,
+                                          "name": "Equations",
+                                          "role": "heading"
+                                        }
+                                      ],
+                                      "key": "doc-u10",
+                                      "position": 11,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "Its area is \\pi r^2 square units.",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "role": "paragraph"
+                                        }
+                                      ],
+                                      "key": "doc-u11",
+                                      "position": 12,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "e^{i\\pi} + 1 = 0",
+                                          "role": "image"
+                                        },
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "focus",
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "copy",
+                                          "name": "Copy equation source",
+                                          "role": "button"
+                                        }
+                                      ],
+                                      "key": "doc-u12",
+                                      "position": 13,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "Level four",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "level": 4,
+                                          "name": "Level four",
+                                          "role": "heading"
+                                        }
+                                      ],
+                                      "key": "doc-u13",
+                                      "position": 14,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "Level five",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "level": 5,
+                                          "name": "Level five",
+                                          "role": "heading"
+                                        }
+                                      ],
+                                      "key": "doc-u14",
+                                      "position": 15,
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "t",
+                                              "name": "Level six",
+                                              "role": "label"
+                                            }
+                                          ],
+                                          "level": 6,
+                                          "name": "Level six",
+                                          "role": "heading"
+                                        }
+                                      ],
+                                      "key": "doc-u15",
+                                      "position": 16,
+                                      "role": "group"
+                                    }
+                                  ],
+                                  "key": "doc-rows",
+                                  "role": "group",
+                                  "setSize": 16
+                                }
+                              ],
+                              "key": "doc-scroll",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            }
+                          ],
+                          "key": "doc",
+                          "name": "Document",
+                          "role": "document",
+                          "states": [
+                            "focused"
+                          ]
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

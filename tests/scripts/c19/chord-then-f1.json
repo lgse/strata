@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "app/shortcut-reference: F1 opens the \"Keyboard shortcuts\" panel",
+    "integration/10xer-mode: The panel lists each valid second key as a keycap beside its action"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "g"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "F1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog"
+    },
+    {
+      "key": "c19-reference-search",
+      "focused": true
+    },
+    {
+      "key": "c19-chord-panel",
+      "absent": true
+    },
+    {
+      "key": "c19-chord-pill",
+      "absent": true
+    }
+  ]
+}

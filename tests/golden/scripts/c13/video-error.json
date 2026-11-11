@@ -1,0 +1,207 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "actions": [
+                "focus"
+              ],
+              "children": [
+                {
+                  "name": "harbour.mp4",
+                  "role": "label"
+                },
+                {
+                  "name": "ferry.mkv",
+                  "role": "label"
+                },
+                {
+                  "name": "gulls.webm",
+                  "role": "label"
+                },
+                {
+                  "key": "c13-status",
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "key": "c13-seeks",
+                  "name": "0 seeks",
+                  "role": "label"
+                }
+              ],
+              "key": "files",
+              "name": "Files",
+              "role": "list-box"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "media-frame",
+                      "name": "Video frame",
+                      "role": "button"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "media-eyebrow",
+                          "name": "2 of 3 in folder",
+                          "role": "label"
+                        },
+                        {
+                          "key": "media-title",
+                          "name": "ferry",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "media-details",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "media-error-title",
+                          "name": "Can't play this video",
+                          "role": "heading"
+                        },
+                        {
+                          "key": "media-error-detail",
+                          "name": "The decoder stopped: the file ends early.",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "media-error",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Mute/unmute (Ctrl+Alt+M)",
+                          "key": "media-mute",
+                          "name": "Mute/unmute (Ctrl+Alt+M)",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "focus",
+                            "increment",
+                            "decrement",
+                            "set-value"
+                          ],
+                          "key": "media-volume",
+                          "name": "Volume",
+                          "range": [
+                            0.6,
+                            0.0,
+                            1.0,
+                            0.1
+                          ],
+                          "role": "slider",
+                          "value": "60%"
+                        }
+                      ],
+                      "key": "media-volume-row",
+                      "role": "group"
+                    },
+                    {
+                      "key": "media-badges",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "focus",
+                        "increment",
+                        "decrement",
+                        "set-value"
+                      ],
+                      "key": "media-timeline",
+                      "name": "Playback position",
+                      "range": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        5.0
+                      ],
+                      "role": "slider",
+                      "states": [
+                        "read-only"
+                      ],
+                      "value": "0:00 of --:--"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "media-elapsed",
+                          "name": "0:00",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Previous video (Ctrl+Alt+<)",
+                          "key": "media-previous",
+                          "name": "Previous video",
+                          "role": "button"
+                        },
+                        {
+                          "description": "Play/Pause (Ctrl+Alt+Space)",
+                          "key": "media-play",
+                          "name": "Play or pause",
+                          "role": "button",
+                          "states": [
+                            "disabled"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "description": "Next video (Ctrl+Alt+>)",
+                          "key": "media-next",
+                          "name": "Next video",
+                          "role": "button"
+                        },
+                        {
+                          "key": "media-total",
+                          "name": "--:--",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "media-transport",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "media",
+                  "role": "group"
+                }
+              ],
+              "key": "c13-area",
+              "role": "group"
+            }
+          ],
+          "key": "c13",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

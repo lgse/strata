@@ -1,0 +1,20 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Every rendered code block shows a **Copy code** button",
+    "preview/preview-panel/documents: After a click, **Copy code** shows a check icon"
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "doc-u6/copy"
+    }
+  ],
+  "expect": [
+    {
+      "key": "copy",
+      "name": "Code copied"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "bullets": [
+    "preview/preview-panel/layout: In Icons and List, a dragged width is the preview's width"
+  ],
+  "scene": "c9-icons-placeholder-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "drag",
+      "key": "preview-grip",
+      "dx": -100,
+      "dy": 0,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-grip",
+      "value": "532"
+    }
+  ]
+}

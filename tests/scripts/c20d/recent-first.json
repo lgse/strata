@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-recent-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "mark",
+      "name": "shown"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-tab-recent",
+      "name": "Recently used",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c20d-emoji-panel",
+      "name": "Recently used"
+    },
+    {
+      "key": "row-100000",
+      "name": "grinning face",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

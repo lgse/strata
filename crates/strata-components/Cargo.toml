@@ -1,0 +1,43 @@
+[package]
+name = "strata-components"
+description = "File-manager components for Rune: entry collections, views, chrome and previews"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Each work package adds its third-party dependencies in its own block below. Keep the blank
+# lines: git conflicts when two branches edit neighbouring lines. A crate appears once: one
+# already declared in any block is usable from every module, so use it as it is. The shared
+# block takes a crate two work packages would add at once (docs/testing.md).
+# strata-components never depends on strata-platform (docs/work/README.md, rule 1).
+[dependencies]
+rune.workspace = true
+rune-kit.workspace = true
+strata-kit.workspace = true
+
+# Shared by two or more work packages.
+
+# C3 IconsGrid: captions cut between grapheme clusters
+unicode-segmentation.workspace = true
+
+# C10a highlighter: syntect and two-face, on S4's onig backend
+syntect = { workspace = true, features = ["parsing", "regex-onig"] }
+two-face.workspace = true
+
+# C10b CodeView: drawn widths of wide characters
+unicode-width.workspace = true
+
+# C11 DocumentView
+
+# C12 PdfView
+
+# C13 MediaPlayer
+
+# C14b viewers and archive preview
+
+# C25 ThumbnailStore
+
+[lints]
+workspace = true

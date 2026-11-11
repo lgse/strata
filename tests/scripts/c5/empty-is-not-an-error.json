@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "operations/rename: An empty field is not styled as an error, even after the user clears it."
+  ],
+  "scene": "c5-invalid-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Backspace"
+    }
+  ],
+  "expect": [
+    {
+      "key": "rename-field",
+      "value": "",
+      "focused": true
+    },
+    {
+      "key": "rename-message-text",
+      "absent": true
+    }
+  ]
+}

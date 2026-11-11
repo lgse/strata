@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/selection: A plain press on blank pane space clears the selection before the drag intent is known."
+  ],
+  "scene": "c1-selection-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "down",
+      "x": 480,
+      "y": 560
+    },
+    {
+      "t": 0.25,
+      "type": "up",
+      "x": 480,
+      "y": 560
+    }
+  ],
+  "expect": [
+    {
+      "key": "c1-preview",
+      "name": "Preview: backup.tar.gz"
+    },
+    {
+      "key": "status",
+      "name": ""
+    }
+  ]
+}

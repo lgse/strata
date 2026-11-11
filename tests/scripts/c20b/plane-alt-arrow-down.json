@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "settings/themes: Each picker change previews across the interface"
+  ],
+  "scene": "c20b-opaque-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20b-folder-plane-knob"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down",
+      "alt": true
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20b-log",
+      "name": "Folder color Commit #2eba87"
+    },
+    {
+      "key": "c20b-folder-hex",
+      "value": "#2eba87"
+    },
+    {
+      "key": "c20b-folder-plane",
+      "value": "Saturation 75%, value 73%",
+      "focused": true
+    }
+  ]
+}

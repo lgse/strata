@@ -1,0 +1,360 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "description": "Compact sidebar (Ctrl+B)",
+                  "key": "places-toggle",
+                  "name": "Toggle sidebar (Ctrl+B)",
+                  "role": "button"
+                }
+              ],
+              "key": "c8-header",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu",
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-home",
+                                  "name": "Home",
+                                  "position": 1,
+                                  "role": "list-item",
+                                  "states": [
+                                    "selected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-trash",
+                                  "name": "Trash",
+                                  "position": 2,
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-network",
+                                  "name": "Network",
+                                  "position": 3,
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-recent",
+                                  "name": "Recent",
+                                  "position": 4,
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-desktop",
+                                  "name": "Desktop",
+                                  "position": 5,
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-documents",
+                                  "name": "Documents",
+                                  "position": 6,
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-downloads",
+                                  "name": "Downloads",
+                                  "position": 7,
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-music",
+                                  "name": "Music",
+                                  "position": 8,
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-pictures",
+                                  "name": "Pictures",
+                                  "position": 9,
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "places-place-videos",
+                                  "name": "Videos",
+                                  "position": 10,
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                }
+                              ],
+                              "key": "places-places",
+                              "role": "group",
+                              "setSize": 10
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "collapse",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "4 items",
+                                  "key": "places-heading-devices",
+                                  "name": "DEVICES",
+                                  "role": "button",
+                                  "states": [
+                                    "expanded"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "/",
+                                  "key": "places-device-system",
+                                  "name": "System",
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "scroll-into-view"
+                                      ],
+                                      "description": "Unmount",
+                                      "key": "places-device-data-eject",
+                                      "name": "Unmount",
+                                      "role": "button"
+                                    }
+                                  ],
+                                  "description": "/run/media/demo/data",
+                                  "key": "places-device-data",
+                                  "name": "129 GB Volume",
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "scroll-into-view"
+                                      ],
+                                      "description": "Eject",
+                                      "key": "places-device-sandisk-eject",
+                                      "name": "Eject",
+                                      "role": "button"
+                                    }
+                                  ],
+                                  "description": "/run/media/demo/SanDisk",
+                                  "key": "places-device-sandisk",
+                                  "name": "SanDisk",
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "smb://nas.local/projects",
+                                  "key": "places-device-share",
+                                  "name": "projects on nas.local",
+                                  "role": "list-item",
+                                  "states": [
+                                    "unselected"
+                                  ]
+                                }
+                              ],
+                              "key": "places-section-devices",
+                              "name": "DEVICES",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "places-list",
+                          "name": "Places",
+                          "role": "list"
+                        }
+                      ],
+                      "key": "places-scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "places",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c8-files",
+                      "name": "Files",
+                      "role": "list"
+                    },
+                    {
+                      "key": "c8-log",
+                      "name": "Step Full",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c8-pane",
+                  "role": "group"
+                }
+              ],
+              "key": "c8-body",
+              "role": "group"
+            }
+          ],
+          "key": "c8",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

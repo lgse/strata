@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: After smooth scrolling, a click, drag selection, or link hover acts on the row under the pointer."
+  ],
+  "scene": "c11-long-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "scroll",
+      "key": "doc-u3/t",
+      "dy": -900
+    },
+    {
+      "t": 1.0,
+      "type": "triple-click",
+      "x": 760,
+      "y": 330
+    }
+  ],
+  "expect": [
+    {
+      "key": "c11-selection",
+      "name": "Paragraph 8 of the long document, long enough to wrap across the pane, so that a click in the middle of it lands on a word.\n"
+    }
+  ]
+}

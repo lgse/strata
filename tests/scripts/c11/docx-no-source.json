@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: DOCX has no Source view"
+  ],
+  "scene": "c11-docx-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "doc-u0/t"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-view-switch",
+      "absent": true
+    },
+    {
+      "key": "preview-wrap",
+      "absent": true
+    }
+  ]
+}

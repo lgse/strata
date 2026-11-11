@@ -1,0 +1,57 @@
+{
+  "bullets": [
+    "browser/sidebar/pins/drag-to-pin: Gaps sit before the first pin, between pins, after the last pin, and in an empty section.",
+    "browser/sidebar/pins/drag-to-pin: Remote pins have gaps beside them"
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/Work"
+        ],
+        "key": "places-band-0",
+        "hover": 0.2
+      }
+    },
+    {
+      "t": 0.8,
+      "drop_files": {
+        "paths": [
+          "/home/demo/Archive"
+        ],
+        "key": "places-band-2",
+        "hover": 0.2
+      }
+    },
+    {
+      "t": 1.4,
+      "drop_files": {
+        "paths": [
+          "/home/demo/Later"
+        ],
+        "key": "places-band-5",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "Pinned Later at 5"
+    },
+    {
+      "key": "places-pin-work",
+      "name": "Work"
+    },
+    {
+      "key": "places-pin-archive",
+      "name": "Archive"
+    },
+    {
+      "key": "places-pin-later",
+      "name": "Later"
+    }
+  ]
+}

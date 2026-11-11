@@ -1,0 +1,21 @@
+{
+  "bullets": [
+    "browser/view-modes/thumbnail-size: From a size between two steps, such as 100 px, one step up lands on 112 and one step down on 96."
+  ],
+  "scene": "c3-size-100-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "=",
+      "ctrl": true,
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-size",
+      "name": "Thumbnail size: 112px"
+    }
+  ]
+}

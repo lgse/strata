@@ -1,0 +1,59 @@
+{
+  "bullets": [
+    "operations/progress/dock: Several cards stack and update independently"
+  ],
+  "scene": "c16-many-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "wheel",
+      "dx": 0,
+      "dy": -400,
+      "key": "c16-dock"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock",
+      "role": "region",
+      "name": "Operations"
+    },
+    {
+      "key": "c16-dock-card-1",
+      "name": "Copy complete"
+    },
+    {
+      "key": "c16-dock-card-2",
+      "name": "Compression complete"
+    },
+    {
+      "key": "c16-dock-card-3",
+      "name": "Deleting items"
+    },
+    {
+      "key": "c16-dock-card-4",
+      "name": "Copying items"
+    },
+    {
+      "key": "c16-dock-card-5",
+      "name": "Compression complete"
+    },
+    {
+      "key": "c16-dock-card-6",
+      "name": "Deleting items"
+    },
+    {
+      "key": "c16-dock-card-7",
+      "name": "Copying items"
+    },
+    {
+      "key": "c16-dock-card-8",
+      "name": "Compressing items"
+    }
+  ]
+}

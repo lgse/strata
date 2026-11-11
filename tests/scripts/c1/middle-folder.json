@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "browser/selection: Middle-clicking a folder row in Columns, Icons, or List opens that folder in a new tab."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1",
+      "button": "middle"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "c1-intent",
+      "name": "Opened Projects in a new tab"
+    }
+  ]
+}

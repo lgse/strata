@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/context-menu: Right-clicking an unselected entry makes it the only selected entry and the keyboard cursor."
+  ],
+  "scene": "c21-nothing-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-5",
+      "button": "secondary"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c21-status",
+      "name": "Dismissed menu 1 on Notes.md"
+    }
+  ]
+}

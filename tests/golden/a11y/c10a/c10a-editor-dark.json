@@ -1,0 +1,94 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c10a-show-markdown",
+                  "name": "Markdown",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c10a-show-editor",
+                  "name": "Editor",
+                  "role": "button"
+                }
+              ],
+              "key": "c10a-tabs",
+              "role": "group"
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "A TextArea coloured by an editable document's spans; type to re-highlight.",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection",
+                            "scroll-into-view"
+                          ],
+                          "key": "input",
+                          "name": "Script",
+                          "role": "multiline-text-input",
+                          "value": "#!/usr/bin/env bash\n# Rename every photo by the day it was taken.\nset -euo pipefail\n\ndir=\"${1:-$HOME/Pictures}\"\ncount=0\nfor f in \"$dir\"/*.jpg; do\n  stamp=$(date -r \"$f\" +%Y-%m-%d)\n  mv -n \"$f\" \"$dir/$stamp-$((count++)).jpg\"\ndone\n\ncat <<EOF\nRenamed $count photos in $dir\nEOF\n"
+                        }
+                      ],
+                      "key": "c10a-script",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c10a-editor",
+                  "role": "group"
+                }
+              ],
+              "key": "c10a-body",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            }
+          ],
+          "key": "c10a",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

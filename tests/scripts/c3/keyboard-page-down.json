@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "browser/scrolling: A page is the number of rows that fit the viewport minus one, kept as overlap; in Icons it is those rows times the tiles per row."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-2/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageDown"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-109",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

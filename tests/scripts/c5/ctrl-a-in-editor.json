@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "operations/rename: Ctrl+A in the editor selects only the field's text; the pane selection stays on the edited item."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "Plan"
+    }
+  ],
+  "expect": [
+    {
+      "key": "rename-field",
+      "value": "Plan",
+      "focused": true
+    },
+    {
+      "key": "row-3",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

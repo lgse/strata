@@ -1,0 +1,41 @@
+{
+  "bullets": [
+    "browser/context-menu: Right-clicking an entry inside a multi-selection keeps the whole selection."
+  ],
+  "scene": "c1-selection-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "secondary-click",
+      "key": "row-5"
+    },
+    {
+      "t": 2.0,
+      "type": "move",
+      "x": 900,
+      "y": 20
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-4",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-6",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "status",
+      "name": "3 items selected"
+    },
+    {
+      "key": "c1-intent",
+      "name": "Menu on budget.ods"
+    }
+  ]
+}

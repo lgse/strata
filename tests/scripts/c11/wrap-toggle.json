@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Turning wrap on while a rendered Markdown, HTML, or RTF document is open reflows"
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-wrap"
+    },
+    {
+      "t": 0.9,
+      "type": "tap",
+      "key": "preview-wrap"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-wrap",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "wide",
+      "absent": true
+    },
+    {
+      "key": "doc-u3",
+      "role": "group"
+    }
+  ]
+}

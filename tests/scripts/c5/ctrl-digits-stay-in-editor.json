@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "operations/rename: Ctrl+1, Ctrl+2, and Ctrl+3 reach the editor instead of switching view mode."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "1",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "2",
+      "cmd": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "3",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-mode",
+      "name": "View 1"
+    },
+    {
+      "key": "rename-field",
+      "value": "Notes.md",
+      "focused": true
+    }
+  ]
+}

@@ -1,0 +1,223 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-0",
+                      "name": "photo-0.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-1",
+                      "name": "photo-1.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "selected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-2",
+                      "name": "photo-2.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-3",
+                      "name": "photo-3.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-4",
+                      "name": "photo-4.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-5",
+                      "name": "photo-5.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-6",
+                      "name": "photo-6.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-7",
+                      "name": "photo-7.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-8",
+                      "name": "photo-8.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-9",
+                      "name": "photo-9.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-10",
+                      "name": "photo-10.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "row-11",
+                      "name": "photo-11.jpg",
+                      "role": "list-box-option",
+                      "states": [
+                        "unselected"
+                      ]
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "preview-placeholder",
+                          "name": "No preview for this selection",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

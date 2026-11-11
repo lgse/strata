@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "browser/tabs: With one tab the strip stays hidden during these drags; dropping on the header's New tab button opens the tab."
+  ],
+  "scene": "c7-one-tab-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/strata-own-drag/home/demo/Projects/"
+        ],
+        "key": "c7-new",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "Open Projects at 1"
+    },
+    {
+      "key": "t-c7-2",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "t-c7-2",
+      "name": "Projects"
+    }
+  ]
+}

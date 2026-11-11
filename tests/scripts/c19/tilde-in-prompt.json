@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In 10xer mode, `~` in a focused footer prompt or text field"
+  ],
+  "scene": "c19-footer-prompt-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "End"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "~",
+      "shift": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "~"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    },
+    {
+      "key": "c19-prompt-field",
+      "value": "minutes.txt~~",
+      "focused": true
+    }
+  ]
+}

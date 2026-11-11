@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "preview/preview-panel/media: Keys and the mouse wheel on that seek slider seek at once; a drag seeks on release."
+  ],
+  "scene": "c13-plain-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "wheel",
+      "key": "media-timeline",
+      "dx": 0,
+      "dy": 40,
+      "precise": false
+    },
+    {
+      "t": 0.3,
+      "type": "wheel",
+      "key": "media-timeline",
+      "dx": 0,
+      "dy": 40,
+      "precise": false
+    },
+    {
+      "t": 0.5,
+      "type": "drag",
+      "key": "media-timeline",
+      "dx": -60,
+      "dur": 0.3
+    },
+    {
+      "t": 1.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c13-seeks",
+      "name": "3 seeks"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "browser/sidebar: In 10xer mode, in the sidebar, `j`/`k` and Up/Down move between places"
+  ],
+  "scene": "c8-tenxer-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "j"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": " "
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-place-trash",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c8-log",
+      "name": "Open trash (keyboard)"
+    }
+  ]
+}

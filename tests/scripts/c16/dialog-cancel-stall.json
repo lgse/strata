@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "operations/progress: Cancel during a transfer retitles",
+    "operations/progress: If the transfer has not stopped 8 seconds after Cancel"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-move-stuck"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "c16-progress-primary"
+    },
+    {
+      "t": 7.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-progress-dialog",
+      "name": "Device not responding"
+    },
+    {
+      "key": "c16-progress-primary",
+      "name": "Cancellation requested",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

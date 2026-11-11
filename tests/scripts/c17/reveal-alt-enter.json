@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "browser/search: Alt+Enter, or right-click"
+  ],
+  "scene": "c17-results-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Enter",
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-log",
+      "name": "Revealed /home/demo/Projects/rune/README.md in its folder"
+    },
+    {
+      "key": "c17-palette-dialog",
+      "absent": true
+    }
+  ]
+}

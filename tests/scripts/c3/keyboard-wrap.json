@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "browser/selection/keyboard-navigation: In Icons, Left on a later row's first tile moves to the previous row's last tile, with Keep arrows on or off."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-9/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Left"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-8",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

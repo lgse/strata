@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "app/dialogs: With focus outside a text field, Enter activates the focused button"
+  ],
+  "scene": "c15-danger-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab",
+      "shift": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-danger-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-status",
+      "name": "Cancelled"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "browser/sidebar: Outside 10xer mode, Enter on a focused row opens the place with its first item selected"
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "Open trash (keyboard)"
+    },
+    {
+      "key": "places-place-trash",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

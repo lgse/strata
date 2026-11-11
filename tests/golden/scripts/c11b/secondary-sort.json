@@ -1,0 +1,503 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "name": "people.csv",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "people.csv",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "budget.xlsx",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "budget.xlsx",
+                      "role": "list-box-option"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "notes.csv",
+                          "role": "label"
+                        }
+                      ],
+                      "name": "notes.csv",
+                      "role": "list-box-option"
+                    }
+                  ],
+                  "key": "files",
+                  "name": "Files",
+                  "role": "list-box"
+                },
+                {
+                  "key": "c11b-last-intent",
+                  "name": "None",
+                  "role": "label"
+                },
+                {
+                  "key": "c11b-range",
+                  "name": "None",
+                  "role": "label"
+                }
+              ],
+              "key": "preview-files",
+              "role": "group"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "key": "preview-title",
+                              "name": "data.csv",
+                              "role": "label"
+                            },
+                            {
+                              "key": "preview-details",
+                              "name": "18 KB · Today 09:41 · CSV document",
+                              "role": "label"
+                            }
+                          ],
+                          "key": "preview-handle",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-view-switch",
+                          "name": "View source",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-open",
+                          "name": "Open in default application",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "preview-close",
+                          "name": "Close preview (Space)",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "preview-header",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "focus"
+                              ],
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "key": "sheet-corner",
+                                      "name": "Row",
+                                      "role": "column-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "click"
+                                      ],
+                                      "children": [
+                                        {
+                                          "key": "sheet-h0-resize",
+                                          "name": "Resize name",
+                                          "range": [
+                                            195.0,
+                                            48.0,
+                                            4000.0,
+                                            null
+                                          ],
+                                          "role": "splitter",
+                                          "value": "195"
+                                        }
+                                      ],
+                                      "description": "Column A",
+                                      "key": "sheet-h0",
+                                      "name": "name",
+                                      "role": "column-header",
+                                      "sort": "ascending"
+                                    },
+                                    {
+                                      "actions": [
+                                        "click"
+                                      ],
+                                      "children": [
+                                        {
+                                          "key": "sheet-h1-resize",
+                                          "name": "Resize group",
+                                          "range": [
+                                            202.0,
+                                            48.0,
+                                            4000.0,
+                                            null
+                                          ],
+                                          "role": "splitter",
+                                          "value": "202"
+                                        }
+                                      ],
+                                      "description": "Column B, Sort key 2, descending",
+                                      "key": "sheet-h1",
+                                      "name": "group",
+                                      "role": "column-header"
+                                    }
+                                  ],
+                                  "key": "sheet-header",
+                                  "name": "Row name group",
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r0-n",
+                                      "name": "5",
+                                      "role": "row-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "a",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r0-c0",
+                                      "name": "a",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "2",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r0-c1",
+                                      "name": "2",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "sheet-r0",
+                                  "name": "5 a 2",
+                                  "position": 1,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r1-n",
+                                      "name": "3",
+                                      "role": "row-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "a",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r1-c0",
+                                      "name": "a",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "1",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r1-c1",
+                                      "name": "1",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "sheet-r1",
+                                  "name": "3 a 1",
+                                  "position": 2,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r2-n",
+                                      "name": "4",
+                                      "role": "row-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "A",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r2-c0",
+                                      "name": "A",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "1",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r2-c1",
+                                      "name": "1",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "sheet-r2",
+                                  "name": "4 A 1",
+                                  "position": 3,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r3-n",
+                                      "name": "6",
+                                      "role": "row-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "b",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r3-c0",
+                                      "name": "b",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "2",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r3-c1",
+                                      "name": "2",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "sheet-r3",
+                                  "name": "6 b 2",
+                                  "position": 4,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "sheet-r4-n",
+                                      "name": "2",
+                                      "role": "row-header"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "b",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r4-c0",
+                                      "name": "b",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "name": "1",
+                                          "role": "label"
+                                        }
+                                      ],
+                                      "key": "sheet-r4-c1",
+                                      "name": "1",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "sheet-r4",
+                                  "name": "2 b 1",
+                                  "position": 5,
+                                  "role": "row"
+                                }
+                              ],
+                              "key": "sheet",
+                              "name": "data.csv",
+                              "role": "grid",
+                              "states": [
+                                "focused"
+                              ]
+                            }
+                          ],
+                          "key": "sheet-box",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "preview-body",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "preview-drawer",
+                  "name": "Preview",
+                  "role": "region"
+                },
+                {
+                  "actions": [
+                    "focus",
+                    "increment",
+                    "decrement",
+                    "set-value"
+                  ],
+                  "key": "preview-grip",
+                  "name": "Preview panel minimum width",
+                  "range": [
+                    432.0,
+                    300.0,
+                    659.0,
+                    8.0
+                  ],
+                  "role": "splitter",
+                  "value": "432"
+                }
+              ],
+              "key": "preview-slot",
+              "role": "group"
+            }
+          ],
+          "key": "preview-split",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

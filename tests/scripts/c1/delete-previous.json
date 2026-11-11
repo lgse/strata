@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "browser/selection: Deleting the focused entry, in Strata or externally, focuses the next visible entry, else the previous visible one, and the preview follows."
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-10"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Delete"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-10",
+      "absent": true
+    },
+    {
+      "key": "row-9",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: letter.odt"
+    }
+  ]
+}

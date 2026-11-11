@@ -1,0 +1,27 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "autoscroll-shield",
+              "name": "Autoscroll",
+              "role": "dialog",
+              "states": [
+                "focused",
+                "modal"
+              ]
+            }
+          ],
+          "key": "c3-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

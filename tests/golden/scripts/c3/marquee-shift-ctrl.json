@@ -1,0 +1,250 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c3-title",
+              "name": "Short · 10 items",
+              "role": "label"
+            },
+            {
+              "key": "c3-size",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "key": "c3-intent",
+              "name": "Clicked tile-0.jpg",
+              "role": "label"
+            },
+            {
+              "key": "c3-columns",
+              "name": "3 a row",
+              "role": "label"
+            },
+            {
+              "key": "c3-filled",
+              "name": "Visible 10: thumbnails 10 of 10, details 10",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "activeDescendant": "row-200",
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-200",
+                              "name": "tile-0.jpg",
+                              "position": 1,
+                              "role": "grid-cell",
+                              "states": [
+                                "selected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-201",
+                              "name": "tile-1.jpg",
+                              "position": 2,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-202",
+                              "name": "tile-2.jpg",
+                              "position": 3,
+                              "role": "grid-cell",
+                              "states": [
+                                "selected"
+                              ]
+                            }
+                          ],
+                          "key": "line-200",
+                          "name": "tile-0.jpg tile-1.jpg tile-2.jpg",
+                          "position": 1,
+                          "role": "row",
+                          "setSize": 10
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-203",
+                              "name": "tile-3.jpg",
+                              "position": 4,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-204",
+                              "name": "tile-4.jpg",
+                              "position": 5,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-205",
+                              "name": "tile-5.jpg",
+                              "position": 6,
+                              "role": "grid-cell",
+                              "states": [
+                                "selected"
+                              ]
+                            }
+                          ],
+                          "key": "line-203",
+                          "name": "tile-3.jpg tile-4.jpg tile-5.jpg",
+                          "position": 2,
+                          "role": "row",
+                          "setSize": 10
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-206",
+                              "name": "tile-6.jpg",
+                              "position": 7,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-207",
+                              "name": "tile-7.jpg",
+                              "position": 8,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-208",
+                              "name": "tile-8.jpg",
+                              "position": 9,
+                              "role": "grid-cell",
+                              "states": [
+                                "selected"
+                              ]
+                            }
+                          ],
+                          "key": "line-206",
+                          "name": "tile-6.jpg tile-7.jpg tile-8.jpg",
+                          "position": 3,
+                          "role": "row",
+                          "setSize": 10
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Image",
+                              "key": "row-209",
+                              "name": "tile-9.jpg",
+                              "position": 10,
+                              "role": "grid-cell"
+                            }
+                          ],
+                          "key": "line-209",
+                          "name": "tile-9.jpg",
+                          "position": 4,
+                          "role": "row",
+                          "setSize": 10
+                        }
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 4
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "status",
+                  "name": "4 items selected",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c3-grid",
+              "name": "Short",
+              "role": "grid",
+              "states": [
+                "focused"
+              ]
+            }
+          ],
+          "key": "c3-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

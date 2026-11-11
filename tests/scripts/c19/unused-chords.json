@@ -1,0 +1,58 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In the reference's search, a Ctrl, Alt, or Super chord the field does not use"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "co"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": ",",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "k",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Left",
+      "alt": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "F2"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.9,
+      "type": "type",
+      "text": "py"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "value": "copy",
+      "focused": true
+    },
+    {
+      "key": "c19-reference-dialog"
+    }
+  ]
+}

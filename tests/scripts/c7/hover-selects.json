@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/tabs: Holding a file or browser-content drag over a tab for 450 ms selects it"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drag_files": {
+        "paths": [
+          "/home/demo/a.txt"
+        ],
+        "key": "t-c7-2"
+      }
+    },
+    {
+      "t": 0.9,
+      "drag_files": "leave"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "Select Documents (spring)"
+    },
+    {
+      "key": "t-c7-2",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

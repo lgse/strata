@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "app/dialogs: A form text field can be limited in bytes or UTF-16 units"
+  ],
+  "scene": "c15-form-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "ÉTÉ-2026abc"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-form-label-left",
+      "name": "0 chars remaining"
+    }
+  ]
+}

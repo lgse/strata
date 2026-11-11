@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: A table cell over 512 bytes shows shortened with"
+  ],
+  "scene": "c11b-limits-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "sheet-r3-c0"
+    }
+  ],
+  "expect": [
+    {
+      "key": "sheet-r1-c1",
+      "name": "first line…"
+    }
+  ]
+}

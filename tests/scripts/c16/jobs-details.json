@@ -1,0 +1,55 @@
+{
+  "bullets": [
+    "operations/progress/jobs: Details expands a job's captured output",
+    "operations/progress/jobs: Terminal colour and control sequences are stripped",
+    "operations/progress/jobs: Details on a running job shows output as it arrives"
+  ],
+  "scene": "c16-jobs-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c16-jobs-row-4-details"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "c16-jobs-row-2-details"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "c16-jobs-row-5-details"
+    },
+    {
+      "t": 0.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-jobs-row-4-output",
+      "name": "resized IMG_0001.jpg\nresized IMG_0002.jpg"
+    },
+    {
+      "key": "c16-jobs-row-4-details",
+      "name": "Hide",
+      "states": [
+        "expanded"
+      ]
+    },
+    {
+      "key": "c16-jobs-row-2-output",
+      "absent": true
+    },
+    {
+      "key": "c16-jobs-row-2-details",
+      "name": "Details"
+    },
+    {
+      "key": "c16-jobs-row-5-output",
+      "name": "No output yet."
+    }
+  ]
+}

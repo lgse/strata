@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "operations/progress/dock: Hovering or focusing a completed card pauses its countdown"
+  ],
+  "scene": "c16-complete-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "move",
+      "key": "c16-dock-card-1"
+    },
+    {
+      "t": 3.0,
+      "type": "move",
+      "x": 100,
+      "y": 300
+    },
+    {
+      "t": 6.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "absent": true
+    }
+  ]
+}

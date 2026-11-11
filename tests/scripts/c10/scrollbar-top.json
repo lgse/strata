@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents/scrollbar: Dragging the thumb to the top or bottom of the track shows the document's first or last line"
+  ],
+  "scene": "c10-large-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "code-position/trough/thumb",
+      "dx": -200,
+      "dy": 900,
+      "dur": 0.4
+    },
+    {
+      "t": 1.2,
+      "type": "drag",
+      "key": "code-position/trough/thumb",
+      "dx": -200,
+      "dy": -900,
+      "dur": 0.4
+    }
+  ],
+  "expect": [
+    {
+      "key": "code-position",
+      "value": "Line 1 of 50000"
+    }
+  ]
+}

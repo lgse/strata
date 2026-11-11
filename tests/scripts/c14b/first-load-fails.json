@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: A first load that fails shows \"Preview unavailable\" and its error in the drawer, with no camera controls.",
+    "preview/preview-panel/gcode: A binary `.bgcode` file without a usable thumbnail shows"
+  ],
+  "scene": "c14b-model-failed-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-unavailable",
+      "name": "Preview unavailable"
+    },
+    {
+      "key": "c14b-model-message",
+      "name": "This G-code file has no usable embedded thumbnail"
+    },
+    {
+      "key": "c14b-model-previous",
+      "absent": true
+    },
+    {
+      "key": "c14b-model-next",
+      "absent": true
+    },
+    {
+      "key": "c14b-model-camera",
+      "absent": true
+    }
+  ]
+}

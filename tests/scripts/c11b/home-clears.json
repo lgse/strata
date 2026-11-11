@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: With a cell range selected, Escape, an arrow key, Home, or End also clears it"
+  ],
+  "scene": "c11b-csv-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "sheet-r1-c1",
+      "dx": 170,
+      "dy": 56,
+      "dur": 0.3
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Home"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c11b-range",
+      "name": "None"
+    }
+  ]
+}

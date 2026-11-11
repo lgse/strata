@@ -1,0 +1,69 @@
+{
+  "bullets": [
+    "browser/tabs: Ctrl+Tab and Ctrl+Page Down select the next tab"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab",
+      "ctrl": true
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab",
+      "ctrl": true,
+      "shift": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageDown",
+      "ctrl": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "PageDown",
+      "ctrl": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "PageDown",
+      "ctrl": true
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "PageDown",
+      "ctrl": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "PageUp",
+      "ctrl": true
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "PageDown",
+      "ctrl": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "t-c7-1",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c7-title",
+      "name": "~ — Strata"
+    }
+  ]
+}

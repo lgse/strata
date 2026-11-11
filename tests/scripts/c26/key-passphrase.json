@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "remote/file-providers/network-locations: When GVfs asks Strata for a key passphrase"
+  ],
+  "scene": "c26-key-passphrase-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "correct horse"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-password-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Connect: secret of 13 characters, remember Never"
+    }
+  ]
+}

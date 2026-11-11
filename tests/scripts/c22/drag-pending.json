@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "preview/quick-preview/folder-peek: Starting or ending a drag cancels a pending peek and closes an open one",
+    "operations/drag-and-drop: Starting a drag closes any open folder peek"
+  ],
+  "scene": "c22-list-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-3"
+    },
+    {
+      "t": 0.4,
+      "type": "drag",
+      "key": "row-3",
+      "dx": 0,
+      "dy": 60,
+      "dur": 0.4
+    },
+    {
+      "t": 2.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "folder-peek",
+      "absent": true
+    }
+  ]
+}

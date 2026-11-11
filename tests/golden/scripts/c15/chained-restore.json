@@ -1,0 +1,232 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "name": "Projects",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c15-header",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "children": [
+                        {
+                          "name": "notes.md",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c15-cursor",
+                      "name": "notes.md",
+                      "role": "group"
+                    },
+                    {
+                      "name": "budget.ods",
+                      "role": "label"
+                    },
+                    {
+                      "name": "photo.raw",
+                      "role": "label"
+                    },
+                    {
+                      "name": "report.pdf",
+                      "role": "label"
+                    },
+                    {
+                      "name": "slides.odp",
+                      "role": "label"
+                    },
+                    {
+                      "name": "archive.tar.gz",
+                      "role": "label"
+                    },
+                    {
+                      "name": "build.log",
+                      "role": "label"
+                    },
+                    {
+                      "name": "readme.txt",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c15-listing",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-basic",
+                          "name": "Message",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-form",
+                          "name": "Connect to Server",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-danger",
+                          "name": "Delete",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-chained",
+                          "name": "Delete, then fail",
+                          "role": "button",
+                          "states": [
+                            "focused"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-small",
+                          "name": "Leftovers",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-progress",
+                          "name": "Copy",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-panel",
+                          "name": "Settings",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-return",
+                          "name": "Move to Trash",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-take",
+                          "name": "Edit path",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-outer",
+                          "name": "Properties",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c15-open-conflict",
+                          "name": "Paste",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "c15-openers",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "input",
+                              "name": "Path",
+                              "placeholder": "/home/me/projects",
+                              "role": "text-input",
+                              "value": ""
+                            }
+                          ],
+                          "key": "value",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c15-path",
+                      "role": "group"
+                    },
+                    {
+                      "key": "c15-status",
+                      "name": "Dismissed",
+                      "role": "label"
+                    },
+                    {
+                      "key": "c15-dismissals",
+                      "name": "Dismissed 1 time",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c15-side",
+                  "role": "group"
+                }
+              ],
+              "key": "c15-window",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

@@ -1,0 +1,45 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Enter and **Next match** move to the next match"
+  ],
+  "scene": "c11-markdown-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "in"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Enter",
+      "shift": true
+    },
+    {
+      "t": 1.1,
+      "type": "key",
+      "name": "Enter",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "Match 5 of 5"
+    },
+    {
+      "key": "c11-selection",
+      "name": "in"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In 10xer mode, `~` also toggles the reference",
+    "integration/10xer-mode: F1, or `~` outside text fields, toggles the shortcut reference"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "~",
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "type",
+      "text": "co"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "l",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.2,
+      "type": "key",
+      "name": "~",
+      "shift": true
+    },
+    {
+      "t": 1.7,
+      "type": "key",
+      "name": "F1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "value": "co",
+      "focused": true
+    }
+  ]
+}

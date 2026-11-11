@@ -1,0 +1,50 @@
+{
+  "bullets": [
+    "operations/archives/preview: Inside a subfolder, the up button's accessible name is \"Go up one level\".",
+    "operations/archives/preview: A breadcrumb row starts at \"Contents\""
+  ],
+  "scene": "c14b-archive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-8000000001"
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "key": "row-8000000002"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-archive-up",
+      "role": "button",
+      "name": "Go up one level"
+    },
+    {
+      "key": "c14b-archive-crumb-0",
+      "name": "Contents"
+    },
+    {
+      "key": "c14b-archive-crumb-1",
+      "name": "assets"
+    },
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "icons"
+    },
+    {
+      "key": "row-8000000003",
+      "name": "app.png",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

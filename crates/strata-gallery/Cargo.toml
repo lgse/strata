@@ -1,0 +1,50 @@
+[package]
+name = "strata-gallery"
+description = "One headless scene per component state, and the golden tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+rune.workspace = true
+rune-kit = { workspace = true, features = ["markdown"] }
+strata-kit.workspace = true
+strata-components.workspace = true
+swash.workspace = true
+
+[dev-dependencies]
+png.workspace = true
+serde_json.workspace = true
+
+# The integration demos (examples/), one block each. Keep the blank lines: git conflicts when
+# two branches edit neighbouring lines. A crate two demos need, strata-platform with their
+# features included, moves to the shared block and appears only once.
+
+# Shared by two or more demos.
+serde.workspace = true
+strata-platform = { workspace = true, features = ["clipboard", "csd", "dnd", "glib-bridge", "settings", "single-instance"] }
+strata-test-peer.workspace = true
+
+# X1 shell demo: examples/shell/
+gio.workspace = true
+
+# X2 drag-and-drop demo: examples/dnd_wiring/ (session tests: tests/x2.rs, with the peer)
+
+# X3 clipboard demo: examples/clipboard_wiring/ (session tests: tests/x3.rs, with the peer)
+
+[[example]]
+name = "clipboard_wiring"
+path = "examples/clipboard_wiring/main.rs"
+# Its adapter's, file side's and host's unit tests run with the gallery's.
+test = true
+
+[[example]]
+name = "dnd_wiring"
+path = "examples/dnd_wiring/main.rs"
+# Its adapter's unit tests run with the gallery's.
+test = true
+
+[lints]
+workspace = true

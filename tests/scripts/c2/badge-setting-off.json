@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: With Show sizes in Columns view off"
+  ],
+  "scene": "c2-sizes-off-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-2000005/label"
+    },
+    {
+      "t": 0.8,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-2000005",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

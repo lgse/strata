@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "browser/view-modes/text-size: Ctrl++, Ctrl+="
+  ],
+  "scene": "k2-defaults-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "=",
+      "cmd": true
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "=",
+      "cmd": true
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "+",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "-",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "k2-text-size-value",
+      "name": "Text size: 15 px"
+    },
+    {
+      "key": "k2-token-type-ui",
+      "name": "type.ui.size 15"
+    },
+    {
+      "key": "k2-token-icon-md",
+      "name": "icon_size.md 18"
+    }
+  ]
+}

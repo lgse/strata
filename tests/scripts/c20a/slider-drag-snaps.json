@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/view-modes/density: Each slider has tick marks at its Compact and Airy values"
+  ],
+  "scene": "c20a-controls-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "c20a-content-knob",
+      "dx": 52.0,
+      "dur": 0.3
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-content",
+      "value": "Airy · 8 px"
+    },
+    {
+      "key": "c20a-log",
+      "name": "Content Commit 8"
+    }
+  ]
+}

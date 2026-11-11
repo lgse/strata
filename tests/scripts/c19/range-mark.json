@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "integration/10xer-mode: `v` starts a range from the cursor and `V` starts an unselect range"
+  ],
+  "scene": "c19-tenxer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-range"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c19-range"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-range",
+      "role": "status",
+      "name": "Visual unset"
+    }
+  ]
+}

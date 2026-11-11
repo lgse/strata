@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "app/window: Maximize maximizes the window; on a maximized window it shows a restore icon",
+    "app/window: On a maximized window the Maximize button's tooltip and accessible name read \"Restore window\""
+  ],
+  "scene": "x1-shell-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "x1-header-maximize"
+    }
+  ],
+  "expect": [
+    {
+      "key": "x1-header-maximize",
+      "role": "button",
+      "name": "Restore window"
+    },
+    {
+      "key": "x1-last",
+      "name": "Last header button: ToggleMaximize"
+    }
+  ]
+}

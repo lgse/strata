@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "browser/view-modes/icons: After a fast scroll stops, visible tiles fill their thumbnails and details without further input."
+  ],
+  "scene": "c3-hundred-k-light",
+  "events": [
+    {
+      "t": 1.2,
+      "type": "fling",
+      "key": "c3-grid",
+      "v": -30000
+    },
+    {
+      "t": 5.0,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-filled",
+      "name": "Visible 48: thumbnails 16 of 16, details 48"
+    }
+  ]
+}

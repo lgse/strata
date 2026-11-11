@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "preview/preview-panel/layout: When less than 240 px would remain beside the focused column, the preview content hides, media pauses, and loading is deferred."
+  ],
+  "scene": "c9-list-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "resize",
+      "dw": -450,
+      "dh": 0,
+      "dur": 0.3
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.8,
+      "type": "resize",
+      "dw": 450,
+      "dh": 0,
+      "dur": 0.3
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": " "
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-title",
+      "name": "notes.md"
+    },
+    {
+      "key": "demo-suspended",
+      "absent": true
+    }
+  ]
+}

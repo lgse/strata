@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "browser/sidebar/pins/drag-to-pin: Remote pins have gaps beside them, although their rows accept no file drops."
+  ],
+  "scene": "c8-full-light",
+  "events": [
+    {
+      "t": 0.2,
+      "drop_files": {
+        "paths": [
+          "/home/demo/notes.txt"
+        ],
+        "key": "places-pin-nas",
+        "hover": 0.2
+      }
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "—"
+    }
+  ]
+}

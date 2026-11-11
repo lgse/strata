@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "browser/selection: In Columns, Shift+Home and Shift+End extend from the range anchor"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-2-title"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "End",
+      "shift": true
+    },
+    {
+      "t": 1.4,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-2000003",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-2000027",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

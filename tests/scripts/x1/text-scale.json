@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "settings/themes/portal-text-scaling: In that process, changing `text-scaling-factor` while the window is open rescales"
+  ],
+  "scene": "x1-shell-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "s"
+    }
+  ],
+  "expect": [
+    {
+      "key": "x1-text-scale",
+      "name": "Text scale 1.25 · interface text 16 pt"
+    }
+  ]
+}

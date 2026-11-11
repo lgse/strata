@@ -1,0 +1,163 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "3 items selected",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "label0",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Notes.md, budget.ods, main.rs",
+                                  "role": "label"
+                                }
+                              ],
+                              "key": "label1",
+                              "role": "group"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item3",
+                              "name": "New Folder",
+                              "role": "menu-item",
+                              "states": [
+                                "focused"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item4",
+                              "name": "New File",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Looking for compatible applications…",
+                              "key": "c21-menu-item6",
+                              "name": "Open With…",
+                              "role": "menu-item",
+                              "states": [
+                                "disabled"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item8",
+                              "name": "Cut",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item9",
+                              "name": "Copy",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item11",
+                              "name": "Move to Trash",
+                              "role": "menu-item"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c21-menu-item12",
+                              "name": "Permanently delete",
+                              "role": "menu-item"
+                            }
+                          ],
+                          "key": "rows",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "c21-menu-scroll-area",
+                  "role": "group"
+                }
+              ],
+              "key": "c21-menu-menu",
+              "name": "Context menu",
+              "role": "menu",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

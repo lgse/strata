@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "preview/preview-panel/media: A focused volume slider steps 0.1 with the arrow keys and 0.2 with Page Up/Down; Home mutes and End sets full volume."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-volume"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Home"
+    },
+    {
+      "t": 0.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-volume",
+      "value": "0%"
+    },
+    {
+      "key": "c13-status",
+      "name": "Muted"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "app/dialogs: Enter in a form field does nothing while the primary button is disabled"
+  ],
+  "scene": "c15-form-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "  "
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-form-dialog",
+      "role": "dialog"
+    },
+    {
+      "key": "c15-form-primary",
+      "states": [
+        "disabled"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,392 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-0",
+                      "name": "~/.config/app-00 · 3 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-1",
+                      "name": "~/.config/app-01 · 10 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-2",
+                      "name": "~/.config/app-02 · 17 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-3",
+                      "name": "~/.config/app-03 · 24 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-4",
+                      "name": "~/.config/app-04 · 31 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-5",
+                      "name": "~/.config/app-05 · 38 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-6",
+                      "name": "~/.config/app-06 · 45 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-7",
+                      "name": "~/.config/app-07 · 52 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-8",
+                      "name": "~/.config/app-08 · 9 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-9",
+                      "name": "~/.config/app-09 · 16 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-10",
+                      "name": "~/.config/app-10 · 23 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-11",
+                      "name": "~/.config/app-11 · 30 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-12",
+                      "name": "~/.config/app-12 · 37 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-13",
+                      "name": "~/.config/app-13 · 44 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-14",
+                      "name": "~/.config/app-14 · 51 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-15",
+                      "name": "~/.config/app-15 · 8 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-16",
+                      "name": "~/.config/app-16 · 15 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-17",
+                      "name": "~/.config/app-17 · 22 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-18",
+                      "name": "~/.config/app-18 · 29 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-19",
+                      "name": "~/.config/app-19 · 36 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-20",
+                      "name": "~/.config/app-20 · 43 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-21",
+                      "name": "~/.config/app-21 · 50 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-22",
+                      "name": "~/.config/app-22 · 7 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-23",
+                      "name": "~/.config/app-23 · 14 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-24",
+                      "name": "~/.config/app-24 · 21 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-25",
+                      "name": "~/.config/app-25 · 28 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-26",
+                      "name": "~/.config/app-26 · 35 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-27",
+                      "name": "~/.config/app-27 · 42 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-28",
+                      "name": "~/.config/app-28 · 49 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-29",
+                      "name": "~/.config/app-29 · 6 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-30",
+                      "name": "~/.config/app-30 · 13 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-31",
+                      "name": "~/.config/app-31 · 20 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-32",
+                      "name": "~/.config/app-32 · 27 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-33",
+                      "name": "~/.config/app-33 · 34 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-34",
+                      "name": "~/.config/app-34 · 41 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-35",
+                      "name": "~/.config/app-35 · 48 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-36",
+                      "name": "~/.config/app-36 · 5 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-37",
+                      "name": "~/.config/app-37 · 12 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-38",
+                      "name": "~/.config/app-38 · 19 MB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "c15-small-row-39",
+                      "name": "~/.config/app-39 · 26 MB",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c15-small-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-small-secondary",
+                  "name": "Cancel",
+                  "role": "button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-small-primary",
+                  "name": "Delete leftovers",
+                  "role": "default-button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c15-small-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "description": "40 folders left by apps you removed",
+              "key": "c15-small-dialog",
+              "name": "Review leftovers",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

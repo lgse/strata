@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "cat"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-status",
+      "name": "20 results"
+    },
+    {
+      "key": "c20d-emoji-panel",
+      "name": "Search results"
+    },
+    {
+      "key": "row-100117",
+      "name": "grinning cat",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-100000",
+      "absent": true
+    },
+    {
+      "key": "c20d-emoji-name-text",
+      "name": "grinning cat"
+    },
+    {
+      "key": "c20d-emoji-tab-smileys",
+      "states": [
+        "unselected"
+      ]
+    }
+  ]
+}

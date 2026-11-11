@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "preview/quick-preview: On that button, Return opens the PDF in the default application, Left returns focus to the listing, and Up, Down, and Right keep focus there.",
+    "integration/10xer-mode/preview-keys: With a preview message's Open button focused, Left returns the keys to the listing, and Up, Down, and Right keep focus on the button."
+  ],
+  "scene": "c12-locked-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "pdf-message"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Left"
+    }
+  ],
+  "expect": [
+    {
+      "key": "files",
+      "focused": true
+    },
+    {
+      "key": "c12-last",
+      "name": "Leave"
+    }
+  ]
+}

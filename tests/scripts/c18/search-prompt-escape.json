@@ -1,0 +1,74 @@
+{
+  "bullets": [
+    "integration/10xer-mode/search: Esc from a nonempty prompt keeps the hits; Esc from an empty prompt cancels."
+  ],
+  "scene": "c18-tenxer-light",
+  "events": [
+    {
+      "type": "type",
+      "text": "s",
+      "every": 0.01,
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "duck",
+      "every": 0.01,
+      "t": 0.41
+    },
+    {
+      "type": "key",
+      "name": "Escape",
+      "t": 0.65
+    },
+    {
+      "type": "type",
+      "text": "s",
+      "every": 0.01,
+      "t": 0.85
+    },
+    {
+      "type": "key",
+      "name": "Backspace",
+      "t": 1.06
+    },
+    {
+      "type": "key",
+      "name": "Backspace",
+      "t": 1.16
+    },
+    {
+      "type": "key",
+      "name": "Backspace",
+      "t": 1.26
+    },
+    {
+      "type": "key",
+      "name": "Backspace",
+      "t": 1.36
+    },
+    {
+      "type": "key",
+      "name": "Escape",
+      "t": 1.46
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 1.76
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-prompt-field",
+      "absent": true
+    },
+    {
+      "key": "row-4"
+    },
+    {
+      "key": "c18-log",
+      "name": "Dismissed Search by Escape"
+    }
+  ]
+}

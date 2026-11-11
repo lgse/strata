@@ -1,0 +1,74 @@
+{
+  "bullets": [
+    "preview/preview-panel/routes: Space on a local `.gpx`, `.fit`, or `.kml` file shows the route in an image named \"Route preview\"",
+    "preview/preview-panel/routes: Its header shows \"N of M in folder\"",
+    "preview/preview-panel/routes: Its header also shows the file name, with badges for the format",
+    "preview/preview-panel/routes: A route with two distinct timestamps adds a duration badge",
+    "preview/preview-panel/routes: With recorded altitude on a connected pair of points, an \"Elevation profile\" image shows",
+    "preview/preview-panel/routes: The control row shows the marker's distance on the left and the total on the right.",
+    "preview/preview-panel/routes: Both images' accessible description is the marker's distance",
+    "preview/preview-panel/routes: The play button's tooltip reads \"Play/Pause\" followed by its shortcut",
+    "preview/preview-panel/routes: The route preview has no unit selector of its own."
+  ],
+  "scene": "c14b-route-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-route-picture",
+      "role": "image",
+      "name": "Route preview"
+    },
+    {
+      "key": "c14b-route-eyebrow",
+      "name": "3 of 5 in results"
+    },
+    {
+      "key": "c14b-route-title",
+      "name": "ridge.gpx"
+    },
+    {
+      "key": "c14b-route-format",
+      "name": "GPX"
+    },
+    {
+      "key": "c14b-route-distance",
+      "name": "12.0 km"
+    },
+    {
+      "key": "c14b-route-duration",
+      "name": "10:17:50"
+    },
+    {
+      "key": "c14b-route-heading",
+      "name": "Elevation"
+    },
+    {
+      "key": "c14b-route-range",
+      "name": "10–30 m"
+    },
+    {
+      "key": "c14b-route-profile",
+      "role": "image",
+      "name": "Elevation profile"
+    },
+    {
+      "key": "c14b-route-elapsed",
+      "name": "4.0 km"
+    },
+    {
+      "key": "c14b-route-total",
+      "name": "12.0 km"
+    },
+    {
+      "key": "c14b-route-play",
+      "role": "button",
+      "name": "Play or pause"
+    }
+  ]
+}

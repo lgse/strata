@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "devices/volumes/encrypted: Cancel in the prompt closes it with no error"
+  ],
+  "scene": "c26-luks-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "open"
+    },
+    {
+      "t": 0.55,
+      "type": "tap",
+      "key": "c26-mount-password-secondary"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-password-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Aborted"
+    }
+  ]
+}

@@ -1,0 +1,597 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c2-path",
+              "name": "Home / Documents",
+              "role": "label"
+            },
+            {
+              "key": "c2-intent",
+              "name": "Clicked budget-2026.ods",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus"
+              ],
+              "activeDescendant": "row-2000005",
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c2-col-1-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000001",
+                                              "name": "Documents",
+                                              "position": 1,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000002",
+                                              "name": "Pictures",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000003",
+                                              "name": "Music",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000004",
+                                              "name": "Projects",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000005",
+                                              "name": "Empty",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000006",
+                                              "name": "Slow",
+                                              "position": 6,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000007",
+                                              "name": "Big",
+                                              "position": 7,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000008",
+                                              "name": "deep",
+                                              "position": 8,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000009",
+                                              "name": "notes.txt",
+                                              "position": 9,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000010",
+                                              "name": "todo.md",
+                                              "position": 10,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000011",
+                                              "name": "photo.jpg",
+                                              "position": 11,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000012",
+                                              "name": "budget.ods",
+                                              "position": 12,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000013",
+                                              "name": "report-final.pdf",
+                                              "position": 13,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 13
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-1",
+                                  "name": "Home",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-1-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-1",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "c2-refresh-1",
+                                          "name": "Refresh",
+                                          "role": "button"
+                                        },
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "c2-col-2-close",
+                                          "name": "Close this pane",
+                                          "role": "button"
+                                        }
+                                      ],
+                                      "key": "c2-col-2-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000001",
+                                              "name": "Reports",
+                                              "position": 1,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000002",
+                                              "name": "Letters",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000003",
+                                              "name": "Taxes",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000004",
+                                              "name": "cv.pdf",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000005",
+                                              "name": "budget-2026.ods",
+                                              "position": 5,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000006",
+                                              "name": "Quarterly report for the infrastructure committee, final revision with all appendices.pdf",
+                                              "position": 6,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000007",
+                                              "name": "letter.odt",
+                                              "position": 7,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000008",
+                                              "name": "scan-0001.pdf",
+                                              "position": 8,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000009",
+                                              "name": "scan-0002.pdf",
+                                              "position": 9,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000010",
+                                              "name": "scan-0003.pdf",
+                                              "position": 10,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000011",
+                                              "name": "scan-0004.pdf",
+                                              "position": 11,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000012",
+                                              "name": "scan-0005.pdf",
+                                              "position": 12,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000013",
+                                              "name": "scan-0006.pdf",
+                                              "position": 13,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000014",
+                                              "name": "scan-0007.pdf",
+                                              "position": 14,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000015",
+                                              "name": "scan-0008.pdf",
+                                              "position": 15,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000016",
+                                              "name": "scan-0009.pdf",
+                                              "position": 16,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000017",
+                                              "name": "scan-0010.pdf",
+                                              "position": 17,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000018",
+                                              "name": "scan-0011.pdf",
+                                              "position": 18,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000019",
+                                              "name": "scan-0012.pdf",
+                                              "position": 19,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000020",
+                                              "name": "scan-0013.pdf",
+                                              "position": 20,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000021",
+                                              "name": "scan-0014.pdf",
+                                              "position": 21,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000022",
+                                              "name": "scan-0015.pdf",
+                                              "position": 22,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000023",
+                                              "name": "scan-0016.pdf",
+                                              "position": 23,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000024",
+                                              "name": "scan-0017.pdf",
+                                              "position": 24,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000025",
+                                              "name": "scan-0018.pdf",
+                                              "position": 25,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000026",
+                                              "name": "scan-0019.pdf",
+                                              "position": 26,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-2000027",
+                                              "name": "scan-0020.pdf",
+                                              "position": 27,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 27
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-2",
+                                  "name": "Documents",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-2-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-2",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "columns",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c2-strip",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c2",
+              "name": "Columns",
+              "role": "group",
+              "states": [
+                "focused"
+              ]
+            }
+          ],
+          "key": "c2-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "devices/volumes/encrypted: Clicking a locked row, its lock button, or Unlock opens the themed"
+  ],
+  "scene": "c26-luks-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "open sesame"
+    },
+    {
+      "t": 0.9,
+      "type": "tap",
+      "key": "c26-mount-password-remember/segment1"
+    },
+    {
+      "t": 1.0,
+      "type": "tap",
+      "key": "c26-mount-password-primary"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-password-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Connect: secret of 11 characters, remember ForSession"
+    }
+  ]
+}

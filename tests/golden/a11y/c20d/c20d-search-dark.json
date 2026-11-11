@@ -1,0 +1,279 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Icon picker",
+                  "role": "label"
+                },
+                {
+                  "name": "ICON CATALOG",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "c20d-catalog-field",
+                          "name": "Search",
+                          "placeholder": "Search",
+                          "role": "search-input",
+                          "value": "fold"
+                        },
+                        {
+                          "actions": [
+                            "click"
+                          ],
+                          "key": "c20d-catalog-clear",
+                          "name": "Clear search",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "c20d-catalog-frame",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus",
+                            "context-menu"
+                          ],
+                          "activeDescendant": "row-200396",
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-200396",
+                                          "name": "folder",
+                                          "position": 1,
+                                          "role": "grid-cell",
+                                          "states": [
+                                            "selected"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-200397",
+                                          "name": "folder archive",
+                                          "position": 2,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-200398",
+                                          "name": "folder input",
+                                          "position": 3,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-200399",
+                                          "name": "folder lock",
+                                          "position": 4,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-200400",
+                                          "name": "folder open",
+                                          "position": 5,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-200401",
+                                          "name": "folder output",
+                                          "position": 6,
+                                          "role": "grid-cell"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "row-200402",
+                                          "name": "folder plus",
+                                          "position": 7,
+                                          "role": "grid-cell"
+                                        }
+                                      ],
+                                      "key": "line-200396",
+                                      "name": "folder folder archive folder input folder lock folder open folder output folder plus",
+                                      "position": 1,
+                                      "role": "row",
+                                      "setSize": 7
+                                    }
+                                  ],
+                                  "key": "rows",
+                                  "role": "group",
+                                  "setSize": 1
+                                }
+                              ],
+                              "key": "viewport",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "key": "status",
+                              "name": "",
+                              "role": "label",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20d-catalog-grid",
+                          "name": "Search results",
+                          "role": "grid"
+                        }
+                      ],
+                      "key": "c20d-catalog-panel",
+                      "name": "Search results",
+                      "role": "tab-panel"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "c20d-catalog-name-text",
+                          "name": "folder",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c20d-catalog-name",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-catalog-tab-interface",
+                          "name": "Interface",
+                          "position": 1,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-catalog-tab-file-types",
+                          "name": "File types",
+                          "position": 2,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-catalog-tabs",
+                      "name": "Categories",
+                      "role": "tab-list",
+                      "setSize": 2
+                    },
+                    {
+                      "key": "c20d-catalog-status",
+                      "name": "7 results",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c20d-catalog",
+                  "role": "group"
+                },
+                {
+                  "name": "IN A POPOVER",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "expand"
+                      ],
+                      "key": "c20d-catalog-popover-button",
+                      "name": "Choose Icon…",
+                      "role": "button",
+                      "states": [
+                        "collapsed"
+                      ]
+                    }
+                  ],
+                  "key": "c20d-catalog-popover-popover-trigger",
+                  "role": "group"
+                },
+                {
+                  "key": "c20d-log",
+                  "name": "—",
+                  "role": "label"
+                }
+              ],
+              "key": "c20d",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "operations/trash/animation: With animations disabled, no flight plays"
+  ],
+  "scene": "c23-rest-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c23-animations"
+    },
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-3"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c23-trash"
+    },
+    {
+      "t": 0.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-3",
+      "absent": true
+    },
+    {
+      "key": "c23-launch-1-0",
+      "absent": true
+    },
+    {
+      "key": "c23-flyer-1-0",
+      "absent": true
+    }
+  ]
+}

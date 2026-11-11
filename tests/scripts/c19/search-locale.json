@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Key names match in English and in the interface language"
+  ],
+  "scene": "c19-reference-german-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "strg+c"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "a",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.7,
+      "type": "type",
+      "text": "CTRL+C"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-row-0-0",
+      "name": "Kopieren Strg+C"
+    },
+    {
+      "key": "c19-reference-row-0-1",
+      "absent": true
+    },
+    {
+      "key": "c19-reference-row-0-2",
+      "absent": true
+    }
+  ]
+}

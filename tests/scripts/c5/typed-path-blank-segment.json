@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "operations/rename/typed-paths: `a//b`, `/abs`, or `a/ /b` reads"
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "a/ /b"
+    }
+  ],
+  "expect": [
+    {
+      "key": "rename-field",
+      "states": [
+        "invalid"
+      ]
+    },
+    {
+      "key": "rename-message-text",
+      "name": "Enter a name"
+    }
+  ]
+}

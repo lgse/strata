@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Changing the sort clears a selected cell range and scrolls the table to the top"
+  ],
+  "scene": "c11b-csv-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "sheet-r1-c1",
+      "dx": 170,
+      "dy": 56,
+      "dur": 0.3
+    },
+    {
+      "t": 0.8,
+      "type": "wheel",
+      "key": "sheet-r2-c0",
+      "dy": -400
+    },
+    {
+      "t": 1.4,
+      "type": "tap",
+      "key": "sheet-h3"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c11b-range",
+      "name": "None"
+    }
+  ]
+}

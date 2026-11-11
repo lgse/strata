@@ -1,0 +1,25 @@
+{
+  "bullets": [
+    "browser/sidebar: The icon rail keeps each section's saved collapsed state. Clicking the rail chevron"
+  ],
+  "scene": "c8-rail-collapsed-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-heading-pinned"
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-heading-pinned",
+      "states": [
+        "expanded"
+      ]
+    },
+    {
+      "key": "places-pin-projects",
+      "name": "Projects"
+    }
+  ]
+}

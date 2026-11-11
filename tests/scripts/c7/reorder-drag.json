@@ -1,0 +1,22 @@
+{
+  "bullets": [
+    "browser/tabs: Releasing a tab drag moves the tab into the marked gap"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "t-c7-1",
+      "dx": 300,
+      "dy": 0,
+      "dur": 0.6
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "Move ~ to 2"
+    }
+  ]
+}

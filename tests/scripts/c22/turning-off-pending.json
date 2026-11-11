@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "preview/quick-preview/folder-peek: Turning Folder peeking off closes an open peek and cancels a pending one."
+  ],
+  "scene": "c22-list-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-2"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "p",
+      "cmd": true
+    },
+    {
+      "t": 1.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "folder-peek",
+      "absent": true
+    },
+    {
+      "key": "c22-peeking",
+      "name": "Folder peeking off"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Opening the reference focuses \"Search actions or keys…\""
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-list"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "F1"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "focused": true,
+      "name": "Search actions or keys…"
+    },
+    {
+      "key": "c19-reference-row-0-0"
+    }
+  ]
+}

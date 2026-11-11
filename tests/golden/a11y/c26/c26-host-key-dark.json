@@ -1,0 +1,86 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Identity Verification Failed\nVerifying the identity of “files.example.org” failed, this happens when you log in to a computer the first time.\n\nThe identity sent by the remote computer is “SHA256:4b2Vd0fA9kq7pL3xYw”. If you want to be absolutely sure it is safe to continue, contact the system administrator.",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "If the server did not provide a fingerprint, verify it outside Strata before continuing.",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c26-mount-question-body",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c26-mount-question-secondary",
+                  "name": "Cancel Login",
+                  "role": "button",
+                  "states": [
+                    "focused"
+                  ]
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c26-mount-question-primary",
+                  "name": "Log In Anyway",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c26-mount-question-close",
+                  "name": "Close dialog",
+                  "role": "button"
+                }
+              ],
+              "description": "Only continue after verifying the SSH host key through a trusted source.",
+              "key": "c26-mount-question-dialog",
+              "name": "Verify server identity",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

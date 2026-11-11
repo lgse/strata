@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "settings/themes: Each picker change previews across the interface"
+  ],
+  "scene": "c20b-translucent-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20b-glass-alpha-knob"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20b-log",
+      "name": "Overlay color Commit #4fd6ff7d"
+    },
+    {
+      "key": "c20b-glass-hex",
+      "value": "#4fd6ff7d"
+    },
+    {
+      "key": "c20b-glass-alpha",
+      "value": "49%",
+      "focused": true
+    }
+  ]
+}

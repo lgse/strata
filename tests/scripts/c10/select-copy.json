@@ -1,0 +1,22 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: Dragging across headings, paragraphs, lists, code, and tables, then Ctrl+C, copies the selected text with original line breaks."
+  ],
+  "scene": "c10-rust-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "code-l1/t",
+      "dx": 0,
+      "dy": 72,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "c10-selection",
+      "name": "use std::path::Path;\n\n/// One entry: its name and size in bytes.\n#[derive(Debug, Clone)]"
+    }
+  ]
+}

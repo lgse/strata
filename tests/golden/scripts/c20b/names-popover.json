@@ -1,0 +1,209 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "focus"
+                      ],
+                      "key": "c20b-accent-plane",
+                      "name": "Saturation and value",
+                      "role": "slider",
+                      "states": [
+                        "focused"
+                      ],
+                      "value": "Saturation 45%, value 98%"
+                    },
+                    {
+                      "actions": [
+                        "focus",
+                        "increment",
+                        "decrement",
+                        "set-value"
+                      ],
+                      "key": "c20b-accent-hue",
+                      "name": "Hue",
+                      "range": [
+                        217.0,
+                        0.0,
+                        360.0,
+                        1.0
+                      ],
+                      "role": "slider",
+                      "value": "217°"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "context-menu",
+                        "set-value",
+                        "replace-selected-text",
+                        "set-text-selection"
+                      ],
+                      "key": "c20b-accent-hex",
+                      "name": "Hex color",
+                      "role": "text-input",
+                      "value": "#89b4fa"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-0-0",
+                          "name": "Red",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-0-1",
+                          "name": "Orange",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-0-2",
+                          "name": "Yellow",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-0-3",
+                          "name": "Green",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-0-4",
+                          "name": "Blue",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-0-5",
+                          "name": "Purple",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-0-6",
+                          "name": "Gray",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        }
+                      ],
+                      "key": "c20b-accent-swatches-0",
+                      "name": "Theme",
+                      "role": "radio-group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-1-0",
+                          "name": "#f38ba8",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-1-1",
+                          "name": "#a6e3a1",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20b-accent-swatch-1-2",
+                          "name": "#808080",
+                          "role": "radio-button",
+                          "states": [
+                            "unchecked"
+                          ]
+                        }
+                      ],
+                      "key": "c20b-accent-swatches-1",
+                      "name": "Recent",
+                      "role": "radio-group"
+                    }
+                  ],
+                  "key": "body",
+                  "role": "group"
+                }
+              ],
+              "key": "c20b-accent-popover-content",
+              "name": "Accent",
+              "role": "dialog"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

@@ -1,0 +1,157 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c3-title",
+              "name": "Long names · 6 items",
+              "role": "label"
+            },
+            {
+              "key": "c3-size",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "key": "c3-intent",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "key": "c3-columns",
+              "name": "8 a row",
+              "role": "label"
+            },
+            {
+              "key": "c3-filled",
+              "name": "Visible 6: thumbnails 0 of 0, details 6",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus",
+                "context-menu"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Text document",
+                              "key": "row-300",
+                              "name": "a",
+                              "position": 1,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Text document",
+                              "key": "row-301",
+                              "name": "short.md",
+                              "position": 2,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Text document",
+                              "key": "row-302",
+                              "name": "two words.txt",
+                              "position": 3,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Archive",
+                              "key": "row-303",
+                              "name": "a-name-without-any-spaces-that-wraps-inside-its-word-and-is-cut.tar.gz",
+                              "position": 4,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "Text document",
+                              "key": "row-304",
+                              "name": "Meeting notes from the planning session about the next release.odt",
+                              "position": 5,
+                              "role": "grid-cell"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "description": "File",
+                              "key": "row-305",
+                              "name": "résumé – final (2).pdf",
+                              "position": 6,
+                              "role": "grid-cell"
+                            }
+                          ],
+                          "key": "line-300",
+                          "name": "a short.md two words.txt a-name-without-any-spaces-that-wraps-inside-its-word-and-is-cut.tar.gz Meeting notes from the planning session about the next release.odt résumé – final (2).pdf",
+                          "position": 1,
+                          "role": "row",
+                          "setSize": 6
+                        }
+                      ],
+                      "key": "rows",
+                      "role": "group",
+                      "setSize": 1
+                    }
+                  ],
+                  "key": "viewport",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                },
+                {
+                  "key": "status",
+                  "name": "",
+                  "role": "label",
+                  "states": [
+                    "live-polite"
+                  ]
+                }
+              ],
+              "key": "c3-grid",
+              "name": "Long names",
+              "role": "grid"
+            }
+          ],
+          "key": "c3-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

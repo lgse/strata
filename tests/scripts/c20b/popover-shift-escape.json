@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "browser/folder-customization: Closing the custom color dialog by Apply, Cancel, Escape, or a click outside"
+  ],
+  "scene": "c20b-opaque-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20b-accent-button"
+    },
+    {
+      "t": 0.35,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Escape",
+      "shift": true
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20b-accent-button",
+      "focused": true
+    },
+    {
+      "key": "c20b-accent-plane",
+      "absent": true
+    },
+    {
+      "key": "c20b-log",
+      "name": "Accent closed, changed false"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "devices/volumes/release: Cancelling GVfs's own busy dialog during Disconnect"
+  ],
+  "scene": "c26-processes-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Enter"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c26-mount-processes-dialog",
+      "absent": true
+    },
+    {
+      "key": "c26-status",
+      "name": "Choice 1: Cancel"
+    }
+  ]
+}

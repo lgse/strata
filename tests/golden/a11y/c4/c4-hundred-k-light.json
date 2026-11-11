@@ -1,0 +1,3255 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c4-title",
+                  "name": "Archive · 100000 items",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-sort",
+                  "name": "Sorted by Name ↑",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-intent",
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "expand"
+                      ],
+                      "description": "Columns",
+                      "key": "c4-list-columns-button",
+                      "name": "Columns",
+                      "role": "button",
+                      "states": [
+                        "collapsed"
+                      ]
+                    }
+                  ],
+                  "key": "c4-list-columns-menu-trigger",
+                  "role": "group"
+                },
+                {
+                  "key": "c4-layout",
+                  "name": "Order: name, mode, size, type, modified; hidden: none; changes: 0",
+                  "role": "label"
+                },
+                {
+                  "key": "c4-widths",
+                  "name": "Widths: default",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "focus",
+                        "context-menu",
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-name",
+                                  "name": "Name",
+                                  "role": "column-header",
+                                  "sort": "ascending"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-mode",
+                                  "name": "Mode",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-size",
+                                  "name": "Size",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-type",
+                                  "name": "Type",
+                                  "role": "column-header"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "head-modified",
+                                  "name": "Modified",
+                                  "role": "column-header"
+                                }
+                              ],
+                              "key": "c4-list-headings",
+                              "name": "Name Mode Size Type Modified",
+                              "role": "row"
+                            }
+                          ],
+                          "key": "c4-list-headings-menu-trigger",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view",
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000001.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-01 00:00",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000000",
+                                  "name": "entry-000001.dat",
+                                  "position": 1,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000026.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-23 03:36",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000025",
+                                  "name": "entry-000026.dat",
+                                  "position": 2,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000051.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-11 02:21",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000050",
+                                  "name": "entry-000051.dat",
+                                  "position": 3,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000076.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-28 01:06",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000075",
+                                  "name": "entry-000076.dat",
+                                  "position": 4,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000101.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-17 00:51",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000100",
+                                  "name": "entry-000101.dat",
+                                  "position": 5,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000126.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-06 23:36",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000125",
+                                  "name": "entry-000126.dat",
+                                  "position": 6,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000151.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-22 22:21",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000150",
+                                  "name": "entry-000151.dat",
+                                  "position": 7,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000176.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-11 21:06",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000175",
+                                  "name": "entry-000176.dat",
+                                  "position": 8,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000201.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-28 20:51",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000200",
+                                  "name": "entry-000201.dat",
+                                  "position": 9,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000226.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-17 19:36",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000225",
+                                  "name": "entry-000226.dat",
+                                  "position": 10,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000251.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-11 22:12",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000250",
+                                  "name": "entry-000251.dat",
+                                  "position": 11,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000276.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-27 21:57",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000275",
+                                  "name": "entry-000276.dat",
+                                  "position": 12,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000301.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-16 20:42",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000300",
+                                  "name": "entry-000301.dat",
+                                  "position": 13,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000326.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-05 19:27",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000325",
+                                  "name": "entry-000326.dat",
+                                  "position": 14,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000351.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-22 18:12",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000350",
+                                  "name": "entry-000351.dat",
+                                  "position": 15,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000376.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-10 17:57",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000375",
+                                  "name": "entry-000376.dat",
+                                  "position": 16,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000401.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-27 17:42",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000400",
+                                  "name": "entry-000401.dat",
+                                  "position": 17,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000426.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-16 16:27",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000425",
+                                  "name": "entry-000426.dat",
+                                  "position": 18,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000451.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-05 15:12",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000450",
+                                  "name": "entry-000451.dat",
+                                  "position": 19,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000476.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-27 18:48",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000475",
+                                  "name": "entry-000476.dat",
+                                  "position": 20,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000501.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-16 17:33",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000500",
+                                  "name": "entry-000501.dat",
+                                  "position": 21,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000526.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-04 16:18",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000525",
+                                  "name": "entry-000526.dat",
+                                  "position": 22,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000551.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-07-21 15:03",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000550",
+                                  "name": "entry-000551.dat",
+                                  "position": 23,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000576.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-10 14:48",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000575",
+                                  "name": "entry-000576.dat",
+                                  "position": 24,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000601.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-27 13:33",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000600",
+                                  "name": "entry-000601.dat",
+                                  "position": 25,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000626.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-15 12:18",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000625",
+                                  "name": "entry-000626.dat",
+                                  "position": 26,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000651.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-07-04 11:03",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000650",
+                                  "name": "entry-000651.dat",
+                                  "position": 27,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000676.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-21 10:48",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000675",
+                                  "name": "entry-000676.dat",
+                                  "position": 28,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000701.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-10 09:33",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000700",
+                                  "name": "entry-000701.dat",
+                                  "position": 29,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000726.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-04 12:09",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000725",
+                                  "name": "entry-000726.dat",
+                                  "position": 30,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000751.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-20 11:54",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000750",
+                                  "name": "entry-000751.dat",
+                                  "position": 31,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000776.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-09 10:39",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000775",
+                                  "name": "entry-000776.dat",
+                                  "position": 32,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000801.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-26 10:24",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000800",
+                                  "name": "entry-000801.dat",
+                                  "position": 33,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000826.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-15 09:09",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000825",
+                                  "name": "entry-000826.dat",
+                                  "position": 34,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000851.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-03 08:54",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000850",
+                                  "name": "entry-000851.dat",
+                                  "position": 35,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000876.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-20 07:39",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000875",
+                                  "name": "entry-000876.dat",
+                                  "position": 36,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000901.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-05-09 06:24",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000900",
+                                  "name": "entry-000901.dat",
+                                  "position": 37,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000926.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-26 05:09",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000925",
+                                  "name": "entry-000926.dat",
+                                  "position": 38,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000951.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-20 08:45",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000950",
+                                  "name": "entry-000951.dat",
+                                  "position": 39,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-000976.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-08 07:30",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1000975",
+                                  "name": "entry-000976.dat",
+                                  "position": 40,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001001.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-25 06:15",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001000",
+                                  "name": "entry-001001.dat",
+                                  "position": 41,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001026.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-14 05:00",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001025",
+                                  "name": "entry-001026.dat",
+                                  "position": 42,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001051.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-03 04:45",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001050",
+                                  "name": "entry-001051.dat",
+                                  "position": 43,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001076.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-19 03:30",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001075",
+                                  "name": "entry-001076.dat",
+                                  "position": 44,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001101.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-09-08 02:15",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001100",
+                                  "name": "entry-001101.dat",
+                                  "position": 45,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001126.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-06-25 01:00",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001125",
+                                  "name": "entry-001126.dat",
+                                  "position": 46,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001151.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-03-14 00:45",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001150",
+                                  "name": "entry-001151.dat",
+                                  "position": 47,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001176.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-12-02 23:30",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001175",
+                                  "name": "entry-001176.dat",
+                                  "position": 48,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001201.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-25 03:06",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001200",
+                                  "name": "entry-001201.dat",
+                                  "position": 49,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001226.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-13 02:51",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001225",
+                                  "name": "entry-001226.dat",
+                                  "position": 50,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001251.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-07-02 01:36",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001250",
+                                  "name": "entry-001251.dat",
+                                  "position": 51,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001276.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-19 00:21",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001275",
+                                  "name": "entry-001276.dat",
+                                  "position": 52,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001301.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-08 23:06",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001300",
+                                  "name": "entry-001301.dat",
+                                  "position": 53,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001326.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "3 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-10-24 22:51",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001325",
+                                  "name": "entry-001326.dat",
+                                  "position": 54,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001351.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "No items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-07-13 21:36",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001350",
+                                  "name": "entry-001351.dat",
+                                  "position": 55,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001376.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "4 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-04-02 20:21",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001375",
+                                  "name": "entry-001376.dat",
+                                  "position": 56,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001401.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "1 item",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-01-19 19:06",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001400",
+                                  "name": "entry-001401.dat",
+                                  "position": 57,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001426.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "5 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-02-13 22:42",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001425",
+                                  "name": "entry-001426.dat",
+                                  "position": 58,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001451.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "2 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-11-01 21:27",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001450",
+                                  "name": "entry-001451.dat",
+                                  "position": 59,
+                                  "role": "row"
+                                },
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-name",
+                                      "name": "entry-001476.dat",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-mode",
+                                      "name": "drwxr-xr-x  755",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-size",
+                                      "name": "6 items",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-type",
+                                      "name": "Folder",
+                                      "role": "grid-cell"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "cell-modified",
+                                      "name": "2026-08-18 20:12",
+                                      "role": "grid-cell"
+                                    }
+                                  ],
+                                  "key": "row-1001475",
+                                  "name": "entry-001476.dat",
+                                  "position": 60,
+                                  "role": "row"
+                                }
+                              ],
+                              "key": "rows",
+                              "role": "group",
+                              "setSize": 100000
+                            }
+                          ],
+                          "key": "viewport",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "key": "status",
+                          "name": "",
+                          "role": "label",
+                          "states": [
+                            "live-polite"
+                          ]
+                        }
+                      ],
+                      "key": "c4-list",
+                      "name": "Archive",
+                      "role": "grid"
+                    }
+                  ],
+                  "key": "c4-list-scroll",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c4-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

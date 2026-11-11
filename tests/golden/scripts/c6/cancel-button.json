@@ -1,0 +1,159 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-sidebar",
+                      "name": "Show sidebar",
+                      "role": "button"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~",
+                                  "key": "c6-loc-crumb-0",
+                                  "name": "~",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-0",
+                              "name": "~",
+                              "position": 1,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects",
+                                  "key": "c6-loc-crumb-1",
+                                  "name": "Projects",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-1",
+                              "name": "Projects",
+                              "position": 2,
+                              "role": "list-item"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "~/Projects/strata",
+                                  "name": "strata",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus",
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "c6-loc-copy",
+                                  "name": "Copy path",
+                                  "role": "button"
+                                }
+                              ],
+                              "key": "c6-loc-item-2",
+                              "name": "strata",
+                              "position": 3,
+                              "role": "list-item"
+                            }
+                          ],
+                          "key": "c6-loc-trail-0",
+                          "name": "Path",
+                          "role": "list",
+                          "setSize": 3
+                        }
+                      ],
+                      "key": "c6-loc",
+                      "name": "Location",
+                      "role": "navigation"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-new-tab",
+                      "name": "New tab",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "c6-header",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c6-files",
+                      "name": "Files pressed 0",
+                      "role": "list"
+                    },
+                    {
+                      "key": "c6-log",
+                      "name": "Cancelled",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c6-pane",
+                  "role": "group"
+                }
+              ],
+              "key": "c6",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

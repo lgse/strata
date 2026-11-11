@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/tabs: Ctrl+Shift+Page Up and Ctrl+Shift+Page Down move the active tab",
+    "browser/tabs: Moving stops at either end of the strip"
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "PageUp",
+      "ctrl": true,
+      "shift": true
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "PageUp",
+      "ctrl": true,
+      "shift": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageUp",
+      "ctrl": true,
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "t-c7-3",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "browser/search/filter: In the filter field or its results, Space toggles quick preview for the selected file result"
+  ],
+  "scene": "c18-filter-target-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-11",
+      "t": 0.2
+    },
+    {
+      "type": "tap",
+      "key": "c18-filter-field",
+      "t": 0.35
+    },
+    {
+      "type": "key",
+      "name": " ",
+      "shift": true,
+      "t": 0.5
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.8
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-filter-field",
+      "value": "rep ",
+      "focused": true
+    },
+    {
+      "key": "c18-log",
+      "name": "Query “rep ”, 1 shown"
+    }
+  ]
+}

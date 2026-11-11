@@ -1,0 +1,38 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Header actions (Empty Trash at `trash:///`, Refresh, sort direction, Sort by, filter, Close) show only in the column targeted"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-3-title"
+    },
+    {
+      "t": 1.0,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-refresh-2",
+      "role": "button",
+      "name": "Refresh"
+    },
+    {
+      "key": "c2-col-3-close",
+      "name": "Close this pane"
+    },
+    {
+      "key": "c2-refresh-1",
+      "absent": true
+    },
+    {
+      "key": "c2-col-2-close",
+      "absent": true
+    }
+  ]
+}

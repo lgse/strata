@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: Once loaded, a 3MF with one usable embedded PNG, or a FreeCAD file, shows its saved image without camera buttons, indicator, or badges.",
+    "preview/preview-panel/model-views: A loading FreeCAD file or embedded-image 3MF shows the same details and inactive camera controls, then switches to the plain image."
+  ],
+  "scene": "c14b-model-embedded-light",
+  "events": [
+    {
+      "t": 2.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-picture",
+      "name": "Model preview"
+    },
+    {
+      "key": "c14b-model-previous",
+      "absent": true
+    },
+    {
+      "key": "c14b-model-camera",
+      "absent": true
+    },
+    {
+      "key": "c14b-model-format",
+      "absent": true
+    },
+    {
+      "key": "preview-busy",
+      "absent": true
+    }
+  ]
+}

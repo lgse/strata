@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "app/dialogs: Clicking the backdrop repeatedly during the close animation"
+  ],
+  "scene": "c15-basic-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "x": 4,
+      "y": 630
+    },
+    {
+      "t": 0.25,
+      "type": "tap",
+      "x": 4,
+      "y": 630
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "x": 4,
+      "y": 630
+    },
+    {
+      "t": 0.35,
+      "type": "tap",
+      "x": 4,
+      "y": 630
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-basic-dialog",
+      "absent": true
+    },
+    {
+      "key": "c15-dismissals",
+      "name": "Dismissed 1 time"
+    }
+  ]
+}

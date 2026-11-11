@@ -1,0 +1,349 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Settings controls",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "DENSITY",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "focus",
+                                "increment",
+                                "decrement",
+                                "set-value",
+                                "scroll-into-view"
+                              ],
+                              "key": "c20a-frame",
+                              "name": "Frame",
+                              "range": [
+                                0.0,
+                                0.0,
+                                12.0,
+                                1.0
+                              ],
+                              "role": "slider",
+                              "value": "Compact · 0 px"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c20a-frame-snap-0",
+                              "name": "Compact",
+                              "role": "button",
+                              "states": [
+                                "checked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c20a-frame-snap-1",
+                              "name": "Airy",
+                              "role": "button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            }
+                          ],
+                          "description": "Compact · 0 px",
+                          "key": "c20a-frame-field",
+                          "name": "Frame",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "focus",
+                                "increment",
+                                "decrement",
+                                "set-value",
+                                "scroll-into-view"
+                              ],
+                              "key": "c20a-content",
+                              "name": "Content",
+                              "range": [
+                                0.0,
+                                0.0,
+                                16.0,
+                                1.0
+                              ],
+                              "role": "slider",
+                              "value": "Custom · 0 px"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c20a-content-snap-0",
+                              "name": "Compact",
+                              "role": "button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "scroll-into-view"
+                              ],
+                              "key": "c20a-content-snap-1",
+                              "name": "Airy",
+                              "role": "button",
+                              "states": [
+                                "unchecked"
+                              ]
+                            }
+                          ],
+                          "description": "Custom · 0 px",
+                          "key": "c20a-content-field",
+                          "name": "Content",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "name": "Frame spaces the window's bars; Content spaces rows and Icons cards. The menu goes on below.",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c20a-appearance-scroll",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "c20a-appearance",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "ICONS",
+                      "role": "label"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus",
+                            "increment",
+                            "decrement",
+                            "set-value"
+                          ],
+                          "key": "c20a-thumbs",
+                          "name": "Thumbnail size",
+                          "range": [
+                            32.0,
+                            32.0,
+                            256.0,
+                            16.0
+                          ],
+                          "role": "slider",
+                          "value": "32 px"
+                        },
+                        {
+                          "name": "Small",
+                          "role": "label"
+                        },
+                        {
+                          "name": "Large",
+                          "role": "label"
+                        }
+                      ],
+                      "description": "32 px",
+                      "key": "c20a-thumbs-field",
+                      "name": "Thumbnail size",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20a-icons",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "SETTINGS",
+                      "role": "label"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "increment",
+                            "decrement",
+                            "set-value"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c20a-workers-input",
+                              "name": "Thumbnail workers",
+                              "role": "text-input",
+                              "value": "1"
+                            }
+                          ],
+                          "key": "c20a-workers",
+                          "name": "Thumbnail workers",
+                          "range": [
+                            1.0,
+                            1.0,
+                            16.0,
+                            1.0
+                          ],
+                          "role": "spin-button",
+                          "value": "1"
+                        }
+                      ],
+                      "key": "c20a-workers-field",
+                      "name": "Thumbnail workers",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "increment",
+                            "decrement",
+                            "set-value"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c20a-text-size-input",
+                              "name": "Text size in pixels",
+                              "role": "text-input",
+                              "value": "8"
+                            }
+                          ],
+                          "key": "c20a-text-size",
+                          "name": "Text size in pixels",
+                          "range": [
+                            8.0,
+                            8.0,
+                            48.0,
+                            1.0
+                          ],
+                          "role": "spin-button",
+                          "value": "8 px"
+                        }
+                      ],
+                      "key": "c20a-text-size-field",
+                      "name": "Text size",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "increment",
+                            "decrement",
+                            "set-value"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c20a-roundness-input",
+                              "name": "Corner roundness in percent",
+                              "role": "text-input",
+                              "value": "0"
+                            }
+                          ],
+                          "key": "c20a-roundness",
+                          "name": "Corner roundness in percent",
+                          "range": [
+                            0.0,
+                            0.0,
+                            200.0,
+                            10.0
+                          ],
+                          "role": "spin-button",
+                          "value": "0%"
+                        }
+                      ],
+                      "key": "c20a-roundness-field",
+                      "name": "Corner roundness",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20a-numbers",
+                  "role": "group"
+                },
+                {
+                  "key": "c20a-log",
+                  "name": "—",
+                  "role": "label"
+                }
+              ],
+              "key": "c20a",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

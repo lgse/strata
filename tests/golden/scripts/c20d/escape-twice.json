@@ -1,0 +1,46 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Icon picker",
+                  "role": "label"
+                },
+                {
+                  "name": "CUSTOMIZE STAND-IN",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus"
+                  ],
+                  "key": "c20d-customize-open",
+                  "name": "Customize…",
+                  "role": "button"
+                },
+                {
+                  "key": "c20d-log",
+                  "name": "—",
+                  "role": "label"
+                }
+              ],
+              "key": "c20d",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

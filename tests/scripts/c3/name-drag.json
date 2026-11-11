@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "browser/selection/pointer-intent: On an unselected entry, a drag from the icon or rendered filename starts a file drag."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-1/icon"
+    },
+    {
+      "t": 0.5,
+      "type": "drag",
+      "key": "row-8/label",
+      "dx": 0,
+      "dy": 90,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-intent",
+      "name": "Dragging 1 items"
+    },
+    {
+      "key": "row-8",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "status",
+      "name": ""
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "preview/preview-panel/documents: CSV and TSV files render as a table whose first row is the column titles"
+  ],
+  "scene": "c11b-csv-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "sheet-r0-c0"
+    }
+  ],
+  "expect": [
+    {
+      "key": "sheet-h0",
+      "role": "column-header",
+      "name": "name"
+    },
+    {
+      "key": "sheet-h5",
+      "role": "column-header",
+      "name": "notes"
+    },
+    {
+      "key": "sheet-r0-n",
+      "role": "row-header",
+      "name": "2"
+    }
+  ]
+}

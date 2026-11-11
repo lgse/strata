@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "browser/scrolling: The click that stops autoscroll does not also select, open, or start a marquee."
+  ],
+  "scene": "c24-ten-k-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "x": 2,
+      "y": 338,
+      "button": "middle"
+    },
+    {
+      "t": 0.5,
+      "type": "move",
+      "x": 300,
+      "y": 340
+    },
+    {
+      "t": 0.8,
+      "type": "tap",
+      "x": 300,
+      "y": 105
+    },
+    {
+      "t": 1.2,
+      "type": "move",
+      "x": 300,
+      "y": 140
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-status",
+      "name": "Stopped by a Primary press"
+    },
+    {
+      "key": "c24-intent",
+      "name": "Nothing yet"
+    }
+  ]
+}

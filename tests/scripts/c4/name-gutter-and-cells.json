@@ -1,0 +1,98 @@
+{
+  "bullets": [
+    "browser/selection/pointer-intent: In List, unused Name-column space and its row padding are blank, even when Name is not the first column; other column cells count as item content."
+  ],
+  "scene": "c4-hidden-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "down",
+      "x": 700,
+      "y": 97
+    },
+    {
+      "t": 0.25,
+      "type": "move",
+      "x": 700,
+      "y": 110
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "x": 700,
+      "y": 125
+    },
+    {
+      "t": 0.35,
+      "type": "move",
+      "x": 700,
+      "y": 140
+    },
+    {
+      "t": 0.4,
+      "type": "up",
+      "x": 700,
+      "y": 140
+    },
+    {
+      "t": 1.0,
+      "type": "drag",
+      "key": "row-2/cell-size",
+      "dx": 0,
+      "dy": 40,
+      "dur": 0.3
+    },
+    {
+      "t": 2.0,
+      "type": "down",
+      "x": 4,
+      "y": 175
+    },
+    {
+      "t": 2.05,
+      "type": "move",
+      "x": 20,
+      "y": 190
+    },
+    {
+      "t": 2.1,
+      "type": "move",
+      "x": 40,
+      "y": 220
+    },
+    {
+      "t": 2.15,
+      "type": "move",
+      "x": 60,
+      "y": 255
+    },
+    {
+      "t": 2.2,
+      "type": "up",
+      "x": 60,
+      "y": 255
+    }
+  ],
+  "expect": [
+    {
+      "key": "c4-intent",
+      "name": "Dragging 3 items"
+    },
+    {
+      "key": "status",
+      "name": "4 items selected"
+    },
+    {
+      "key": "row-8",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-9",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

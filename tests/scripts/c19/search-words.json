@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In the reference's search field holding `open tab`, Ctrl+Left then typing"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "open tab"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Left",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.7,
+      "type": "type",
+      "text": "new "
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Backspace",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 1.1,
+      "type": "key",
+      "name": "Backspace",
+      "ctrl": true,
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-search",
+      "value": "tab",
+      "focused": true
+    }
+  ]
+}

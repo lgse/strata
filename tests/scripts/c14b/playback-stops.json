@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "preview/preview-panel/routes: Playback stops at the route end"
+  ],
+  "scene": "c14b-route-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-route-play"
+    },
+    {
+      "t": 15.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-route-elapsed",
+      "name": "12.0 km"
+    },
+    {
+      "key": "c14b-route-play",
+      "states": [
+        "unchecked"
+      ]
+    }
+  ]
+}

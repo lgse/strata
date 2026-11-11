@@ -1,0 +1,44 @@
+{
+  "bullets": [
+    "operations/archives/preview: In Columns, moving the pointer across a passive archive preview highlights no member.",
+    "operations/archives/preview: With the preview open in List, Icons, or Columns, moving the cursor onto an archive shows its contents with no member highlighted"
+  ],
+  "scene": "c14b-archive-passive-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-8000000001"
+    },
+    {
+      "t": 0.3,
+      "type": "move",
+      "key": "row-8000000006"
+    },
+    {
+      "t": 0.4,
+      "type": "move",
+      "key": "row-8000000010"
+    },
+    {
+      "t": 0.5,
+      "type": "move",
+      "key": "row-8000000013"
+    },
+    {
+      "t": 0.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-archive-crumb-current",
+      "name": "Contents"
+    },
+    {
+      "key": "c14b-archive-count",
+      "name": "4 files, 3 folders"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "preview/quick-preview/folder-peek: The popover lists at most 8 entries with thumbnails or type icons; folders show a trailing chevron."
+  ],
+  "scene": "c22-list-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-1"
+    },
+    {
+      "t": 1.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "folder-peek",
+      "role": "group",
+      "name": "Folder peek"
+    },
+    {
+      "key": "peek-row-10000",
+      "role": "list-item",
+      "name": "src"
+    },
+    {
+      "key": "peek-row-10007",
+      "role": "list-item",
+      "name": "file-07.txt"
+    },
+    {
+      "key": "peek-row-10008",
+      "absent": true
+    },
+    {
+      "key": "peek-more",
+      "name": "and 12 more"
+    }
+  ]
+}

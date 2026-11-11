@@ -1,0 +1,181 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "context-menu"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c20c-search-field",
+                              "name": "Search settings",
+                              "placeholder": "Search settings",
+                              "role": "search-input",
+                              "states": [
+                                "focused"
+                              ],
+                              "value": "tezt size"
+                            },
+                            {
+                              "actions": [
+                                "click"
+                              ],
+                              "key": "c20c-search-clear",
+                              "name": "Clear search",
+                              "role": "button"
+                            },
+                            {
+                              "key": "c20c-search-status",
+                              "name": "1 setting",
+                              "role": "status",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20c-search-frame",
+                          "role": "group"
+                        },
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-nav-theme",
+                              "name": "Appearance",
+                              "role": "tab",
+                              "states": [
+                                "selected"
+                              ]
+                            }
+                          ],
+                          "key": "c20c-nav",
+                          "name": "Settings pages",
+                          "role": "tab-list"
+                        }
+                      ],
+                      "key": "c20c-side",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "key": "c20c-title",
+                          "name": "Appearance",
+                          "role": "label"
+                        },
+                        {
+                          "actions": [
+                            "scroll-up",
+                            "scroll-down",
+                            "set-scroll-offset"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "c20c-section-text",
+                              "name": "TEXT",
+                              "role": "label"
+                            },
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "name": "Text size",
+                                  "role": "label"
+                                },
+                                {
+                                  "actions": [
+                                    "increment",
+                                    "decrement",
+                                    "set-value",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "set-value",
+                                        "replace-selected-text",
+                                        "set-text-selection",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c20c-text-size-input",
+                                      "name": "Text size",
+                                      "role": "text-input",
+                                      "value": "13"
+                                    }
+                                  ],
+                                  "key": "c20c-text-size",
+                                  "name": "Text size",
+                                  "range": [
+                                    13.0,
+                                    8.0,
+                                    48.0,
+                                    1.0
+                                  ],
+                                  "role": "spin-button",
+                                  "value": "13 px"
+                                }
+                              ],
+                              "key": "c20c-search-row-text",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c20c-page",
+                          "role": "scroll-view",
+                          "states": [
+                            "clips"
+                          ]
+                        }
+                      ],
+                      "key": "c20c-main",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20c-settings",
+                  "role": "group"
+                }
+              ],
+              "key": "c20c",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

@@ -1,0 +1,48 @@
+{
+  "bullets": [
+    "browser/scrolling: Moving the pointer away from the anchor scrolls toward it, faster the further away, on both axes the listing can scroll."
+  ],
+  "scene": "c24-ten-k-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "x": 2,
+      "y": 338,
+      "button": "middle"
+    },
+    {
+      "t": 0.4,
+      "type": "move",
+      "x": 40,
+      "y": 500
+    },
+    {
+      "t": 0.5,
+      "type": "move",
+      "x": 60,
+      "y": 618
+    },
+    {
+      "t": 5.5,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 6.0,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-status",
+      "name": "Stopped by Escape"
+    },
+    {
+      "key": "row-1",
+      "absent": true
+    }
+  ]
+}

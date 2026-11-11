@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "operations/progress/jobs: Launching an action opens Jobs in the launching window"
+  ],
+  "scene": "c16-jobs-closed-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c16-start-job"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-jobs-list",
+      "absent": true
+    },
+    {
+      "key": "c16-jobs",
+      "name": "2 jobs running · 1 queued"
+    }
+  ]
+}

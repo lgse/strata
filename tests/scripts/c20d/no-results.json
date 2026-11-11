@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "zzzz"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-status",
+      "name": "No results"
+    },
+    {
+      "key": "c20d-emoji-empty",
+      "name": "No results"
+    },
+    {
+      "key": "row-100000",
+      "absent": true
+    }
+  ]
+}

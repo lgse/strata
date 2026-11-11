@@ -1,0 +1,23 @@
+{
+  "bullets": [
+    "settings/themes: A rule GTK cannot parse, such as `label { color: nope; }`, is skipped"
+  ],
+  "scene": "x1-shell-dark",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "e"
+    }
+  ],
+  "expect": [
+    {
+      "key": "x1-reloads",
+      "name": "Overrides reloaded 1 time"
+    },
+    {
+      "key": "x1-overrides",
+      "name": "Overrides: applied, 1 row with a problem · bar inset 4 pt"
+    }
+  ]
+}

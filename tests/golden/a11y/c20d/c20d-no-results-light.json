@@ -1,0 +1,196 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Icon picker",
+                  "role": "label"
+                },
+                {
+                  "name": "ICON CATALOG",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "context-menu"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "key": "c20d-catalog-field",
+                          "name": "Search",
+                          "placeholder": "Search",
+                          "role": "search-input",
+                          "value": "zzzz"
+                        },
+                        {
+                          "actions": [
+                            "click"
+                          ],
+                          "key": "c20d-catalog-clear",
+                          "name": "Clear search",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "c20d-catalog-frame",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus",
+                            "context-menu"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-up",
+                                "scroll-down",
+                                "set-scroll-offset"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "rows",
+                                  "role": "group",
+                                  "setSize": 0
+                                }
+                              ],
+                              "key": "viewport",
+                              "role": "scroll-view",
+                              "states": [
+                                "clips"
+                              ]
+                            },
+                            {
+                              "key": "c20d-catalog-empty",
+                              "name": "No results",
+                              "role": "label"
+                            },
+                            {
+                              "key": "status",
+                              "name": "",
+                              "role": "label",
+                              "states": [
+                                "live-polite"
+                              ]
+                            }
+                          ],
+                          "key": "c20d-catalog-grid",
+                          "name": "Search results",
+                          "role": "grid"
+                        }
+                      ],
+                      "key": "c20d-catalog-panel",
+                      "name": "Search results",
+                      "role": "tab-panel"
+                    },
+                    {
+                      "key": "c20d-catalog-name",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-catalog-tab-interface",
+                          "name": "Interface",
+                          "position": 1,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20d-catalog-tab-file-types",
+                          "name": "File types",
+                          "position": 2,
+                          "role": "tab",
+                          "states": [
+                            "unselected"
+                          ]
+                        }
+                      ],
+                      "key": "c20d-catalog-tabs",
+                      "name": "Categories",
+                      "role": "tab-list",
+                      "setSize": 2
+                    },
+                    {
+                      "key": "c20d-catalog-status",
+                      "name": "No results",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c20d-catalog",
+                  "role": "group"
+                },
+                {
+                  "name": "IN A POPOVER",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "expand"
+                      ],
+                      "key": "c20d-catalog-popover-button",
+                      "name": "Choose Icon…",
+                      "role": "button",
+                      "states": [
+                        "collapsed"
+                      ]
+                    }
+                  ],
+                  "key": "c20d-catalog-popover-popover-trigger",
+                  "role": "group"
+                },
+                {
+                  "key": "c20d-log",
+                  "name": "—",
+                  "role": "label"
+                }
+              ],
+              "key": "c20d",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

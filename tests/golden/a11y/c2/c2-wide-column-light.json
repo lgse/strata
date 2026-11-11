@@ -1,0 +1,760 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c2-path",
+              "name": "Home / Music",
+              "role": "label"
+            },
+            {
+              "key": "c2-intent",
+              "name": "",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus"
+              ],
+              "activeDescendant": "c2-col-2",
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "scroll-left",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c2-col-1-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "27 items",
+                                              "key": "row-1000001",
+                                              "name": "Documents",
+                                              "position": 1,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "62 items",
+                                              "key": "row-1000002",
+                                              "name": "Pictures",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "40 items",
+                                              "key": "row-1000003",
+                                              "name": "Music",
+                                              "position": 3,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-1000004",
+                                              "name": "Projects",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "No items",
+                                              "key": "row-1000005",
+                                              "name": "Empty",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000006",
+                                              "name": "Slow",
+                                              "position": 6,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "100000 items",
+                                              "key": "row-1000007",
+                                              "name": "Big",
+                                              "position": 7,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-1000008",
+                                              "name": "deep",
+                                              "position": 8,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.1 MB",
+                                              "key": "row-1000009",
+                                              "name": "notes.txt",
+                                              "position": 9,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.3 MB",
+                                              "key": "row-1000010",
+                                              "name": "todo.md",
+                                              "position": 10,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "4.9 MB",
+                                              "key": "row-1000011",
+                                              "name": "photo.jpg",
+                                              "position": 11,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.1 MB",
+                                              "key": "row-1000012",
+                                              "name": "budget.ods",
+                                              "position": 12,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "2.4 MB",
+                                              "key": "row-1000013",
+                                              "name": "report-final.pdf",
+                                              "position": 13,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 13
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-1",
+                                  "name": "Home",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-1-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-1",
+                          "role": "group"
+                        },
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "c2-refresh-1",
+                                          "name": "Refresh",
+                                          "role": "button"
+                                        },
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "c2-col-2-close",
+                                          "name": "Close this pane",
+                                          "role": "button"
+                                        }
+                                      ],
+                                      "key": "c2-col-2-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.0 MB",
+                                              "key": "row-4000001",
+                                              "name": "track-0001.flac",
+                                              "position": 1,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.3 MB",
+                                              "key": "row-4000002",
+                                              "name": "track-0002.flac",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.1 MB",
+                                              "key": "row-4000003",
+                                              "name": "track-0003.flac",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "7.2 MB",
+                                              "key": "row-4000004",
+                                              "name": "track-0004.flac",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "4.6 MB",
+                                              "key": "row-4000005",
+                                              "name": "track-0005.flac",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "4.4 MB",
+                                              "key": "row-4000006",
+                                              "name": "track-0006.flac",
+                                              "position": 6,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.9 MB",
+                                              "key": "row-4000007",
+                                              "name": "track-0007.flac",
+                                              "position": 7,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.3 MB",
+                                              "key": "row-4000008",
+                                              "name": "track-0008.flac",
+                                              "position": 8,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.8 MB",
+                                              "key": "row-4000009",
+                                              "name": "track-0009.flac",
+                                              "position": 9,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "7.7 MB",
+                                              "key": "row-4000010",
+                                              "name": "track-0010.flac",
+                                              "position": 10,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.9 MB",
+                                              "key": "row-4000011",
+                                              "name": "track-0011.flac",
+                                              "position": 11,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.5 MB",
+                                              "key": "row-4000012",
+                                              "name": "track-0012.flac",
+                                              "position": 12,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.4 MB",
+                                              "key": "row-4000013",
+                                              "name": "track-0013.flac",
+                                              "position": 13,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.9 MB",
+                                              "key": "row-4000014",
+                                              "name": "track-0014.flac",
+                                              "position": 14,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "7.4 MB",
+                                              "key": "row-4000015",
+                                              "name": "track-0015.flac",
+                                              "position": 15,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "2.5 MB",
+                                              "key": "row-4000016",
+                                              "name": "track-0016.flac",
+                                              "position": 16,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.2 MB",
+                                              "key": "row-4000017",
+                                              "name": "track-0017.flac",
+                                              "position": 17,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "4.5 MB",
+                                              "key": "row-4000018",
+                                              "name": "track-0018.flac",
+                                              "position": 18,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.1 MB",
+                                              "key": "row-4000019",
+                                              "name": "track-0019.flac",
+                                              "position": 19,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "274.9 kB",
+                                              "key": "row-4000020",
+                                              "name": "track-0020.flac",
+                                              "position": 20,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.5 MB",
+                                              "key": "row-4000021",
+                                              "name": "track-0021.flac",
+                                              "position": 21,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.0 MB",
+                                              "key": "row-4000022",
+                                              "name": "track-0022.flac",
+                                              "position": 22,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.0 MB",
+                                              "key": "row-4000023",
+                                              "name": "track-0023.flac",
+                                              "position": 23,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.8 MB",
+                                              "key": "row-4000024",
+                                              "name": "track-0024.flac",
+                                              "position": 24,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "2.3 MB",
+                                              "key": "row-4000025",
+                                              "name": "track-0025.flac",
+                                              "position": 25,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "4.1 MB",
+                                              "key": "row-4000026",
+                                              "name": "track-0026.flac",
+                                              "position": 26,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "803.1 kB",
+                                              "key": "row-4000027",
+                                              "name": "track-0027.flac",
+                                              "position": 27,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.4 MB",
+                                              "key": "row-4000028",
+                                              "name": "track-0028.flac",
+                                              "position": 28,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "1.2 MB",
+                                              "key": "row-4000029",
+                                              "name": "track-0029.flac",
+                                              "position": 29,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.8 MB",
+                                              "key": "row-4000030",
+                                              "name": "track-0030.flac",
+                                              "position": 30,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "7.0 MB",
+                                              "key": "row-4000031",
+                                              "name": "track-0031.flac",
+                                              "position": 31,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "6.9 MB",
+                                              "key": "row-4000032",
+                                              "name": "track-0032.flac",
+                                              "position": 32,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "680.1 kB",
+                                              "key": "row-4000033",
+                                              "name": "track-0033.flac",
+                                              "position": 33,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "18.6 kB",
+                                              "key": "row-4000034",
+                                              "name": "track-0034.flac",
+                                              "position": 34,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "352.5 kB",
+                                              "key": "row-4000035",
+                                              "name": "track-0035.flac",
+                                              "position": 35,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "1.6 MB",
+                                              "key": "row-4000036",
+                                              "name": "track-0036.flac",
+                                              "position": 36,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.9 MB",
+                                              "key": "row-4000037",
+                                              "name": "track-0037.flac",
+                                              "position": 37,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.8 MB",
+                                              "key": "row-4000038",
+                                              "name": "track-0038.flac",
+                                              "position": 38,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.9 MB",
+                                              "key": "row-4000039",
+                                              "name": "track-0039.flac",
+                                              "position": 39,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.3 MB",
+                                              "key": "row-4000040",
+                                              "name": "track-0040.flac",
+                                              "position": 40,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 40
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-2",
+                                  "name": "Music",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-2-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-2",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "columns",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c2-strip",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c2",
+              "name": "Columns",
+              "role": "group"
+            }
+          ],
+          "key": "c2-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

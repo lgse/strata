@@ -1,0 +1,274 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "key": "c22-title",
+                  "name": "Home · Columns",
+                  "role": "label"
+                },
+                {
+                  "key": "c22-peeking",
+                  "name": "Folder peeking on",
+                  "role": "label"
+                },
+                {
+                  "key": "c22-heard",
+                  "name": "",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Drag me",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c22-drag-source",
+                  "name": "Drag me",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "activeDescendant": "c22-columns-col-1",
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "context-menu",
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "c22-columns-col-1-header",
+                                          "role": "group"
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view",
+                                            "scroll-up",
+                                            "scroll-down",
+                                            "set-scroll-offset"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "children": [
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-1",
+                                                  "name": "Projects",
+                                                  "position": 1,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-2",
+                                                  "name": "Music",
+                                                  "position": 2,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-3",
+                                                  "name": "Photos",
+                                                  "position": 3,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-4",
+                                                  "name": "Empty",
+                                                  "position": 4,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-5",
+                                                  "name": "Locked",
+                                                  "position": 5,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-6",
+                                                  "name": "Slow",
+                                                  "position": 6,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-7",
+                                                  "name": "Archive",
+                                                  "position": 7,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-8",
+                                                  "name": "Downloads",
+                                                  "position": 8,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-13",
+                                                  "name": "Quarterly reports for the infrastructure committee",
+                                                  "position": 9,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-9",
+                                                  "name": "notes.md",
+                                                  "position": 10,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-10",
+                                                  "name": "budget.ods",
+                                                  "position": 11,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-11",
+                                                  "name": "holiday.jpg",
+                                                  "position": 12,
+                                                  "role": "list-box-option"
+                                                },
+                                                {
+                                                  "actions": [
+                                                    "scroll-into-view"
+                                                  ],
+                                                  "key": "row-12",
+                                                  "name": "README",
+                                                  "position": 13,
+                                                  "role": "list-box-option"
+                                                }
+                                              ],
+                                              "key": "rows",
+                                              "role": "group",
+                                              "setSize": 13
+                                            }
+                                          ],
+                                          "key": "viewport",
+                                          "role": "scroll-view",
+                                          "states": [
+                                            "clips"
+                                          ]
+                                        },
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "status",
+                                          "name": "",
+                                          "role": "label",
+                                          "states": [
+                                            "live-polite"
+                                          ]
+                                        }
+                                      ],
+                                      "key": "c22-columns-col-1",
+                                      "name": "Home",
+                                      "role": "list-box"
+                                    }
+                                  ],
+                                  "key": "c22-columns-col-1-body",
+                                  "role": "group"
+                                }
+                              ],
+                              "key": "c22-columns-slot-1",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "columns",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c22-columns-strip",
+                      "role": "scroll-view",
+                      "states": [
+                        "clips"
+                      ]
+                    }
+                  ],
+                  "key": "c22-columns",
+                  "name": "Columns",
+                  "role": "group"
+                }
+              ],
+              "key": "c22-page",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

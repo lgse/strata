@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/selection/keyboard-navigation: In Icons, Left on the first tile focuses the visible sidebar; in List, Left from any entry does.",
+    "browser/selection/keyboard-navigation: Up from the first Icons row or first List entry focuses the pane header, including in an empty directory."
+  ],
+  "scene": "c3-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-3/icon"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Up"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c3-intent",
+      "name": "Edge Up"
+    },
+    {
+      "key": "row-3",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

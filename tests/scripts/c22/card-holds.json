@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "preview/quick-preview/folder-peek: Moving the pointer from the folder onto the popover keeps it open"
+  ],
+  "scene": "c22-list-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "move",
+      "key": "row-2"
+    },
+    {
+      "t": 0.9,
+      "type": "move",
+      "key": "c22-list-peek-card"
+    },
+    {
+      "t": 1.8,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "folder-peek",
+      "role": "group",
+      "name": "Folder peek"
+    },
+    {
+      "key": "peek-heading",
+      "name": "Music"
+    }
+  ]
+}

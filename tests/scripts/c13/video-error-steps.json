@@ -1,0 +1,28 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/video: A playback error shows its title and detail inside the view; play is disabled and previous and next stay usable."
+  ],
+  "scene": "c13-video-error-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-next"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c13-status",
+      "name": "Showing gulls.webm"
+    },
+    {
+      "key": "media-error-title",
+      "absent": true
+    }
+  ]
+}

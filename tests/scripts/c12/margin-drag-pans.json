@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: Dragging on a page margin, or on a page without a text layer such as a scan, pans the view instead of selecting."
+  ],
+  "scene": "c12-mixed-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "drag",
+      "key": "pdf-z2-p0/page",
+      "dx": 0,
+      "dy": -300,
+      "dur": 0.3
+    }
+  ],
+  "expect": [
+    {
+      "key": "c12-selection",
+      "name": "None"
+    },
+    {
+      "key": "pdf",
+      "value": "Page 2 of 8, 100%"
+    }
+  ]
+}

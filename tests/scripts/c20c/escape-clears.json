@@ -1,0 +1,52 @@
+{
+  "bullets": [
+    "settings/preferences: Escape in a non-empty search field clears the query and restores every row"
+  ],
+  "scene": "c20c-settings-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20c-search-field"
+    },
+    {
+      "t": 0.3,
+      "type": "type",
+      "text": "license"
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "Escape"
+    },
+    {
+      "t": 1.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20c-search-field",
+      "value": "",
+      "focused": true
+    },
+    {
+      "key": "c20c-title",
+      "name": "About"
+    },
+    {
+      "key": "c20c-search-row-version"
+    },
+    {
+      "key": "c20c-search-row-license"
+    },
+    {
+      "key": "c20c-nav-general"
+    },
+    {
+      "key": "c20c-closed",
+      "absent": true
+    }
+  ]
+}

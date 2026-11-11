@@ -1,0 +1,168 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "name": "Edit action",
+                      "role": "label"
+                    },
+                    {
+                      "key": "c20c-error",
+                      "name": "",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-editor-tab-0",
+                              "name": "General",
+                              "position": 1,
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-editor-tab-1",
+                              "name": "Script",
+                              "position": 2,
+                              "role": "tab",
+                              "states": [
+                                "unselected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "focus"
+                              ],
+                              "key": "c20c-editor-tab-2",
+                              "name": "Behavior",
+                              "position": 3,
+                              "role": "tab",
+                              "states": [
+                                "focused",
+                                "selected"
+                              ]
+                            }
+                          ],
+                          "key": "c20c-editor-tabs",
+                          "name": "Action editor sections",
+                          "role": "tab-list",
+                          "setSize": 3
+                        },
+                        {
+                          "children": [
+                            {
+                              "children": [
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus"
+                                  ],
+                                  "key": "c20c-files",
+                                  "name": "Files",
+                                  "role": "switch",
+                                  "states": [
+                                    "checked"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus"
+                                  ],
+                                  "key": "c20c-folders",
+                                  "name": "Folders",
+                                  "role": "switch",
+                                  "states": [
+                                    "unchecked"
+                                  ]
+                                },
+                                {
+                                  "actions": [
+                                    "click",
+                                    "focus"
+                                  ],
+                                  "key": "c20c-confirm",
+                                  "name": "Confirm before running",
+                                  "role": "switch",
+                                  "states": [
+                                    "checked"
+                                  ]
+                                }
+                              ],
+                              "key": "c20c-editor-panel-2",
+                              "name": "Behavior",
+                              "role": "tab-panel"
+                            }
+                          ],
+                          "key": "c20c-editor-panels",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c20c-editor",
+                      "role": "group"
+                    },
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "focus"
+                          ],
+                          "key": "c20c-cancel",
+                          "name": "Cancel",
+                          "role": "button"
+                        },
+                        {
+                          "actions": [
+                            "click",
+                            "focus"
+                          ],
+                          "key": "c20c-save",
+                          "name": "Save changes",
+                          "role": "button"
+                        }
+                      ],
+                      "key": "c20c-footer",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c20c-editor-dialog",
+                  "role": "group"
+                }
+              ],
+              "key": "c20c",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

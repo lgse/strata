@@ -1,0 +1,298 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-select-two",
+                      "name": "Select 2 files",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-select-mixed",
+                      "name": "Select 1 folder, 2 files",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-select-unknown",
+                      "name": "Select the unknown file",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-select-all",
+                      "name": "Select all",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-clear",
+                      "name": "Clear selection",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-copy",
+                      "name": "Copy files",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-clipboard-clear",
+                      "name": "Clipboard: text",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-filter",
+                      "name": "Filter “o”",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-filter-miss",
+                      "name": "Filter “zz”",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-search",
+                      "name": "Search “read”",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-pending",
+                      "name": "Type a search",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-next-hit",
+                      "name": "Next hit",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-range",
+                      "name": "Range v",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-hide-button",
+                      "name": "Hide F1 button",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-no-listing",
+                      "name": "No listing",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus"
+                      ],
+                      "key": "c19-prompt",
+                      "name": "Footer prompt",
+                      "role": "button"
+                    }
+                  ],
+                  "key": "c19-controls",
+                  "role": "group"
+                },
+                {
+                  "name": "Location",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "set-value",
+                    "replace-selected-text",
+                    "set-text-selection"
+                  ],
+                  "key": "c19-location",
+                  "name": "Location",
+                  "role": "text-input",
+                  "value": ""
+                },
+                {
+                  "actions": [
+                    "focus"
+                  ],
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "name": "Documents/",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c19-entry-0",
+                      "name": "Documents/",
+                      "role": "list-item"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "Music/",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c19-entry-1",
+                      "name": "Music/",
+                      "role": "list-item"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "notes.txt",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c19-entry-2",
+                      "name": "notes.txt",
+                      "role": "list-item"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "photo.png",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c19-entry-3",
+                      "name": "photo.png",
+                      "role": "list-item"
+                    },
+                    {
+                      "children": [
+                        {
+                          "name": "archive.zip",
+                          "role": "label"
+                        }
+                      ],
+                      "key": "c19-entry-4",
+                      "name": "archive.zip",
+                      "role": "list-item"
+                    }
+                  ],
+                  "key": "c19-list",
+                  "name": "Files",
+                  "role": "list"
+                },
+                {
+                  "key": "c19-log",
+                  "name": "—",
+                  "role": "label"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "context-menu"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "focus",
+                                "context-menu",
+                                "set-value",
+                                "replace-selected-text",
+                                "set-text-selection"
+                              ],
+                              "key": "c19-prompt-field",
+                              "name": "Rename the focused item",
+                              "role": "text-input",
+                              "states": [
+                                "focused"
+                              ],
+                              "value": "minutes.txt"
+                            }
+                          ],
+                          "key": "c19-prompt-box",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "c19-prompt",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c19-footer",
+                  "role": "group"
+                }
+              ],
+              "key": "c19",
+              "role": "group"
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

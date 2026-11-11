@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "app/dialogs: That field's \"N chars remaining\" caption"
+  ],
+  "scene": "c15-form-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.5,
+      "type": "type",
+      "text": "ÉTÉ-2026"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-form-label-left",
+      "name": "1 char remaining"
+    }
+  ]
+}

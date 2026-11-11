@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Each ancestor crumb is a button that opens that folder."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c6-loc-crumb-1"
+    },
+    {
+      "t": 0.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-log",
+      "name": "Open ~/Projects"
+    },
+    {
+      "key": "c6-loc-item-1",
+      "name": "Projects"
+    },
+    {
+      "key": "c6-loc-item-2",
+      "absent": true
+    }
+  ]
+}

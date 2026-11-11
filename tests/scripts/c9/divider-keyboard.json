@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "preview/preview-panel/layout: Narrowing a filled preview, by pointer drag or F8 and the arrow keys, lowers the Columns session minimum",
+    "preview/preview-panel/layout: Moving the divider with the keyboard shows no outline"
+  ],
+  "scene": "c9-columns-open-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "F8"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Right"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-grip",
+      "value": "343",
+      "focused": true
+    },
+    {
+      "key": "preview-minimum-outline",
+      "absent": true
+    }
+  ]
+}

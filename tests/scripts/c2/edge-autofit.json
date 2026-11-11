@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Double-clicking a column's right edge eases that column alone to its widest content"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-2-edge"
+    },
+    {
+      "t": 0.45,
+      "type": "tap",
+      "key": "c2-col-2-edge"
+    },
+    {
+      "t": 1.2,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-intent",
+      "name": "Width 735"
+    }
+  ]
+}

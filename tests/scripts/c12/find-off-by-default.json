@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Rendered table cells, PDF pages, images, archives, and media are not searched."
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "f",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-field",
+      "absent": true
+    },
+    {
+      "key": "preview-find",
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "browser/scrolling: Navigating away from, hiding, or closing a listing while it autoscrolls stops the autoscroll and hides the anchor."
+  ],
+  "scene": "c24-ten-k-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "x": 2,
+      "y": 338,
+      "button": "middle"
+    },
+    {
+      "t": 0.5,
+      "type": "move",
+      "x": 60,
+      "y": 538
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Left",
+      "alt": true
+    },
+    {
+      "t": 1.5,
+      "type": "move",
+      "x": 480,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-status",
+      "name": "Autoscroll: off"
+    },
+    {
+      "key": "autoscroll-shield",
+      "absent": true
+    },
+    {
+      "key": "row-50001"
+    }
+  ]
+}

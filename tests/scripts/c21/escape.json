@@ -1,0 +1,53 @@
+{
+  "bullets": [
+    "browser/context-menu: Escape closes the menu, keeps the selection, and returns focus to the entry or pane that opened it."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.15,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "ContextMenu"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-status",
+      "name": "Dismissed menu 1 on Notes.md"
+    },
+    {
+      "key": "c21-menu-menu",
+      "absent": true
+    },
+    {
+      "key": "row-5",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c21-list",
+      "focused": true
+    }
+  ]
+}

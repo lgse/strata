@@ -1,0 +1,42 @@
+{
+  "bullets": [
+    "operations/progress/dock: Complete or X on a completed card dismisses only that card"
+  ],
+  "scene": "c16-idle-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "tap",
+      "key": "c16-start-copy"
+    },
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "c16-start-delete"
+    },
+    {
+      "t": 5.7,
+      "type": "tap",
+      "key": "c16-dock-card-1-complete"
+    },
+    {
+      "t": 5.7,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-dock-card-1",
+      "absent": true
+    },
+    {
+      "key": "c16-dock-card-2",
+      "name": "Deleting items"
+    },
+    {
+      "key": "c16-heard",
+      "name": "Dismissed 1 · probes 0"
+    }
+  ]
+}

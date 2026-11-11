@@ -1,0 +1,56 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: On a focused PDF, plain A, Ctrl+Shift+A, Ctrl+Alt+A, Ctrl+Shift+C, and Ctrl+Alt+C neither select nor copy."
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "double-click",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.6,
+      "type": "type",
+      "text": "a"
+    },
+    {
+      "t": 0.7,
+      "type": "key",
+      "name": "a",
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "a",
+      "cmd": true,
+      "alt": true
+    },
+    {
+      "t": 0.9,
+      "type": "key",
+      "name": "c",
+      "cmd": true,
+      "shift": true
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "c",
+      "cmd": true,
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c12-copied",
+      "name": "None"
+    },
+    {
+      "key": "c12-selection",
+      "name": "hand"
+    }
+  ]
+}

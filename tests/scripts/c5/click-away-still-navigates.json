@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "operations/rename: A click-away onto a sidebar place or another folder commits the rename and still navigates there."
+  ],
+  "scene": "c5-file-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "type",
+      "text": "Memo"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "c5-go"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c5-log-0",
+      "name": "Renamed Notes.md to Memo.md (focus left)"
+    },
+    {
+      "key": "c5-title",
+      "name": "Downloads · 2 items"
+    },
+    {
+      "key": "rename-field",
+      "absent": true
+    }
+  ]
+}

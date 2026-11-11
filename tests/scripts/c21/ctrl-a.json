@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "browser/context-menu: Ctrl+A while a menu is open leaves the menu open."
+  ],
+  "scene": "c21-start-light",
+  "events": [
+    {
+      "t": 0.1,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.15,
+      "type": "key",
+      "name": "Tab"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "ContextMenu"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c21-menu-menu",
+      "role": "menu"
+    },
+    {
+      "key": "c21-menu-item3",
+      "focused": true
+    }
+  ]
+}

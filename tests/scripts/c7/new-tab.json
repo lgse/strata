@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/tabs: Ctrl+T, the New tab (+) button",
+    "browser/tabs: A new tab is added at the right end of the strip."
+  ],
+  "scene": "c7-several-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c7-new"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "t",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c7-log",
+      "name": "New tab Music"
+    },
+    {
+      "key": "t-c7-8",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "t-c7-7",
+      "name": "Music"
+    }
+  ]
+}

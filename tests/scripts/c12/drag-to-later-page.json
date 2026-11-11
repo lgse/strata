@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: A drag that ends on a later page selects every page between its ends."
+  ],
+  "scene": "c12-landscape-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "down",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.4,
+      "type": "wheel",
+      "key": "pdf-scroll",
+      "dx": 0,
+      "dy": -500
+    },
+    {
+      "t": 0.7,
+      "type": "move",
+      "key": "pdf-z2-p2/page"
+    },
+    {
+      "t": 0.8,
+      "type": "up",
+      "key": "pdf-z2-p2/page"
+    }
+  ]
+}

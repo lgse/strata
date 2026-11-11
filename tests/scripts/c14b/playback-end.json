@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "preview/preview-panel/routes: Playback stops at the route end; play then restarts from the start."
+  ],
+  "scene": "c14b-route-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-route-play"
+    },
+    {
+      "t": 15.8,
+      "type": "tap",
+      "key": "c14b-route-play"
+    },
+    {
+      "t": 16.05,
+      "type": "key",
+      "name": " ",
+      "ctrl": true,
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-route-elapsed",
+      "name": "0.1 km"
+    },
+    {
+      "key": "c14b-route-play",
+      "states": [
+        "unchecked"
+      ]
+    }
+  ]
+}

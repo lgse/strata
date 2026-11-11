@@ -1,0 +1,32 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: A press on a file that turns into a drag leaves the deeper columns open"
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "row-1000009/label",
+      "dx": 60,
+      "dy": 10,
+      "dur": 0.3
+    },
+    {
+      "t": 1.0,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-intent",
+      "name": "Dragging 1 from column 0"
+    },
+    {
+      "key": "c2-path",
+      "name": "Home / Documents / Reports"
+    }
+  ]
+}

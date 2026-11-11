@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "p",
+      "cmd": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-tab-flags",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c20d-emoji-panel",
+      "name": "Flags"
+    }
+  ]
+}

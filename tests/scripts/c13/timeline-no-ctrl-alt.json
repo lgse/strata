@@ -1,0 +1,53 @@
+{
+  "bullets": [
+    "preview/quick-preview: The paging, jump, and volume keys have no Ctrl+Alt form; Ctrl+Alt+Page Up in the default key map leaves media unchanged."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-timeline"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageUp",
+      "cmd": true,
+      "alt": true
+    },
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Home",
+      "cmd": true,
+      "alt": true
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "=",
+      "cmd": true,
+      "alt": true
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-timeline",
+      "value": "1:40 of 3:20"
+    },
+    {
+      "key": "c13-seeks",
+      "name": "1 seeks"
+    },
+    {
+      "key": "media-volume",
+      "value": "60%"
+    }
+  ]
+}

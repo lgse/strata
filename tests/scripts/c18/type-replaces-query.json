@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/search/filter: With **Type to search** on, typing a printable character in a file view opens the filter"
+  ],
+  "scene": "c18-filter-target-light",
+  "events": [
+    {
+      "type": "tap",
+      "key": "row-10",
+      "t": 0.2
+    },
+    {
+      "type": "type",
+      "text": "o",
+      "every": 0.01,
+      "t": 0.35
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.66
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-filter-field",
+      "value": "o",
+      "focused": true
+    },
+    {
+      "key": "c18-log",
+      "name": "Query “o”, 1 shown"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/video: A captions badge, \"CC\" or \"CC ×N\", counts embedded subtitle tracks plus `srt`, `vtt`, `ass`, `ssa`, or `sub` sidecars named after the video, such as `clip.en.vtt`."
+  ],
+  "scene": "c13-video-paused-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-badge-6",
+      "name": "CC ×2"
+    }
+  ]
+}

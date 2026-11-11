@@ -1,0 +1,30 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/audio: Previous is disabled on the first audio file and next on the last; stepping does not wrap."
+  ],
+  "scene": "c13-audio-paused-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "media-previous"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-previous",
+      "states": [
+        "disabled"
+      ]
+    },
+    {
+      "key": "media-eyebrow",
+      "name": "Track 1 of 12"
+    }
+  ]
+}

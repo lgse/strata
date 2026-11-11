@@ -1,0 +1,40 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Clicking a folder whose child column is already open focuses and reveals that column instead of closing it."
+  ],
+  "scene": "c2-three-columns-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c2-col-1-title"
+    },
+    {
+      "t": 0.6,
+      "type": "tap",
+      "key": "row-1000001/icon"
+    },
+    {
+      "t": 1.5,
+      "type": "move",
+      "x": 930,
+      "y": 14
+    }
+  ],
+  "expect": [
+    {
+      "key": "c2-path",
+      "name": "Home / Documents / Reports"
+    },
+    {
+      "key": "c2-intent",
+      "name": ""
+    },
+    {
+      "key": "row-1000001",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

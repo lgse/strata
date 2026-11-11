@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "browser/sidebar: Middle-clicking a place, a pin, or a mounted device row opens its location in a new tab.",
+    "browser/sidebar: An unmounted device row offers no Open in New Tab, and middle-clicking it opens nothing."
+  ],
+  "scene": "c8-devices-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-device-sandisk",
+      "button": "middle"
+    },
+    {
+      "t": 0.5,
+      "type": "tap",
+      "key": "places-device-vault",
+      "button": "middle"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c8-log",
+      "name": "New tab sandisk"
+    },
+    {
+      "key": "places-device-sandisk",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "bullets": [
+    "app/dialogs: With focus outside a text field, an unmodified arrow key"
+  ],
+  "scene": "c15-danger-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "Right"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Left"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "Left"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c15-danger-secondary",
+      "focused": true
+    },
+    {
+      "key": "c15-danger-primary",
+      "focused": false
+    }
+  ]
+}

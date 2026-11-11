@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "app/shortcut-reference: Escape or a click on the backdrop closes the reference"
+  ],
+  "scene": "c19-reference-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "key",
+      "name": "l",
+      "ctrl": true,
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "Escape"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-reference-dialog",
+      "absent": true
+    }
+  ]
+}

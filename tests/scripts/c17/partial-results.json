@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "browser/search: When indexing stops early, the footer shows"
+  ],
+  "scene": "c17-partial-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-partial",
+      "name": "Partial results"
+    }
+  ]
+}

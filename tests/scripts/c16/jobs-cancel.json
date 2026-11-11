@@ -1,0 +1,39 @@
+{
+  "bullets": [
+    "operations/progress/jobs: Remove on a queued job ends it as Cancelled",
+    "operations/progress/jobs: Cancel on a running job shows \"Cancelling…\""
+  ],
+  "scene": "c16-jobs-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c16-jobs-row-3-cancel"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "c16-jobs-row-4-cancel"
+    },
+    {
+      "t": 0.5,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-jobs-row-4-cancel",
+      "absent": true
+    },
+    {
+      "key": "c16-jobs-row-4-dismiss",
+      "absent": true
+    },
+    {
+      "key": "c16-jobs-row-3-dismiss",
+      "role": "button",
+      "name": "Dismiss"
+    }
+  ]
+}

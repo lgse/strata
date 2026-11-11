@@ -1,0 +1,19 @@
+{
+  "bullets": [
+    "browser/search: A spinner shows in the search bar while indexing runs."
+  ],
+  "scene": "c17-results-light",
+  "events": [
+    {
+      "t": 0.5,
+      "type": "key",
+      "name": "Down"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c17-palette-busy",
+      "name": "Indexing files…"
+    }
+  ]
+}

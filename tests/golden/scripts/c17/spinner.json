@@ -1,0 +1,360 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "context-menu",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection"
+                          ],
+                          "activeDescendant": "c17-palette-option-1",
+                          "description": "Search locations:\n/home/demo\n/run/media/demo/USB\nRemote shares are not included.",
+                          "key": "c17-palette-field",
+                          "name": "Search files and folders…",
+                          "placeholder": "Search files and folders…",
+                          "role": "text-input",
+                          "states": [
+                            "focused"
+                          ],
+                          "value": "re"
+                        }
+                      ],
+                      "key": "c17-palette-combobox",
+                      "name": "Search files and folders…",
+                      "role": "combo-box",
+                      "states": [
+                        "expanded"
+                      ]
+                    },
+                    {
+                      "key": "c17-palette-busy",
+                      "name": "Indexing files…",
+                      "role": "progress-indicator"
+                    }
+                  ],
+                  "key": "c17-palette-bar",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-up",
+                        "scroll-down",
+                        "set-scroll-offset"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-0",
+                              "name": "/home/demo/Documents/Reports",
+                              "position": 1,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-1",
+                              "name": "/home/demo/Projects/rune/README.md",
+                              "position": 2,
+                              "role": "list-box-option",
+                              "states": [
+                                "selected"
+                              ]
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-2",
+                              "name": "/home/demo/Projects/strata/README.md",
+                              "position": 3,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-3",
+                              "name": "/home/demo/Documents/Reports/report-notes.md",
+                              "position": 4,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-4",
+                              "name": "/home/demo/Pictures",
+                              "position": 5,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-5",
+                              "name": "/home/demo/Documents/reading-list.txt",
+                              "position": 6,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-6",
+                              "name": "/home/demo/Pictures/receipt-scan.jpg",
+                              "position": 7,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-7",
+                              "name": "/home/demo/Documents/Reports/report-march.pdf",
+                              "position": 8,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-8",
+                              "name": "/home/demo/Projects/rune",
+                              "position": 9,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-9",
+                              "name": "/home/demo/Documents/Reports/report-january.pdf",
+                              "position": 10,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-10",
+                              "name": "/home/demo/Documents/Reports/report-february.pdf",
+                              "position": 11,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-11",
+                              "name": "/home/demo/Documents/Reports/annual-report-2025.pdf",
+                              "position": 12,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-12",
+                              "name": "/home/demo/Projects/strata/docs/preferences.md",
+                              "position": 13,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-13",
+                              "name": "/home/demo/Pictures/screenshot-2026-11-01.png",
+                              "position": 14,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-14",
+                              "name": "/home/demo/Projects/strata/src/folder_picker.rs",
+                              "position": 15,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-15",
+                              "name": "/home/demo/Projects/strata/src/search_session.rs",
+                              "position": 16,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-16",
+                              "name": "/home/demo/Projects/strata/notes-for-release.md",
+                              "position": 17,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-17",
+                              "name": "/home/demo/Documents/quarterly-summary.md",
+                              "position": 18,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-18",
+                              "name": "/home/demo/Documents/quarterly-summary.txt",
+                              "position": 19,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-19",
+                              "name": "/home/demo/Documents/Archive/2019/tax-returns-and-supporting-documents-for-the-household/scanned-originals-from-the-accountant",
+                              "position": 20,
+                              "role": "list-box-option"
+                            },
+                            {
+                              "actions": [
+                                "click",
+                                "context-menu",
+                                "scroll-into-view"
+                              ],
+                              "key": "c17-palette-option-20",
+                              "name": "/home/demo/Documents/Archive/2019/tax-returns-and-supporting-documents-for-the-household/scanned-originals-from-the-accountant/receipt-bundle-final-version-two-signed-and-countersigned-by-everyone-involved.pdf",
+                              "position": 21,
+                              "role": "list-box-option"
+                            }
+                          ],
+                          "key": "c17-palette-rows",
+                          "role": "group",
+                          "setSize": 100
+                        }
+                      ],
+                      "key": "c17-palette-results",
+                      "name": "Search results",
+                      "role": "list-box",
+                      "states": [
+                        "clips"
+                      ]
+                    },
+                    {
+                      "key": "c17-palette-status",
+                      "name": "47 results",
+                      "role": "status",
+                      "states": [
+                        "live-polite"
+                      ]
+                    }
+                  ],
+                  "key": "c17-palette-body",
+                  "role": "group"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "↑↓  navigate",
+                      "role": "label"
+                    },
+                    {
+                      "name": "open",
+                      "role": "label"
+                    },
+                    {
+                      "name": "Alt+Enter  open containing folder",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "c17-palette-footer",
+                  "role": "group"
+                }
+              ],
+              "key": "c17-palette-dialog",
+              "name": "Search files and folders",
+              "role": "dialog",
+              "states": [
+                "modal"
+              ]
+            }
+          ],
+          "key": "kit-root",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Clicking the current crumb, a separator, or empty breadcrumb space opens the entry; crumb buttons and the copy-path button keep their own actions."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c6-loc-sep-0"
+    },
+    {
+      "t": 0.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "input",
+      "value": "~/Projects/strata",
+      "focused": true
+    },
+    {
+      "key": "c6-log",
+      "name": "—"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/navigation/location-bar: Right-clicking the breadcrumb bar opens a menu of the current folder and its ancestors, current first; choosing one opens it.",
+    "browser/navigation/location-bar: The hierarchy menu marks as current the folder the bar names."
+  ],
+  "scene": "c6-short-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "secondary-click",
+      "key": "c6-loc-crumbs-space"
+    },
+    {
+      "t": 0.6,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c6-loc-menu-item0",
+      "name": "strata",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c6-loc-menu-item1",
+      "name": "Projects"
+    },
+    {
+      "key": "c6-loc-menu-item2",
+      "name": "~"
+    }
+  ]
+}

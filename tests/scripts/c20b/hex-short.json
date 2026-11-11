@@ -1,0 +1,46 @@
+{
+  "bullets": [
+    "settings/themes: The editor saves each picked color as",
+    "browser/folder-customization: Apply saves the chosen color as"
+  ],
+  "scene": "c20b-opaque-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20b-folder-hex"
+    },
+    {
+      "t": 0.3,
+      "type": "key",
+      "name": "a",
+      "cmd": true
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "0af"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Enter"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20b-folder-hex",
+      "value": "#00aaff",
+      "focused": true
+    },
+    {
+      "key": "c20b-log",
+      "name": "Folder color Commit #00aaff"
+    }
+  ]
+}

@@ -1,0 +1,281 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "key": "c2-path",
+              "name": "Home",
+              "role": "label"
+            },
+            {
+              "key": "c2-intent",
+              "name": "Closed from column 1",
+              "role": "label"
+            },
+            {
+              "actions": [
+                "focus"
+              ],
+              "activeDescendant": "row-1000001",
+              "children": [
+                {
+                  "actions": [
+                    "scroll-up",
+                    "scroll-down",
+                    "set-scroll-offset"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "context-menu",
+                                    "scroll-into-view"
+                                  ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "context-menu",
+                                        "scroll-into-view"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "click",
+                                            "scroll-into-view"
+                                          ],
+                                          "key": "c2-refresh-0",
+                                          "name": "Refresh",
+                                          "role": "button"
+                                        }
+                                      ],
+                                      "key": "c2-col-1-header",
+                                      "role": "group"
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view",
+                                        "scroll-up",
+                                        "scroll-down",
+                                        "set-scroll-offset"
+                                      ],
+                                      "children": [
+                                        {
+                                          "actions": [
+                                            "scroll-into-view"
+                                          ],
+                                          "children": [
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "27 items",
+                                              "key": "row-1000001",
+                                              "name": "Documents",
+                                              "position": 1,
+                                              "role": "list-box-option",
+                                              "states": [
+                                                "selected"
+                                              ]
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "62 items",
+                                              "key": "row-1000002",
+                                              "name": "Pictures",
+                                              "position": 2,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "40 items",
+                                              "key": "row-1000003",
+                                              "name": "Music",
+                                              "position": 3,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-1000004",
+                                              "name": "Projects",
+                                              "position": 4,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "No items",
+                                              "key": "row-1000005",
+                                              "name": "Empty",
+                                              "position": 5,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "key": "row-1000006",
+                                              "name": "Slow",
+                                              "position": 6,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "100000 items",
+                                              "key": "row-1000007",
+                                              "name": "Big",
+                                              "position": 7,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5 items",
+                                              "key": "row-1000008",
+                                              "name": "deep",
+                                              "position": 8,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "3.1 MB",
+                                              "key": "row-1000009",
+                                              "name": "notes.txt",
+                                              "position": 9,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "8.3 MB",
+                                              "key": "row-1000010",
+                                              "name": "todo.md",
+                                              "position": 10,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "4.9 MB",
+                                              "key": "row-1000011",
+                                              "name": "photo.jpg",
+                                              "position": 11,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "5.1 MB",
+                                              "key": "row-1000012",
+                                              "name": "budget.ods",
+                                              "position": 12,
+                                              "role": "list-box-option"
+                                            },
+                                            {
+                                              "actions": [
+                                                "scroll-into-view"
+                                              ],
+                                              "description": "2.4 MB",
+                                              "key": "row-1000013",
+                                              "name": "report-final.pdf",
+                                              "position": 13,
+                                              "role": "list-box-option"
+                                            }
+                                          ],
+                                          "key": "rows",
+                                          "role": "group",
+                                          "setSize": 13
+                                        }
+                                      ],
+                                      "key": "viewport",
+                                      "role": "scroll-view",
+                                      "states": [
+                                        "clips"
+                                      ]
+                                    },
+                                    {
+                                      "actions": [
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "status",
+                                      "name": "",
+                                      "role": "label",
+                                      "states": [
+                                        "live-polite"
+                                      ]
+                                    }
+                                  ],
+                                  "key": "c2-col-1",
+                                  "name": "Home",
+                                  "role": "list-box"
+                                }
+                              ],
+                              "key": "c2-col-1-body",
+                              "role": "group"
+                            }
+                          ],
+                          "key": "c2-slot-1",
+                          "role": "group"
+                        }
+                      ],
+                      "key": "columns",
+                      "role": "group"
+                    }
+                  ],
+                  "key": "c2-strip",
+                  "role": "scroll-view",
+                  "states": [
+                    "clips"
+                  ]
+                }
+              ],
+              "key": "c2",
+              "name": "Columns",
+              "role": "group",
+              "states": [
+                "focused"
+              ]
+            }
+          ],
+          "key": "c2-page",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "name": "Strata components",
+  "role": "window"
+}

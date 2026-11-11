@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "browser/search/filter: Down from the field focuses a result; in Icons and List, the outlined top result"
+  ],
+  "scene": "c18-filter-target-light",
+  "events": [
+    {
+      "type": "key",
+      "name": "Down",
+      "t": 0.2
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.5
+    }
+  ],
+  "expect": [
+    {
+      "key": "c18-pane",
+      "focused": true
+    },
+    {
+      "key": "row-3",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c18-log",
+      "name": "Down to reports"
+    }
+  ]
+}

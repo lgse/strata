@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "app/shortcut-reference: In the default map, the footer shows no `filter:` or `search:` mark"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-search"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-mark",
+      "absent": true
+    },
+    {
+      "key": "c19-footer-hit",
+      "absent": true
+    },
+    {
+      "key": "c19-footer-count",
+      "name": "3 items"
+    }
+  ]
+}

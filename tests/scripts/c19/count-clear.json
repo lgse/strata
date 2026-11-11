@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "app/shortcut-reference: An empty folder shows \"0 items\", and clearing the selection restores"
+  ],
+  "scene": "c19-footer-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c19-select-two"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "c19-clear"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c19-footer-count",
+      "name": "5 items"
+    }
+  ]
+}

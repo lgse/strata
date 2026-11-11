@@ -1,0 +1,36 @@
+{
+  "bullets": [
+    "browser/folder-customization: The custom-color button opens",
+    "browser/folder-customization: Apply saves the chosen color as"
+  ],
+  "scene": "c20b-opaque-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "drag",
+      "key": "c20b-folder-plane-knob",
+      "dx": -60.0,
+      "dy": 40.0,
+      "dur": 0.3
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20b-log",
+      "name": "Folder color Commit #488c73"
+    },
+    {
+      "key": "c20b-folder-hex",
+      "value": "#488c73"
+    },
+    {
+      "key": "c20b-folder-plane",
+      "value": "Saturation 49%, value 55%"
+    }
+  ]
+}

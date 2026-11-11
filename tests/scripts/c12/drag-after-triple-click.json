@@ -1,0 +1,26 @@
+{
+  "bullets": [
+    "preview/preview-panel/pdf: Dragging after a double-click extends the selection word by word; after a triple-click, line by line."
+  ],
+  "scene": "c12-pages-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.42,
+      "type": "tap",
+      "key": "pdf-z2-p0/page"
+    },
+    {
+      "t": 0.54,
+      "type": "drag",
+      "key": "pdf-z2-p0/page",
+      "dx": 0,
+      "dy": 34,
+      "dur": 0.2
+    }
+  ]
+}

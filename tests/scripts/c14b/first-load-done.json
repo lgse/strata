@@ -1,0 +1,27 @@
+{
+  "bullets": [
+    "preview/preview-panel/model-views: On a first load, the triangle badge appears once rendering reports a count; with the image, the format badge becomes"
+  ],
+  "scene": "c14b-model-first-light",
+  "events": [
+    {
+      "t": 1.2,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-model-format",
+      "name": "Binary STL"
+    },
+    {
+      "key": "c14b-model-triangles",
+      "name": "12,480 triangles"
+    },
+    {
+      "key": "preview-busy",
+      "absent": true
+    }
+  ]
+}

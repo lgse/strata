@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "browser/sidebar: Collapsing DEVICES hides every device row, including the row of the open device."
+  ],
+  "scene": "c8-devices-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "places-heading-devices"
+    }
+  ],
+  "expect": [
+    {
+      "key": "places-device-sandisk",
+      "absent": true
+    },
+    {
+      "key": "places-device-system",
+      "absent": true
+    },
+    {
+      "key": "places-heading-devices",
+      "states": [
+        "collapsed"
+      ]
+    }
+  ]
+}

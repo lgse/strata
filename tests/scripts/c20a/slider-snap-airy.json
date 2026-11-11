@@ -1,0 +1,35 @@
+{
+  "bullets": [
+    "browser/view-modes/density: Clicking \"Compact\" or \"Airy\" snaps that slider to the preset",
+    "browser/view-modes/density: The snap button of the current preset exposes the accessible pressed state"
+  ],
+  "scene": "c20a-controls-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20a-frame-snap-1"
+    },
+    {
+      "t": 0.9,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20a-frame",
+      "value": "Airy · 4 px"
+    },
+    {
+      "key": "c20a-frame-snap-1",
+      "states": [
+        "checked"
+      ]
+    },
+    {
+      "key": "c20a-log",
+      "name": "Frame Commit 4"
+    }
+  ]
+}

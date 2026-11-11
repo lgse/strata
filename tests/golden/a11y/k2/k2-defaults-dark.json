@@ -1,0 +1,757 @@
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "Corner roundness",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-roundness-less",
+                  "name": "Decrease corner roundness",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-roundness-value",
+                  "name": "Corner roundness: 60 %",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-roundness-more",
+                  "name": "Increase corner roundness",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "Frame",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-frame-less",
+                  "name": "Decrease frame",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-frame-value",
+                  "name": "Frame: Compact · 0 px",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-frame-more",
+                  "name": "Increase frame",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-frame-compact",
+                  "name": "Compact",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-frame-airy",
+                  "name": "Airy",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "Content",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-content-less",
+                  "name": "Decrease content",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-content-value",
+                  "name": "Content: Compact · 4 px",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-content-more",
+                  "name": "Increase content",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-content-compact",
+                  "name": "Compact",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-content-airy",
+                  "name": "Airy",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "Text size",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-text-size-less",
+                  "name": "Decrease text size",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-text-size-value",
+                  "name": "Text size: 13 px",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-text-size-more",
+                  "name": "Increase text size",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "Desktop text scale",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-text-scale-less",
+                  "name": "Decrease desktop text scale",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-text-scale-value",
+                  "name": "Desktop text scale: 1.00×",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-text-scale-more",
+                  "name": "Increase desktop text scale",
+                  "role": "button"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "name": "Interface font",
+                  "role": "label"
+                },
+                {
+                  "actions": [
+                    "click",
+                    "focus",
+                    "scroll-into-view"
+                  ],
+                  "key": "k2-font-open",
+                  "name": "Interface font: Default",
+                  "role": "button"
+                }
+              ],
+              "key": "k2-controls",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            },
+            {
+              "actions": [
+                "scroll-up",
+                "scroll-down",
+                "set-scroll-offset"
+              ],
+              "children": [
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Projects",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k2-header",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Projects",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Downloads",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k2-tabs",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "name": "Open",
+                      "role": "button"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "children": [
+                        {
+                          "actions": [
+                            "click",
+                            "focus",
+                            "set-value",
+                            "replace-selected-text",
+                            "set-text-selection",
+                            "scroll-into-view"
+                          ],
+                          "key": "input",
+                          "name": "Path",
+                          "placeholder": "Path",
+                          "role": "text-input",
+                          "value": ""
+                        }
+                      ],
+                      "key": "value",
+                      "role": "group"
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "name": "Show sizes",
+                      "role": "check-box",
+                      "states": [
+                        "checked"
+                      ]
+                    },
+                    {
+                      "actions": [
+                        "click",
+                        "focus",
+                        "scroll-into-view"
+                      ],
+                      "name": "Element glow",
+                      "role": "switch",
+                      "states": [
+                        "checked"
+                      ]
+                    }
+                  ],
+                  "key": "k2-kit",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "PLACES",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Home",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Documents",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "Trash",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k2-sidebar",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "notes.md",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "2 KB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "budget.ods",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "14 KB",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "photo.raw",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "24 MB",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k2-listing",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "report.pdf",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "/home/me/projects/report.pdf",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k2-palette",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "xs 1.8",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "sm 3",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "md 3.6",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "lg 5.4",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "xl 8.4",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "4→ 2.4",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "8→ 4.8",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "10→ 6",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "12→ 7.2",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "circle",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "pill",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k2-radii",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "title 15/22",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "heading 11/16",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "ui 13/20",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "ui_compact 13/16",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "small 11/12",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "body 14/21",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "name": "mono 12/18",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k2-ramp",
+                  "role": "group"
+                },
+                {
+                  "actions": [
+                    "scroll-into-view"
+                  ],
+                  "children": [
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-radius-md",
+                      "name": "radius.md 3.6",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-roundness",
+                      "name": "roundness 0.6",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-type-ui",
+                      "name": "type.ui.size 13",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-icon-md",
+                      "name": "icon_size.md 16",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-frame-inset",
+                      "name": "frame.inset 0",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-frame-bar",
+                      "name": "frame.bar 36",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-frame-control",
+                      "name": "frame.control 24",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-content-pad",
+                      "name": "content.pad 4",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-row-list",
+                      "name": "row.list 26",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-row-columns",
+                      "name": "row.columns 26",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-row-sidebar",
+                      "name": "row.sidebar 24",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-row-palette",
+                      "name": "row.palette 53",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-tab-height",
+                      "name": "tabs.tab.height 36",
+                      "role": "label"
+                    },
+                    {
+                      "actions": [
+                        "scroll-into-view"
+                      ],
+                      "key": "k2-token-font",
+                      "name": "font app",
+                      "role": "label"
+                    }
+                  ],
+                  "key": "k2-readout",
+                  "role": "group"
+                }
+              ],
+              "key": "k2-specimen",
+              "role": "scroll-view",
+              "states": [
+                "clips"
+              ]
+            }
+          ],
+          "key": "k2",
+          "role": "group"
+        }
+      ],
+      "key": "gallery",
+      "role": "group"
+    }
+  ],
+  "role": "window"
+}

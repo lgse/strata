@@ -1,0 +1,43 @@
+{
+  "bullets": [
+    "browser/folder-customization: Choose Emoji… opens an emoji picker"
+  ],
+  "scene": "c20d-icons-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c20d-emoji-button"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c20d-emoji-popover-content",
+      "role": "dialog",
+      "name": "Choose an emoji"
+    },
+    {
+      "key": "c20d-emoji-field",
+      "focused": true
+    },
+    {
+      "key": "c20d-emoji-grid",
+      "role": "grid",
+      "name": "Emoji"
+    },
+    {
+      "key": "row-100000",
+      "role": "grid-cell",
+      "name": "grinning face",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c20d-emoji-tab-smileys",
+      "states": [
+        "selected"
+      ]
+    }
+  ]
+}

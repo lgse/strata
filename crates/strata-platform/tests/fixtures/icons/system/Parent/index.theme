@@ -1,0 +1,33 @@
+# fixture
+[Icon Theme]
+Name=Parent
+Name[de]=Parent (de)
+Inherits=Missing,Grand
+Directories=16x16/apps,32x32/apps,64x64/apps,256x256/apps,32x32@2/apps,scalable/apps,
+
+[16x16/apps]
+Size=16
+Type=Fixed
+
+[32x32/apps]
+Size=32
+Type=Fixed
+
+[64x64/apps]
+Size=64
+Type=Fixed
+
+[256x256/apps]
+Size=256
+Type=Fixed
+
+[32x32@2/apps]
+Size=32
+Scale=2
+Type=Fixed
+
+[scalable/apps]
+Size=48
+MinSize=16
+MaxSize=128
+Type=Scalable

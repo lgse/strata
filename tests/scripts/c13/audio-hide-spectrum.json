@@ -1,0 +1,24 @@
+{
+  "bullets": [
+    "preview/preview-panel/media/audio: In the stacked layout, when height runs short the spectrum hides first, then the art."
+  ],
+  "scene": "c13-audio-short-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "media-spectrum",
+      "absent": true
+    },
+    {
+      "key": "media-record",
+      "role": "image",
+      "name": "Album art"
+    }
+  ]
+}

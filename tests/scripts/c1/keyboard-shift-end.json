@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "browser/selection: In List, Icons, and Columns, plain Home, End, Page Up, and Page Down move the range anchor to the new cursor.",
+    "browser/scrolling: Shift+Home and Shift+End extend"
+  ],
+  "scene": "c1-ten-rows-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-4"
+    },
+    {
+      "t": 0.4,
+      "type": "key",
+      "name": "PageUp"
+    },
+    {
+      "t": 0.6,
+      "type": "key",
+      "name": "End",
+      "shift": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-3",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "row-10",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c1-preview",
+      "name": "Preview: scan.pdf"
+    }
+  ]
+}

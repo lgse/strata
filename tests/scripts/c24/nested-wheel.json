@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "browser/view-modes/columns: Shift+wheel over a listing scrolls the column strip horizontally; vertical wheel ticks scroll only the listing."
+  ],
+  "scene": "c24-nested-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "wheel",
+      "x": 570,
+      "y": 338,
+      "dx": 0,
+      "dy": -2000
+    },
+    {
+      "t": 0.8,
+      "type": "move",
+      "x": 570,
+      "y": 300
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-200000",
+      "absent": true
+    },
+    {
+      "key": "row-100000"
+    },
+    {
+      "key": "row-300000"
+    }
+  ]
+}

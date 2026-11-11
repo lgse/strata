@@ -1,0 +1,49 @@
+{
+  "bullets": [
+    "operations/progress/jobs: Dismiss removes one finished job; Clear finished removes every finished job"
+  ],
+  "scene": "c16-jobs-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c16-jobs-row-2-dismiss"
+    },
+    {
+      "t": 0.4,
+      "type": "tap",
+      "key": "c16-jobs-clear"
+    },
+    {
+      "t": 0.4,
+      "type": "mark",
+      "name": "end"
+    }
+  ],
+  "expect": [
+    {
+      "key": "c16-jobs-row-2",
+      "absent": true
+    },
+    {
+      "key": "c16-jobs-row-1",
+      "absent": true
+    },
+    {
+      "key": "c16-jobs-row-5",
+      "absent": true
+    },
+    {
+      "key": "c16-jobs-row-4",
+      "name": "Resize images"
+    },
+    {
+      "key": "c16-jobs-row-3",
+      "name": "Batch rename"
+    },
+    {
+      "key": "c16-jobs-clear",
+      "absent": true
+    }
+  ]
+}

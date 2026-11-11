@@ -1,0 +1,31 @@
+{
+  "bullets": [
+    "browser/scrolling: Middle-clicking a listing that fits its viewport starts no autoscroll."
+  ],
+  "scene": "c24-fits-light",
+  "events": [
+    {
+      "t": 0.3,
+      "type": "tap",
+      "x": 480,
+      "y": 500,
+      "button": "middle"
+    },
+    {
+      "t": 0.6,
+      "type": "move",
+      "x": 480,
+      "y": 560
+    }
+  ],
+  "expect": [
+    {
+      "key": "c24-status",
+      "name": "Autoscroll: off"
+    },
+    {
+      "key": "autoscroll-shield",
+      "absent": true
+    }
+  ]
+}

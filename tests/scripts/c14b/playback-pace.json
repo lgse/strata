@@ -1,0 +1,37 @@
+{
+  "bullets": [
+    "preview/preview-panel/routes: The play button or the media play key, Ctrl+Alt+Space by default, moves a marker along the route and the profile together over 15 s.",
+    "preview/preview-panel/routes: The marker moves at a steady ground-distance pace",
+    "preview/preview-panel/routes: During playback, hover, and seeking, the elevation heading also shows the marker's height"
+  ],
+  "scene": "c14b-route-start-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "c14b-route-play"
+    },
+    {
+      "t": 7.7,
+      "type": "key",
+      "name": " ",
+      "ctrl": true,
+      "alt": true
+    }
+  ],
+  "expect": [
+    {
+      "key": "c14b-route-elapsed",
+      "name": "5.9 km"
+    },
+    {
+      "key": "c14b-route-play",
+      "states": [
+        "unchecked"
+      ]
+    },
+    {
+      "key": "c14b-route-height"
+    }
+  ]
+}

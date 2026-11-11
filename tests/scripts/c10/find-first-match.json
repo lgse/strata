@@ -1,0 +1,29 @@
+{
+  "bullets": [
+    "preview/preview-panel/find: Typing a query selects and reveals the first literal, case-insensitive match",
+    "preview/preview-panel/find: The status reads \"Match 1 of N\", or \"No matches\""
+  ],
+  "scene": "c10-rust-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "preview-find"
+    },
+    {
+      "t": 0.4,
+      "type": "type",
+      "text": "FN"
+    }
+  ],
+  "expect": [
+    {
+      "key": "preview-find-status",
+      "name": "Match 1 of 4"
+    },
+    {
+      "key": "c10-selection",
+      "name": "fn"
+    }
+  ]
+}

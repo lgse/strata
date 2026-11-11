@@ -1,0 +1,34 @@
+{
+  "bullets": [
+    "browser/search/filter/enter-target: A same-query update, such as another program creating a matching file, keeps the pick"
+  ],
+  "scene": "c18-filter-picked-light",
+  "events": [
+    {
+      "type": "key",
+      "name": "F6",
+      "t": 0.2
+    },
+    {
+      "type": "mark",
+      "name": "end",
+      "t": 0.5
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-11",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c18-outlined",
+      "name": "Outlined: none"
+    },
+    {
+      "key": "c18-log",
+      "name": "Added report-new.pdf"
+    }
+  ]
+}

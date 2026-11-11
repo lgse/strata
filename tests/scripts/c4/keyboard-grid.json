@@ -1,0 +1,54 @@
+{
+  "bullets": [
+    "browser/selection/keyboard-navigation: In Icons and List, Up and Down move focus and selection through entries without changing directory.",
+    "browser/selection/keyboard-navigation: In List, Right keeps focus on the current entry and never opens it or changes directory."
+  ],
+  "scene": "c4-default-light",
+  "events": [
+    {
+      "t": 0.2,
+      "type": "tap",
+      "key": "row-3/cell-type"
+    },
+    {
+      "t": 0.8,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 1.0,
+      "type": "key",
+      "name": "Down"
+    },
+    {
+      "t": 1.4,
+      "type": "key",
+      "name": "Up"
+    },
+    {
+      "t": 1.6,
+      "type": "key",
+      "name": "Right"
+    }
+  ],
+  "expect": [
+    {
+      "key": "row-1",
+      "states": [
+        "selected"
+      ]
+    },
+    {
+      "key": "c4-intent",
+      "name": "Edge Right"
+    },
+    {
+      "key": "c4-sort",
+      "name": "Sorted by Name ↑"
+    },
+    {
+      "key": "status",
+      "name": ""
+    }
+  ]
+}
