@@ -272,9 +272,9 @@ fn a_click_on_a_rows_name_label_lands_on_the_name_the_view_draws() {
 /// `selection/right-click-selects-entry`, both variants, step for step, and the rows
 /// `dialogs_and_menus/entry-menu-named-actions` and `pane-menu-directory-actions` read.
 #[test]
-fn a_right_click_opens_the_entrys_menu_and_escape_gives_the_keyboard_back() {
+fn a_right_click_opens_an_entry_menu_and_escape_gives_the_keyboard_back() {
     staged(
-        "a_right_click_opens_the_entrys_menu_and_escape_gives_the_keyboard_back",
+        "a_right_click_opens_an_entry_menu_and_escape_gives_the_keyboard_back",
         None,
         |backend| {
             let folder = launched(&backend);

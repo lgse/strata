@@ -387,7 +387,7 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
     let depth = p.state.depth_of(serial).unwrap_or(0);
     let key = keys::column(&p.state.key, serial);
     let (g, gm, lk, ver) = (sh.clone(), sh.clone(), sh.clone(), sh.clone());
-    let mut c = Collection::new(
+    let c = Collection::new(
         key.clone(),
         move |s: &S| {
             let p = (g.parts)(s);
@@ -412,11 +412,7 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
                 .map_or(0, |d| p.sources.version(d))
         },
     );
-    if let Some(f) = &sh.collection {
-        c = f(s, depth, c);
-    }
-    let keys = columns_keys(c.setting::<KeySettings>());
-    c = c.settings(keys);
+    let mut c = hosted(sh, s, depth, c);
     let look = p.look;
     let column = &p.state.columns[depth.min(p.state.columns.len().saturating_sub(1))];
     let title = if depth < p.sources.len() {
@@ -506,14 +502,19 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         })
 }
 
-/// The host's key settings with the two rules that are Columns' own in Strata, whatever map
-/// the host binds: a Select key that cannot move the cursor re-selects its entry, and Ctrl+A
-/// takes the cursor to the last entry.
-fn columns_keys(host: Option<&KeySettings>) -> KeySettings {
-    let mut keys = host.cloned().unwrap_or_default();
+/// Column `depth`'s collection with the host's extras ([`ColumnsView::collection`]), and its
+/// key settings with the two rules that are Columns' own in Strata, whatever map the host
+/// binds: a Select key that cannot move the cursor re-selects its entry, and Ctrl+A takes the
+/// cursor to the last entry.
+fn hosted<S: 'static>(sh: &Shared<S>, s: &S, depth: usize, c: Collection<S>) -> Collection<S> {
+    let c = match &sh.collection {
+        Some(f) => f(s, depth, c),
+        None => c,
+    };
+    let mut keys = c.setting::<KeySettings>().cloned().unwrap_or_default();
     keys.reselects_in_place = true;
     keys.select_all_to_last = true;
-    keys
+    c.settings(keys)
 }
 
 /// The depth of column `serial`, while it is open and listed.
@@ -556,7 +557,19 @@ fn column_intent<S: 'static>(
     match intent {
         Intent::Edge(Direction::Right) => enter_right(sh, s, depth, tx),
         Intent::Edge(Direction::Left) => go_left(sh, s, depth, tx),
-        Intent::Activate { id, how } if reopens(sh, s, depth, id) => reopen(sh, s, depth, how, tx),
+        // Activating the folder whose column is open goes to that column. A key does it as
+        // Right does (Strata's `activate_focused` ends in `focus_child`): the cursor goes on
+        // the column's first entry if it has none.
+        Intent::Activate {
+            id,
+            how: Activation::Key,
+        } if reopens(sh, s, depth, id) => enter_child(sh, s, depth + 1, tx),
+        // A click gives the column the keyboard and no cursor (`Browser::activate`:
+        // "reopening lands where opening did").
+        Intent::Activate { id, .. } if reopens(sh, s, depth, id) => {
+            let p = (sh.parts_mut)(s);
+            p.state.set_active(depth + 1, p.look, tx);
+        }
         Intent::Other(any) if any.downcast_ref::<Rested>().is_some() => {
             let p = (sh.parts)(s);
             let id = p.state.columns[depth].collection.selection.cursor();
@@ -566,19 +579,25 @@ fn column_intent<S: 'static>(
             background_click(sh, s, depth, tx);
         }
         intent => {
-            if let Intent::Activate { id, .. } = &intent {
-                let p = (sh.parts_mut)(s);
-                let folder = p
-                    .sources
-                    .source(depth)
-                    .index_of(*id)
-                    .is_some_and(|i| p.sources.source(depth).entry(i).kind.is_folder_like());
-                if folder {
-                    p.state.opened = Some((depth, *id));
-                }
-            }
+            note_opened(sh, s, depth, &intent);
             sh.emit(s, ColumnsIntent::Collection { depth, intent }, tx);
         }
+    }
+}
+
+/// Remembers the folder an activation is about to open in column `depth`: the second press
+/// of the click that opened it leaves its column active (`column_press`).
+fn note_opened<S>(sh: &Shared<S>, s: &mut S, depth: usize, intent: &Intent) {
+    let Intent::Activate { id, .. } = intent else {
+        return;
+    };
+    let p = (sh.parts_mut)(s);
+    let source = p.sources.source(depth);
+    let folder = source
+        .index_of(*id)
+        .is_some_and(|i| source.entry(i).kind.is_folder_like());
+    if folder {
+        p.state.opened = Some((depth, *id));
     }
 }
 
@@ -586,19 +605,6 @@ fn column_intent<S: 'static>(
 fn reopens<S>(sh: &Shared<S>, s: &S, depth: usize, id: EntryId) -> bool {
     let p = (sh.parts)(s);
     p.sources.open_child(depth) == Some(id) && depth + 1 < p.state.columns.len()
-}
-
-/// Activating the folder whose column is open goes to that column. A key does it as Right
-/// does (Strata's `activate_focused` ends in `focus_child`): the cursor goes on the column's
-/// first entry if it has none. A click gives the column the keyboard and no cursor
-/// (`Browser::activate`: "reopening lands where opening did").
-fn reopen<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, how: Activation, tx: &mut Tx) {
-    if how == Activation::Key {
-        enter_child(sh, s, depth + 1, tx);
-        return;
-    }
-    let p = (sh.parts_mut)(s);
-    p.state.set_active(depth + 1, p.look, tx);
 }
 
 /// The keyboard goes into the open column `child`: its cursor on its first entry if it has

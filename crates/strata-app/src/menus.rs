@@ -41,18 +41,21 @@ pub(crate) struct Menu {
     name: String,
 }
 
+/// A menu to open: what it is for, and where.
+pub(crate) struct Opening {
+    /// The column the menu is for.
+    pub(crate) depth: usize,
+    pub(crate) name: String,
+    pub(crate) target: MenuTarget,
+    /// In window points.
+    pub(crate) at: Point,
+}
+
 impl Menu {
-    pub(crate) fn show(
-        &mut self,
-        depth: usize,
-        name: String,
-        target: MenuTarget,
-        at: Point,
-        model: MenuModel,
-    ) {
-        self.depth = depth;
-        self.name = name;
-        self.state.open(target, at, model);
+    pub(crate) fn show(&mut self, opening: Opening, model: MenuModel) {
+        self.depth = opening.depth;
+        self.name = opening.name;
+        self.state.open(opening.target, opening.at, model);
     }
 
     pub(crate) fn depth(&self) -> usize {
@@ -114,9 +117,15 @@ impl Row {
         self
     }
 
+    /// Whether the row shows its hint: it has one, and "Type to search" does not take it.
+    fn hinted(&self, typing: bool) -> bool {
+        let taken = self.typed && typing;
+        !self.hint.is_empty() && !taken
+    }
+
     fn item(&self, typing: bool) -> Item {
         let item = Item::new(self.id, tr(self.label));
-        if self.hint.is_empty() || (self.typed && typing) {
+        if !self.hinted(typing) {
             return item;
         }
         let chords: Vec<String> = self

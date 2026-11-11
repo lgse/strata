@@ -12,7 +12,7 @@ use strata_components::{
 
 use super::Input;
 use crate::{
-    menus::{self, EntryTarget, FolderTarget, Wired},
+    menus::{self, EntryTarget, FolderTarget, Opening, Wired},
     shell::{self, App},
 };
 
@@ -91,8 +91,13 @@ impl App {
             can_delete: self.browser.can_delete_at(depth),
             typing: self.columns.typing(),
         });
-        self.menu
-            .show(depth, entry.display_name, MenuTarget::Entry(id), at, model);
+        let opening = Opening {
+            depth,
+            name: entry.display_name,
+            target: MenuTarget::Entry(id),
+            at,
+        };
+        self.menu.show(opening, model);
     }
 
     /// The menu of column `depth`'s folder: a press on its empty space or its header.
@@ -105,8 +110,13 @@ impl App {
             hidden_shown: self.browser.preferences().show_hidden,
             typing: self.columns.typing(),
         });
-        self.menu
-            .show(depth, title, MenuTarget::Background, at, model);
+        let opening = Opening {
+            depth,
+            name: title,
+            target: MenuTarget::Background,
+            at,
+        };
+        self.menu.show(opening, model);
     }
 
     fn context_menu(&mut self, depth: usize, target: Option<EntryId>, anchor: Rect) {
