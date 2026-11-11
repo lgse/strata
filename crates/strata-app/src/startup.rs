@@ -5,19 +5,29 @@
 
 use std::marker::PhantomData;
 
-use strata_core::{i18n, logging, metrics};
+use strata_core::{logging, metrics};
+use strata_desktop::settings::Preferences;
 
 /// What the window reports to the desktop. Not the GTK application's id: both are installed
 /// until parity, and a window rule or a desktop entry for one must not match the other.
 pub(crate) const APPLICATION_ID: &str = "io.github.lgse.Strata.Rune";
 
-/// Identity, logging and the language: what needs no particular thread.
-pub(crate) fn initialize_process() {
+/// Identity, logging and the saved settings: what needs no particular thread, and reads its
+/// files before one becomes the UI thread.
+pub(crate) fn initialize_process() -> Preferences {
     glib::set_prgname(Some(APPLICATION_ID));
     glib::set_application_name("Strata");
     metrics::initialize();
     logging::initialize();
-    rust_i18n::set_locale(i18n::detected_locale());
+    load_settings()
+}
+
+/// The saved settings, with their language made the process's. This interface never saves
+/// them, so a file it cannot read gives the defaults and stays as it is.
+pub(crate) fn load_settings() -> Preferences {
+    let settings = Preferences::load_read_only();
+    rust_i18n::set_locale(settings.language.locale());
+    settings
 }
 
 /// Proof that the calling thread ran the start-up sequence and owns the default GLib context,

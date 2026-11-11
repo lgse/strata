@@ -4815,6 +4815,7 @@ dependencies = [
  "rust-i18n",
  "strata-components",
  "strata-core",
+ "strata-desktop",
  "strata-fs",
  "strata-kit",
  "strata-platform",

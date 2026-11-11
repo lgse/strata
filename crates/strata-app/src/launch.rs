@@ -68,10 +68,10 @@ fn leave_launch_folder() {
 }
 
 fn open(directory: Option<&OsStr>) -> Result<(), String> {
-    startup::initialize_process();
+    let settings = startup::initialize_process();
     let location = location(directory).ok_or("the argument is not a location")?;
     leave_launch_folder();
-    host::windowed::run(startup::UiThread::claim()?, location)
+    host::windowed::run(startup::UiThread::claim()?, settings, location)
 }
 
 /// Runs `strata-rune` with the process's arguments, the program name first.

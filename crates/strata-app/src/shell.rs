@@ -12,10 +12,8 @@ use rune::{Cx, El, Tx, col, text};
 use strata_components::header::{
     self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
 };
-use strata_core::{
-    i18n::tr,
-    model::{Location, ViewPreferences},
-};
+use strata_core::{i18n::tr, model::Location};
+use strata_desktop::settings::{Preferences, sort_preferences};
 use strata_fs::{
     adapters::{LocalFileSource, LocalOperationProvider},
     app::Browser,
@@ -73,10 +71,11 @@ pub(crate) struct App {
 
 impl App {
     /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with
-    /// every event queued for [`poll`].
-    pub(crate) fn new(_ui: &UiThread, csd: Csd) -> Self {
+    /// the saved sort and hidden-files choice and with every event queued for
+    /// [`apply_queued`].
+    pub(crate) fn new(_ui: &UiThread, csd: Csd, settings: &Preferences) -> Self {
         let browser =
-            Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
+            Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(settings));
         browser.set_operation_provider(Rc::new(LocalOperationProvider));
         Self {
             look: Look::fallback(true),

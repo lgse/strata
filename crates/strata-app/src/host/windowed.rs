@@ -12,6 +12,7 @@ use std::cell::OnceCell;
 
 use rune::{AppSpec, Tx, WindowHandle, WindowOptions};
 use strata_core::model::Location;
+use strata_desktop::settings::Preferences;
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::{
     csd::{self, Backend, Csd, Policy},
@@ -53,7 +54,7 @@ fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
 }
 
 /// Opens the window on `location` and returns when it closes.
-pub(crate) fn run(ui: UiThread, location: Location) -> Result<(), String> {
+pub(crate) fn run(ui: UiThread, settings: Preferences, location: Location) -> Result<(), String> {
     rune::set_app_id(APPLICATION_ID);
     let frame = Policy::Auto.frame();
     let app = rune::App::new(AppSpec {
@@ -63,7 +64,7 @@ pub(crate) fn run(ui: UiThread, location: Location) -> Result<(), String> {
         ..AppSpec::new("Strata", SIZE, unused, shell::view)
     })
     .init(move || {
-        let app = App::new(&ui, Csd::new(frame, Backend::from_env()));
+        let app = App::new(&ui, Csd::new(frame, Backend::from_env()), &settings);
         app.open(location);
         app
     })

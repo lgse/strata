@@ -76,7 +76,7 @@ deny = [
   { crate = "strata-core", wrappers = ["strata", "strata-app", "strata-desktop", "strata-fs", "strata-preview"] },
   { crate = "strata-preview", wrappers = ["strata", "strata-desktop", "strata-fs"] },
   { crate = "strata-fs", wrappers = ["strata", "strata-app", "strata-desktop"] },
-  { crate = "strata-desktop", wrappers = ["strata"] },
+  { crate = "strata-desktop", wrappers = ["strata", "strata-app"] },
   { crate = "strata-qa", wrappers = ["strata"] },
   { crate = "rune", wrappers = ["rune-kit", "strata-app", "strata-components", "strata-gallery", "strata-kit", "strata-platform"] },
   { crate = "rune-kit", wrappers = ["strata-app", "strata-components", "strata-gallery", "strata-kit"] },

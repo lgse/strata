@@ -6,6 +6,7 @@
 use std::time::{Duration, Instant};
 
 use rune::{Env, Runtime, text::TextSystem};
+use strata_desktop::settings::Preferences;
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::csd::{Backend, Csd, Policy};
 
@@ -25,8 +26,12 @@ pub(crate) struct Offscreen {
 }
 
 impl Offscreen {
-    pub(crate) fn new(ui: UiThread) -> Self {
-        let app = App::new(&ui, Csd::new(Policy::Auto.frame(), Backend::Headless));
+    pub(crate) fn new(ui: UiThread, settings: &Preferences) -> Self {
+        let app = App::new(
+            &ui,
+            Csd::new(Policy::Auto.frame(), Backend::Headless),
+            settings,
+        );
         let mut runtime = Runtime::with_text(
             app,
             shell::view,

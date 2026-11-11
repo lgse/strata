@@ -2,22 +2,35 @@
 
 use std::time::{Duration, Instant};
 
-use strata_core::model::Location;
+use strata_core::model::{Location, NameComparison, SortDirection, SortKey, ViewPreferences};
 
 use super::Offscreen;
-use crate::{launch, startup::UiThread};
+use crate::{
+    launch,
+    startup::{self, UiThread},
+};
 
 const PATIENCE: Duration = Duration::from_secs(30);
 
-/// Runs the test `name` on a host in a process of its own: the default GLib context and the
-/// start-up sequence belong to one thread of one process.
-fn hosted(name: &str, run: impl FnOnce(Offscreen)) {
+/// Runs the test `name` on a host in a process of its own: the default GLib context, the
+/// start-up sequence and the saved settings belong to one process. `prepare` runs there
+/// first, before anything is read.
+fn hosted_after(name: &str, prepare: impl FnOnce(), run: impl FnOnce(Offscreen)) {
     strata_test_support::isolated_test(
         &format!("host::offscreen::tests::{name}"),
         std::iter::empty::<(&str, &str)>(),
         || true,
-        || run(Offscreen::new(UiThread::claim().expect("the UI thread"))),
+        || {
+            prepare();
+            let settings = startup::load_settings();
+            let ui = UiThread::claim().expect("the UI thread");
+            run(Offscreen::new(ui, &settings));
+        },
     );
+}
+
+fn hosted(name: &str, run: impl FnOnce(Offscreen)) {
+    hosted_after(name, || {}, run);
 }
 
 fn folder_of(names: &[&str]) -> tempfile::TempDir {
@@ -137,6 +150,50 @@ fn waiting_ends_when_glib_has_work_or_a_rune_timer_is_due() {
                 started.elapsed() < limit,
                 "Rune's timer did not end the wait"
             );
+        },
+    );
+}
+
+#[test]
+fn saved_settings_reach_the_browser_and_the_language() {
+    hosted_after(
+        "saved_settings_reach_the_browser_and_the_language",
+        || {
+            let folder = strata_core::storage::config_directory();
+            std::fs::create_dir_all(&folder).expect("settings folder");
+            std::fs::write(
+                folder.join("settings.toml"),
+                concat!(
+                    "mode = \"theme\"\n",
+                    "theme = \"tokyo-night\"\n",
+                    "language = \"fr\"\n",
+                    "show_hidden = true\n",
+                    "folders_first = false\n",
+                    "sort_key = \"size\"\n",
+                    "sort_direction = \"descending\"\n",
+                    "natural_sort = false\n",
+                    "case_sensitive_sort = true\n",
+                    // Not a unit system: the store drops this entry and keeps the rest.
+                    "unit_system = 7\n",
+                ),
+            )
+            .expect("settings");
+        },
+        |host| {
+            assert_eq!(
+                host.app().browser().preferences(),
+                ViewPreferences {
+                    show_hidden: true,
+                    folders_first: false,
+                    sort_key: SortKey::Size,
+                    sort_direction: SortDirection::Descending,
+                    name_comparison: NameComparison {
+                        natural: false,
+                        case_sensitive: true,
+                    },
+                }
+            );
+            assert_eq!(&*rust_i18n::locale(), "fr");
         },
     );
 }
