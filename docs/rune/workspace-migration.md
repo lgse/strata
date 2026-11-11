@@ -29,6 +29,9 @@ Source: the workspace proposal, revision 7 of 2026-11-09. Status below is as of 
 | Four shared crates and `strata-test-support` | The same, plus `strata-qa` from the slice plan | Owner, 2026-11-10 |
 | `strata-core` has no GIO | `strata-core` depends on `gio` and `glib`. It has no interface toolkit | Not ruled; see `docs/workspace.md` |
 | The browser's state sits in `strata-core` | `app` with `Browser` is in `strata-fs`, because it uses GLib sources and the services | Not ruled |
+| Import the component crates with their history | The history was squashed into one commit, from `integration` at `e4f2df1a` | Owner, 2026-11-10 |
+| All of `strata-platform` is imported | Its `media-audio` shim, the gallery's `media_playback` example and their tests were left out, because they use GStreamer | Owner, 2026-11-10 |
+| One workspace, built as one | One workspace and one lockfile, built in two cargo runs. A run over the whole workspace does not compile; see `docs/workspace.md`, "Two lanes" | Not ruled |
 
 ## Two branches
 
@@ -69,10 +72,10 @@ strata/                   branch: strata-next
     strata-desktop/       shared; exists
     strata-qa/            shared by both QA backends; exists
     strata-test-support/  dev-dependency only; exists
-    strata-platform/      Rune side; imported, path unchanged
-    strata-kit/           Rune side; imported, path unchanged
-    strata-components/    Rune side; imported, path unchanged
-    strata-gallery/       Rune side; imported, path unchanged
+    strata-platform/      Rune side; imported, exists
+    strata-kit/           Rune side; imported, exists
+    strata-components/    Rune side; imported, exists
+    strata-gallery/       Rune side; imported, exists
     strata-app/           Rune side; new: the Rune interface
     strata-rune/          Rune side; new: the second binary
   tests/
@@ -81,6 +84,9 @@ strata/                   branch: strata-next
   docs/
     rune/plan.md          the component plan, imported
     rune/work/**          the component work packages, imported
+    rune/decisions/**     the component spikes and rulings, imported
+    rune/upstream/**      what was asked of Rune upstream, imported
+    rune/testing.md       how the Rune side is tested, imported
     rune/slice/**         the vertical slice
 ```
 
@@ -110,12 +116,18 @@ Components never depend on the shared crates, on purpose. It lets the gallery ru
 generated data. `strata-app` adapts `FileEntry` and `Location` to the component contract
 types.
 
-Two things the V0 checks found here:
+Two things the V0 checks found here, both settled at the import:
 
-- `cargo deny check` follows only what the root package reaches. Once a crate exists that
-  the GTK app does not depend on, the check needs `--workspace`.
-- `strata-platform` depends on `gstreamer` behind its `media-audio` feature, which the
-  `AGENTS.md` rule for crates under `crates/` forbids.
+- `cargo deny check` follows only what the root package reaches. The check now runs with
+  `--workspace`, in `mise.toml`, `scripts/check.sh` and CI.
+- `strata-platform` depended on `gstreamer` behind its `media-audio` feature, which the
+  `AGENTS.md` rule for crates under `crates/` forbids. The owner kept the rule, and the shim
+  was not imported.
+
+The import found a third. Cargo gives a dependency the features of every package in one
+run, and the two sides disagree on `yeslogic-fontconfig-sys`: Rune turns on `dlopen`, under
+which the functions `src/assets.rs` calls are not exported. So `cargo check --workspace`
+fails, and every script selects one side's packages through `scripts/lanes.py`.
 
 ## What must keep working, and what may break
 
@@ -137,8 +149,10 @@ Allowed to break, and repaired before the first Rune release:
 | Release workflow | It pins its own compiler and its signing environment is restricted to the default branch. It bundles notices and data for the GTK binary | New pin, notices and bundle contents for the Rune binary |
 | AUR packages | They repackage the release binaries. Their dependency list names the GTK runtime | New dependency list |
 | CI test shards | The shard plan and recorded durations assume one crate | A new plan over the final crate list |
-| Dependency guard | `ci.yml` forbids `x11rb`, `wayland-client` and `xkbcommon` in a default build's `cargo tree`. Rune brings them in | A rule written for the Rune binary |
-| Licence policy | Rune's tree needs BSL-1.0 allowed and a git source allowed | Lines in `deny.toml`, in the import |
+| Test image publisher | Its dependency stage stubs only the crates directly under `crates/`. Since the import it cannot load the workspace: it has no manifest for `strata-test-peer`, and it deletes the example sources `strata-gallery`'s manifest names. The base image the quality and QA runs use is not affected | A dependency stage that stubs every member. An image change, so it waits for the owner |
+| Rune side in CI | CI and the pinned image build and test the GTK lane only. The image has no Vulkan driver, which the Rune goldens need | A `rune` job, and a software Vulkan driver in the image or a runner with one |
+| Dependency guard | `ci.yml` forbids `x11rb`, `wayland-client` and `xkbcommon` in a default build's `cargo tree`. It reads the root package's tree only, so it still passes with the Rune side in the workspace | A rule written for the Rune binary |
+| Licence policy | Done in the import: Rune's git source, BSL-1.0 for two Windows-only crates, and the `bincode` advisory are in `deny.toml` | |
 | Third-party notices | About 200 new packages in the Rune binary | Regenerated notices |
 | Docs and rule examples | Test filters change with each extraction | One pass over `AGENTS.md` and `docs/testing.md` |
 
@@ -154,8 +168,8 @@ pull request that lands the branch.
 | 3. Turn the root manifest into a workspace and move to Rust 1.99.1 | Done |
 | 4. Cut the cycles in place | Done |
 | 5. Extract the shared crates | Done: core, preview, fs, desktop, test-support, qa |
-| 6. Import the component crates | Not started. [slice/V4b](slice/V4b-import-components.md) |
-| 7. Close the old repository | After the import |
+| 6. Import the component crates | Done. [slice/V4b](slice/V4b-import-components.md) |
+| 7. Close the old repository | `wmfeht/strata-components` is frozen at `e4f2df1a`: every component change is now a commit on `strata-next`. The owner archives it |
 | 8. Start the Rune app | Not started. The vertical slice, [slice/README.md](slice/README.md) |
 | 9. Parity: delete `src/ui`, `src/assets`, `src/qa`, the GTK scenarios and the GTK dependencies | Later |
 | 10. Release preparation: repair everything in the table above | Later |
@@ -184,16 +198,18 @@ The proposal listed work the split had to include. Three items are not done:
   extractable: `rune` only, no Strata names in its API, one cargo feature per shim.
 - **Two binaries on the branch.** The GTK app and the Rune app build side by side until
   parity. No toolkit feature flag.
-- **Import history is open.** Squashing was decided when the component repository had two
-  commits. The proposal recommends importing with history, so `git blame` still reaches the
-  change that wrote a line.
+- **The import was squashed.** The proposal recommended importing with history, so that
+  `git blame` would reach the change that wrote a line. The owner ruled for one commit on
+  2026-11-10. The history stays in `wmfeht/strata-components`, and the commit hashes the
+  imported documents cite are that repository's.
 - **Work package documents stay in the tree as Markdown.**
 - **The end state is just `strata`.** `strata-app` and `strata-rune` are names for the
   branch.
 
 ## Changes to the component plan
 
-These apply when the component plan is imported as `docs/rune/plan.md`.
+These were applied when the component plan was imported as `docs/rune/plan.md`; the plan
+lists them under "Amended at the import into Strata", with three more the import produced.
 
 | Where | Says today | Becomes |
 | --- | --- | --- |
@@ -226,5 +242,6 @@ These apply when the component plan is imported as `docs/rune/plan.md`.
 - How the test image's provenance check treats an image published from `strata-next`.
 - Whether the release workflow could build `strata-next`.
 - The Nix output-hash requirement against `package.nix`.
-- Whether Rune's PNG goldens need a software GPU in the test image.
+- Whether Rune's PNG goldens pass on a software GPU. They need a Vulkan adapter, the test
+  image has none, and they were run only on the NVIDIA card they were blessed on.
 - The first-stage hand checks. No drag or portal request was made.

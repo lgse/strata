@@ -70,16 +70,16 @@ fails: Cargo gives a dependency the features of every package in the run, Rune t
 - **`mise run compile` and `mise run clippy` run both lanes,** one after the other.
   `mise run test` runs the GTK lane and `mise run test-rune` the Rune lane.
 - **The Rune test tasks build without debug info** (`CARGO_PROFILE_DEV_DEBUG=0`). Each of
-  their test binaries links Rune and its renderer, and with debug info for every dependency
-  those links take several gigabytes of memory and disk each. The old repository turned
-  debug info off for all dependencies in its dev profile; that setting was not carried over,
-  because it would change the GTK application's debug builds too.
+  their 67 test binaries links Rune and its renderer. With debug info for every dependency a
+  link took more than two gigabytes of memory, and Cargo ran 23 at once. The old repository
+  turned debug info off for all dependencies in its dev profile; that setting was not
+  carried over, because it would change the GTK application's debug builds too.
 - **The pinned test image and CI run the GTK lane only.** The image has no Vulkan driver,
   which the Rune goldens need. Formatting, the dependency policy and spelling cover the
   whole workspace in CI. Compiling, linting and testing the Rune side is a local step until
   a CI job for it exists.
-- **A built GTK application is the same as before the Rune side joined.** Its lane selects
-  the packages it always did, so its dependencies get the features they always had.
+- **The GTK application builds with the features it had before the Rune side joined.** Its
+  lane selects the packages it always did.
 - **An editor that checks the whole workspace reports the fontconfig errors.** Point it at
   one lane's packages.
 

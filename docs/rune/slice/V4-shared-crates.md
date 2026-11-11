@@ -37,7 +37,8 @@ translations and log targets.
 - **The preference store is still in the root package,** under `src/ui/preferences`. V5
   needs the part of it that reads `settings.toml`.
 - **Start-up duties are still in `src/main.rs`:** starting the mount watcher before the UI
-  thread is marked, and starting the stall watcher. V5 needs them from a shared crate.
+  thread is marked, and starting the stall watcher. The portal chooser starts its stall
+  watcher in `src/portal.rs`. V5 needs them from a shared crate.
 - **`Browser` lends no entries.** Its listings sit behind a `RefCell`, and
   `with_column_entries` hands them out only inside a closure. V6 copies display fields or
   adds an accessor.

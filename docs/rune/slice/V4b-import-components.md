@@ -2,167 +2,165 @@
 
 | | |
 | --- | --- |
-| Status | Not started. Three owner decisions are open |
+| Status | Done. Six owner items are open, listed at the end |
 | Depends on | V4 (done) |
 | Unblocks | V5 |
-| Owns | `Cargo.toml`, `Cargo.lock`, `deny.toml`, `typos.toml`, `mise.toml`, `crates/strata-{platform,kit,components,gallery}`, `tests/golden`, `tests/scripts`, `docs/rune/plan.md`, `docs/rune/work` |
-| Lands as | One mechanical commit for the copy, then one per policy file |
+| Commits | `ad88c18a8` (the copy), `ca544005b` (`deny.toml`), `677769021` (`typos.toml`), `c10885101` (the two lanes, `mise.toml`, the lint settings), `b2be0f046` (SPDX headers), `a60b064dd` (document paths), `7f7a11c26` (documentation) |
 
-## Goal
+## What was done
 
-Bring strata-components' four crates, their test data and their documents into the
-workspace at the paths they already have, so the Rune side builds from one lockfile and one
-Rune pin. No file under `src/` changes.
+strata-components' four crates, their test data and their documents are in the workspace,
+copied from `integration` at `e4f2df1a718dfe5ad282f27d20b4d1b8858fe7e7`. The Rune side
+builds from Strata's lockfile and one Rune pin, `2a44156b`. No file under `src/` changed.
 
-This package is not in the slice plan. It is stage 6 of the
-[workspace migration](../workspace-migration.md), numbered here because V5 cannot start
-without it.
-
-## Decide first
-
-| Decision | Options | Recommendation |
-| --- | --- | --- |
-| Which revision | `integration` at the day of the import, or a tagged one | The newest `integration` whose own CI is green. V0 used `e4f2df1a`, with Rune at `2a44156b` |
-| History | Squash into one commit, or import with history | With history, as the workspace proposal recommends, so `git blame` reaches the change that wrote a line |
-| `gstreamer` in `strata-platform` | Relax the `AGENTS.md` rule for `strata-platform`, or keep `media-audio` out of the import | Relax the rule for that one crate and name it in `deny.toml`: the feature is a platform shim, not an interface toolkit |
-
-The owner has also to say when `wmfeht/strata-components` stops taking changes. After the
-import, a component change is a change on `strata-next`, and the old repository is archived
-with a pointer to the branch.
-
-## What V0 already showed
-
-The whole import was done once in a throwaway worktree. From
-[V0's build probe](V0-findings.md):
-
-- Both sides build in one workspace on Rust 1.99.1. Debug builds took 51 s for the gallery
-  and the probe binary and 55 s for the GTK app.
-- The lockfile grows from 448 to 669 packages. Two packages the GTK app uses move:
-  `bitflags` 2.13.1 to 2.13.2 and `smallvec` 1.15.2 to 1.16.5. The GTK app's tree gains no
-  Rune crate.
-- 22 packages gain a second or third version, among them `zbus` 5 and 6 and `x11rb` 0.13
-  and 0.14.
-- The copied test data collides with no path Strata has.
-
-## Scope
-
-### The copy
-
-| In strata-components | On `strata-next` | Note |
-| --- | --- | --- |
-| `crates/strata-platform`, `strata-kit`, `strata-components`, `strata-gallery` | Same paths | Includes the test peer at `crates/strata-platform/tests/support/strata-test-peer` |
-| `tests/golden/`, `tests/scripts/`, `tests/fixtures/code/` | Same paths | |
-| `tests/README.md` | Folded into `docs/testing.md` | |
-| `docs/plan.md` | `docs/rune/plan.md` | Amended as the workspace migration lists |
-| `docs/work/**` | `docs/rune/work/**` | Relative links to the plan keep working |
-| `docs/decisions/`, `docs/upstream/`, `docs/testing.md` | `docs/rune/decisions/`, `docs/rune/upstream/`, a Rune section in `docs/testing.md` | Not in the proposal's table; they exist at `e4f2df1a` |
-| `Cargo.lock` | Regenerated | Never hand-merged |
-| `clippy.toml`, `rustfmt.toml`, `LICENSE`, `CLAUDE.md`, `CHANGELOG.md` | Dropped | Identical or superseded |
-
-### The manifest
-
-- `[workspace] members` gains `crates/strata-platform/tests/support/strata-test-peer`,
-  which `crates/*` does not match.
-- `[workspace.package]` gains `version = "0.0.1"` and `rust-version = "1.99.1"`, which the
-  component manifests inherit. The alternative is to edit four manifests.
-- `[workspace.dependencies]` gains 24 entries: `rune` and `rune-kit` at one git rev, the
-  three component crates and the test peer by path, and `gstreamer`, `gstreamer-app`,
-  `futures-util`, `tokio`, `zbus` 6, `wayland-backend`, `wayland-client`,
-  `wayland-protocols`, `wayland-protocols-misc`, `wayland-protocols-wlr`, `x11rb` 0.13,
-  `xkbcommon`, `png`, `swash`, `syntect`, `two-face`, `unicode-segmentation` and
-  `unicode-width`.
-- No existing shared entry changes. Strata's `toml`, `serde`, `gio`, `glib`, `libc`,
-  `futures-channel` and `serde_json` already satisfy the component crates.
-- `[workspace.lints.clippy]` gains `await_holding_lock` and `await_holding_refcell_ref`,
-  the union of both lint sets.
-- Each imported crate sets `publish = false`, as `docs/workspace.md` asks.
-  `strata-platform` does not set it today.
-- Carry over the component workspace's profiles if the perf tests are to run:
-  `[profile.dev.package."*"] debug = false` and `[profile.perf]`. The first changes how
-  Strata's dependencies build in debug, so ask before adding it.
-
-### The dependency policy
-
-`cargo deny check` passes after the copy, but only because it follows what the root package
-reaches. Switch `mise.toml`'s `deny` task and the CI step to `cargo deny --workspace
-check`, then make it pass:
-
-| Failure with `--workspace` | Change in `deny.toml` |
+| In strata-components | On `strata-next` |
 | --- | --- |
-| Six packages from a git source | `allow-git = ["https://github.com/anomalyco/rune"]` |
-| BSL-1.0 on `clipboard-win` and `error-code` | Allow BSL-1.0, or an exception per crate. Both are Windows-only |
-| RUSTSEC-2025-0141, `bincode` unmaintained | An `ignore` entry with its reason, once the dependent crate is named |
-| `gstreamer` and `gstreamer-app` used by `strata-platform` | Per the decision above |
+| `crates/strata-platform`, `strata-kit`, `strata-components`, `strata-gallery`, and the test peer under `strata-platform/tests/support/` | Same paths |
+| `tests/golden/`, `tests/scripts/`, `tests/fixtures/code/` | Same paths |
+| `docs/plan.md`, `docs/work/`, `docs/decisions/`, `docs/upstream/`, `docs/testing.md` | The same names under `docs/rune/` |
+| `tests/README.md` | Folded into `docs/testing.md`, "The Rune side" |
+| `AGENTS.md` | Its crate, Rune and golden rules are in Strata's `AGENTS.md` |
+| `mise.toml` | Its `bless`, `compile-features`, `test-platform` and `gallery` tasks are in Strata's; its `test` is `test-rune` |
+| `Cargo.lock` | Regenerated by Cargo, not merged |
+| `Cargo.toml`, `deny.toml`, `typos.toml`, `clippy.toml`, `rustfmt.toml`, `LICENSE`, `CLAUDE.md`, `CHANGELOG.md`, `README.md`, `.github/` | Dropped. What they set is in Strata's own files |
 
-Add the layering rows for the Rune side, as the
-[dependency rules](../workspace-migration.md#dependency-rules) state them: `rune` and
-`rune-kit` wrapped only by the Rune-side crates, `strata-kit` only by `strata-components`,
-`strata-gallery` and `strata-app`, and so on. The root package must reach none of them.
+`docs/workspace.md` is the maintained description of the Rune-side crates, their rules and
+the two build lanes.
 
-### The rest of the tooling
+## The owner's rulings
 
-- **`typos.toml`:** exclude `tests/golden/**/*.png`, and merge what the component
-  repository's `typos.toml` adds.
-- **`mise.toml`:** the `bless` and `gallery` tasks, and a Rune test task scoped with `-p`.
-  The Rune tests clear `DISPLAY` and `WAYLAND_SOCKET` and point `WAYLAND_DISPLAY` at a
-  socket that does not exist.
-- **SPDX headers.** Strata licenses every source file. Check the imported files and add
-  the header where it is missing.
-- **`docs/workspace.md`:** add the four crates to the table and their rules.
-- **`AGENTS.md`:** add the component repository's "Crate rules" and "Rune" sections, the
-  golden rules, and the two-branch rules. State the exception for work package documents.
-- **`THIRD_PARTY_LICENSES.md`:** the fonts and icons `strata-kit` bundles need their
-  notices. The full regeneration for the Rune binary waits for release preparation.
+Asked on 2026-11-10, before anything was copied.
 
-### Needs approval before it is done
+| Decision | Ruling |
+| --- | --- |
+| Which revision | `integration` at `e4f2df1a`, as committed. The checkout then held uncommitted changes to 43 files under `docs/upstream/rune/`; they stayed behind |
+| History | Squashed into one commit. The proposal had recommended keeping it |
+| `gstreamer` in `strata-platform` | The `AGENTS.md` rule stands. The `media-audio` shim was not imported |
+| When the old repository stops taking changes | At the import. `wmfeht/strata-components` is frozen at `e4f2df1a`, and the owner archives it |
 
-The slice rules allow no new CI job and no image change without the owner's word.
+## Where the work departs from this plan
 
-- **A `rune` job in `ci.yml`:** format, check, Clippy and tests for the imported crates, as
-  the component repository's `ci.yml` runs them. Its `platform.yml` runs compositor tests
-  that need sway.
-- **The test image.** Its dependency stage builds `--bin strata` only, so it caches no
-  Rune-side crate. Without a change, a Rune build in the image fetches and builds about 220
-  crates on every cold cache.
-- **The CI dependency guard.** `ci.yml` fails a default build whose `cargo tree` holds
-  `x11rb`, `wayland-client` or `xkbcommon`. If it reads only the root package's tree it
-  keeps passing. Confirm that rather than assume it.
+- **The `media-audio` shim was left out.** That is `strata-platform`'s `src/media/` and
+  `examples/media.rs`, the gallery's `examples/media_playback/`, the feature and its two
+  dependencies: 14 files, with 35 tests that pass and one that plays a tone for a person.
+  Component work package P7 has no home in the workspace until someone gives it one.
+- **A cargo run over the whole workspace does not compile.** Cargo gives a dependency the
+  features of every package in the run. Rune turns on `dlopen` in `yeslogic-fontconfig-sys`,
+  and under it the three fontconfig functions `src/assets.rs` calls are not exported. V0
+  built each side on its own and did not see this. The plan's checks named
+  `cargo check --workspace` and `cargo clippy --workspace`; neither can pass without a
+  change under `src/`.
+- **So the scripts select one side at a time.** `scripts/lanes.py` names the GTK lane and
+  the Rune lane. `scripts/quality.sh`, `scripts/quality_ci.py`, `scripts/test-headless.py`,
+  `scripts/check.sh` and five commands in `ci.yml`'s build job pass the GTK lane where they
+  passed `--workspace`. These files are outside what the plan said this package owns. The
+  application's lanes select the packages they always did, so its dependencies keep the
+  features they had.
+- **Each Rune-side crate carries its own `clippy.toml`,** the one it was written under.
+  Under Strata's, Clippy rejected the `unwrap`s in the imported tests and one
+  `glib::MainContext::new` in `strata-platform`'s bridge.
+- **The component testing document is `docs/rune/testing.md`,** not a section of
+  `docs/testing.md`. The work packages link to it by relative path. `docs/testing.md` has a
+  short section that points there.
+- **`[profile.perf]` was carried over; `[profile.dev.package."*"] debug = false` was not.**
+  The second changes the GTK application's debug builds, and the plan asked to check with
+  the owner first. Without it the first test build of the Rune side ran 23 links at once
+  with full debug info and stalled the machine on disk I/O. The Rune test tasks therefore
+  set `CARGO_PROFILE_DEV_DEBUG=0`.
+- **BSL-1.0 is allowed for two crates, not for all.** `deny.toml` has an exception each for
+  `clipboard-win` and `error-code`.
+- **`strata-core` gained a layering row.** Without one, nothing stopped a Rune-side crate
+  from depending on it.
+- **`fixedbitset` is held at 0.5.7,** the old lockfile's version. Cargo had picked 0.5.9.
 
-## Out of scope
+## Done when, and the evidence
 
-- Any change to a component's behaviour. A gap found while importing is written down, not
-  fixed here.
-- `strata-app` and `strata-rune`. They start in V5.
-- The Nix package, the release workflow and the AUR packages. They are allowed to break on
-  the branch.
+All runs are of `7f7a11c26`, on 2026-11-10 and 2026-11-11. The commit that records them
+changes documents and one comment.
 
-## Tests
+- **The four crates build and their tests pass from the workspace root.**
+  `mise run test-rune` on the host: 67 test binaries, 2,286 passed, none failed, 249
+  ignored. The same revision in its own repository, run the same way: 69 binaries, 2,321
+  passed, none failed, 250 ignored. The difference is the `media-audio` shim's 2 binaries
+  and 36 tests, and nothing else: no test changed its result, and none was added.
+- **No golden changed.** The golden tests ran without blessing, and `tests/golden/` is byte
+  for byte what was copied. They rendered on the host's NVIDIA card, the default adapter.
+- **Lint.** `mise run clippy` passes for both lanes, the Rune lane under its own
+  `clippy.toml`. `cargo fmt --all --check` passes over the whole workspace.
+  `mise run compile-features` passes for each of `strata-platform`'s nine features.
+- **The dependency policy.** `cargo deny --workspace check` passes all four sections, and
+  `typos` passes.
+- **The GTK suite and the Rust quality run pass in the pinned image.** `./scripts/quality.sh`,
+  all three phases: formatting and Clippy clean, 3,948 tests passed exactly once and 771
+  ignored, the counts of the run at `5c2cc9b47`. `./scripts/qa.sh`: 787 tests, 758 scenario
+  runs, 2 ignored, none failed, in 66 s. The logs are `v4b-quality.log` and `v4b-qa.log`
+  under `target/` in the verification worktree, with the QA artifacts in
+  `v4b-qa-artifacts/`. Both runs built the GTK lane only, and each fetched Rune's git
+  repository once: Cargo resolves every source in the lockfile, whichever packages it
+  builds.
+- **No Rune in the GTK application.** `cargo tree -p strata -e normal` holds no Rune crate.
+  Across all features and targets its tree differs from the one before the import in two
+  lines: `bitflags` 2.13.1 to 2.13.2 and `smallvec` 1.15.2 to 1.16.5. zbus 6 and parley
+  require the newer versions, so neither can stay.
+- **CI's dependency guard still passes.** It reads the root package's tree, which holds no
+  `x11rb`, `wayland-client`, `wayland-protocols-misc`, `wayland-protocols-wlr` or
+  `xkbcommon` in a default or feature-disabled build.
+- **The old repository.** Frozen at `e4f2df1a` by the owner's ruling. It is not archived
+  yet.
 
-| Check | Command | Expect |
-| --- | --- | --- |
-| The workspace builds | `cargo check --workspace --all-targets --all-features --locked` | Clean |
-| The GTK app is untouched | `./scripts/quality.sh` and `./scripts/qa.sh`, in the pinned image | As before the import. The lockfile moved two of its packages, so this is a full run |
-| The Rune side | The component repository's test task, headless, for the four crates | The results that revision had in its own repository |
-| Goldens | The golden tests, with no blessing | No golden changes. If one does, find out why before blessing anything |
-| Lint | `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` | Clean under Strata's `clippy.toml`. V0 did not check this |
-| Policy | `cargo deny --workspace check`, `typos` | Clean |
-| No Rune in the GTK app | `cargo tree -p strata -e normal` | No `rune` crate |
+The lockfile grew from 448 to 667 packages. 22 package names the GTK application uses
+gained a second or third version, among them `zbus` 5 and 6, `x11rb` 0.13 and 0.14 and
+`resvg` 0.45 and 0.48. The Rune side builds against 68 packages at the version Strata's
+lockfile held, mostly one patch release behind the old repository's, such as `glib` 0.22.9
+for 0.22.10 and `toml` 1.1.6 for 1.2.1. Seven packages only the Rune side uses follow them.
 
-Whether the PNG goldens pass without a GPU is not known. The component repository blessed
-them on an NVIDIA card and records the software renderer as pending.
+## Not verified
 
-## Done when
+- **The compositor tests.** `mise run test-platform` was not run, here or as a baseline.
+- **The goldens on a software renderer.** The pinned image has no Vulkan driver.
+- **The Rune side in the pinned image.** Nothing on that side was built or run there.
+- **CI.** The runs above are local. CI on `strata-next` was already failing before the
+  import, at the step that resolves the published test image.
 
-- The four crates build and their tests pass from the workspace root.
-- The GTK suite and the Rust quality run pass in the pinned image.
-- `cargo deny --workspace check` passes with the rules above.
-- `wmfeht/strata-components` is archived, or the owner has said when it will be.
+## Open for the owner
 
-## Risks
+1. **Archive `wmfeht/strata-components`.** Its uncommitted `docs/upstream/rune/` changes,
+   which move the filed requests into `filed/`, have to be redone under
+   `docs/rune/upstream/rune/`.
+2. **The test image's dependency stage.** It stubs only the crates directly under
+   `crates/`, so since the import it cannot load the workspace: it has no manifest for
+   `strata-test-peer`, and it deletes the example sources `strata-gallery`'s manifest names.
+   The publisher workflow fails on `strata-next` until `tests/container/Dockerfile` and
+   `.dockerignore` handle both. That is an image change, which the slice rules reserve. The
+   base image the quality and QA runs use is keyed by `tests/container/` alone and still
+   resolves.
+3. **A `rune` job in CI.** CI checks the Rune side's formatting, dependency policy and
+   spelling. Nothing there compiles, lints or tests it. A job needs a Vulkan adapter for
+   the goldens; the old repository's CI used lavapipe.
+4. **`[profile.dev.package."*"] debug = false`.** With it, every Rune build is light and
+   the tasks need no environment variable. It would also strip debug info from the GTK
+   application's dependencies in debug builds.
+5. **A home for `media-audio`.** P7 and the gallery's playback demo exist only in the old
+   repository.
+6. **Whole-workspace builds.** An editor that checks the workspace reports three errors in
+   `src/assets.rs`. Making that file compile under either fontconfig feature is a change
+   under `src/`.
 
-- **The component work is not finished.** The proposal's gate was "components first".
-  Importing now moves that work, and its reviews, onto `strata-next`.
-- **Strata's lint settings may reject component code.** `clippy.toml` here differs from
-  the one the crates were written under.
-- **A second copy drifts.** Between choosing the revision and archiving the old
-  repository, changes can land in both. Keep that window short.
+## Gaps found, not fixed
+
+- **Strata's rule on private GLib contexts does not reach the Rune side.** The root
+  `clippy.toml` asks for an `#[expect]` at each `glib::MainContext::new`, naming who drops
+  the context. `strata-platform` has one, at `src/glib_bridge/thread.rs`.
+- **Twelve links spell out the old repository's URL,** in the docs of four of
+  `strata-platform`'s modules. Its README's pinning example names that repository too.
+- **`strata-platform`'s README still describes tags, pinning and semver.** A note at its
+  head says they do not apply here.
+- **The imported crates do not inherit `authors` and `repository`,** as `docs/workspace.md`
+  asks of a new crate, and their version is `0.0.1` where the shared crates use `0.0.0`.
+- **`docs/rune/work/STATUS.md` describes itself as maintained on `integration`.**
+
+## Risks that remain
+
+- **The component work is not finished.** Its reviews now happen on `strata-next`.
+- **The two sides share one lockfile but not one build.** A dependency bump can break
+  either lane, and only the GTK lane is checked in CI.

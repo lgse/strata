@@ -9,7 +9,7 @@ and a new Rune binary, and both pass.
   `Browser`: keyboard navigation, selection, and inline rename with filesystem checks.
 - **Command:** `./scripts/qa-parity.sh slice`, run in the pinned QA container.
 
-Source: the slice plan of 2026-11-09. Status below is as of 2026-11-10.
+Source: the slice plan of 2026-11-09. Status below is as of 2026-11-11.
 
 ## Exit check
 
@@ -45,7 +45,7 @@ this table.
 | V2 | Extract the QA protocol crate | V1 | Done, `60cc86aed` | Runner and binary parse through one crate; GTK suite and mutations pass |
 | V3 | [QA engine behind a `Backend` trait](V3-qa-backend-trait.md) | V2 | Done, `60f661490` to `5c2cc9b47` | GTK is one backend; replies unchanged; GTK suite and mutations pass |
 | V4 | [Extract the shared crates](V4-shared-crates.md) | V1 | Done, `7f389c536` to `ffb6490eb` | No `gtk4` under the shared crates; GTK suite passes |
-| V4b | [Import the component crates](V4b-import-components.md) | V4 | Not started | The Rune side builds and tests in the workspace; GTK suite passes |
+| V4b | [Import the component crates](V4b-import-components.md) | V4 | Done: `ad88c18a8` to `7f7a11c26` | The Rune side builds and tests in the workspace; GTK suite passes |
 | V5 | [`strata-rune` shell and loop](V5-shell-and-loop.md) | V4b | Not started | A themed window opens on a directory; GLib work reaches the UI thread |
 | V6 | [Columns adapter](V6-columns-adapter.md) | V5 | Not started | Columns shows a real directory with Strata's accessible names |
 | V7 | [Rune QA backend](V7-rune-qa-backend.md) | V3, V6 | Not started | Gate G1 passes on both targets |
@@ -61,6 +61,13 @@ QA suite three times (787 tests, 758 scenario runs, 2 ignored, in 80 s), `./scri
 in all three phases, and `./scripts/qa-mutation.sh` with 21 of the 22 patches. All pass,
 apart from one flaky run in one of the three QA runs. [V3](V3-qa-backend-trait.md) has the
 figures and names the artifacts.
+
+**After the import.** At `7f7a11c26`, on 2026-11-11: `./scripts/quality.sh` in all three
+phases (3,948 tests, as before) and the full GTK QA suite once (787 tests, 758 scenario
+runs, 2 ignored), both in the pinned image and both of the GTK lane. On the host,
+`mise run test-rune`: 2,286 Rune-side tests pass and 249 are ignored, which is the old
+repository's result at `e4f2df1a` less the `media-audio` shim. The mutation patches were
+not rerun. [V4b](V4b-import-components.md) has the figures.
 
 Three things are open and were so before V3: `cut.patch` no longer applies,
 `new-folder-with-selection-groups/columns` fails more often than not when run alone, and
@@ -142,6 +149,7 @@ backend and a view layer.
 | `strata` (root package) | GTK views in `src/ui`, the GTK QA backend in `src/qa` | Rune |
 | `crates/strata-qa` | Protocol parsers, the target and predicate engine, the `Backend` trait | Any toolkit, GLib |
 | `crates/strata-core`, `strata-preview`, `strata-fs`, `strata-desktop` | Model, services, adapters, `Browser` | `gtk4`, `gdk4`, `sourceview5`, `gstreamer` |
+| `crates/strata-platform`, `strata-kit`, `strata-components`, `strata-gallery` | The imported Rune side: platform shims, the look, the components and their gallery | The shared crates, GTK, and the `strata` package |
 | `crates/strata-app` | The Rune interface: shell, loop, Columns adapter, and the Rune QA backend behind a `qa` feature | `gtk4` and the `strata` package |
 | `crates/strata-rune` | The `strata-rune` binary | Everything but `strata-app` |
 
@@ -181,6 +189,9 @@ conflicts with them, follow them and report the conflict.
 - **One Rune revision.** The workspace pins one. Move every Rune crate together.
 - **No GTK in the Rune binary.** Every change that touches `strata-app` or `strata-rune`
   shows `cargo tree -p strata-rune -i gtk4` finding nothing.
+- **Two lanes, never `--workspace`.** The GTK application and the Rune side build in
+  separate cargo runs, selected through `scripts/lanes.py` (`docs/workspace.md`). A new
+  Rune-side crate is added to its list.
 - **No new CI jobs or image changes without approval.** Run parity locally. Propose CI and
   image changes as owner items.
 - **Cite evidence.** Each "done" names the command, the container run and the artifact
@@ -207,14 +218,18 @@ Work halts and is reported when any of these holds.
 | 1 | Where `strata-rune` lives | V5 | Settled: on `strata-next`, in the workspace |
 | 2 | Raise the toolchain to the one Rune needs | V1 | Done: Rust 1.99.1 |
 | 3 | A software Vulkan driver in the pinned image | V7 | Not needed for the offscreen host |
-| 4 | Which strata-components revision | V4b | Open. V0 used `integration` at `e4f2df1a` |
+| 4 | Which strata-components revision | V4b | Settled: `integration` at `e4f2df1a`. The old repository is frozen there |
 | 5 | GTK's accessible names and AT-SPI role names as the contract | V6 | Open on two points: row descriptions and the pane group |
 | 6 | Non-US layout runs: required or pending | V8 | Open. The plan assumes `harness` pending |
 | 7 | Hand check of the windowed binary on Hyprland | V10 | Open. Do it once V6 lands |
 | 8 | The windowed wake: a tick, or a GLib embedding shim | V5 | Open. New from V0 |
-| 9 | `gstreamer` in `strata-platform` against the `AGENTS.md` rule | V4b | Open. New from V0 |
-| 10 | Import history: squash or keep | V4b | Open. From the workspace proposal |
+| 9 | `gstreamer` in `strata-platform` against the `AGENTS.md` rule | V4b | Settled: the rule stands, and the `media-audio` shim was not imported |
+| 10 | Import history: squash or keep | V4b | Settled: squashed |
 | 11 | Who owns cursor and selection: `Browser` or the component | V6 | Open. New from V0 |
+| 12 | The test image's dependency stage, which no longer loads the workspace | Before the publisher is needed again | Open. New from V4b; an image change |
+| 13 | A `rune` job in CI, with a Vulkan adapter for the goldens | V7 | Open. New from V4b. Until then the Rune side is checked locally |
+| 14 | `[profile.dev.package."*"] debug = false` for the workspace | Any time | Open. New from V4b |
+| 15 | A home for the `media-audio` shim | The component plan's phase 5 | Open. New from V4b |
 
 ## Risks
 
