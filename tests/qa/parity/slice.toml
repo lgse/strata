@@ -20,17 +20,13 @@
 scenario = "alt-up-and-history"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "arrow-keys-move-focus-remaining"
 run = "columns-hjkl"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "arrow-keys-move-focus"
@@ -43,312 +39,272 @@ scenario = "arrow-keys-move-focus"
 run = "columns-hjkl-tenxer-ru"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C1c: 10xer mode (`tenxer_mode`), from the first `j`. Then rune: a plain-letter binding under a non-Latin layout needs a key press that carries its physical key (docs/rune/upstream/rune/97-key-press-with-physical-key.md)"
 
 [[run]]
 scenario = "back-then-file-keys-target-focused-folder"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C8: the sidebar, at `click` on `sidebar` Home. Then V9's rename editor and Delete to the trash"
 
 [[run]]
 scenario = "columns-home-end-mirror"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "columns-return-selects-source-folder"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C6: the location bar's crumbs, at `click` on the `documents` breadcrumb button"
 
 [[run]]
 scenario = "focus-usable-after-view-change"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C4: the List view, at Ctrl+3 (`view_mode`). Then tabs (C7) and the Icons view (C3)"
 
 [[run]]
 scenario = "keyboard-only-copy-paste"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "platform"
+blocker = "the clipboard, at Ctrl+C and Ctrl+V: the offscreen host has none (the session host; P2 and X3 hold the pieces)"
 
 [[run]]
 scenario = "select-all-selects-every-entry"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "shift-arrow-extends-selection"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "tenxer-keeps-location-edit"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C6: the location field, at Ctrl+L (`field`). The run is 10xer mode's (C1c)"
 
 [[run]]
 scenario = "control-click-sets-shift-anchor"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "control-click-toggles"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
 
 [[run]]
 scenario = "home-end-page-move-shift-anchor"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "leftover-click-honors-modifiers"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "parent-pane-anchors-first-entry"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
 
 [[run]]
 scenario = "right-click-selects-entry"
 run = "columns-file"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "right-click-selects-entry"
 run = "columns-folder"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "shift-click-range"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "shift-click-revisits-after-folder"
 run = "columns-name"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
 
 [[run]]
 scenario = "shift-click-revisits-after-folder"
 run = "columns-row-space"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
 
 [[run]]
 scenario = "sidebar-navigation-range-anchor"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C8: the sidebar, at `click` on `sidebar` Home"
 
 [[run]]
 scenario = "enter-after-escape-opens-folder"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "escape-dismisses-transient"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C15: the properties dialog, at Alt+Return (`dialog`). Then the location field (C6), the filter (C18), V9's rename editor, the preview (C9) and a new folder"
 
 [[run]]
 scenario = "escape-only-clears-active-column"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "shift-after-escape-starts-on-focused"
 run = "columns-no-range"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "shift-after-escape-starts-on-focused"
 run = "columns-had-range"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "tenxer-escape-closes-peek"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C1c: 10xer mode (`tenxer_mode`), at Space, which there selects and moves on"
 
 [[run]]
 scenario = "tenxer-escape-filter-preview-fill"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C1c and C18: 10xer mode's `f` and the filter field (`field`). Then the preview (C9)"
 
 [[run]]
 scenario = "background-click-clears-selection"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "background-press-clears-before-drag"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "beside-last-column-clears"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "disabled-transport-click"
 run = "columns-audio"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C9 and C13: the preview drawer and its media transport (`preview`)"
 
 [[run]]
 scenario = "disabled-transport-click"
 run = "columns-video"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C9 and C13: the preview drawer and its media transport (`preview`)"
 
 [[run]]
 scenario = "empty-column-clears-other-columns"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
 
 [[run]]
 scenario = "preview-blank-click-keeps-selection"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C9 and C14: the preview drawer and the image viewer (`preview`)"
 
 [[run]]
 scenario = "hidden-files-persist-across-restart"
 run = "columns"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "multiple-arguments-non-utf8"
 run = "columns"
 gate = "G2"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "P8 and the shell: `launch` with five arguments needs a window for each, a revealed file argument and the session bus; strata-rune takes one directory"
 
 [[run]]
 scenario = "startup-with-closed-pipes"
 run = "columns-stdout"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "startup-with-closed-pipes"
 run = "columns-stderr"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "startup-with-closed-pipes"
 run = "columns-both"
 gate = "G2"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "escape-preserves-name-remaining"
