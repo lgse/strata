@@ -134,6 +134,8 @@ case "${1:-}" in
   _build)
     inside "$1"
     mkdir -p "$HOME" "$CARGO_HOME" "$shared"
+    # An empty cache takes the crates the image holds; a used one is left alone.
+    (cd /workspace && python3 scripts/dependency_seed.py) >&2
     if ! cargo test --locked --features qa,invariant-checks --test qa --no-run > "$shared/build.log" 2>&1; then
       tail -n 40 "$shared/build.log" >&2
       exit 1

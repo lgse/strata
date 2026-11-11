@@ -73,6 +73,12 @@ exec "$engine" run "${options[@]}" \
   --env "STRATA_QUALITY_COMMIT=$(git -C "$repository" rev-parse HEAD)" \
   "$image" bash -euc '
     mkdir -p "$HOME" "$CARGO_HOME"
+    # An empty cache takes the crates the image holds; a used one is left alone. Formatting
+    # needs none, and a shard runs the binaries its build task compiled.
+    case "$1:${STRATA_QUALITY_TASK:-test}" in
+      fmt:*|test:shard) ;;
+      *) python3 scripts/dependency_seed.py ;;
+    esac
     rustc --version
     case "$1" in all|fmt) cargo fmt --all --check ;; esac
     # The application without the Rune side, which builds in its own cargo runs.

@@ -71,6 +71,8 @@ exec "$engine" run "${options[@]}" "${mounts[@]}" \
   --env "STRATA_UI_STALL_MS=${STRATA_UI_STALL_MS:-}" \
   "$image" bash -euc '
     mkdir -p "$HOME" "$CARGO_HOME"
+    # An empty cache takes the crates the image holds; a used one is left alone.
+    python3 scripts/dependency_seed.py
     # The tmpfs hides the X socket directory of the image; the xvfb.log owner warning is harmless.
     mkdir -p -m 1777 /tmp/.X11-unix
     rustc --version
