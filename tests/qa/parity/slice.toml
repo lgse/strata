@@ -40,7 +40,7 @@ run = "columns-hjkl-tenxer-ru"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "C1c: 10xer mode (`tenxer_mode`), from the first `j`. Then rune: a plain-letter binding under a non-Latin layout needs a key press that carries its physical key (docs/rune/upstream/rune/97-key-press-with-physical-key.md)"
+blocker = "C1c: 10xer mode (`tenxer_mode`), from the first `j`. Then rune: a plain-letter binding under a non-Latin layout needs a key press that carries its physical key (docs/rune/upstream/rune/97-key-press-with-physical-key.md, filed as anomalyco/rune#657)"
 
 [[run]]
 scenario = "back-then-file-keys-target-focused-folder"
@@ -48,7 +48,7 @@ run = "columns"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "C8: the sidebar, at `click` on `sidebar` Home. Then V9's rename editor and Delete to the trash"
+blocker = "C8: the sidebar, at `click` on `sidebar` Home. Then Delete to the trash"
 
 [[run]]
 scenario = "columns-home-end-mirror"
@@ -188,7 +188,7 @@ run = "columns"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "C15: the properties dialog, at Alt+Return (`dialog`). Then the location field (C6), the filter (C18), V9's rename editor, the preview (C9) and a new folder"
+blocker = "C15: the properties dialog, at Alt+Return (`dialog`). Then the location field (C6), the filter (C18), the preview (C9) and a new folder"
 
 [[run]]
 scenario = "escape-only-clears-active-column"
@@ -310,262 +310,236 @@ status = "required"
 scenario = "escape-preserves-name-remaining"
 run = "columns-existing-folder"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "escape-preserves-name-remaining"
 run = "columns-new-file"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 16, the wait for the new item's editor"
 
 [[run]]
 scenario = "escape-preserves-name-remaining"
 run = "columns-new-folder"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app creates no item: Ctrl+Shift+N (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 22, the wait for the new item's editor"
 
 [[run]]
 scenario = "escape-preserves-name"
 run = "columns"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "input-method-composes-over-selection"
 run = "columns-selected-stem"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "platform"
+blocker = "An input method: fcitx5-chewing on a session bus, which the pinned image lacks. The scenario's own `skip` keeps the runner from starting it on either target. On Rune it also needs a host that takes input-method events: the offscreen host has `Runtime::ime` and no daemon to drive it"
 
 [[run]]
 scenario = "input-method-composes-over-selection"
 run = "columns-caret-at-end"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "platform"
+blocker = "An input method: fcitx5-chewing on a session bus, which the pinned image lacks. The scenario's own `skip` keeps the runner from starting it on either target. On Rune it also needs a host that takes input-method events: the offscreen host has `Runtime::ime` and no daemon to drive it"
 
 [[run]]
 scenario = "invalid-names-retain-original"
 run = "columns-enter"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "invalid-names-retain-original"
 run = "columns-click"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "long-rename-keeps-caret"
 run = "columns"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
 run = "columns-file"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C18: the filter bar, at Ctrl+F on line 4. Then New File, which strata-app does not create"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
 run = "columns-folder"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "C18: the filter bar, at Ctrl+F on line 4. Then New Folder, which strata-app does not create"
 
 [[run]]
 scenario = "new-item-first-free-number"
 run = "columns"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 15, the wait for the new item's editor"
 
 [[run]]
 scenario = "new-item-named-with-path"
 run = "columns-nested-file"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor"
 
 [[run]]
 scenario = "new-item-named-with-path"
 run = "columns-file-to-folder"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor"
 
 [[run]]
 scenario = "new-item-named-with-path"
 run = "columns-nested-folder"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app creates no item: Ctrl+Shift+N (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor"
 
 [[run]]
 scenario = "new-item-named-with-path"
 run = "columns-own-name"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor"
 
 [[run]]
 scenario = "new-item-named-with-path"
 run = "columns-refused"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor. Then the `Unable to rename item` dialog (C15)"
 
 [[run]]
 scenario = "rename-and-undo-restores"
 run = "columns-file"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 28. Every step before it passes: the rename lands, and the renamed entry is selected and focused"
 
 [[run]]
 scenario = "rename-and-undo-restores"
 run = "columns-folder"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 29. Every step before it passes: the rename lands, and the renamed entry is selected and focused"
 
 [[run]]
 scenario = "rename-commits-on-click-away"
 run = "columns"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "rename-commits-on-enter"
 run = "columns"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "rename-moves-into-path"
 run = "columns-file"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 26. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
 
 [[run]]
 scenario = "rename-moves-into-path"
 run = "columns-open-folder"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 26. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
 
 [[run]]
 scenario = "rename-moves-into-path"
 run = "columns-existing-folder"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 26. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
 
 [[run]]
 scenario = "rename-moves-into-path"
 run = "columns-parent"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 26. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
 
 [[run]]
 scenario = "rename-moves-into-path"
 run = "columns-back-into-folder"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 19. Every step before it passes: `../documents/renamed.txt` renames the item in its own folder, where it stays selected"
 
 [[run]]
 scenario = "rename-moves-into-path"
 run = "columns-file-as-folder"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "tab-renames-past-open-folder"
 run = "columns-mirrored"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "tab-renames-past-open-folder"
 run = "columns-unmirrored"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "tone-mark-escape-before-rename"
 run = "columns"
 gate = "G3"
 status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+reason = "rune"
+blocker = "Rune's window host delivers the Escape that breaks off a dead-key sequence as a key press, so it ends the rename; GTK's input method takes it and ends only the tone mark (docs/rune/upstream/rune/98-escape-after-a-dead-key.md, drafted). Stops at line 18. The layout step itself passes: AltGr+1 then `a` types ā"
 
 [[run]]
 scenario = "window-accelerators-leave-rename"
 run = "columns-f5"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "window-accelerators-leave-rename"
 run = "columns-ctrl-backslash"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
 
 [[run]]
 scenario = "window-accelerators-leave-rename"
 run = "columns-ctrl-k"
 gate = "G3"
-status = "pending"
-reason = "harness"
-blocker = "not yet attempted"
+status = "required"
