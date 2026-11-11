@@ -22,7 +22,8 @@
 #
 # The ledger's allowances are slice's alone. A run it names as flaky may fail in the whole
 # GTK suite if it then passes alone: slice prints both results, and keeps the failed run's
-# artifacts in target/qa-parity/allowance. Every allowance used is listed when slice ends.
+# artifacts in target/qa-parity/allowance. Every allowance used or refused is listed when
+# slice ends.
 set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
@@ -87,6 +88,8 @@ qa_container_mounts
 # Every allowance slice uses is noted here, and listed again when it ends.
 notes=target/qa-parity/allowances.txt
 if [[ "$selection" == slice && "$whole" == 1 ]]; then
+  # An earlier run's notes and kept bundles would read as this one's.
+  rm -rf "$repository/target/qa-parity"
   mkdir -p "$repository/target/qa-parity"
   : > "$repository/$notes"
 fi
@@ -151,9 +154,11 @@ code=0
         failed=1
       elif ((code != 0)); then
         # Only the runs the ledger names as flaky may fail here, and each must pass alone.
-        if again="$(python3 scripts/qa_parity.py slice --failed-in "$output")"; then
+        refusal="$(mktemp)"
+        if again="$(python3 scripts/qa_parity.py slice --failed-in "$output" 2> "$refusal")"; then
           for name in $again; do alone "$name" || failed=1; done
         else
+          tee -a "$notes" < "$refusal"
           failed=1
         fi
       fi
@@ -166,7 +171,7 @@ if [[ "$selection" == slice && "$whole" == 1 ]]; then
   echo "== the GTK mutation patches =="
   python3 "$repository/scripts/qa_parity_mutation.py" gtk --notes "$repository/$notes" || code=1
   if [[ -s "$repository/$notes" ]]; then
-    echo "== allowances used, from tests/qa/parity/slice.toml =="
+    echo "== allowances, from tests/qa/parity/slice.toml =="
     cat "$repository/$notes"
   else
     echo "== no allowance was used =="

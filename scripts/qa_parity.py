@@ -67,11 +67,12 @@ def report_excused(ledger: dict, log: Path) -> int:
 
     again, others = excused(ledger, log.read_text(encoding="utf-8", errors="replace"))
     if others:
-        print("Failed in the whole GTK suite, and no allowance names them: " + ", ".join(others),
-              file=sys.stderr)
+        print(f"NO ALLOWANCE: {', '.join(others)} failed in the whole GTK suite; "
+              "nothing is run again.", file=sys.stderr)
         return 1
     if not again:
-        print("The whole GTK suite failed without naming a failed test.", file=sys.stderr)
+        print("NO ALLOWANCE: the whole GTK suite failed without naming a failed test.",
+              file=sys.stderr)
         return 1
     for name in again:
         print(name)

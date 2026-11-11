@@ -150,12 +150,12 @@ class FlakyAllowanceTests(unittest.TestCase):
         status, printed, errors = self.run_command(
             SUITE_LOG.format(more="test escape-clears-selection/list ... FAILED <2.000s>"))
         self.assertEqual((status, printed), (1, ""))
-        self.assertIn("escape-clears-selection/list", errors)
-        self.assertNotIn("new-folder/columns", errors)
+        self.assertEqual(errors, "NO ALLOWANCE: escape-clears-selection/list failed in the whole "
+                                 "GTK suite; nothing is run again.\n")
         # A suite that failed without a failed test, such as a build error, is not excused.
         status, printed, errors = self.run_command("error: could not compile `strata`\n")
         self.assertEqual((status, printed), (1, ""))
-        self.assertIn("without naming a failed test", errors)
+        self.assertIn("NO ALLOWANCE: the whole GTK suite failed without naming a failed test", errors)
 
 
 class StalePatchTests(unittest.TestCase):
