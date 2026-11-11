@@ -44,16 +44,24 @@
 //!   Strata's whole strip is one Tab stop. Only the active column shows its cursor.
 //! - **Left and Right** (and `h`, `l` through C1c's aliases) reach the column's edge, which C1c
 //!   reports: Right goes into the open child column (its cursor on its first entry if it has
-//!   none), else asks the host to open the folder under the cursor
+//!   none), unless the cursor is on a folder other than the one that column shows: the host is
+//!   asked to open that folder in its place, as it is for a folder with no column open
 //!   ([`ColumnsIntent::EnterFolder`]); Left goes to the parent (its cursor on the folder it has
-//!   open if it has none, once listed if it is loading), and past the root to the host. Escape
+//!   open if it has none, once listed if it is loading), and past the root to the host. A key
+//!   that moves the keyboard to a column that is open tells the host
+//!   ([`ColumnsIntent::Active`]). Escape
 //!   that C1c doesn't take (nothing selected) closes the deepest column, unless the host says
 //!   not to (10xer, [`ColumnsView::escape_closes`]). Ctrl+A, the page keys, Home, End and
-//!   type-ahead act in the active column only, as C1c does in any collection.
+//!   type-ahead act in the active column only, as C1c does in any collection, with two rules
+//!   the view turns on over the host's key settings because they are Columns' own in Strata:
+//!   a Select key that cannot move the cursor selects its entry alone and is reported as the
+//!   cursor, and Ctrl+A takes the cursor to the last entry (C1c's
+//!   `KeySettings::reselects_in_place` and `select_all_to_last`).
 //! - **Presses.** A press targets its column (its header shows the actions) and makes it active,
 //!   without a reveal; it cancels a slow-click rename pending in another column. The second press
 //!   of a click that opened a column leaves that column active (a double click on a closed
-//!   folder). Activating the folder whose column is open goes to that column. A plain click on a
+//!   folder). Activating the folder whose column is open goes to that column: a click gives it
+//!   the keyboard and no cursor, and Return goes in as Right does. A plain click on a
 //!   column's empty space closes the deeper columns and, in an inactive column, selects its first
 //!   visible entry, or in the active one clears every column; a click on the blank strip clears
 //!   every column. A click on a header (its title or blank space) focuses the column and keeps
@@ -117,6 +125,17 @@
 //!   go on to the active column (closing a column takes its button with it). Strata's header
 //!   buttons take no focus on a click either, but are reachable by Tab; here the header's
 //!   actions are reached by pointer, the folder menu and the shortcuts.
+//! - **Six keys follow Strata's GTK view** (C2d, the vertical slice's decision 17, an owner
+//!   ruling; `docs/rune/slice/V8-read-path-parity.md` has what the GTK code does for each):
+//!   Return on the folder whose column is open, an arrow at the list's end, a key that leaves
+//!   the cursor in place, Ctrl+A's cursor, a key that only changes the active column, and
+//!   Right when the open column is another folder's. Two things of the GTK view are left
+//!   out. Up on the first entry goes to the pane header's actions there when "Keep arrows in
+//!   file list" is off and an action takes the focus, and only otherwise selects the entry
+//!   again; here the header's actions take no focus (above), so Up always selects it again,
+//!   and still reports its edge. And GTK's selection model reports the entry before the last
+//!   as the cursor when Ctrl+A is pressed with only the last entry selected; here the cursor
+//!   is the last entry.
 //! - **Reveals and the drag autoscroll glide** on Rune springs (C1d's and C24's glide lead),
 //!   rather than stepping the adjustment each frame as Strata does; the speeds are Strata's. The
 //!   reveal's spring stands in for Strata's 220 ms emphasized deceleration, and the lifecycle's
@@ -307,6 +326,14 @@
 //! every `c2-*` accessibility golden), and a host's description of an entry in place of the
 //! badge's words (page (c2b) `a_hosts_description_stands_in_for_the_badges_words`, goldens
 //! `c2-kinds-*`).
+//!
+//! The six keys of C2d are checked in process, on this page and in the machine: page (c2d)
+//! `return_on_the_folder_whose_column_is_open…`, `an_arrow_at_the_lists_end…`,
+//! `a_key_that_leaves_the_cursor_in_place…`, `ctrl_a_takes_the_cursor_to_the_last_entry…`,
+//! `left_and_right_between_open_columns…` and `right_opens_the_cursors_folder…`; unit (C1c)
+//! `a_select_key_that_cannot_move_the_cursor…`, `ctrl_a_takes_the_cursor_to_the_last_entry…`;
+//! scripts `ctrl-a-active-column` and `left-right-active`, whose goldens show the cursor's row
+//! and what the host heard.
 //!
 //! From other nodes, which C1c and C1d left to the views: `browser/selection`'s Ctrl+A in the
 //! focused column (`ctrl-a-active-column`), returning keeps a multi-selection

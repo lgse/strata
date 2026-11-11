@@ -16,7 +16,9 @@ use super::keys;
 use super::pointer::BackgroundClick;
 use super::sources::ColumnSources;
 use super::state::ColumnsState;
-use crate::collection::element::{Collection, Intent, PointerInput, RowMarks, viewport_path};
+use crate::collection::element::{
+    Activation, Collection, Intent, PointerInput, RowMarks, viewport_path,
+};
 use crate::collection::keyboard::{KeySettings, Rested};
 use crate::collection::pointer::PointerSettings;
 use crate::contract::{
@@ -554,10 +556,7 @@ fn column_intent<S: 'static>(
     match intent {
         Intent::Edge(Direction::Right) => enter_right(sh, s, depth, tx),
         Intent::Edge(Direction::Left) => go_left(sh, s, depth, tx),
-        Intent::Activate { id, .. } if reopens(sh, s, depth, id) => {
-            let p = (sh.parts_mut)(s);
-            p.state.set_active(depth + 1, p.look, tx);
-        }
+        Intent::Activate { id, how } if reopens(sh, s, depth, id) => reopen(sh, s, depth, how, tx),
         Intent::Other(any) if any.downcast_ref::<Rested>().is_some() => {
             let p = (sh.parts)(s);
             let id = p.state.columns[depth].collection.selection.cursor();
@@ -589,23 +588,47 @@ fn reopens<S>(sh: &Shared<S>, s: &S, depth: usize, id: EntryId) -> bool {
     p.sources.open_child(depth) == Some(id) && depth + 1 < p.state.columns.len()
 }
 
-/// Right at the column's edge: into the open child column (its cursor on its first entry if it
-/// has none), else open the folder under the cursor.
-fn enter_right<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut Tx) {
-    let p = (sh.parts_mut)(s);
-    if depth + 1 < p.state.columns.len() && depth + 1 < p.sources.len() {
-        let child = depth + 1;
-        let listing = if p.sources.loading(child) {
-            crate::collection::selection::Listing::Loading
-        } else {
-            crate::collection::selection::Listing::Complete
-        };
-        p.state.set_active_quiet(child);
-        p.state
-            .place_first(child, p.sources.source(child), listing, tx);
-        p.state.reveal(p.look, tx);
+/// Activating the folder whose column is open goes to that column. A key does it as Right
+/// does (Strata's `activate_focused` ends in `focus_child`): the cursor goes on the column's
+/// first entry if it has none. A click gives the column the keyboard and no cursor
+/// (`Browser::activate`: "reopening lands where opening did").
+fn reopen<S: 'static>(
+    sh: &Rc<Shared<S>>,
+    s: &mut S,
+    depth: usize,
+    how: Activation,
+    tx: &mut Tx,
+) {
+    if how == Activation::Key {
+        enter_child(sh, s, depth + 1, tx);
         return;
     }
+    let p = (sh.parts_mut)(s);
+    p.state.set_active(depth + 1, p.look, tx);
+}
+
+/// The keyboard goes into the open column `child`: its cursor on its first entry if it has
+/// none, or once it has one. The host hears the column is active.
+fn enter_child<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, child: usize, tx: &mut Tx) {
+    let p = (sh.parts_mut)(s);
+    let listing = if p.sources.loading(child) {
+        crate::collection::selection::Listing::Loading
+    } else {
+        crate::collection::selection::Listing::Complete
+    };
+    p.state.set_active_quiet(child);
+    p.state
+        .place_first(child, p.sources.source(child), listing, tx);
+    p.state.reveal(p.look, tx);
+    sh.emit(s, ColumnsIntent::Active { depth: child }, tx);
+}
+
+/// Right at the column's edge. The open child column is entered, unless the cursor is on
+/// another folder than the one it shows: that folder opens in its place, as does a folder
+/// with no column open (Strata's `enter_focused_directory`: `focus_child` for the open child
+/// and for a file, a descent for any other folder).
+fn enter_right<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut Tx) {
+    let p = (sh.parts)(s);
     let source = p.sources.source(depth);
     let folder = p.state.columns[depth]
         .collection
@@ -613,7 +636,11 @@ fn enter_right<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut
         .cursor_index(source)
         .filter(|&i| source.entry(i).kind.is_folder_like())
         .map(|i| source.id_at(i));
-    if let Some(id) = folder {
+    let child_open = depth + 1 < p.state.columns.len() && depth + 1 < p.sources.len();
+    let shown = p.sources.open_child(depth);
+    if child_open && folder.is_none_or(|id| shown == Some(id)) {
+        enter_child(sh, s, depth + 1, tx);
+    } else if let Some(id) = folder {
         sh.emit(s, ColumnsIntent::EnterFolder { depth, id }, tx);
     }
 }
@@ -630,6 +657,7 @@ fn go_left<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut Tx)
     p.state.set_active_quiet(parent);
     p.state.place_open(parent, p.sources, tx);
     p.state.reveal(p.look, tx);
+    sh.emit(s, ColumnsIntent::Active { depth: parent }, tx);
 }
 
 /// A plain click on column `depth`'s empty space: in a column that wasn't active, the deeper

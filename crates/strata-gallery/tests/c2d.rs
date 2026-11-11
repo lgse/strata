@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! C2d on C2's page: the key behaviours where the Columns view now does what Strata's
+//! C2d on C2's page: the six key behaviours where the Columns view now does what Strata's
 //! GTK view does (slice decision 17, `docs/rune/slice/V8-read-path-parity.md`). Each test
 //! names the GTK code it follows, where a script can't see the result: the cursor, the
 //! anchor and what the view tells its host.
@@ -94,6 +94,37 @@ mod c2d {
         id_in(parent, name).get()
     }
 
+    fn path(rt: &Runtime<Gallery>) -> String {
+        let names = rt.state.c2.listings.0.iter().map(|c| c.name.as_str());
+        names.collect::<Vec<_>>().join("/")
+    }
+
+    #[test]
+    fn return_on_the_folder_whose_column_is_open_enters_it_on_its_first_entry() {
+        // browser/view-modes/columns. `Browser::activate_focused` ends in `focus_child`
+        // (`crates/strata-fs/src/app/browser/activation.rs`): the open column takes the
+        // keyboard with the cursor on its first entry when it has none.
+        let mut rt = three_columns();
+        focus_column(&mut rt, 1);
+        assert_eq!(cursor(&rt, 1), Some(id("Documents", "Reports")));
+        assert_eq!(cursor(&rt, 2), None);
+
+        key(&mut rt, Key::Enter);
+
+        assert_eq!(rt.state.c2.columns.active(), 2);
+        let first = id("Reports", "report-q0001.pdf");
+        assert_eq!((cursor(&rt, 2), selected(&rt, 2)), (Some(first), vec![first]));
+        assert_eq!(rt.state.c2.intent, "Keyboard in column 2");
+        assert_eq!(path(&rt), "Home/Documents/Reports", "nothing opened or closed");
+        // The column keeps a cursor it already has.
+        key(&mut rt, Key::Down);
+        let second = cursor(&rt, 2);
+        key(&mut rt, Key::Left);
+        assert_eq!(rt.state.c2.intent, "Keyboard in column 1");
+        key(&mut rt, Key::Enter);
+        assert_eq!((rt.state.c2.columns.active(), cursor(&rt, 2)), (2, second));
+    }
+
     #[test]
     fn an_arrow_at_the_lists_end_selects_the_cursors_entry_alone() {
         // browser/selection. `Browser::move_selection` re-places the cursor whether or not
@@ -167,4 +198,57 @@ mod c2d {
         assert_eq!(ranged.len(), 11, "{ranged:?}");
         assert!(ranged.contains(&anchor) && !ranged.contains(&id("Home", "Documents")));
         assert_eq!(cursor(&rt, 0), Some(id("Home", "budget.ods")));
-    }}
+    }
+
+    #[test]
+    fn left_and_right_between_open_columns_tell_the_host_which_column_has_the_keyboard() {
+        // browser/view-modes/columns. `Browser::focus_parent` and `focus_child` raise
+        // `FocusChanged` for the column the keyboard lands in, so the GTK views mirror its
+        // cursor; the view has to say so, since no cursor moved in the column it left.
+        let mut rt = three_columns();
+        focus_column(&mut rt, 1);
+
+        key(&mut rt, Key::Left);
+
+        assert_eq!(rt.state.c2.columns.active(), 0);
+        assert_eq!(rt.state.c2.intent, "Keyboard in column 0");
+
+        key(&mut rt, Key::Right);
+
+        assert_eq!(rt.state.c2.columns.active(), 1);
+        assert_eq!(rt.state.c2.intent, "Keyboard in column 1");
+        assert_eq!(path(&rt), "Home/Documents/Reports");
+        // A press that makes a column active is the pointer's, and is not reported.
+        focus_column(&mut rt, 0);
+        assert_eq!(rt.state.c2.intent, "Keyboard in column 1");
+    }
+
+    #[test]
+    fn right_opens_the_cursors_folder_when_the_open_column_is_another_folders() {
+        // browser/view-modes/columns. `Browser::enter_focused_directory`
+        // (`crates/strata-fs/src/app/browser/activation.rs`): a folder that is not the open
+        // child is descended into, in the open column's place; a file enters the column
+        // that is open.
+        let mut rt = three_columns();
+        focus_column(&mut rt, 0);
+        // The cursor leaves Documents for Pictures; this page mirrors nothing, so
+        // Documents' column stays open.
+        key(&mut rt, Key::Down);
+        assert_eq!(cursor(&rt, 0), Some(id("Home", "Pictures")));
+        assert_eq!(path(&rt), "Home/Documents/Reports");
+
+        key(&mut rt, Key::Right);
+
+        assert_eq!(rt.state.c2.intent, "Entered Pictures");
+        assert_eq!(path(&rt), "Home/Pictures");
+
+        // On a file, Right goes into whatever column is open.
+        key(&mut rt, Key::Left);
+        key(&mut rt, Key::End);
+        assert_eq!(cursor(&rt, 0), Some(id("Home", "report-final.pdf")));
+        key(&mut rt, Key::Right);
+        assert_eq!(rt.state.c2.columns.active(), 1);
+        assert_eq!(rt.state.c2.intent, "Keyboard in column 1");
+        assert_eq!(path(&rt), "Home/Pictures");
+    }
+}

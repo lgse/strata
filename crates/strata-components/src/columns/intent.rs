@@ -19,8 +19,8 @@ pub enum ColumnsIntent {
     /// An intent of column `depth`'s collection: open, a click (previews follow it), open in a
     /// new tab, a file drag, a rename, a context menu, an edge going up or down, anything else.
     /// Not sent: Left and Right edges (the view moves between columns) and the activation of
-    /// the folder whose column is already open (the view focuses and reveals that column,
-    /// `browser/view-modes/columns`).
+    /// the folder whose column is already open (the view goes to that column and says so with
+    /// [`ColumnsIntent::Active`] when a key did it, `browser/view-modes/columns`).
     Collection {
         /// The column.
         depth: usize,
@@ -51,6 +51,14 @@ pub enum ColumnsIntent {
         depth: usize,
         /// The folder.
         id: EntryId,
+    },
+    /// A key made column `depth` the active one and changed nothing else the host hears of:
+    /// Left into the parent column, Right or Return into a column that is already open. The
+    /// column's cursor is where the keyboard is now, so the host mirrors it as it does after
+    /// [`ColumnsIntent::Cursor`]. A press that makes a column active is not reported.
+    Active {
+        /// The column that now holds the keyboard cursor.
+        depth: usize,
     },
     /// Left (or `h`) in the root column: the host moves on (the sidebar, the parent folder).
     LeftOfRoot,

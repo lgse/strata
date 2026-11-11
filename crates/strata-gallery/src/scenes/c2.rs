@@ -508,6 +508,7 @@ fn heard(g: &mut Gallery, intent: ColumnsIntent, tx: &mut Tx) {
             d.open(&look, depth, id, Focus::FirstEntry, tx);
             format!("Entered {name}")
         }
+        ColumnsIntent::Active { depth } => format!("Keyboard in column {depth}"),
         ColumnsIntent::LeftOfRoot => "Left of the root".to_owned(),
         ColumnsIntent::CloseFrom(depth) => {
             d.close_from(&look, depth, tx);
