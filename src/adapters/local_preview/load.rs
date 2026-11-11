@@ -197,7 +197,7 @@ impl PreviewLoad {
                 }));
                 if let Some((path, mtime, png)) = thumbnail {
                     let _ = gio::spawn_blocking(move || {
-                        crate::ui::thumbnail_cache::store(&path, mtime, &png);
+                        crate::adapters::thumbnail_cache::store(&path, mtime, &png);
                     })
                     .await;
                 }

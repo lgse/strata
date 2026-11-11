@@ -76,7 +76,7 @@ fn unique_source(label: &str) -> PathBuf {
 
 fn solid_png(width: i32, height: i32) -> Vec<u8> {
     let pixbuf =
-        gtk::gdk_pixbuf::Pixbuf::new(gtk::gdk_pixbuf::Colorspace::Rgb, false, 8, width, height)
+        gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, width, height)
             .expect("a solid test pixbuf should allocate");
     pixbuf.fill(0x80402000);
     pixbuf

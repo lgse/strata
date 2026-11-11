@@ -11,6 +11,7 @@ mod local_files;
 mod local_jobs;
 mod local_operations;
 mod local_preview;
+pub(crate) mod thumbnail_cache;
 pub(crate) mod trash;
 pub(crate) mod trash_restore;
 pub(crate) mod trash_support;

@@ -70,9 +70,9 @@ fn store_shared_thumbnail(path: &Path) -> Vec<u8> {
         cairo::ImageSurface::create(cairo::Format::ARgb32, 640, 800).expect("page surface");
     let mut png = Vec::new();
     surface.write_to_png(&mut png).expect("page PNG");
-    crate::ui::thumbnail_cache::store(path, 1, &png);
+    crate::adapters::thumbnail_cache::store(path, 1, &png);
     let thumbnail =
-        crate::ui::thumbnail_cache::lookup(path, 1).expect("shared thumbnail is available");
+        crate::adapters::thumbnail_cache::lookup(path, 1).expect("shared thumbnail is available");
     assert_ne!(thumbnail, png);
     png
 }

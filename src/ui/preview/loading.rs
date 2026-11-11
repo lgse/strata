@@ -158,7 +158,7 @@ impl PreviewState {
             Some(&entry.location.display_path()),
         );
         self.size.set_text(&metadata_size(entry));
-        crate::util::set_modified_date(&self.modified, Some(entry), "—");
+        crate::ui::modified_date::set_modified_date(&self.modified, Some(entry), "—");
         if self.model.borrow().is_none() {
             self.content_type.set_text(file_extension(entry));
         }

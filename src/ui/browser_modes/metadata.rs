@@ -163,7 +163,7 @@ fn update_list_row(item: &gtk::ListItem, row: &gtk::Box, entry: &FileEntry) {
     }
     mode.set_label(&entry_mode(entry));
     size.set_label(&entry_size(entry));
-    crate::util::set_modified_date(&modified, Some(entry), "—");
+    crate::ui::modified_date::set_modified_date(&modified, Some(entry), "—");
 }
 
 fn update_icons_card(item: &gtk::ListItem, card: &gtk::Box, entry: &FileEntry) {
