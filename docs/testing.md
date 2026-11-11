@@ -55,6 +55,12 @@ These select test execution across targets, not compilation to one target.
 Targeted runs can still incur a full test build; Cargo's cache helps subsequent
 iterations. There is no automatic changed-code dependency-to-test mapping.
 
+The unit tests need the `test-support` feature, which `--all-features` turns on. It
+compiles the test hooks and test-only helpers of the workspace crates under `crates/`,
+because a crate's `#[cfg(test)]` code is invisible to another crate's tests. A plain
+`cargo test` stops with an error that says so. The QA runner builds without the
+feature, so the application the scenarios drive carries no test hooks.
+
 Controller regressions live under `src/app/browser/tests/`, grouped by navigation,
 location input, selection, monitor updates, preferences, operations, undo, metadata,
 staging, event dispatch, and archive activation. Add cases to the matching owner

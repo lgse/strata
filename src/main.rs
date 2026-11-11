@@ -7,6 +7,9 @@ rust_i18n::i18n!(
     backend = crate::i18n::Catalogs::compiled()
 );
 
+#[cfg(all(test, not(feature = "test-support")))]
+compile_error!("the unit tests need the test-support feature: pass --all-features");
+
 mod adapters;
 mod app;
 mod assets;

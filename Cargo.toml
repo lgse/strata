@@ -81,6 +81,10 @@ qa = [
 ]
 # Exact but slow consistency checks; tests and QA builds turn them on.
 invariant-checks = []
+# Test hooks and test-only items of the workspace crates. The unit tests need it. It is a
+# feature rather than a dev-dependency so that the binary the QA scenarios drive, which
+# `cargo test --test qa` builds without it, carries no test hooks.
+test-support = ["strata-core/test-support", "strata-preview/test-support"]
 
 [dependencies]
 strata-core.workspace = true
@@ -138,10 +142,6 @@ wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = 
 xkbcommon = { version = "0.9.0", default-features = false, optional = true }
 
 [dev-dependencies]
-# Test-only items of the workspace crates. The feature only adds helpers; it never changes
-# what the application does, because builds that run tests link it into the binary too.
-strata-core = { workspace = true, features = ["test-support"] }
-strata-preview = { workspace = true, features = ["test-support"] }
 strata-test-support.workspace = true
 rustls = { version = "0.23.46", default-features = false, features = ["std", "ring", "tls12"] }
 
