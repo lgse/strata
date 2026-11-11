@@ -2,10 +2,11 @@
 
 //! The keyboard the QA mode types on: which modifiers are down, and the layout.
 
-use rune::{KeyEvent, Mods};
+use rune::{Key, KeyEvent, Mods};
 use strata_qa::{Keymap, Modifier};
 
 use super::{
+    compose::{Compose, Composed},
     keymap::{self, Layout},
     keys::{self, Named},
 };
@@ -16,6 +17,8 @@ pub(super) struct Keyboard {
     held: Vec<Modifier>,
     /// `None` on the US layout the application starts with.
     layout: Option<Layout>,
+    /// The dead-key sequence in progress under a layout that has dead keys.
+    compose: Option<Compose>,
 }
 
 impl Keyboard {
@@ -25,6 +28,8 @@ impl Keyboard {
         } else {
             Some(Layout::compile(keymap)?)
         };
+        // A new layout starts no sequence where the last one left off.
+        self.compose = self.layout.as_ref().and_then(|_| Compose::of_session());
         Ok(())
     }
 
@@ -74,11 +79,46 @@ impl Keyboard {
         Ok(keys::event(key, us, mods))
     }
 
-    /// The press that types `character`. A character no US key types is sent as it is, where
-    /// the GTK harness lends it a keycode.
-    pub(super) fn typed(&self, character: char) -> KeyEvent {
-        self.press(&character.to_string(), &[])
-            .unwrap_or_else(|_| keys::event(Named::Character(character), None, self.mods()))
+    /// What the key's press does to a dead-key sequence, under a layout that has one.
+    fn compose(&mut self, name: &str, with: &[Modifier]) -> Composed {
+        let (Some(layout), Some(compose)) = (&self.layout, &mut self.compose) else {
+            return Composed::Passed;
+        };
+        let holds = |modifier| self.held.contains(&modifier) || with.contains(&modifier);
+        let altgr = holds(Modifier::AltGr) && layout.has_altgr();
+        let keysym = layout.keysym(name, holds(Modifier::Shift), altgr);
+        keysym.map_or(Composed::Passed, |keysym| compose.feed(keysym))
+    }
+
+    /// What a window hears when the key a scenario names goes down: [`Keyboard::press`]
+    /// after dead keys are composed. `None` for a dead key, and for a character that breaks
+    /// a sequence off: winit delivers neither. A named key that breaks one off is delivered.
+    pub(super) fn strike(
+        &mut self,
+        name: &str,
+        with: &[Modifier],
+    ) -> Result<Option<KeyEvent>, String> {
+        match self.compose(name, with) {
+            Composed::Pending => Ok(None),
+            Composed::Text(text) => Ok(Some(KeyEvent {
+                key: Key::Text(text),
+                mods: self.mods(),
+            })),
+            Composed::Cancelled => {
+                let pressed = self.press(name, with)?;
+                let types = matches!(pressed.key, Key::Text(_) | Key::Command(_));
+                Ok((!types).then_some(pressed))
+            }
+            Composed::Passed => self.press(name, with).map(Some),
+        }
+    }
+
+    /// The press that types `character`, if a window hears one. A character no US key types
+    /// is sent as it is, where the GTK harness lends it a keycode.
+    pub(super) fn typed(&mut self, character: char) -> Option<KeyEvent> {
+        let unlisted = keys::event(Named::Character(character), None, self.mods());
+        self.strike(&character.to_string(), &[])
+            .unwrap_or(Some(unlisted))
     }
 }
 

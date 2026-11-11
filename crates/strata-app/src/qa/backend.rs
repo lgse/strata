@@ -111,13 +111,16 @@ impl Rune {
         runtime.physical_input(PhysicalInput::Modifiers(mods));
     }
 
-    /// A key going down and up with its modifiers held around it, then a settle.
-    fn tap(&self, name: &str, event: KeyEvent) {
+    /// A key going down and up with its modifiers held around it, then a settle. With no
+    /// `event` the key is one a window hears nothing of, a dead key: only the log has it.
+    fn tap(&self, name: &str, event: Option<KeyEvent>) {
         let stage = &mut *self.stage.borrow_mut();
-        let runtime = stage.host().runtime();
-        runtime.physical_input(PhysicalInput::Modifiers(event.mods));
-        runtime.key(event.clone());
-        runtime.key_up(event);
+        if let Some(event) = event {
+            let runtime = stage.host().runtime();
+            runtime.physical_input(PhysicalInput::Modifiers(event.mods));
+            runtime.key(event.clone());
+            runtime.key_up(event);
+        }
         self.log.key(name, true);
         self.log.key(name, false);
         self.show_modifiers(stage);
@@ -346,7 +349,10 @@ impl Backend for Rune {
     }
 
     async fn chord(&self, _window: &Node, chord: &Chord) -> Result<(), String> {
-        let event = self.keyboard.borrow().press(&chord.key, &chord.modifiers)?;
+        let event = self
+            .keyboard
+            .borrow_mut()
+            .strike(&chord.key, &chord.modifiers)?;
         for modifier in &chord.modifiers {
             self.log.key(modifier_name(*modifier), true);
         }
@@ -358,7 +364,7 @@ impl Backend for Rune {
     }
 
     async fn text_input(&self, _window: &Node, character: char) -> Result<(), String> {
-        let event = self.keyboard.borrow().typed(character);
+        let event = self.keyboard.borrow_mut().typed(character);
         self.tap(&character.to_string(), event);
         Ok(())
     }
@@ -389,8 +395,15 @@ impl Backend for Rune {
             self.show_modifiers(stage);
             return Ok(());
         }
-        let event = self.keyboard.borrow().press(name, &[])?;
+        // A release composes nothing, and a dead key's is a release a window hears nothing of.
+        let event = match pressed {
+            true => self.keyboard.borrow_mut().strike(name, &[])?,
+            false => self.keyboard.borrow().press(name, &[]).ok(),
+        };
         self.log.key(name, pressed);
+        let Some(event) = event else {
+            return Ok(());
+        };
         let runtime = stage.host().runtime();
         if pressed {
             runtime.physical_input(PhysicalInput::Modifiers(event.mods));

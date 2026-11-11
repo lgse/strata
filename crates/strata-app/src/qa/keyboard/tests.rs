@@ -67,9 +67,11 @@ fn a_layout_changes_what_a_key_name_types_and_the_us_layout_restores_it() {
         keyboard.press("Return", &[]).expect("a key").key,
         Key::Enter
     );
-    assert_eq!(keyboard.typed('j').key, Key::Text("о".to_owned()));
+    let typed =
+        |keyboard: &mut Keyboard, character| keyboard.typed(character).map(|key| key.key.clone());
+    assert_eq!(typed(&mut keyboard, 'j'), Some(Key::Text("о".to_owned())));
     // A character no US key types is typed as it is.
-    assert_eq!(keyboard.typed('é').key, Key::Text("é".to_owned()));
+    assert_eq!(typed(&mut keyboard, 'é'), Some(Key::Text("é".to_owned())));
 
     keyboard.set_layout(&us()).expect("the layout");
     let typed = keyboard.press("j", &[]).expect("a key");
@@ -87,4 +89,36 @@ fn a_layout_that_does_not_compile_leaves_the_keyboard_as_it_was() {
     assert!(keyboard.set_layout(&unknown).is_err());
     let typed = keyboard.press("j", &[]).expect("a key");
     assert_eq!(typed.key, Key::Text("о".to_owned()));
+}
+
+/// `inline_renaming/tone-mark-escape-before-rename`, under the manifest's `cn-altgr-pinyin`:
+/// AltGr+1 is the macron dead key, and AltGr+3 the caron's.
+#[test]
+fn a_dead_key_types_nothing_until_a_letter_completes_it_and_escape_after_one_is_still_escape() {
+    let mut keyboard = Keyboard::default();
+    let pinyin = Keymap {
+        layouts: "cn".to_owned(),
+        variants: "altgr-pinyin".to_owned(),
+        ..us()
+    };
+    keyboard.set_layout(&pinyin).expect("the layout");
+    let mut heard = |name: &str, with: &[Modifier]| {
+        let struck = keyboard.strike(name, with).expect("a key of the layout");
+        struck.map(|event| event.key.clone())
+    };
+    let text = |text: &str| Some(Key::Text(text.to_owned()));
+
+    assert_eq!(heard("m", &[]), text("m"));
+    assert_eq!(heard("1", &[Modifier::AltGr]), None, "the dead key alone");
+    assert_eq!(heard("a", &[]), text("ā"));
+    // A window hears the Escape that breaks a sequence off: winit delivers every named key.
+    assert_eq!(heard("3", &[Modifier::AltGr]), None);
+    assert_eq!(heard("Escape", &[]), Some(Key::Escape));
+    assert_eq!(heard("o", &[]), text("o"), "the sequence is over");
+    // A letter no sequence has after the dead key is dropped with it.
+    assert_eq!(heard("3", &[Modifier::AltGr]), None);
+    assert_eq!(heard("m", &[]), None);
+    assert_eq!(heard("m", &[]), text("m"));
+    // Without AltGr the keys type their digits.
+    assert_eq!(heard("1", &[]), text("1"));
 }
