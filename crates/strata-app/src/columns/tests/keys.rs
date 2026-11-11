@@ -5,6 +5,7 @@
 //! waits for. After every step the browser must hold what the view shows.
 
 use super::{Seen, assert_browser_agrees, fixture, folder_name, hosted, open, press, wait};
+use crate::host::offscreen::Offscreen;
 
 /// What a scenario waits for after a key. `None` is not checked.
 #[derive(Clone, Copy, Default)]
@@ -217,25 +218,62 @@ const SEQUENCES: &[(&str, &[Step])] = &[
     ),
 ];
 
+/// Behaviours of slice decision 17: what the GTK view does, which the Columns component now
+/// does too, with the browser holding the result.
+const AS_THE_GTK_VIEW: &[(&str, &[Step])] = &[
+    (
+        "an arrow at the list's end selects the cursor's entry alone",
+        &[
+            ("shift+End", selected(ALL).on("todo.txt")),
+            ("Down", selected(&["todo.txt"]).on("todo.txt")),
+            ("shift+Home", selected(ALL).on("archive")),
+            ("Up", selected(&["archive"]).on("archive")),
+        ],
+    ),
+    (
+        "a key that leaves the cursor where it is mirrors its folder",
+        &[("Home", focused("archive").panes(&["$root", "archive"]))],
+    ),
+    (
+        "Ctrl+A takes the cursor to the last entry",
+        &[
+            ("Down", focused("documents")),
+            ("ctrl+a", selected(ALL).on("todo.txt")),
+            ("Up", selected(&["readme.md"]).on("readme.md")),
+        ],
+    ),
+];
+
+/// Runs each sequence from a fresh launch of the fixture, `archive` focused and selected.
+fn run(host: &mut Offscreen, sequences: &[(&str, &[Step])]) {
+    for (scenario, steps) in sequences {
+        let folder = fixture();
+        let root = folder_name(folder.path());
+        let launched = open(host, folder.path());
+        assert_eq!(launched.focused.as_deref(), Some("archive"), "{scenario}");
+        for (step, (key, expect)) in steps.iter().enumerate() {
+            let after = format!("{scenario}, step {} ({key})", step + 1);
+
+            press(host, key);
+
+            wait(host, &after, |seen| expect.met(seen, &root));
+            assert_browser_agrees(host, &after);
+        }
+    }
+}
+
 #[test]
 fn keys_move_as_the_g2_scenarios_expect_and_the_browser_holds_the_result() {
     hosted(
         "keys::keys_move_as_the_g2_scenarios_expect_and_the_browser_holds_the_result",
-        |mut host| {
-            for (scenario, steps) in SEQUENCES {
-                let folder = fixture();
-                let root = folder_name(folder.path());
-                let launched = open(&mut host, folder.path());
-                assert_eq!(launched.focused.as_deref(), Some("archive"), "{scenario}");
-                for (step, (key, expect)) in steps.iter().enumerate() {
-                    let after = format!("{scenario}, step {} ({key})", step + 1);
+        |mut host| run(&mut host, SEQUENCES),
+    );
+}
 
-                    press(&mut host, key);
-
-                    wait(&mut host, &after, |seen| expect.met(seen, &root));
-                    assert_browser_agrees(&host, &after);
-                }
-            }
-        },
+#[test]
+fn keys_do_what_the_gtk_view_does_where_the_component_differed() {
+    hosted(
+        "keys::keys_do_what_the_gtk_view_does_where_the_component_differed",
+        |mut host| run(&mut host, AS_THE_GTK_VIEW),
     );
 }

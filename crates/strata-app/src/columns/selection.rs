@@ -31,6 +31,11 @@ pub(crate) enum Input {
     Keys {
         /// Shift was held: the key grew or shrank a range.
         extending: bool,
+        /// The view reported the cursor for this key, which it also does when the key left
+        /// the cursor where it was (Home on the first entry, an arrow at the list's end). The
+        /// browser raises `FocusChanged` again for such a key, so the child column follows
+        /// the cursor whether it moved or not.
+        rested: bool,
     },
     Pointer,
 }
@@ -153,7 +158,8 @@ impl Columns {
         }
         let focused = self.focused();
         let before = std::mem::replace(&mut self.followed, focused);
-        let Some((depth, id)) = focused.filter(|_| focused != before) else {
+        let again = matches!(input, Some(Input::Keys { rested: true, .. }));
+        let Some((depth, id)) = focused.filter(|_| again || focused != before) else {
             return;
         };
         // Shift says a range moved. Without it (a key fed in with no modifier held), a range
@@ -164,7 +170,14 @@ impl Columns {
                 .state
                 .column(depth)
                 .is_some_and(|column| column.collection.selection.anchor() != Some(id));
-        let ranging = matches!(input, Some(Input::Keys { extending: true })) || anchored_behind;
+        let extending = matches!(
+            input,
+            Some(Input::Keys {
+                extending: true,
+                ..
+            })
+        );
+        let ranging = extending || anchored_behind;
         if let Some(position) = self.position(depth, id).filter(|_| !ranging) {
             self.mirror.follow(browser, depth, position, false);
         }

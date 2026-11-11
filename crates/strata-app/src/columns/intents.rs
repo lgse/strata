@@ -70,7 +70,8 @@ impl App {
             // V9 opens the editor here.
             Intent::BeginRename { .. } => tracing::debug!(depth, "the view asked for a rename"),
             // Context menus, drags and new tabs are interface the slice leaves out. Up and
-            // Down at a column's edge have nowhere to go without a header to focus.
+            // Down at a column's edge have nowhere to go without a header to focus: the view
+            // has selected the cursor's entry alone again, as the browser does there.
             _ => {}
         }
     }
@@ -82,6 +83,7 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
     let input = match tx.by_keys() {
         true => Input::Keys {
             extending: tx.mods().shift,
+            rested: matches!(intent, ColumnsIntent::Cursor { .. }),
         },
         false => Input::Pointer,
     };
