@@ -54,7 +54,7 @@ pub(crate) fn location(argument: Option<&OsStr>) -> Option<Location> {
     }
 }
 
-fn home_directory() -> PathBuf {
+pub(crate) fn home_directory() -> PathBuf {
     env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))

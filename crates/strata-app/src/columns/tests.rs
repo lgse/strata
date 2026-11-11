@@ -15,6 +15,7 @@ use crate::{
     test_support::{PATIENCE, fixture, folder_of},
 };
 
+mod history;
 mod keys;
 
 const MODULE: &str = "columns::tests";
@@ -195,6 +196,7 @@ fn key_event(chord: &str) -> KeyEvent {
         match modifier {
             "shift" => mods.shift = true,
             "ctrl" => mods.ctrl = true,
+            "alt" => mods.alt = true,
             other => panic!("no modifier {other}"),
         }
     }
@@ -231,6 +233,12 @@ fn send(host: &mut Offscreen, chord: &str) {
 
 fn press(host: &mut Offscreen, chord: &str) {
     send(host, chord);
+    idle(host);
+}
+
+/// Lets the mirror's wait pass, and what it started settle: what shows then is what stays.
+fn rest(host: &mut Offscreen) {
+    host.run_until(mirror::WAIT * 3, |_| false);
     idle(host);
 }
 

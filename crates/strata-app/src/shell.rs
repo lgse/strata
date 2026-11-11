@@ -293,16 +293,33 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
     changed
 }
 
+/// The window's own keys and what each asks of the browser. Shift may be held with a
+/// history key, as `history_jump` in `src/ui/window/keyboard/items.rs` lets it.
+const WINDOW_KEYS: [(&str, fn(&Rc<Browser>)); 5] = [
+    // `HIDDEN_FILES` in `src/ui/keys/bindings/window.rs`.
+    ("ctrl+h, ctrl+.", |browser| browser.toggle_hidden()),
+    // `HISTORY_BACK`, `HISTORY_FORWARD`, `PARENT_FOLDER` and `HOME_FOLDER` in
+    // `src/ui/keys/bindings/navigation.rs`.
+    ("alt+left, alt+shift+left", |browser| browser.back()),
+    ("alt+right, alt+shift+right", |browser| browser.forward()),
+    ("alt+up, alt+shift+up", |browser| browser.parent()),
+    ("alt+home, alt+shift+home", |browser| {
+        browser.navigate(Location::local(crate::launch::home_directory()));
+    }),
+];
+
 /// The window's keys: what the focused element passed on.
 pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
-    // `HIDDEN_FILES` in `src/ui/keys/bindings/window.rs`.
-    if !Keybind::new("ctrl+h, ctrl+.").matches_tx(event, tx) {
+    let bound = WINDOW_KEYS
+        .iter()
+        .find(|(keys, _)| Keybind::new(keys).matches_tx(event, tx));
+    let Some((_, act)) = bound else {
         // Nothing the view reads changed: no commit for a key that is not the window's.
         tx.live_only();
         return false;
-    }
+    };
     publish(app);
-    app.browser.toggle_hidden();
+    act(&app.browser);
     settle(app, tx);
     true
 }
