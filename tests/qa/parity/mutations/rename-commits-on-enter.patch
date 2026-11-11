@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/rename.rs b/crates/strata-app/src/rename.rs
+index 30f0729dc..c61b1a4f6 100644
+--- a/crates/strata-app/src/rename.rs
++++ b/crates/strata-app/src/rename.rs
+@@ -205,7 +205,7 @@ fn ask(app: &mut App, editing: Editing, typed: String) {
+     };
+     let entry = editing.entry.clone();
+     let (request, placed) = match wanted {
+-        Wanted::Name(name) => (app.browser.rename(entry, name), None),
++        Wanted::Name(_) => (None, None),
+         Wanted::Path(path) => {
+             let placed = placed(entry.location.parent(), &path);
+             (app.browser.place_entry(entry, path, false), placed)
