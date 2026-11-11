@@ -34,9 +34,29 @@ impl<W: Write> Write for PipeSafeWriter<W> {
     }
 }
 
+/// The crates split out of the application. Their modules logged under `strata::…` before.
+const EXTRACTED_CRATES: [&str; 2] = ["strata_core", "strata_preview"];
+
+/// Repeats each `strata::module` directive for the crates that module may live in now, so a
+/// filter written against the application's module path keeps selecting the same code.
+fn with_extracted_crates(directives: &str) -> String {
+    let mut expanded = Vec::new();
+    for directive in directives.split(',') {
+        expanded.push(directive.to_owned());
+        if let Some(module) = directive.trim_start().strip_prefix("strata::") {
+            expanded.extend(
+                EXTRACTED_CRATES
+                    .iter()
+                    .map(|name| format!("{name}::{module}")),
+            );
+        }
+    }
+    expanded.join(",")
+}
+
 pub fn initialize() {
     let targets = match env::var("RUST_LOG") {
-        Ok(var) => Targets::from_str(&var).unwrap_or_default(),
+        Ok(var) => Targets::from_str(&with_extracted_crates(&var)).unwrap_or_default(),
         Err(_) => Targets::default().with_default(LevelFilter::INFO),
     };
     let subscriber = tracing_subscriber::fmt()

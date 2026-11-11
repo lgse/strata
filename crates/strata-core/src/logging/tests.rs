@@ -2,7 +2,7 @@
 
 use std::io::{self, Write};
 
-use super::PipeSafeWriter;
+use super::{PipeSafeWriter, with_extracted_crates};
 
 struct FailingWriter {
     error_kind: io::ErrorKind,
@@ -64,4 +64,30 @@ fn pipe_safe_writer_forwards_successful_writes() {
     );
     assert!(writer.flush().is_ok());
     assert_eq!(sink, data);
+}
+
+#[test]
+fn module_filters_follow_code_into_the_extracted_crates() {
+    use std::str::FromStr;
+
+    use tracing::Level;
+    use tracing_subscriber::filter::Targets;
+
+    let targets = Targets::from_str(&with_extracted_crates(
+        "strata=info,strata::sandbox::browser=debug",
+    ))
+    .expect("directives");
+    for (target, level, enabled) in [
+        ("strata_preview::sandbox::browser", Level::DEBUG, true),
+        ("strata::sandbox::browser", Level::DEBUG, true),
+        ("strata_preview::sandbox::media", Level::DEBUG, false),
+        ("strata_preview::sandbox::media", Level::INFO, true),
+        ("strata_core::storage", Level::INFO, true),
+    ] {
+        assert_eq!(
+            targets.would_enable(target, &level),
+            enabled,
+            "{target} at {level}"
+        );
+    }
 }
