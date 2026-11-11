@@ -3,7 +3,10 @@
 //! The adapter on the offscreen host, over real folders. What a test sees of the view it
 //! reads from the accessibility tree, as the QA harness will.
 
-use std::{path::Path, time::Instant};
+use std::{
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use rune::{Key, KeyEvent, Mods, PhysicalInput};
 use serde_json::Value;
@@ -17,6 +20,7 @@ use crate::{
 
 mod history;
 mod keys;
+mod letters;
 
 const MODULE: &str = "columns::tests";
 
@@ -166,6 +170,17 @@ fn idle(host: &mut Offscreen) {
     while host.turn() {
         host.runtime().settle_all();
     }
+}
+
+fn settings_file() -> PathBuf {
+    strata_core::storage::config_directory().join("settings.toml")
+}
+
+/// Writes `settings.toml` before the process reads it: for a test's `prepare`.
+fn save_settings(contents: &str) {
+    let file = settings_file();
+    std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+    std::fs::write(file, contents).expect("settings");
 }
 
 fn folder_name(folder: &Path) -> String {

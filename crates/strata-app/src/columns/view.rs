@@ -60,7 +60,13 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         },
     )
     .labels(app.columns.labels.0.clone())
-    .collection(|_, depth, collection| collection.empty(move |app: &App| failure(app, depth)))
+    .collection(|app, depth, collection| {
+        let collection = collection.empty(move |app: &App| failure(app, depth));
+        match &app.columns.keys {
+            Some(keys) => collection.settings(keys.clone()),
+            None => collection,
+        }
+    })
     .pointer_settings(|app: &App| PointerSettings::default().modes(app.columns.clicks))
     .on_intent(intents::heard)
 }

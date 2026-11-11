@@ -16,6 +16,7 @@ use std::rc::Rc;
 use rune::Tx;
 use strata_components::{
     collection::{
+        keyboard::{KeySettings, Letters},
         pointer::{ClickCount, ClickModes},
         selection::{CursorGone, Listing, SyncRule},
     },
@@ -65,7 +66,16 @@ pub(crate) struct Columns {
     followed: Option<(usize, EntryId)>,
     mirror: Mirror,
     clicks: ClickModes,
+    /// The keys the view reads other than by its default, when the saved settings ask.
+    keys: Option<KeySettings>,
     labels: view::Labels,
+}
+
+/// With "Type to search" off a plain letter starts no search, so `h j k l` are the arrows:
+/// `Context::of` in `src/ui/keys/alias.rs`. On, the view's default passes letters on.
+fn keys(settings: &Preferences) -> Option<KeySettings> {
+    let typing = settings.type_to_search && !settings.tenxer_mode;
+    (!typing).then(|| KeySettings::default().letters(Letters::Arrows))
 }
 
 fn clicks(count: u8) -> ClickCount {
@@ -88,6 +98,7 @@ impl Columns {
                 clicks(settings.columns_file_clicks),
                 clicks(settings.columns_folder_clicks),
             ),
+            keys: keys(settings),
             labels: view::Labels::translated(),
         }
     }
