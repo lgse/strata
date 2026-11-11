@@ -62,6 +62,11 @@ Run `./scripts/qa-parity.sh slice` in the pinned container. It exits 0 only when
 The fourth means `./scripts/qa.sh` and `./scripts/qa-mutation.sh` in full, after the last
 change to the runner or the engine.
 
+As V7 left it, `slice` checks the first two and runs the whole GTK suite. The Rune mutation
+patches join it in V8. It does not run `./scripts/qa-mutation.sh`, which is run beside it:
+`cut.patch` does not apply, so a bare run of that script cannot pass until the patch is
+rebased.
+
 ## Out of scope
 
 - Fixing anything. A defect found while writing the report is recorded and goes back to

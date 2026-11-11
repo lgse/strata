@@ -174,7 +174,7 @@ These run in the runner (`drive` in `tests/qa/drive.rs`), between process comman
 | --- | --- |
 | `{"restart":true}` | SIGTERM to the app's process group, 5 s, then SIGKILL; starts it again with the same environment, fixture, display, and input log, with a fresh app log. It needs the US layout active (it reads the keymap again) and fails otherwise: after a `layout` step, add `{"layout":"us"}` before it. |
 | `{"restart":{"directory":"$fixture/target","env":{"RUST_LOG":"trace"},"stdout":"closed","stderr":"null"}}` | Restarts on another directory with extra variables, and standard output or error as a closed pipe or `/dev/null`. |
-| `{"layout":"ru"}` | Switches the run's keyboard layout. |
+| `{"layout":"ru"}` | Switches the run's keyboard layout. On the Rune target the runner also sends the application the layout, as a `keymap` request no scenario may write. |
 | `{"flag":PREDICATE,"as":"enabled"}` | Keeps whether the predicate holds now; never fails. With `timeout_ms`, polls until it holds or time runs out. |
 | `{"each":"names","as":"name","derive":{"caption":{"number_plus":320,"suffix":"×180"}},"step":STEP}` | Runs a process step once per item of a noted list, `$name` the item; each `derive` variable is the last number in the item's stem plus `number_plus`, between optional `prefix` and `suffix`. |
 | `{"slice":"rows","middle":3,"pick":-1,"as":"last"}` | Part of a noted list. |
@@ -444,10 +444,30 @@ pointer <x> <y> button <n> down|up
 ```
 
 Coordinates are X root coordinates minus the main window's X surface origin
-(a portal run's adopted chooser's), and keycodes are the X server's.
+(a portal run's adopted chooser's), and keycodes are the X server's. The Rune
+target (below) has no keycodes: it writes `key <name> down|up`, with the
+scenario's own name for the key or `ctrl`, `shift`, `alt`, `altgr`, and its
+coordinates are window points.
 `motion` records each XTEST motion, both steps of the approach and every drag
 point included; `pointer` is a button event at the final pointer position
 before it, with the wheel as buttons 4 and 5.
+
+**The Rune target.** `STRATA_QA_TARGET=rune` makes the runner start
+`strata-rune --qa <directory>` (the binary `STRATA_QA_RUNE_BINARY` names, built
+with its `qa` feature) in place of `strata --qa`. It speaks this protocol
+unchanged: the same steps, targets, predicates, reply keys and snapshot. Input
+goes in at Rune's input layer on an offscreen host with no display, and state
+is read from Rune's accessibility tree, with its roles mapped to the AT-SPI
+names used here. What it does not answer yet replies "… is not supported on
+this target". `./scripts/qa-parity.sh` runs a gate of
+`tests/qa/parity/slice.toml` on both targets; see "The Rune target and the
+parity ledger" in `docs/testing.md`. Never write a scenario for one target:
+a run that cannot pass on Rune is `pending` in the ledger, with its reason.
+
+`{"keymap":{"layouts":"us,ru","variants":"","group":1,"caps_lock":false}}` is
+a request the runner sends the Rune target after a `layout` step, since that
+target has no display to read the keymap from. It is not a scenario step: the
+runner refuses a scenario that writes it.
 
 A reply is `{"ok","app","changed","criticals","result","failures","error"}`:
 `ok` false with `error` stops the run; `failures` lists
@@ -502,16 +522,17 @@ fail even a `known_bug` run, which only a scenario step can satisfy.
 ## Artifacts
 
 A failed run, or every run with `STRATA_QA_KEEP_ARTIFACTS=1`, writes
-`target/qa-artifacts/<scenario>/<run label>/`:
+`target/qa-artifacts/<scenario>/<run label>/`
+(`target/qa-artifacts-rune/<scenario>/<run label>/` on the Rune target):
 
 | File | Holds |
 | --- | --- |
 | `failures.txt` | Failed runs only: every error and failure, one per line. |
 | `result.json` | Scenario, run, mode, errors, and each failure with its line and step. |
 | `transcript.jsonl` | `{"command":..., "reply":...}` per step, starting with the `{"launch":true}` reply (and one per restart): the `app` snapshot after every step. |
-| `tree.txt` | The widget tree: `Type role="..." name="..." description="..." (x,y wxh)`, headed by `focus: ...` (marked when focus sits on an unmapped widget). |
+| `tree.txt` | The widget tree: `Type role="..." name="..." description="..." (x,y wxh)`, headed by `focus: ...` (marked when focus sits on an unmapped widget). On the Rune target `Type` is Rune's own role and the element's key, `list-box-option#row-5`. |
 | `state.json` | The snapshot after the last step, once two reads 250 ms apart agree (at most 5 s). |
-| `screenshot.png` | The X root at the end (the sway output under `STRATA_QA_DISPLAY=wayland`). |
+| `screenshot.png` | The X root at the end (the sway output under `STRATA_QA_DISPLAY=wayland`). Empty for a Rune run, which draws on no display. |
 | `strata.log`, `xvfb.log` | The app's log and the X server's (`sway.log` under Wayland). |
 | `fcitx5.log` | With `input_method`: the input method's log. |
 | `input.log` | Every synthetic event, as above. |

@@ -43,12 +43,13 @@ Expect these to end as `pending`, because the slice leaves them out:
 | The sidebar (`sidebar`) | `component` |
 | 10xer mode (`tenxer_mode`) | `component` |
 | The filter (`filter_include_subfolders`) | `component` |
-| A non-US layout (`layout`) | `harness`, per owner decision 6 |
+| A non-US layout (`layout`) | None for the layout itself: the owner ruled these runs required (decision 6), and [V7](V7-rune-qa-backend.md#decision-6-a-layout-on-a-target-with-no-display) built how a layout reaches the Rune target. A run that binds a plain letter under a non-Latin layout is `rune`: Rune's public input carries no physical key |
 | A drag (`drag`) | `platform` when it is a file drag; a marquee drag is in scope |
 
 ## Scope
 
-1. **Run the set on Rune.** `./scripts/qa-parity.sh g2`, with artifacts kept.
+1. **Run the set on Rune.** `./scripts/qa-parity.sh g2 --pending`, the survey of the gate's
+   pending runs on the Rune target. Artifacts are kept, in `target/qa-artifacts-rune/`.
 2. **Sort every failing run.** Read its transcript, tree and state. Then one of:
    - the adapter or the ported policy is wrong: fix it in `strata-app`;
    - the backend lacks a step, target or predicate that the slice should have: add it,
@@ -64,7 +65,8 @@ Expect these to end as `pending`, because the slice leaves them out:
    Each is a small patch against `crates/strata-app` that breaks one behaviour, stored
    under `tests/qa/parity/mutations/` and named for the scenario that must catch it.
    `qa-parity.sh` checks them the way `scripts/qa-mutation.sh` checks GTK's: the scenario
-   passes unpatched and fails patched.
+   passes unpatched and fails patched. V7 left the `mutations` selection unbuilt, so it is
+   added here, with the `slice` selection running it.
 6. **Three clean runs.** The full `required` set passes three times in a row on both
    targets before the gate is called.
 

@@ -11,7 +11,7 @@ crates live under `crates/` too. [The Rune side](#the-rune-side) describes them.
 | `strata-preview` | Sandbox launcher, the preview helper it runs, document parsers, preview types | `strata-core` |
 | `strata-fs` | Listing, file operations, trash, volumes, search, jobs, actions, the browser's state (`app`) | `strata-core`, `strata-preview` |
 | `strata-desktop` | Portal and D-Bus setup, the updater, integrations, build information, the saved settings (`settings`) | `strata-core`, `strata-preview`, `strata-fs` |
-| `strata-qa` | The `--qa` protocol (steps, targets, predicates and their parsers) and the engine that runs a session through its `Backend` trait | none |
+| `strata-qa` | The `--qa` protocol (steps, targets, predicates and their parsers) and the engine that runs a session through its `Backend` trait. The application's `qa` feature uses it, and `strata-app`'s | none |
 | `strata-test-support` | Test helpers that need no toolkit. A dev-dependency | none |
 | `strata` (root) | The GTK interface, assets, GTK's QA backend, diagnostics | all of the above |
 
@@ -33,7 +33,7 @@ them.
 | `strata-components` | The file-manager components: collections, views, chrome, previews and controls | `rune`, `rune-kit`, `strata-kit` |
 | `strata-gallery` | One headless scene per component state, the golden tests and the integration demos | The three crates above |
 | `strata-test-peer` | The second process of the compositor tests. It lives at `crates/strata-platform/tests/support/strata-test-peer` | none |
-| `strata-app` | The Rune interface: its state and view, the queue `Browser`'s events wait in, the Columns adapter between `Browser` and the Columns component, start-up, and the offscreen and windowed hosts. Written here, not imported | The four crates above it but the gallery, and `strata-core`, `strata-fs`, `strata-desktop` |
+| `strata-app` | The Rune interface: its state and view, the queue `Browser`'s events wait in, the Columns adapter between `Browser` and the Columns component, start-up, and the offscreen and windowed hosts. Behind its `qa` feature, the QA backend that `strata-rune --qa` serves. Written here, not imported | The four crates above it but the gallery, and `strata-core`, `strata-fs`, `strata-desktop`; with `qa`, `strata-qa` too |
 | `strata-rune` | The `strata-rune` binary: `main`, and the window tests | `strata-app` |
 
 - **Rune is pinned once.** `rune` and `rune-kit` name one git rev in the root manifest. Move
@@ -45,6 +45,8 @@ them.
 - **`strata-app` is the one crate that knows both sides.** It feeds the components from
   `Browser`, and only `strata-rune` uses it. At parity `src/main.rs` runs it and
   `strata-rune` is removed.
+- **`strata-qa` has two users,** the application and `strata-app`, each behind its `qa`
+  feature. It stays free of any toolkit and of GLib.
 - **The shared crates and the application never depend on Rune or on a Rune-side crate.**
 - **These crates inherit `version` and `rust-version` from `[workspace.package]`.** The shared
   crates set their own `0.0.0`.
@@ -127,6 +129,15 @@ without it.
 The QA runner builds the application without `test-support`, so the binary the scenarios
 drive carries no test hooks. Do not turn the feature on from the root package's
 dev-dependencies: Cargo would then apply it to that binary as well.
+
+## Code that only the QA mode uses
+
+The scripted QA mode is behind a `qa` feature that no release build has: the root
+package's for `strata --qa`, and `strata-app`'s, which `strata-rune` forwards, for
+`strata-rune --qa`. Each has its own `Backend` for `strata-qa`'s engine. What both need of
+a shared crate is behind that crate's own `qa` feature, which both turn on: today that is
+`strata_core::logging::criticals`, the GLib log lines a QA reply reports. `--all-features`
+turns all of it on in either lane.
 
 ## Translations
 

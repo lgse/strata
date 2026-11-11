@@ -388,7 +388,7 @@ STRATA_QA_KEEP_ARTIFACTS=1 ./scripts/qa.sh   # artifacts for passing runs too
 `scripts/qa.sh` runs `cargo test --features qa,invariant-checks --test qa` in
 the pinned image,
 with the mounts, account files, and `target/qa-container` cache it shares with
-`scripts/qa-drive.sh` and `scripts/qa-mutation.sh` (through
+`scripts/qa-drive.sh`, `scripts/qa-mutation.sh` and `scripts/qa-parity.sh` (through
 `scripts/lib/qa-container.sh`). Because the cache is shared, run them one after
 the other, never concurrently. `tests/qa.rs` refuses to start without the
 `STRATA_QA_CONTAINER=1` that script sets. A host run needs the owner's explicit
@@ -548,6 +548,11 @@ no input method daemon. GTK's built-in input method composes dead keys in text
 fields, so a pending Pinyin tone mark stands in for an input method's
 unfinished composition when a scenario checks which keys reach it.
 
+The Rune target has no display to read a keymap from. After the switch above,
+the runner sends it the manifest's layout as a `keymap` request of its own, and
+the application reads key names by their US positions under that layout itself
+("The Rune target and the parity ledger" below).
+
 ### Scheduling and run costs
 
 `tests/qa.rs` makes every run of every scenario a test of its own, named
@@ -620,6 +625,8 @@ every run under `STRATA_QA_KEEP_ARTIFACTS=1`, writes
 the command and reply transcript, the application, Xvfb, and input logs, the
 fixture listing, the final snapshot, and the result. The reference's
 "Protocol, replies, and the snapshot" and "Artifacts" sections define each.
+A run on the Rune target writes the same bundle under
+`target/qa-artifacts-rune/` instead.
 
 ### Driving a session by hand
 
@@ -738,6 +745,51 @@ changes, and refuses to run with `STRATA_QA_UPDATE_BASELINES=1`. It exits 0
 when every mutation is caught. It shares the build cache with `qa.sh`, so
 never run it alongside another QA command. Run it after changing the runner,
 and when adding a scenario for a workflow that does not have a mutation yet.
+
+### The Rune target and the parity ledger
+
+The runner drives two binaries with the same scenario files, fixtures and
+runner steps. `STRATA_QA_TARGET` picks one:
+
+| Target | Binary | Input and state |
+| --- | --- | --- |
+| `gtk`, the default | `strata --qa`, the root package's own | XTEST on the run's Xvfb; the widget tree |
+| `rune` | `strata-rune --qa`, built with its `qa` feature and named by `STRATA_QA_RUNE_BINARY` | Rune's input layer on an offscreen host that needs no display; Rune's accessibility tree, with its roles mapped to the AT-SPI names scenarios use |
+
+A `rune` launch fails with the reason when `STRATA_QA_RUNE_BINARY` is unset or
+names no file. The runner still starts Xvfb for a Rune run, and the binary
+ignores it, so that run's `screenshot.png` shows an empty screen. A step or
+predicate the Rune backend does not answer replies "… is not supported on this
+target". `docs/rune/slice/V7-rune-qa-backend.md` lists what it answers.
+
+`./scripts/qa-parity.sh` sets both variables. It builds both binaries in the
+pinned image and runs the runs of a gate on each target:
+
+```bash
+./scripts/qa-parity.sh g1                 # gate G1's required runs, on GTK and then on Rune
+./scripts/qa-parity.sh slice              # every gate's, then the runner's tests and the whole GTK suite
+./scripts/qa-parity.sh g2 --target rune   # one target only
+./scripts/qa-parity.sh g2 --pending       # a survey: gate G2's pending runs, on Rune
+```
+
+It exits 0 only when every required run passes on every target it ran. A
+survey lists which pending runs pass and fails only when nothing ran. Artifacts
+are kept for passing runs too (`STRATA_QA_KEEP_ARTIFACTS=0` keeps a failed
+run's only). It does not run `scripts/qa-mutation.sh`.
+
+The runs come from the parity ledger, `tests/qa/parity/slice.toml`. It lists
+every Columns run of the scenario folders the Rune vertical slice is measured
+by (`docs/rune/slice/README.md`), each as one of:
+
+- `status = "required"`: passes on both targets, and `qa-parity.sh` runs it.
+- `status = "pending"`: does not pass on Rune yet, with a `reason` (`harness`,
+  `component`, `rune`, `platform`, `toolkit` or `deviation`) and a `blocker`
+  that names what someone can act on.
+
+The runner's unit tests fail when a Columns run of the set is missing from the
+ledger, listed twice, gone, under the wrong gate, or pending without a reason
+and a blocker. So adding, renaming or removing a Columns run in those folders
+means editing the ledger in the same change.
 
 ### Skipped scenarios
 
@@ -893,6 +945,10 @@ format, the PNG tolerance, blessing and the compositor tests.
 | `mise run compile-features` | `strata-platform` with no features, then with each feature alone |
 | `mise run test-platform` | The compositor tests, each in a private headless sway session |
 
+- **`strata-app`'s QA backend is tested here too.** `mise run test-rune qa::` runs its key,
+  role and layout tables and three sessions of the QA engine against the offscreen host;
+  `strata-rune`'s `tests/qa.rs` drives the binary over its own stdin and stdout. Both
+  need the `qa` feature, which the task's `--all-features` turns on.
 - **Nothing reaches the desktop.** The tasks clear `DISPLAY` and `WAYLAND_SOCKET` and point
   `WAYLAND_DISPLAY` and the session bus at names that do not exist. The tests run on Rune's
   virtual clock.
