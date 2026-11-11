@@ -8,12 +8,38 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::tree::Snapshot;
+use rune::ElementInfo;
+use strata_components::collection::element::LABEL;
+use strata_qa::Rect;
+
+use super::tree::{NameLabel, Snapshot};
 use crate::{host::offscreen::Offscreen, shell::App};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
 /// this long for a frame.
 const SETTLE_LIMIT: Duration = Duration::from_millis(250);
+
+/// The names the view draws in rows, each with the keys of the elements around it.
+fn name_labels(elements: &[ElementInfo]) -> Vec<NameLabel> {
+    let drawn = |element: &&ElementInfo| !element.exiting && element.key.as_deref() == Some(LABEL);
+    let label = |element: &ElementInfo| {
+        let above = std::iter::successors(element.parent, |index| elements.get(*index)?.parent)
+            .filter_map(|index| elements.get(index)?.key.clone())
+            .collect();
+        let [x, y, width, height] = element.rect.map(f64::from);
+        Some(NameLabel {
+            above,
+            text: element.text.clone()?,
+            bounds: Rect {
+                x,
+                y,
+                width,
+                height,
+            },
+        })
+    };
+    elements.iter().filter(drawn).filter_map(label).collect()
+}
 
 pub(super) struct Stage {
     host: Offscreen,
@@ -43,6 +69,7 @@ impl Stage {
                 Rc::new(Snapshot::read(
                     &host.tree(),
                     &host.app().columns.list_keys(),
+                    &name_labels(&host.elements()),
                 ))
             })
             .clone()

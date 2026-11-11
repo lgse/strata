@@ -78,6 +78,12 @@ impl Offscreen {
         self.runtime.accessibility_json()
     }
 
+    /// The elements as drawn, the ones the accessibility tree leaves out among them.
+    #[cfg(feature = "qa")]
+    pub(crate) fn elements(&self) -> Vec<rune::ElementInfo> {
+        self.runtime.elements()
+    }
+
     /// Dispatches the sources GLib has ready. Returns whether any ran.
     fn dispatch_ready(&self) -> bool {
         let started = Instant::now();

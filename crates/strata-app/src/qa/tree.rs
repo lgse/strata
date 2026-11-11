@@ -24,6 +24,20 @@ pub(crate) struct Kept {
     role: String,
 }
 
+/// A row's name as the view draws it. Rune's row is one accessible node, and its name is an
+/// element the tree leaves out; the GTK row has a `label` child, which a scenario aims at as
+/// an entry's `part: label`. The component keys the element for its hosts
+/// (`strata_components::collection::element::LABEL`), so its box is read from the drawn
+/// elements, and the snapshot presents it under its row.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct NameLabel {
+    /// The keys of the elements around it, the nearest first.
+    pub(super) above: Vec<String>,
+    pub(super) text: String,
+    /// In window points.
+    pub(super) bounds: Rect,
+}
+
 /// One node as Rune reports it.
 #[derive(Debug, Default)]
 pub(super) struct Seen {
@@ -95,8 +109,9 @@ fn bounds(node: &Value) -> Option<Rect> {
 
 impl Snapshot {
     /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`. `lists` are the keys of
-    /// the entry lists the Columns adapter shows, one for each column.
-    pub(super) fn read(tree: &Value, lists: &[String]) -> Self {
+    /// the entry lists the Columns adapter shows, one for each column, and `labels` the names
+    /// the view draws in rows.
+    pub(super) fn read(tree: &Value, lists: &[String], labels: &[NameLabel]) -> Self {
         let mut snapshot = Self::default();
         if tree.is_object() {
             snapshot.add(tree, None, "window".to_owned());
@@ -105,7 +120,37 @@ impl Snapshot {
         for list in lists {
             snapshot.mark_column(list);
         }
+        for label in labels {
+            snapshot.add_label(label);
+        }
         snapshot
+    }
+
+    /// Presents a row's drawn name as a `label` under the entry it is in.
+    fn add_label(&mut self, label: &NameLabel) {
+        let entry = |key: &String| {
+            self.nodes.iter().position(|seen| {
+                seen.mark == Some(Mark::Entry) && seen.key.as_deref() == Some(key.as_str())
+            })
+        };
+        let Some(row) = label.above.iter().find_map(entry) else {
+            return;
+        };
+        let Some(path) = self.nodes[row].node.as_ref().map(|node| node.0.to_string()) else {
+            return;
+        };
+        let index = self.nodes.len();
+        let node = Node(Rc::from(format!("{path}/@label").as_str()));
+        self.index.insert(node.clone(), index);
+        self.nodes.push(Seen {
+            node: Some(node),
+            parent: Some(row),
+            role: "label".to_owned(),
+            name: label.text.clone(),
+            bounds: Some(label.bounds),
+            ..Seen::default()
+        });
+        self.nodes[row].children.push(index);
     }
 
     fn add(&mut self, value: &Value, parent: Option<usize>, path: String) -> usize {
@@ -290,3 +335,6 @@ impl Snapshot {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

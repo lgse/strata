@@ -218,3 +218,53 @@ fn held_modifiers_reach_the_view_and_what_only_gtk_runs_says_so() {
         },
     );
 }
+
+/// `selection/leftover-click-honors-modifiers`: the run aims at each entry's `part: label`,
+/// two points inside its right edge, and lets the modifier go before the button.
+#[test]
+fn a_click_on_a_rows_name_label_lands_on_the_name_the_view_draws() {
+    staged(
+        "a_click_on_a_rows_name_label_lands_on_the_name_the_view_draws",
+        None,
+        |backend| {
+            let folder = launched(&backend);
+            let root = Location::local(folder.path()).display_name();
+            let kept = Remembered::default();
+            let click = |entry: &str, modifier: &str| {
+                json!({
+                    "click": { "entry": entry, "part": "label", "dir": root },
+                    "mods": [modifier], "release_mods_first": true, "at": [-2, "50%"]
+                })
+            };
+            let selected = |names: &[&str]| json!({ "wait": { "selected": names, "dir": root } });
+            for step in [
+                selected(&["archive"]),
+                click("pictures", "shift"),
+                selected(&["archive", "documents", "pictures"]),
+                click("documents", "ctrl"),
+                selected(&["archive", "pictures"]),
+            ] {
+                passes(&backend, &kept, &step);
+            }
+
+            // The label is the name the view draws, under its row.
+            let window = backend.window().expect("the window");
+            let mut below = vec![window];
+            let mut labels = Vec::new();
+            while let Some(node) = below.pop() {
+                if backend.role(&node) == "label" && backend.name(&node) == "pictures" {
+                    labels.push(node.clone());
+                }
+                below.extend(backend.children(&node));
+            }
+            let [label] = labels.as_slice() else {
+                panic!("one label named pictures, not {labels:?}");
+            };
+            let row = backend.parent(label).expect("its row");
+            assert_eq!(backend.role(&row), "list item");
+            assert_eq!(backend.name(&row), "pictures");
+            let (inner, outer) = (backend.frame(label), backend.frame(&row));
+            assert!(inner.is_some() && outer.is_some(), "{inner:?} in {outer:?}");
+        },
+    );
+}
