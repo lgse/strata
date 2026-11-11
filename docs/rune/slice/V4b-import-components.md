@@ -5,7 +5,7 @@
 | Status | Done. Six owner items are open, listed at the end |
 | Depends on | V4 (done) |
 | Unblocks | V5 |
-| Commits | `ad88c18a8` (the copy), `ca544005b` (`deny.toml`), `677769021` (`typos.toml`), `c10885101` (the two lanes, `mise.toml`, the lint settings), `b2be0f046` (SPDX headers), `a60b064dd` (document paths), `7f7a11c26` (documentation) |
+| Commits | `ad88c18a8` (the copy), `ca544005b` (`deny.toml`), `677769021` (`typos.toml`), `c10885101` (the two lanes, `mise.toml`, the lint settings), `b2be0f046` (SPDX headers), `a60b064dd` (document paths), `7f7a11c26` (documentation), `8054bca05` (this record) |
 
 ## What was done
 
@@ -105,6 +105,10 @@ changes documents and one comment.
 - **CI's dependency guard still passes.** It reads the root package's tree, which holds no
   `x11rb`, `wayland-client`, `wayland-protocols-misc`, `wayland-protocols-wlr` or
   `xkbcommon` in a default or feature-disabled build.
+- **CI on `strata-next`.** At `8054bca05` the build job passes: formatting, Clippy, the
+  build without UnRAR and the compile of every GTK-lane test target. The policy job passes
+  over the whole workspace. A push runs no test shards and no QA scenarios there, by the
+  workflow's own conditions. The image publisher fails, as item 2 below describes.
 - **The old repository.** Frozen at `e4f2df1a` by the owner's ruling. It is not archived
   yet.
 
@@ -118,9 +122,9 @@ for 0.22.10 and `toml` 1.1.6 for 1.2.1. Seven packages only the Rune side uses f
 
 - **The compositor tests.** `mise run test-platform` was not run, here or as a baseline.
 - **The goldens on a software renderer.** The pinned image has no Vulkan driver.
-- **The Rune side in the pinned image.** Nothing on that side was built or run there.
-- **CI.** The runs above are local. CI on `strata-next` was already failing before the
-  import, at the step that resolves the published test image.
+- **The Rune side in the pinned image or in CI.** Nothing on that side was built or run in
+  either.
+- **The mutation patches.** `./scripts/qa-mutation.sh` was not rerun.
 
 ## Open for the owner
 
