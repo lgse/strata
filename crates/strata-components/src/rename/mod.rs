@@ -41,7 +41,9 @@
 //!   [`RenameState::commit`] first: the blur reaches `tick` a frame later.
 //! - **Per view.** C4: on the base collection, so the editor takes the primary column's
 //!   label. C3: `.align(Align::Center)` and the caption's font. C2: through
-//!   `ColumnsView::collection`, so only the column whose key the edit names answers.
+//!   `ColumnsView::collection`, so only the column whose key the edit names answers, and
+//!   with [`RenameEditor::focus_return`] naming the strip, which holds the keyboard for its
+//!   columns.
 //!
 //! # Behaviour
 //!
@@ -72,7 +74,9 @@
 //! - **Focus afterwards.** The editor carries `El::focus_return` to its collection, so when
 //!   Enter, Escape or a last Tab removes the field, the keyboard goes back to the listing
 //!   (probe P2). It acts on every way the field goes, and only while the field has the
-//!   keyboard, which `Tx::focus` from each path wouldn't.
+//!   keyboard, which `Tx::focus` from each path wouldn't. A collection keyed by its host
+//!   takes no keyboard, and a return to it leaves the keyboard nowhere: such a host names
+//!   the element that does ([`RenameEditor::focus_return`]).
 //! - **Input methods.** Rune gives Enter and Escape to a composition, and the editor passes
 //!   every key while one is open. A blur mid-composition keeps only the committed text.
 //! - **Paste.** The field is single-line, so a pasted line break or tab is dropped (Rune).

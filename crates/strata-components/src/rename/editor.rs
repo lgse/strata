@@ -41,6 +41,7 @@ pub struct RenameEditor<S> {
     font: FontFn,
     align: Align,
     label: Option<LabelFn<S>>,
+    focus_return: Option<String>,
     on_intent: Option<IntentFn<S>>,
 }
 
@@ -53,6 +54,7 @@ impl<S> Clone for RenameEditor<S> {
             font: self.font.clone(),
             align: self.align,
             label: self.label.clone(),
+            focus_return: self.focus_return.clone(),
             on_intent: self.on_intent.clone(),
         }
     }
@@ -71,6 +73,7 @@ impl<S: 'static> RenameEditor<S> {
             font: Rc::new(|look: &Look| look.kit.ty.ui_compact),
             align: Align::Start,
             label: None,
+            focus_return: None,
             on_intent: None,
         }
     }
@@ -101,6 +104,15 @@ impl<S: 'static> RenameEditor<S> {
     /// The field's accessible name. By default "Rename", as Strata's.
     pub fn label(mut self, f: impl Fn(&S, &RowCx<'_>) -> String + 'static) -> Self {
         self.label = Some(Rc::new(f));
+        self
+    }
+
+    /// The key of the element that takes the keyboard when the field goes while it has it. By
+    /// default the row's collection ([`RowCx::scope`]). A collection keyed by its host
+    /// (`Collection::keys_by_host`) is no focus stop, so its host names the element that
+    /// holds the keyboard for it: Columns' strip (C2).
+    pub fn focus_return(mut self, key: impl Into<String>) -> Self {
+        self.focus_return = Some(key.into());
         self
     }
 
@@ -230,8 +242,15 @@ fn build<S: 'static>(cfg: &Rc<RenameEditor<S>>, s: &S, rcx: &RowCx<'_>) -> El {
         // Enter, Escape or a last Tab removes the field with the keyboard in it: give the
         // keyboard back to the collection, as Strata keeps it in the listing. A `focus_return`
         // covers every way the field goes, and only while it holds the keyboard.
-        .focus_return(rcx.scope.to_owned())
+        .focus_return(returns_to(cfg, rcx))
         .child(field)
+}
+
+/// The key the keyboard goes back to: the host's ([`RenameEditor::focus_return`]), else the
+/// row's collection.
+fn returns_to<S>(cfg: &RenameEditor<S>, rcx: &RowCx<'_>) -> String {
+    let named = cfg.focus_return.clone();
+    named.unwrap_or_else(|| rcx.scope.to_owned())
 }
 
 /// The field's menu press, on the field and on the box around it.

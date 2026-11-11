@@ -285,6 +285,8 @@ struct App {
     menu_at: Option<rune::PointerPress>,
     /// What the collection heard: its presses (`on_press`) and its controllers' intents.
     collection_heard: Vec<String>,
+    /// In [`hosted_view`]: where the editor is told the keyboard returns.
+    returns: Option<&'static str>,
 }
 
 /// What the host does with a [`RenameIntent::FieldMenu`].
@@ -369,8 +371,8 @@ fn view(s: &App, _: &mut Cx<App>) -> El {
     rune_kit::root(page.child(menu), layer)
 }
 
-fn mount(n: usize) -> Runtime<App> {
-    let app = App {
+fn app(n: usize) -> App {
+    App {
         listing: listing(n),
         coll: CollectionState::new(),
         look: Look::fallback(false),
@@ -380,7 +382,12 @@ fn mount(n: usize) -> Runtime<App> {
         menu: HostMenu::None,
         menu_at: None,
         collection_heard: Vec::new(),
-    };
+        returns: None,
+    }
+}
+
+fn mount(n: usize) -> Runtime<App> {
+    let app = app(n);
     let mut rt = Runtime::new(app, view, (400.0, 300.0), Env::new(false, 1.0));
     rt.poll = Some(|s: &mut App, _, _| {
         let polled = s.rename.tick(KEY, &s.listing, &s.coll);
@@ -475,6 +482,58 @@ fn closing_from_the_field_gives_the_keyboard_back_to_the_collection() {
         frames(&mut rt, 3);
         assert!(!rt.state.rename.is_open());
         assert_eq!(focused(&rt).as_deref(), Some(KEY), "after {key:?}");
+    }
+}
+
+const HOST: &str = "strip";
+
+/// A page as Columns builds one: the collection is keyed by its host and takes no keyboard,
+/// and the element around it does.
+fn hosted_view(s: &App, _: &mut Cx<App>) -> El {
+    let editor = match s.returns {
+        Some(key) => editor().focus_return(key),
+        None => editor(),
+    };
+    let list = Collection::new(
+        KEY,
+        |s: &App| (&s.listing, &s.coll),
+        |s: &mut App| (&s.listing, &mut s.coll),
+        |s: &App| &s.look,
+        |_: &App| 0,
+    )
+    .keys_by_host()
+    .rename(|s: &App| s.rename.renaming_in(KEY), editor.slot())
+    .build(s);
+    let host = col()
+        .key(HOST)
+        .focusable(true)
+        .on_key(|_: &mut App, _: &KeyEvent, _: &mut Tx| false)
+        .w(300.0)
+        .h_full()
+        .child(list);
+    rune_kit::root(host, Vec::new())
+}
+
+#[test]
+fn a_collection_keyed_by_its_host_gets_the_keyboard_back_where_the_host_says() {
+    for (returns, lands) in [(Some(HOST), Some(HOST)), (None, None)] {
+        for key in [Key::Enter, Key::Escape] {
+            let app = App { returns, ..app(20) };
+            let mut rt = Runtime::new(app, hosted_view, (400.0, 300.0), Env::new(false, 1.0));
+            rt.frame(0.0);
+            frames(&mut rt, 2);
+            begin(&mut rt, 1);
+            assert_eq!(focused(&rt).as_deref(), Some(keys::FIELD));
+
+            rt.key(KeyEvent {
+                key: key.clone(),
+                mods: Mods::default(),
+            });
+            frames(&mut rt, 3);
+
+            assert!(!rt.state.rename.is_open());
+            assert_eq!(focused(&rt).as_deref(), lands, "after {key:?}");
+        }
     }
 }
 
