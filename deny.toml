@@ -63,7 +63,8 @@ highlight = "simplest-path"
 # the interface toolkits stay in the application package, and a workspace crate is used
 # only by the layers above it (core, then preview, then fs, then desktop). The Rune side
 # (platform, kit, components, gallery) uses Rune and never the shared crates; the
-# application reaches nothing on the Rune side (docs/workspace.md).
+# application reaches nothing on the Rune side. strata-app is the one crate that uses both,
+# and only the strata-rune binary uses it (docs/workspace.md).
 deny = [
   { crate = "gtk4", wrappers = ["sourceview5", "strata"] },
   { crate = "gdk4", wrappers = ["gdk4-wayland", "gdk4-x11", "gsk4", "gtk4", "sourceview5"] },
@@ -72,17 +73,18 @@ deny = [
   { crate = "sourceview5", wrappers = ["strata"] },
   { crate = "gstreamer", wrappers = ["gstreamer-app", "gstreamer-base", "strata"] },
   { crate = "gstreamer-app", wrappers = ["strata"] },
-  { crate = "strata-core", wrappers = ["strata", "strata-desktop", "strata-fs", "strata-preview"] },
+  { crate = "strata-core", wrappers = ["strata", "strata-app", "strata-desktop", "strata-fs", "strata-preview"] },
   { crate = "strata-preview", wrappers = ["strata", "strata-fs"] },
-  { crate = "strata-fs", wrappers = ["strata", "strata-desktop"] },
+  { crate = "strata-fs", wrappers = ["strata", "strata-app", "strata-desktop"] },
   { crate = "strata-desktop", wrappers = ["strata"] },
   { crate = "strata-qa", wrappers = ["strata"] },
-  { crate = "rune", wrappers = ["rune-kit", "strata-components", "strata-gallery", "strata-kit", "strata-platform"] },
-  { crate = "rune-kit", wrappers = ["strata-components", "strata-gallery", "strata-kit"] },
-  { crate = "strata-platform", wrappers = ["strata-gallery"] },
-  { crate = "strata-kit", wrappers = ["strata-components", "strata-gallery"] },
-  { crate = "strata-components", wrappers = ["strata-gallery"] },
-  { crate = "strata-test-peer", wrappers = ["strata-gallery", "strata-platform"] },
+  { crate = "rune", wrappers = ["rune-kit", "strata-app", "strata-components", "strata-gallery", "strata-kit", "strata-platform"] },
+  { crate = "rune-kit", wrappers = ["strata-app", "strata-components", "strata-gallery", "strata-kit"] },
+  { crate = "strata-platform", wrappers = ["strata-app", "strata-gallery"] },
+  { crate = "strata-kit", wrappers = ["strata-app", "strata-components", "strata-gallery"] },
+  { crate = "strata-components", wrappers = ["strata-app", "strata-gallery"] },
+  { crate = "strata-app", wrappers = ["strata-rune"] },
+  { crate = "strata-test-peer", wrappers = ["strata-gallery", "strata-platform", "strata-rune"] },
 ]
 
 [sources]

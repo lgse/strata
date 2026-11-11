@@ -16,6 +16,8 @@ RUNE_SIDE = (
     "strata-components",
     "strata-gallery",
     "strata-test-peer",
+    "strata-app",
+    "strata-rune",
 )
 
 

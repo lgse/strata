@@ -1,0 +1,32 @@
+[package]
+name = "strata-app"
+description = "Strata's interface on Rune: the application state, its view and the loops that host it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# The one crate that knows both sides: Strata's shared crates and the Rune side
+# (docs/workspace.md). It never depends on gtk4, gdk4, sourceview5 or the `strata` package.
+[dependencies]
+rune.workspace = true
+rune-kit.workspace = true
+strata-components.workspace = true
+strata-core.workspace = true
+strata-fs.workspace = true
+strata-kit.workspace = true
+strata-platform = { workspace = true, features = ["csd", "glib-loop"] }
+gio.workspace = true
+glib.workspace = true
+rust-i18n.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+strata-test-support.workspace = true
+tempfile.workspace = true

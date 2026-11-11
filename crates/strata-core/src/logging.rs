@@ -35,7 +35,8 @@ impl<W: Write> Write for PipeSafeWriter<W> {
 }
 
 /// The crates split out of the application. Their modules logged under `strata::…` before.
-const EXTRACTED_CRATES: [&str; 4] = [
+const EXTRACTED_CRATES: [&str; 5] = [
+    "strata_app",
     "strata_core",
     "strata_desktop",
     "strata_fs",

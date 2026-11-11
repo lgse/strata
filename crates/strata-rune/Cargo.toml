@@ -1,0 +1,23 @@
+[package]
+name = "strata-rune"
+description = "The strata-rune binary: Strata's Rune interface, built beside the GTK application until parity"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# `main` only: everything else is strata-app's, which the `strata` binary runs at parity.
+[dependencies]
+strata-app.workspace = true
+
+# The window tests (tests/window.rs) run on strata-platform's compositor harness.
+[dev-dependencies]
+serde.workspace = true
+serde_json.workspace = true
+strata-test-peer.workspace = true

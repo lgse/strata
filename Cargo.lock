@@ -4805,6 +4805,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-app"
+version = "0.0.1"
+dependencies = [
+ "gio",
+ "glib",
+ "rune",
+ "rune-kit",
+ "rust-i18n",
+ "strata-components",
+ "strata-core",
+ "strata-fs",
+ "strata-kit",
+ "strata-platform",
+ "strata-test-support",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "strata-components"
 version = "0.0.1"
 dependencies = [
@@ -5003,6 +5022,16 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 1.1.6+spec-1.1.0",
+]
+
+[[package]]
+name = "strata-rune"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "strata-app",
+ "strata-test-peer",
 ]
 
 [[package]]

@@ -110,7 +110,7 @@ done
 # the peer and the examples first: a test can't make cargo build another package's binary, and
 # `cargo test` leaves examples under hashed names only.
 [tasks.test-platform]
-description = "Run the compositor tests (strata-platform's and the gallery's x2 and x3), each in a private headless sway session"
+description = "Run the compositor tests (strata-platform's, the gallery's x2 and x3, and strata-rune's window), each in a private headless sway session"
 usage = '''
 arg "[args]..." help="libtest arguments: a filter (w3::, p2::), --test-threads=1, --nocapture" var=#true
 '''
@@ -129,6 +129,8 @@ eval "set -- ${usage_args:-}"
 cargo test -p strata-platform --all-targets --all-features --locked -- --ignored "$@"
 cargo test -p strata-gallery --test x2 --all-features --locked -- --ignored "$@"
 cargo test -p strata-gallery --test x3 --all-features --locked -- --ignored "$@"
+# The windowed binary itself, which cargo builds for its own tests (tests/window.rs).
+cargo test -p strata-rune --test window --all-features --locked -- --ignored "$@"
 '''
 
 [tasks.scripts]
