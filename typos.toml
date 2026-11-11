@@ -23,6 +23,10 @@ extend-exclude = [
   # Reproducible upstream MathJax bundle and npm dependency lock.
   "data/math-renderer.js",
   "packaging/math-renderer/package-lock.json",
+  # The Rune side's PNG goldens.
+  "tests/golden/**/*.png",
+  # The icon picker's bundled emoji: CLDR's names and keywords ("Claus", "hashi"), generated.
+  "crates/strata-components/src/controls/icon_picker/emoji/emoji.tsv",
 ]
 
 [default]
