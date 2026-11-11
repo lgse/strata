@@ -61,20 +61,48 @@ Also record:
 
 ## The exit check
 
-Run `./scripts/qa-parity.sh slice` in the pinned container. It exits 0 only when:
+Run `./scripts/qa-parity.sh slice` in the pinned container, alone: it shares
+`target/qa-container` with every other QA script. It exits 0 only when:
 
 1. every `required` run passes on both targets;
 2. every other run of the set is `pending` with a reason code and a blocker;
 3. each Rune mutation patch fails its scenario on the Rune target;
 4. the full GTK suite and its 22 mutation patches behave as before.
 
-The fourth means `./scripts/qa.sh` and `./scripts/qa-mutation.sh` in full, after the last
-change to the runner or the engine.
+Since [V9b](V9b-test-image-and-exit-check.md) the one command checks all four, in this
+order, and runs every part whatever the earlier ones did:
 
-Since V8, `slice` checks the first three: it runs the Rune mutation patches, three since
-V9, after the whole GTK suite. It does not run `./scripts/qa-mutation.sh`, which is run beside it:
-`cut.patch` does not apply, so a bare run of that script cannot pass until the patch is
-rebased.
+| Part | What runs | Item |
+| --- | --- | --- |
+| The gates | The ledger's 36 `required` runs, on GTK and then on Rune | 1 |
+| The runner and the whole GTK suite | The runner's 35 unit tests, the ledger's among them, and the 758 scenario runs, as `./scripts/qa.sh` runs them | 2 and 4 |
+| The Rune mutation patches | The three under `tests/qa/parity/mutations/`, as `./scripts/qa-parity.sh mutations` | 3 |
+| The GTK mutation patches | The 21 that apply, as `./scripts/qa-parity.sh gtk-mutations` | 4 |
+
+"As before" has two named exceptions, the ledger's allowances
+([README](README.md#what-the-exit-command-lets-stand)):
+
+- `new-folder-with-selection-groups/columns` may fail in the whole-suite part if it then
+  passes alone. The command prints `ALLOWANCE USED: … failed in the whole GTK suite and
+  passed alone.`, or `ALLOWANCE REFUSED: …` and exits 1.
+- `cut.patch` does not apply, as before the slice, and must not: the command prints
+  `ALLOWANCE USED: cut.patch does not apply, as before the slice; the other 21 GTK mutation
+  patches run.` every time.
+
+The command ends with the allowances it used or refused, under `== allowances, from
+tests/qa/parity/slice.toml ==`, and then `== slice exits <status> ==`. A failure of the
+whole suite that no allowance names is in that list too, as `NO ALLOWANCE: …`. The report
+quotes those lines from the run it names. A flaky run's failed bundle is in
+`target/qa-parity/allowance/<scenario>/<run>/`.
+
+A run takes about 14 minutes with a warm cache: under two for the gates and the whole
+suite, one for the Rune patches and 11 for the GTK ones.
+
+**The command can still exit 1 for the flaky run.** The allowance holds only if the run
+passes alone, and at V9b's commits it passed alone once in nine tries. When
+`ALLOWANCE REFUSED` is the only failure, the slice has not failed: run the command again,
+and name every run in the report, the refused ones too. [V9b](V9b-test-image-and-exit-check.md#what-the-allowance-is-worth)
+has the figures, and what the owner could rule instead.
 
 ## Out of scope
 

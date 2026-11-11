@@ -234,7 +234,9 @@ way; where the crates were cached is the only difference.
   they are; with one folder a parity run would keep only the second target's bundle.
 - **`qa-parity.sh slice` does not run the GTK mutation patches,** the fourth item of the
   exit check. It runs the whole GTK suite and names what it left out. `cut.patch` does not
-  apply, so a bare `qa-mutation.sh` cannot pass today.
+  apply, so a bare `qa-mutation.sh` cannot pass today. Since
+  [V9b](V9b-test-image-and-exit-check.md#the-gtk-mutation-patches-the-exit-checks-fourth-item)
+  `slice` runs them, and holds `cut.patch` to being stale still.
 - **`qa-parity.sh mutations` does not exist yet.** The first Rune mutation patch is V8's.
 - **The usage text is `usage: strata --qa <directory>`.** It keeps the prefix, as the plan
   asks, and names `strata` though the binary is `strata-rune`. `release.yml` and `ci.yml`

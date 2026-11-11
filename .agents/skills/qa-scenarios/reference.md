@@ -470,6 +470,12 @@ a run that cannot pass on Rune is `pending` in the ledger, with its reason.
 patches, `tests/qa/parity/mutations/<scenario>.patch`: each must make its
 scenario's required runs fail on Rune. They are separate from a scenario's
 `mutation` header, which names a GTK patch under `tests/qa/mutations/`.
+`./scripts/qa-parity.sh gtk-mutations` runs those GTK patches for the slice's
+exit check, less the ones the ledger names under `[[stale_patch]]`, which must
+still fail to apply. The ledger's `[[flaky]]` entry lets one named run fail in
+`slice`'s whole-suite part if it then passes alone. Neither is a way to excuse
+a scenario: the runner's tests hold both lists to what
+`docs/rune/slice/README.md` records, and `./scripts/qa.sh` reads neither.
 
 `{"keymap":{"layouts":"us,ru","variants":"","group":1,"caps_lock":false}}` is
 a request the runner sends the Rune target after a `layout` step, since that

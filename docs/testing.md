@@ -778,19 +778,33 @@ pinned image and runs the runs of a gate on each target:
 
 ```bash
 ./scripts/qa-parity.sh g1                 # gate G1's required runs, on GTK and then on Rune
-./scripts/qa-parity.sh slice              # every gate's, then the runner's tests, the whole GTK suite and the Rune mutations
+./scripts/qa-parity.sh slice              # the slice's exit check: every gate's, then the rest, below
 ./scripts/qa-parity.sh g2 --target rune   # one target only
 ./scripts/qa-parity.sh g2 --pending       # a survey: gate G2's pending runs, on Rune
 ./scripts/qa-parity.sh g2 --scenario shift-click-range   # only that scenario's runs of the selection
 ./scripts/qa-parity.sh mutations          # the Rune target's mutation patches
+./scripts/qa-parity.sh gtk-mutations      # the GTK application's, less the ledger's stale ones
 ```
 
 It exits 0 only when every required run passes on every target it ran. A
 survey lists which pending runs pass and fails only when nothing ran. Artifacts
 are kept for passing runs too (`STRATA_QA_KEEP_ARTIFACTS=0` keeps a failed
-run's only). It does not run `scripts/qa-mutation.sh`. With `--target` or
-`--scenario`, `slice` runs its required runs and nothing after them; a
-`--scenario` that names no run of the selection is an error.
+run's only). With `--target` or `--scenario`, `slice` runs its required runs
+and nothing after them; a `--scenario` that names no run of the selection is
+an error.
+
+`slice` alone is the exit check of `docs/rune/slice/README.md`, in four parts
+that all run whatever the earlier ones did:
+
+1. every gate's required runs, on GTK and then on Rune;
+2. the runner's own tests and the whole GTK suite, as `./scripts/qa.sh` runs
+   them;
+3. the Rune mutation patches, as `mutations` runs them;
+4. the GTK mutation patches, as `gtk-mutations` runs them.
+
+It ends by listing each allowance it used or refused, or saying it used none,
+and then `== slice exits <status> ==`. A whole run takes about 14 minutes with
+a warm cache, 11 of them the GTK mutation patches.
 
 `mutations` proves the Rune target's runs can fail, as `scripts/qa-mutation.sh`
 does for the GTK application. Each patch under `tests/qa/parity/mutations/`
@@ -818,6 +832,38 @@ The runner's unit tests fail when a Columns run of the set is missing from the
 ledger, listed twice, gone, under the wrong gate, or pending without a reason
 and a blocker. So adding, renaming or removing a Columns run in those folders
 means editing the ledger in the same change.
+
+#### What `slice` lets stand
+
+The ledger also names what the GTK suite already did wrong before the slice,
+so that `slice` fails for the slice's reasons only. These allowances are
+`slice`'s alone: `./scripts/qa.sh` and `./scripts/qa-mutation.sh` do not read
+them and fail as before.
+
+- `[[flaky]]` names one run, `new-folder-with-selection-groups/columns`, by an
+  owner ruling of 2026-11-11. When it fails in the whole-suite part, `slice`
+  runs it again alone and prints `ALLOWANCE USED: … failed in the whole GTK
+  suite and passed alone.`, or `ALLOWANCE REFUSED: … and again alone.` and
+  fails. The failed run's artifacts are kept in
+  `target/qa-parity/allowance/<scenario>/<run>/`; the rerun's are in
+  `target/qa-artifacts/` as usual. Any other failure of the whole suite fails
+  `slice`, with or without the flaky run beside it: it prints `NO ALLOWANCE: …
+  failed in the whole GTK suite; nothing is run again.` That run fails alone
+  more often than in the suite, so expect the allowance to be refused about as
+  often as it is used (`docs/rune/slice/V9b-test-image-and-exit-check.md`).
+- `[[stale_patch]]` names one GTK mutation patch, `cut`, which stopped applying
+  before the slice. `gtk-mutations` asks `git apply --check` of every patch a
+  scenario names, runs the ones that apply through `scripts/qa_mutation.py`,
+  and prints `ALLOWANCE USED: cut.patch does not apply, as before the slice; …`.
+  It refuses to start when a patch fails to apply without being named, or a
+  named patch applies again: then its entry is removed.
+
+An allowance is not a place to park a failure. The runner's unit tests hold the
+committed list to those two entries, and refuse an entry that names no run of
+the suite or no patch a scenario names, names a run of the parity set, gives no
+reason, or cites under `recorded` a document that does not name it. A new one
+needs an owner ruling recorded in `docs/rune/slice/README.md`, and a change to
+that test.
 
 ### Skipped scenarios
 
