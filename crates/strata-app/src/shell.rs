@@ -66,6 +66,7 @@ pub(crate) struct App {
     /// Whether the window has keyboard focus.
     active: bool,
     labels: Labels,
+    /// How many of the browser's events `apply_queued` has seen, for its trace line.
     applied: u64,
 }
 
