@@ -4,6 +4,8 @@ use crate::{
     parity_tests::{
         a_ledger_entry_with_an_unknown_gate_status_reason_or_field_does_not_parse,
         a_ledger_that_misses_repeats_or_leaves_a_run_unexplained_is_refused,
+        an_allowance_for_nothing_real_or_with_nothing_behind_it_is_refused,
+        the_ledger_allows_only_the_flaky_run_and_the_stale_patch_it_was_given,
         the_parity_ledger_accounts_for_every_columns_run_of_the_slices_set,
         the_target_picks_the_binary_and_only_rune_is_told_the_layout,
     },
@@ -82,5 +84,7 @@ unit_tests! {
     the_parity_ledger_accounts_for_every_columns_run_of_the_slices_set,
     a_ledger_that_misses_repeats_or_leaves_a_run_unexplained_is_refused,
     a_ledger_entry_with_an_unknown_gate_status_reason_or_field_does_not_parse,
+    the_ledger_allows_only_the_flaky_run_and_the_stale_patch_it_was_given,
+    an_allowance_for_nothing_real_or_with_nothing_behind_it_is_refused,
     the_target_picks_the_binary_and_only_rune_is_told_the_layout,
 }

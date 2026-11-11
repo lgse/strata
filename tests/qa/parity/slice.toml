@@ -15,6 +15,19 @@
 #                        package and the first step that needs it.
 #
 # A run moves to "required" only once it has passed on both targets.
+#
+# Below the runs are the slice's allowances: what the GTK suite already did wrong before the
+# slice, which `./scripts/qa-parity.sh slice` lets stand so that its exit status is about
+# the slice. Only `slice` reads them: `./scripts/qa.sh` and `./scripts/qa-mutation.sh` fail
+# on them as on anything else. The runner's unit tests hold the list to the two entries
+# here, and refuse one that names no real run or patch, gives no reason, or cites a
+# document that does not name it.
+#
+#   [[flaky]]        a run outside the set that fails some of the time. When it fails in
+#                    slice's whole-suite part, slice runs it again alone, prints both
+#                    results, and fails only if it fails alone too. An owner ruling.
+#   [[stale_patch]]  a GTK mutation patch that no longer applies. slice runs every other
+#                    patch, and fails if this one applies again: then its entry goes.
 
 [[run]]
 scenario = "alt-up-and-history"
@@ -543,3 +556,14 @@ scenario = "window-accelerators-leave-rename"
 run = "columns-ctrl-k"
 gate = "G3"
 status = "required"
+
+[[flaky]]
+scenario = "new-folder-with-selection-groups"
+run = "columns"
+reason = "Flaky since before V3: its wait for the opened folder's column to take focus times out some of the time, in a whole-suite run and alone. The owner ruled on 2026-11-11 that slice names it and no scenario is edited."
+recorded = "docs/rune/slice/README.md"
+
+[[stale_patch]]
+patch = "cut"
+reason = "Stale since before V3: src/ui/browser/clipboard.rs moved under it on main (#2092). Rebasing it is a GTK-side change of its own."
+recorded = "docs/rune/slice/README.md"

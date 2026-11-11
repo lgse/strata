@@ -6,16 +6,22 @@ breaks one behaviour of strata-app, and the scenario it is named for must catch 
 Checked the way scripts/qa_mutation.py checks the GTK application's patches: the scenario's
 required runs pass on the Rune target unpatched, and at least one fails a step with the patch
 applied. A patch is `<scenario>.patch`.
+
+With `gtk` it runs the GTK application's own patches for the slice's exit check instead:
+every patch under tests/qa/mutations but the ones the parity ledger names as stale before
+the slice, which must be stale still.
 """
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+import qa_mutation
 import qa_parity
 from qa_mutation import (
     Mutation, Report, Scenario, baseline_verdict, mutated_verdict, own_runs, parse_qa_log,
@@ -87,12 +93,63 @@ def check() -> int:
     return 0 if all(report.caught for report in reports) else 1
 
 
-def main() -> int:
+def applies(patch: str) -> bool:
+    """Whether a GTK mutation patch still applies to this checkout."""
+
+    path = qa_mutation.MUTATIONS / f"{patch}.patch"
+    return qa_mutation.git("apply", "--check", str(path)).returncode == 0
+
+
+def sort_gtk_patches(patches: list[str], stale: list[str], applies=applies) -> tuple[list[str], list[str]]:
+    """The GTK patches to run, and what is wrong with the ones left out.
+
+    A patch is left out only when it does not apply and the ledger names it. One that fails
+    to apply unnamed, or is named and applies again, is a problem: the ledger is not a place
+    to park a patch that works.
+    """
+
+    broken = [patch for patch in patches if not applies(patch)]
+    problems = [f"{patch}.patch does not apply, and the ledger does not name it stale"
+                for patch in broken if patch not in stale]
+    problems += [f"{patch}.patch applies again: remove its [[stale_patch]] entry from the ledger"
+                 for patch in stale if patch in patches and patch not in broken]
+    problems += [f"{patch}.patch is named stale, and no scenario names it as its mutation"
+                 for patch in stale if patch not in patches]
+    return [patch for patch in patches if patch not in broken], problems
+
+
+def check_gtk(notes: Path | None = None) -> int:
+    """The exit check's fourth item: the GTK patches behave as they did before the slice."""
+
+    patches = [scenario.mutation for scenario in qa_mutation.chosen_scenarios([])]
+    stale = qa_parity.stale_patches(qa_parity.load())
+    chosen, problems = sort_gtk_patches(patches, stale)
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        return 2
+    for patch in stale:
+        line = (f"ALLOWANCE USED: {patch}.patch does not apply, as before the slice; "
+                f"the other {len(chosen)} GTK mutation patches run.")
+        print(line, flush=True)
+        if notes:
+            with notes.open("a", encoding="utf-8") as stream:
+                stream.write(line + "\n")
+    return qa_mutation.check(chosen)
+
+
+def main(arguments: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("target", nargs="?", choices=("rune", "gtk"), default="rune",
+                        help="rune: the patches under tests/qa/parity/mutations (the default); "
+                             "gtk: the GTK application's, less the ledger's stale ones")
+    parser.add_argument("--notes", type=Path,
+                        help="a file to append each allowance used to, for the caller's summary")
+    options = parser.parse_args(arguments)
     if os.environ.get("STRATA_QA_UPDATE_BASELINES") == "1":
         print("STRATA_QA_UPDATE_BASELINES must be unset for a mutated run", file=sys.stderr)
         return 2
     try:
-        return check()
+        return check_gtk(options.notes) if options.target == "gtk" else check()
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
         return 130

@@ -4,8 +4,11 @@
 //! the Rune vertical slice is measured by, each `required` on both targets or `pending` with
 //! a reason and a blocker (`docs/rune/slice/README.md`). `./scripts/qa-parity.sh` reads the
 //! same file to pick the runs of a gate.
+//!
+//! It also holds the slice's allowances: what the GTK suite already did wrong before the
+//! slice and `./scripts/qa-parity.sh slice` lets stand, each by an owner ruling.
 
-use std::{collections::BTreeSet, path::Path};
+use std::{collections::BTreeSet, fs, path::Path};
 
 use serde::Deserialize;
 
@@ -70,11 +73,71 @@ pub(crate) struct Entry {
     pub(crate) blocker: Option<String>,
 }
 
+/// A run of the GTK suite that failed some of the time before the slice. When it fails in
+/// the whole suite, `./scripts/qa-parity.sh slice` runs it again alone and fails only if
+/// that fails too.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Flaky {
+    pub(crate) scenario: String,
+    pub(crate) run: String,
+    pub(crate) reason: String,
+    /// The document that records the flake, which names the run.
+    pub(crate) recorded: String,
+}
+
+/// A GTK mutation patch that stopped applying before the slice. `slice` runs every other
+/// patch and requires this one to be stale still.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StalePatch {
+    pub(crate) patch: String,
+    pub(crate) reason: String,
+    /// The document that records the stale patch, which names its file.
+    pub(crate) recorded: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Ledger {
     #[serde(rename = "run", default)]
     pub(crate) runs: Vec<Entry>,
+    #[serde(default)]
+    pub(crate) flaky: Vec<Flaky>,
+    #[serde(rename = "stale_patch", default)]
+    pub(crate) stale_patches: Vec<StalePatch>,
+}
+
+/// What an allowance is checked against: the GTK suite as the runner plans it.
+#[derive(Debug, Default)]
+pub(crate) struct Suite {
+    /// Every `<scenario>/<run>`, in every mode.
+    pub(crate) runs: BTreeSet<String>,
+    /// Every mutation patch a scenario names.
+    pub(crate) mutations: BTreeSet<String>,
+}
+
+impl Suite {
+    pub(crate) fn planned() -> Self {
+        let mut suite = Self::default();
+        for path in scenario_files() {
+            let scenario =
+                load_scenario(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            let name = &scenario.header.scenario;
+            suite.runs.extend(
+                runs(&scenario.header)
+                    .into_iter()
+                    .map(|run| format!("{name}/{}", run.label)),
+            );
+            suite.mutations.extend(scenario.header.mutation.clone());
+        }
+        suite
+    }
+}
+
+/// The text of a document an allowance says it is recorded in, if the repository has it.
+pub(crate) fn document(path: &str) -> Option<String> {
+    fs::read_to_string(Path::new(REPOSITORY).join(path)).ok()
 }
 
 /// A run of the set as the runner plans it: scenario, run label and gate.
@@ -87,7 +150,7 @@ impl Ledger {
 
     pub(crate) fn load() -> Result<Self, String> {
         let path = Path::new(REPOSITORY).join(LEDGER);
-        let text = std::fs::read_to_string(&path).map_err(|error| format!("{LEDGER}: {error}"))?;
+        let text = fs::read_to_string(&path).map_err(|error| format!("{LEDGER}: {error}"))?;
         Self::parse(&text)
     }
 
@@ -109,6 +172,94 @@ impl Ledger {
         problems
             .extend(unlisted.map(|(scenario, run, _)| format!("{scenario}/{run} is not listed")));
         problems
+    }
+
+    /// Everything wrong with the allowances, one line each. `planned` is the parity set,
+    /// `suite` the whole GTK suite and `document` reads what an allowance cites.
+    pub(crate) fn allowance_problems(
+        &self,
+        planned: &[Planned],
+        suite: &Suite,
+        document: impl Fn(&str) -> Option<String>,
+    ) -> Vec<String> {
+        let flaky = self
+            .flaky
+            .iter()
+            .map(|flaky| (flaky.cited(), flaky.misplaced(planned, suite)));
+        let stale = self
+            .stale_patches
+            .iter()
+            .map(|stale| (stale.cited(), stale.misplaced(suite)));
+        let mut listed = BTreeSet::new();
+        flaky
+            .chain(stale)
+            .filter_map(|(cited, misplaced)| {
+                let twice =
+                    (!listed.insert(cited.name.clone())).then(|| "is allowed twice".to_owned());
+                let problem = twice.or(misplaced).or_else(|| cited.unfounded(&document))?;
+                Some(format!("{} {problem}", cited.name))
+            })
+            .collect()
+    }
+}
+
+impl Flaky {
+    pub(crate) fn name(&self) -> String {
+        format!("{}/{}", self.scenario, self.run)
+    }
+
+    fn cited(&self) -> Cited<'_> {
+        Cited {
+            name: self.name(),
+            reason: &self.reason,
+            recorded: &self.recorded,
+        }
+    }
+
+    /// What is wrong with the run named: none of the suite's, or one a gate decides.
+    fn misplaced(&self, planned: &[Planned], suite: &Suite) -> Option<String> {
+        let in_the_set = planned
+            .iter()
+            .any(|(scenario, run, _)| *scenario == self.scenario && *run == self.run);
+        if !suite.runs.contains(&self.name()) {
+            Some("is no run of the GTK suite".to_owned())
+        } else if in_the_set {
+            Some("is a run of the parity set, which a gate decides".to_owned())
+        } else {
+            None
+        }
+    }
+}
+
+impl StalePatch {
+    fn cited(&self) -> Cited<'_> {
+        Cited {
+            name: format!("{}.patch", self.patch),
+            reason: &self.reason,
+            recorded: &self.recorded,
+        }
+    }
+
+    fn misplaced(&self, suite: &Suite) -> Option<String> {
+        (!suite.mutations.contains(&self.patch))
+            .then(|| "is no mutation patch a scenario names".to_owned())
+    }
+}
+
+/// What every allowance owes: why it stands, and a document that names it.
+struct Cited<'a> {
+    name: String,
+    reason: &'a str,
+    recorded: &'a str,
+}
+
+impl Cited<'_> {
+    fn unfounded(&self, document: &impl Fn(&str) -> Option<String>) -> Option<String> {
+        if self.reason.trim().is_empty() {
+            return Some("is allowed without a reason".to_owned());
+        }
+        let named = document(self.recorded).is_some_and(|text| text.contains(&self.name));
+        (!named).then(|| format!("is not recorded in {:?}", self.recorded))
     }
 }
 
