@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Strata's desktop integration: portal setup, the updater, integrations and build information"
+description = "Strata's desktop integration: portal setup, the updater, integrations, the saved settings and build information"
 publish = false
 
 [lints]
@@ -13,11 +13,16 @@ workspace = true
 
 [features]
 # Test-only items that other crates' tests use. Never in a release build.
-test-support = ["strata-core/test-support", "strata-fs/test-support"]
+test-support = [
+    "strata-core/test-support",
+    "strata-fs/test-support",
+    "strata-preview/test-support",
+]
 
 [dependencies]
 strata-core.workspace = true
 strata-fs.workspace = true
+strata-preview.workspace = true
 flate2.workspace = true
 gio.workspace = true
 gio-unix.workspace = true

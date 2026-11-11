@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::ui::preferences::TextSizeShortcut as _;
 
 impl ChooserShortcuts {
     /// In 10xer mode a focused name or location field types every key but these.

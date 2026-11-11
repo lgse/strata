@@ -14,6 +14,7 @@ use crate::{
         browser::BrowserView,
         browser_modes::ThumbnailResize,
         keys::{self, Command, KeyPress, Map, SHORTCUT_MODIFIERS, TEXT_EDITING, bindings::*},
+        preferences::TextSizeShortcut as _,
         preview::PreviewDrawer,
         shortcut_footer::ShortcutFooter,
         top_bar_navigation::TopBarNavigation,

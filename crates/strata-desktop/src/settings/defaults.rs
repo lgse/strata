@@ -105,48 +105,48 @@ impl Default for Preferences {
     }
 }
 
-pub(super) fn default_enabled() -> bool {
+pub fn default_enabled() -> bool {
     true
 }
 
-pub(super) fn default_release_channel() -> String {
+pub fn default_release_channel() -> String {
     "stable".to_owned()
 }
 
-pub(super) fn default_browser_mode() -> String {
+pub fn default_browser_mode() -> String {
     "columns".to_owned()
 }
 
-pub(super) fn default_video_preview_backend() -> String {
+pub fn default_video_preview_backend() -> String {
     "automatic".to_owned()
 }
 
-pub(super) fn default_browser_density() -> String {
+pub fn default_browser_density() -> String {
     "compact".to_owned()
 }
 
-pub(super) fn default_frame_density() -> String {
+pub fn default_frame_density() -> String {
     "compact".to_owned()
 }
 
 /// Only read when the matching density is `"custom"`.
-pub(super) fn default_density_custom_px() -> u8 {
+pub fn default_density_custom_px() -> u8 {
     0
 }
 
-pub(super) fn default_file_clicks() -> u8 {
+pub fn default_file_clicks() -> u8 {
     2
 }
 
-pub(super) fn default_folder_clicks() -> u8 {
+pub fn default_folder_clicks() -> u8 {
     1
 }
 
-pub(super) fn default_double_clicks() -> u8 {
+pub fn default_double_clicks() -> u8 {
     2
 }
 
-pub(super) fn default_sidebar_order() -> Vec<String> {
+pub fn default_sidebar_order() -> Vec<String> {
     vec![
         "home".to_owned(),
         "trash".to_owned(),
@@ -161,44 +161,44 @@ pub(super) fn default_sidebar_order() -> Vec<String> {
     ]
 }
 
-pub(super) fn default_search_time_limit() -> u32 {
+pub fn default_search_time_limit() -> u32 {
     SearchLimits::default()
         .time_budget
         .and_then(|budget| u32::try_from(budget.as_secs()).ok())
         .unwrap_or(0)
 }
 
-pub(super) fn default_search_entry_limit() -> u32 {
+pub fn default_search_entry_limit() -> u32 {
     SearchLimits::default()
         .max_entries
         .and_then(|entries| u32::try_from(entries).ok())
         .unwrap_or(0)
 }
 
-pub(super) fn default_sort_key() -> String {
+pub fn default_sort_key() -> String {
     "name".to_owned()
 }
 
-pub(super) fn default_sort_direction() -> String {
+pub fn default_sort_direction() -> String {
     "ascending".to_owned()
 }
 
-pub(super) fn default_full_volume() -> f64 {
+pub fn default_full_volume() -> f64 {
     1.0
 }
 
-pub(super) fn default_icons_thumbnail_size() -> i32 {
+pub fn default_icons_thumbnail_size() -> i32 {
     64
 }
 
-pub(super) fn default_date_format() -> String {
+pub fn default_date_format() -> String {
     crate::util::DateFormat::default().as_str().to_owned()
 }
 
-pub(super) fn default_cross_volume_drop_strategy() -> String {
+pub fn default_cross_volume_drop_strategy() -> String {
     CrossVolumeDropStrategy::Ask.as_str().to_owned()
 }
 
-pub(super) fn default_natural_sort() -> bool {
+pub fn default_natural_sort() -> bool {
     true
 }

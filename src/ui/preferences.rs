@@ -1,19 +1,44 @@
 // SPDX-License-Identifier: MIT
 
+// The tests and fixtures under this module import through it.
 use std::{
     cell::{Cell, RefCell},
-    collections::{BTreeSet, HashMap},
-    fs, io,
+    collections::BTreeSet,
+    io,
     path::{Component, Path, PathBuf},
     rc::Rc,
     time::Duration,
 };
+#[cfg(test)]
+use std::{collections::HashMap, fs};
 
 use gtk::{glib, prelude::*};
-use serde::{Deserialize, Serialize};
+// The schema, its defaults and stored forms, and the reading of the file live in
+// strata-desktop, where the Rune interface reads them too. This module keeps what needs GTK.
+#[cfg(test)]
+use strata_desktop::settings::read_preferences;
+pub use strata_desktop::settings::{
+    CornerRoundness, ListColumnId, ListColumns, TextSize, default_list_column_order,
+};
+pub(crate) use strata_desktop::settings::{
+    FileIconColors, InterfaceRenderer, OmarchyVariant, UnitSystem, sanitize_list_column_order,
+    sanitize_list_hidden_columns,
+};
+use strata_desktop::settings::{
+    KeymapOverrides, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, RETIRED_SETTINGS,
+    SettingKey, configured_hardware_acceleration, configured_video_preview_backend, lock_saves,
+    merged_settings, normalized_font_family, normalized_search_limit, normalized_video_start,
+    normalized_volume, parse_preferences, read_loaded_preferences, read_state_file, record_changes,
+    settings_path, sort_preferences, store_sort,
+};
+pub(in crate::ui) use strata_desktop::settings::{
+    MAX_PREVIEW_VIDEO_START, Preferences, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
+};
+#[cfg(test)]
+use strata_desktop::settings::{default_sidebar_order, salvage_preferences};
 
 use crate::{
-    model::{FolderColorValue, SortDirection, SortKey, ViewPreferences},
+    model::{FolderColorValue, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
     services::{Channel, CrossVolumeDropStrategy, SearchLimits},
     storage::{
@@ -23,14 +48,11 @@ use crate::{
 };
 
 use super::browser_modes::DensityScale;
-use super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
 
 pub(in crate::ui) const SEND_TO_RECENT_DESTINATIONS_LIMIT: usize = 3;
 
 mod appearance_settings;
 mod bindings;
-mod corner_roundness;
-mod defaults;
 mod desktop_scale;
 mod file_settings;
 #[cfg(test)]
@@ -41,7 +63,6 @@ mod input_settings;
 mod item_customizations;
 mod keymap;
 mod layout_settings;
-mod list_columns;
 mod persistence;
 mod preview_settings;
 mod save_notice;
@@ -50,272 +71,15 @@ mod stored;
 mod text_size;
 mod trashed;
 pub(in crate::ui) use bindings::notify_live;
-pub use corner_roundness::CornerRoundness;
-use defaults::{
-    default_browser_density, default_browser_mode, default_cross_volume_drop_strategy,
-    default_date_format, default_density_custom_px, default_double_clicks, default_enabled,
-    default_file_clicks, default_folder_clicks, default_frame_density, default_full_volume,
-    default_icons_thumbnail_size, default_release_channel, default_search_entry_limit,
-    default_search_time_limit, default_sidebar_order, default_sort_direction, default_sort_key,
-    default_video_preview_backend,
-};
 #[cfg(test)]
 use desktop_scale::text_scale_factor_from_xft_dpi;
 pub(in crate::ui) use desktop_scale::{desktop_text_scale_factor, snapped_root_font_px};
 pub(crate) use folder_view_settings::flush_pending_folder_views;
-use keymap::KeymapOverrides;
-use list_columns::is_default_list_column_order;
-pub use list_columns::{ListColumnId, ListColumns, default_list_column_order};
-pub(crate) use list_columns::{sanitize_list_column_order, sanitize_list_hidden_columns};
-#[cfg(test)]
-use persistence::read_preferences;
-#[cfg(test)]
-use persistence::{RETIRED_SETTINGS, salvage_preferences};
-use persistence::{
-    SettingKey, parse_preferences, read_loaded_preferences, read_state_file, record_changes,
-    settings_path,
-};
-pub(in crate::ui) use stored::{
-    MAX_PREVIEW_VIDEO_START, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
-};
-use stored::{
-    browser_mode_from_stored, configured_hardware_acceleration, configured_video_preview_backend,
-    normalized_search_limit, normalized_video_start, normalized_volume, sort_preferences,
-    store_density, store_sort, stored_browser_mode, stored_density,
-};
-pub use text_size::TextSize;
+use stored::{browser_mode_from_stored, store_density, stored_browser_mode, stored_density};
+pub(in crate::ui) use text_size::TextSizeShortcut;
 
 thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<PreferenceManager>> = const { RefCell::new(std::rc::Weak::new()) };
-}
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum InterfaceRenderer {
-    Cairo,
-    #[default]
-    System,
-}
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum OmarchyVariant {
-    #[serde(alias = "original")]
-    Lighter,
-    #[default]
-    Darker,
-    #[serde(alias = "high_contrast")]
-    Contrast,
-}
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum FileIconColors {
-    #[default]
-    Brand,
-    Theme,
-}
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum UnitSystem {
-    #[default]
-    Metric,
-    Imperial,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub(in crate::ui) struct Preferences {
-    mode: String,
-    theme: String,
-    /// Pre-per-theme global choice, migrated to the active Omarchy theme.
-    #[serde(default, rename = "omarchy_variant", skip_serializing)]
-    legacy_omarchy_variant: Option<OmarchyVariant>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    omarchy_variants: HashMap<String, OmarchyVariant>,
-    #[serde(default)]
-    folder_peeking: bool,
-    #[serde(default = "default_enabled")]
-    single_click_previews: bool,
-    #[serde(default = "default_enabled")]
-    columns_mirror_selection: bool,
-    #[serde(default = "default_enabled")]
-    columns_show_sizes: bool,
-    #[serde(default = "default_enabled")]
-    render_documents_by_default: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    hardware_accelerated_video_previews: Option<bool>,
-    #[serde(default = "default_video_preview_backend")]
-    video_preview_backend: String,
-    #[serde(default)]
-    search_open_files_directly: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    search_exclusions: Vec<String>,
-    #[serde(default = "default_search_time_limit")]
-    search_time_limit: u32,
-    #[serde(default = "default_search_entry_limit")]
-    search_entry_limit: u32,
-    #[serde(default = "default_enabled")]
-    type_to_search: bool,
-    #[serde(default)]
-    arrow_navigation_scoped: bool,
-    #[serde(default)]
-    tenxer_mode: bool,
-    #[serde(default = "default_enabled")]
-    filter_include_subfolders: bool,
-    #[serde(default = "default_enabled")]
-    show_keybinding_hints: bool,
-    #[serde(default = "default_enabled")]
-    window_show_close: bool,
-    #[serde(default)]
-    window_show_minimize: bool,
-    #[serde(default)]
-    window_show_maximize: bool,
-    #[serde(default)]
-    reduce_motion: bool,
-    #[serde(default = "default_enabled")]
-    element_glow: bool,
-    #[serde(default)]
-    file_icon_colors: FileIconColors,
-    #[serde(default = "default_browser_mode")]
-    browser_mode: String,
-    #[serde(default = "default_browser_density")]
-    browser_density: String,
-    #[serde(default = "default_density_custom_px")]
-    browser_density_custom_px: u8,
-    #[serde(default = "default_frame_density")]
-    frame_density: String,
-    #[serde(default = "default_density_custom_px")]
-    frame_density_custom_px: u8,
-    #[serde(default)]
-    group_by_type: bool,
-    #[serde(default = "default_file_clicks", rename = "list_file_clicks")]
-    columns_file_clicks: u8,
-    #[serde(default = "default_folder_clicks", rename = "list_folder_clicks")]
-    columns_folder_clicks: u8,
-    #[serde(default = "default_file_clicks", rename = "grid_file_clicks")]
-    icons_file_clicks: u8,
-    #[serde(default = "default_double_clicks", rename = "grid_folder_clicks")]
-    icons_folder_clicks: u8,
-    #[serde(default = "default_file_clicks", rename = "explorer_file_clicks")]
-    list_file_clicks: u8,
-    #[serde(default = "default_double_clicks", rename = "explorer_folder_clicks")]
-    list_folder_clicks: u8,
-    #[serde(default = "default_sidebar_order")]
-    sidebar_order: Vec<String>,
-    #[serde(default = "default_enabled")]
-    sidebar_show_home: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_show_trash: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_show_network: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_show_recent: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_show_desktop: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_show_documents: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_show_downloads: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_show_music: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_show_pictures: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_show_videos: bool,
-    #[serde(default = "default_enabled")]
-    sidebar_expanded: bool,
-    #[serde(default)]
-    sidebar_pinned_collapsed: bool,
-    #[serde(default)]
-    sidebar_devices_collapsed: bool,
-    #[serde(default)]
-    sidebar_compact: bool,
-    #[serde(default)]
-    show_hidden: bool,
-    #[serde(default)]
-    text_size: TextSize,
-    #[serde(default)]
-    corner_roundness: CornerRoundness,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    interface_font: Option<String>,
-    #[serde(default)]
-    interface_renderer: InterfaceRenderer,
-    #[serde(default)]
-    language: crate::i18n::Language,
-    #[serde(default = "default_enabled")]
-    folders_first: bool,
-    #[serde(default = "default_sort_key")]
-    sort_key: String,
-    #[serde(default = "default_sort_direction")]
-    sort_direction: String,
-    #[serde(default = "defaults::default_natural_sort")]
-    natural_sort: bool,
-    #[serde(default)]
-    case_sensitive_sort: bool,
-    #[serde(default = "default_enabled")]
-    check_for_updates: bool,
-    #[serde(default)]
-    preview_muted: bool,
-    #[serde(default = "default_full_volume")]
-    preview_volume: f64,
-    #[serde(default = "default_enabled")]
-    preview_text_wrap: bool,
-    #[serde(default)]
-    unit_system: UnitSystem,
-    #[serde(default)]
-    preview_autoplay: bool,
-    #[serde(default)]
-    preview_video_start: u32,
-    #[serde(default = "default_enabled")]
-    watch_network_folders: bool,
-    #[serde(default = "crate::sandbox::browser::default_worker_limit")]
-    thumbnail_workers: usize,
-    #[serde(default = "default_enabled")]
-    show_thumbnails: bool,
-    #[serde(default)]
-    stl_thumbnails: bool,
-    #[serde(default = "default_icons_thumbnail_size")]
-    icons_thumbnail_size: i32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    chooser_column_width: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    browser_column_width: Option<i32>,
-    #[serde(default = "default_cross_volume_drop_strategy")]
-    cross_volume_drop_strategy: String,
-    #[serde(default)]
-    open_folder_after_drop: bool,
-    #[serde(default = "default_date_format")]
-    date_format: String,
-    #[serde(default = "default_release_channel")]
-    release_channel: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    default_directory: Option<PathBuf>,
-    #[serde(default = "default_enabled")]
-    restore_tabs: bool,
-    #[serde(default = "default_enabled")]
-    remember_folder_views: bool,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    folder_colors: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    custom_icons: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    send_to_recent_destinations: HashMap<String, Vec<PathBuf>>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    device_labels: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    chooser_list_columns: Option<ListColumns>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    browser_list_columns: Option<ListColumns>,
-    #[serde(
-        default = "default_list_column_order",
-        skip_serializing_if = "is_default_list_column_order"
-    )]
-    list_column_order: Vec<ListColumnId>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    list_hidden_columns: Vec<ListColumnId>,
-    #[serde(default, skip_serializing_if = "KeymapOverrides::is_empty")]
-    keymap: KeymapOverrides,
 }
 
 pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {

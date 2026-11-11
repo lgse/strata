@@ -63,7 +63,7 @@ pub(super) fn is_default_list_column_order(order: &[ListColumnId]) -> bool {
     order == ListColumnId::ALL
 }
 
-pub(crate) fn sanitize_list_column_order(order: &[ListColumnId]) -> Vec<ListColumnId> {
+pub fn sanitize_list_column_order(order: &[ListColumnId]) -> Vec<ListColumnId> {
     let mut seen = std::collections::HashSet::new();
     order
         .iter()
@@ -72,7 +72,7 @@ pub(crate) fn sanitize_list_column_order(order: &[ListColumnId]) -> Vec<ListColu
         .filter(|col| seen.insert(*col))
         .collect()
 }
-pub(crate) fn sanitize_list_hidden_columns(hidden: &[ListColumnId]) -> Vec<ListColumnId> {
+pub fn sanitize_list_hidden_columns(hidden: &[ListColumnId]) -> Vec<ListColumnId> {
     let mut seen = std::collections::HashSet::new();
     hidden
         .iter()
@@ -93,7 +93,7 @@ pub struct ListColumns {
 }
 
 impl ListColumns {
-    pub(super) fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         self.name.is_none_or(|width| width > 0)
             && [self.mode, self.size, self.kind, self.modified]
                 .iter()

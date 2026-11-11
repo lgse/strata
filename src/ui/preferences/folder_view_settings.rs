@@ -4,8 +4,7 @@ use std::{
     cell::RefCell,
     fs, io,
     path::{Path, PathBuf},
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use gtk::glib;
@@ -20,7 +19,7 @@ use super::{
     MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, PreferenceManager, SHARED_MANAGER,
     file_stamp,
     folder_views::{FolderKey, FolderViews, TakenViews, key_for_location},
-    parse_preferences, read_state_file, settings_path, store_sort,
+    lock_saves, parse_preferences, read_state_file, settings_path, store_sort,
     trashed::TrashedValues,
 };
 use crate::storage::writer;
@@ -105,27 +104,6 @@ impl FolderViewStore {
 
 pub(in crate::ui) fn folder_views_path() -> PathBuf {
     crate::storage::state_directory().join(FILE_NAME)
-}
-
-/// Keeps other Strata processes from saving between this one's merge and its
-/// rename, which would drop their changes. Locks the directory, because every
-/// save replaces the file.
-pub(super) fn lock_saves(path: &Path, wait: Duration) -> io::Result<fs::File> {
-    let directory = path
-        .parent()
-        .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))?;
-    fs::create_dir_all(directory)?;
-    let lock = fs::File::open(directory)?;
-    let deadline = Instant::now() + wait;
-    loop {
-        match lock.try_lock() {
-            Ok(()) => return Ok(lock),
-            Err(fs::TryLockError::WouldBlock) if Instant::now() < deadline => {
-                thread::sleep(Duration::from_millis(10));
-            }
-            Err(error) => return Err(error.into()),
-        }
-    }
 }
 
 /// Writes pending folder settings, such as use times, before the process exits.

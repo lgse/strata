@@ -5,8 +5,7 @@ use gtk::prelude::*;
 mod layout;
 mod name_tooltip;
 
-pub(super) const MIN_ICONS_THUMBNAIL_SIZE: i32 = 32;
-pub(super) const MAX_ICONS_THUMBNAIL_SIZE: i32 = 256;
+pub(super) use strata_desktop::settings::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
 const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 120;
 pub(super) const ICONS_CARD_SPACING: i32 = 4;
 const ICONS_CARD_LABEL_CHARS: i32 = 12;

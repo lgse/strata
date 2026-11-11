@@ -4876,6 +4876,7 @@ dependencies = [
  "sha2",
  "strata-core",
  "strata-fs",
+ "strata-preview",
  "strata-test-support",
  "tar",
  "tempfile",

@@ -244,7 +244,7 @@ impl PreferenceManager {
     }
 
     pub fn set_interface_font(&self, family: Option<String>) {
-        let family = super::stored::normalized_font_family(family);
+        let family = normalized_font_family(family);
         if self.interface_font() == family {
             return;
         }

@@ -1,101 +1,68 @@
 // SPDX-License-Identifier: MIT
 
-//! Saved keymap overrides: only the entries a user changed, per map, kept as
-//! written so a newer version's ids and keys survive an older version's save.
+//! The saved keymap overrides (`strata_desktop::settings::KeymapOverrides`)
+//! resolved against the key catalog, and the edits Settings makes to them.
 //! See the Keymap section of `docs/preferences.md`.
 
 use std::{collections::BTreeMap, path::Path, rc::Rc};
 
-use serde::{Deserialize, Serialize};
-
-use super::{PreferenceManager, settings_path};
+use super::{KeymapOverrides, PreferenceManager, settings_path};
 use crate::ui::keys::{
     Binding, Command, Keymap, Map, Rejected,
     conflicts::{self, Policy, Severity},
 };
 
-/// `[keymap.default]` and `[keymap.tenxer]`: command ids and their
-/// accelerators, primary first. An empty list unbinds the command.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-pub(in crate::ui) struct KeymapOverrides {
-    #[serde(
-        default,
-        deserialize_with = "entries_or_empty",
-        skip_serializing_if = "BTreeMap::is_empty"
-    )]
-    pub(super) default: BTreeMap<String, toml::Value>,
-    #[serde(
-        default,
-        deserialize_with = "entries_or_empty",
-        skip_serializing_if = "BTreeMap::is_empty"
-    )]
-    pub(super) tenxer: BTreeMap<String, toml::Value>,
+fn entries_mut(overrides: &mut KeymapOverrides, map: Map) -> &mut BTreeMap<String, toml::Value> {
+    match map {
+        Map::Default => &mut overrides.default,
+        Map::Tenxer => &mut overrides.tenxer,
+    }
 }
 
-/// A map that is not a table is dropped alone, so the other map's entries
-/// survive the salvage of a malformed file.
-fn entries_or_empty<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<BTreeMap<String, toml::Value>, D::Error> {
-    Ok(match toml::Value::deserialize(deserializer)? {
-        toml::Value::Table(entries) => entries.into_iter().collect(),
-        other => {
-            tracing::warn!(%other, "keymap map is not a table of entries; dropping it");
-            BTreeMap::new()
-        }
-    })
-}
-
-impl KeymapOverrides {
-    pub(super) fn is_empty(&self) -> bool {
-        self.default.is_empty() && self.tenxer.is_empty()
-    }
-
-    fn entries_mut(&mut self, map: Map) -> &mut BTreeMap<String, toml::Value> {
-        match map {
-            Map::Default => &mut self.default,
-            Map::Tenxer => &mut self.tenxer,
-        }
-    }
-
-    /// The shipped tables with every entry that applies. With `file`, the
-    /// entries that cannot apply are logged against it.
-    fn resolve(&self, file: Option<&Path>) -> Keymap {
-        let report = |map: Map| {
-            move |rejected: Rejected<'_>| {
-                let Some(file) = file else {
-                    return;
-                };
-                let file = file.display();
-                match rejected {
-                    Rejected::UnknownCommand(id) => tracing::warn!(
-                        %file, ?map, id,
-                        "keymap entry names no command; keeping it unused"
-                    ),
-                    Rejected::Table(id) => tracing::warn!(
-                        %file, ?map, id,
-                        "keymap entry is a table; quote ids that contain a dot, such as \"go.home\"; keeping it unused"
-                    ),
-                    Rejected::NotAList(id) => tracing::warn!(
-                        %file, ?map, id,
-                        "keymap entry is not a list of accelerators; keeping it unused"
-                    ),
-                    Rejected::Accelerator(id, accelerator) => tracing::warn!(
-                        %file, ?map, id, %accelerator,
-                        "keymap entry has an accelerator Strata cannot read; keeping it unused"
-                    ),
-                }
-            }
-        };
-        if let Some(file) = file {
-            for (map, entries) in [(Map::Default, &self.default), (Map::Tenxer, &self.tenxer)] {
-                report_capital_letters(file, map, entries);
+/// The shipped tables with every entry of `overrides` that applies. With `file`,
+/// the entries that cannot apply are logged against it.
+fn resolve(overrides: &KeymapOverrides, file: Option<&Path>) -> Keymap {
+    let report = |map: Map| {
+        move |rejected: Rejected<'_>| {
+            let Some(file) = file else {
+                return;
+            };
+            let file = file.display();
+            match rejected {
+                Rejected::UnknownCommand(id) => tracing::warn!(
+                    %file, ?map, id,
+                    "keymap entry names no command; keeping it unused"
+                ),
+                Rejected::Table(id) => tracing::warn!(
+                    %file, ?map, id,
+                    "keymap entry is a table; quote ids that contain a dot, such as \"go.home\"; keeping it unused"
+                ),
+                Rejected::NotAList(id) => tracing::warn!(
+                    %file, ?map, id,
+                    "keymap entry is not a list of accelerators; keeping it unused"
+                ),
+                Rejected::Accelerator(id, accelerator) => tracing::warn!(
+                    %file, ?map, id, %accelerator,
+                    "keymap entry has an accelerator Strata cannot read; keeping it unused"
+                ),
             }
         }
-        Keymap::defaults()
-            .overridden(Map::Default, entries(&self.default), report(Map::Default))
-            .overridden(Map::Tenxer, entries(&self.tenxer), report(Map::Tenxer))
+    };
+    if let Some(file) = file {
+        for (map, entries) in [
+            (Map::Default, &overrides.default),
+            (Map::Tenxer, &overrides.tenxer),
+        ] {
+            report_capital_letters(file, map, entries);
+        }
     }
+    Keymap::defaults()
+        .overridden(
+            Map::Default,
+            entries(&overrides.default),
+            report(Map::Default),
+        )
+        .overridden(Map::Tenxer, entries(&overrides.tenxer), report(Map::Tenxer))
 }
 
 fn entries(entries: &BTreeMap<String, toml::Value>) -> impl Iterator<Item = (&str, &toml::Value)> {
@@ -153,7 +120,7 @@ impl PreferenceManager {
             return keymap.clone();
         }
         let file = settings_path();
-        let keymap = Rc::new(self.preferences.borrow().keymap.resolve(Some(&file)));
+        let keymap = Rc::new(resolve(&self.preferences.borrow().keymap, Some(&file)));
         report_findings(
             &keymap,
             &file,
@@ -190,7 +157,7 @@ impl PreferenceManager {
             }
         }
         self.edit_keymap(|overrides| {
-            let entries = overrides.entries_mut(map);
+            let entries = entries_mut(overrides, map);
             if unique == command.defaults(map) {
                 entries.remove(command.id());
             } else {
@@ -205,7 +172,7 @@ impl PreferenceManager {
 
     pub(crate) fn reset_binding(&self, map: Map, command: Command) {
         self.edit_keymap(|overrides| {
-            overrides.entries_mut(map).remove(command.id());
+            entries_mut(overrides, map).remove(command.id());
         });
     }
 
@@ -213,9 +180,7 @@ impl PreferenceManager {
     /// know stay saved.
     pub(crate) fn reset_map(&self, map: Map) {
         self.edit_keymap(|overrides| {
-            overrides
-                .entries_mut(map)
-                .retain(|id, _| Command::parse(id).is_none());
+            entries_mut(overrides, map).retain(|id, _| Command::parse(id).is_none());
         });
     }
 
@@ -228,7 +193,7 @@ impl PreferenceManager {
             let mut preferences = self.preferences.borrow_mut();
             let previous = preferences.keymap.clone();
             edit(&mut preferences.keymap);
-            (preferences.keymap != previous).then(|| preferences.keymap.resolve(None))
+            (preferences.keymap != previous).then(|| resolve(&preferences.keymap, None))
         };
         if let Some(keymap) = rebuilt {
             self.keymap.replace(Some(Rc::new(keymap)));
