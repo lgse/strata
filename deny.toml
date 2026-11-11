@@ -49,6 +49,23 @@ multiple-versions = "warn"
 wildcards = "deny"
 highlight = "simplest-path"
 
+# The crate layering. Each entry names the only crates that may depend directly on one:
+# the interface toolkits stay in the application package, and a workspace crate is used
+# only by the layers above it (core, then preview, then fs, then desktop).
+deny = [
+  { crate = "gtk4", wrappers = ["sourceview5", "strata"] },
+  { crate = "gdk4", wrappers = ["gdk4-wayland", "gdk4-x11", "gsk4", "gtk4", "sourceview5"] },
+  { crate = "gdk4-wayland", wrappers = ["strata"] },
+  { crate = "gdk4-x11", wrappers = ["strata"] },
+  { crate = "sourceview5", wrappers = ["strata"] },
+  { crate = "gstreamer", wrappers = ["gstreamer-app", "gstreamer-base", "strata"] },
+  { crate = "gstreamer-app", wrappers = ["strata"] },
+  { crate = "strata-preview", wrappers = ["strata", "strata-fs"] },
+  { crate = "strata-fs", wrappers = ["strata", "strata-desktop"] },
+  { crate = "strata-desktop", wrappers = ["strata"] },
+  { crate = "strata-qa", wrappers = ["strata"] },
+]
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
