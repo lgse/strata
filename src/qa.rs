@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+//! GTK's side of the scripted QA mode. `strata-qa` runs the session and decides what a step,
+//! a target and a predicate mean; this module answers its `Backend` from widgets and sends
+//! input through X or Wayland.
+
 mod backend;
 mod check;
 mod clipboard;
@@ -17,23 +21,15 @@ use std::{
     cell::RefCell,
     ffi::OsString,
     fs::File,
-    io::{BufRead, Write},
-    panic::AssertUnwindSafe,
     time::{Duration, Instant},
 };
 use strata_qa as protocol;
 
-use futures_channel::mpsc;
-use futures_lite::{FutureExt as _, StreamExt};
 use gtk::{gdk, glib, prelude::*};
-use serde_json::{Value, json};
 
 use self::{
     backend::{Gtk, Host},
-    input::Injector,
-    protocol::{
-        Capture, EVENT_GAP, Outcome, POLL_INTERVAL, REVEAL_SCROLL_ATTEMPTS, Remembered, Reply,
-    },
+    protocol::{Capture, EVENT_GAP, Outcome, POLL_INTERVAL, REVEAL_SCROLL_ATTEMPTS},
 };
 
 /// The release workflow and QA job grep for its `usage: strata --qa` prefix;
@@ -44,7 +40,6 @@ pub(crate) const PEEK_LABEL: &str = "Folder peek";
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 const READY_POLL: Duration = Duration::from_millis(5);
 const FRAME_TIMEOUT: Duration = Duration::from_millis(250);
-const PANIC_EXIT: i32 = 70;
 const WHEEL_REVEAL_CLICKS: u32 = 3;
 const DROP_SAMPLE_DELAYS: [Duration; 3] = [
     Duration::from_millis(60),
@@ -62,7 +57,6 @@ pub(crate) struct Session {
 }
 
 const PORTAL_ARGUMENT: &str = "--portal";
-const STREAMS_VARIABLE: &str = "STRATA_QA_STREAMS";
 
 impl Session {
     /// Takes over stdout for replies before anything can log there; app output goes to stderr.
@@ -73,16 +67,10 @@ impl Session {
         // The directory is opened like any launch argument, so a main-thread
         // I/O audit sees no file call that a release build would not make.
         let portal = directory == PORTAL_ARGUMENT;
-        let protocol = rustix::io::fcntl_dupfd_cloexec(std::io::stdout(), 3)
-            .map_err(|error| format!("cannot keep stdout for replies: {error}"))?;
-        match std::env::var(STREAMS_VARIABLE) {
-            Ok(streams) => replace_streams(&streams)?,
-            Err(_) => rustix::stdio::dup2_stdout(std::io::stderr())
-                .map_err(|error| format!("cannot move application output to stderr: {error}"))?,
-        }
+        let protocol = protocol::reply_stream()?;
         criticals::capture();
         Ok(Self {
-            protocol: File::from(protocol),
+            protocol,
             application_arguments: vec![program.clone(), directory.clone()],
             portal,
         })
@@ -110,64 +98,13 @@ impl Session {
     }
 
     fn start(self, host: Host) {
-        let (sender, receiver) = mpsc::unbounded();
-        std::thread::spawn(move || {
-            for line in std::io::stdin().lock().lines() {
-                let Ok(line) = line else { break };
-                if line.trim().is_empty() {
-                    continue;
-                }
-                if sender.unbounded_send(line).is_err() {
-                    break;
-                }
-            }
-        });
-        let last_words = self.protocol.try_clone();
-        let controller = Controller {
-            backend: Gtk::new(host),
-            protocol: self.protocol,
-            previous: None,
-            kept: Remembered::default(),
-        };
-        // GLib would keep a panic in the task's join handle and leave the
-        // runner waiting; report it and exit instead.
+        let commands = protocol::command_lines();
+        let backend = Gtk::new(host);
         glib::MainContext::default().spawn_local(async move {
-            let Err(panic) = AssertUnwindSafe(controller.serve(receiver))
-                .catch_unwind()
-                .await
-            else {
-                return;
-            };
-            let message = panic
-                .downcast_ref::<&str>()
-                .map(|message| (*message).to_owned())
-                .or_else(|| panic.downcast_ref::<String>().cloned())
-                .unwrap_or_default();
-            if let Ok(mut protocol) = last_words {
-                let reply = Reply {
-                    ok: false,
-                    app: Value::Null,
-                    changed: Vec::new(),
-                    criticals: criticals::take(),
-                    result: Value::Null,
-                    failures: Vec::new(),
-                    error: Some(format!("the QA controller panicked: {message}")),
-                };
-                if let Ok(line) = serde_json::to_string(&reply) {
-                    let _ = writeln!(protocol, "{line}");
-                    let _ = protocol.flush();
-                }
-            }
-            std::process::exit(PANIC_EXIT);
+            let _hold = backend.hold();
+            protocol::serve(&backend, self.protocol, commands).await;
         });
     }
-}
-
-struct Controller {
-    backend: Gtk,
-    protocol: File,
-    previous: Option<Value>,
-    kept: Remembered<Gtk>,
 }
 
 #[derive(Clone)]
@@ -175,124 +112,6 @@ enum Sample {
     Pixels(Capture),
     Text { position: f64, contrast: u64 },
     Instant(Instant),
-}
-
-impl Controller {
-    async fn serve(mut self, mut commands: mpsc::UnboundedReceiver<String>) {
-        let _hold = match &self.backend.host {
-            Host::Application(application) => Some(application.hold()),
-            Host::Portal(_) => None,
-        };
-        let ready = match self.backend.host {
-            Host::Application(_) => self.await_ready().await,
-            Host::Portal(_) => Ok(()),
-        };
-        let ready = match ready.and_then(|()| Injector::connect()) {
-            Ok(injector) => {
-                let _ = self.backend.injector.set(injector);
-                Outcome {
-                    result: json!({ "ready": true }),
-                    ..Outcome::default()
-                }
-            }
-            Err(error) => Outcome::error(error),
-        };
-        let started = ready.error.is_none();
-        self.reply(ready);
-        if started {
-            while let Some(line) = commands.next().await {
-                let outcome = match protocol::parse_command(&line) {
-                    Ok(command) => protocol::execute(&self.backend, &self.kept, command).await,
-                    Err(error) => Outcome::error(error),
-                };
-                self.reply(outcome);
-            }
-        }
-        self.backend.quit();
-    }
-
-    fn window(&self) -> Option<gtk::Window> {
-        self.backend.main_window()
-    }
-
-    async fn await_ready(&self) -> Result<(), String> {
-        let deadline = Instant::now() + READY_TIMEOUT;
-        loop {
-            let window = self.window();
-            if let Some(window) = window.as_ref().filter(|window| state::is_ready(window)) {
-                self.backend.main.set(Some(window));
-                settle(Some(window)).await;
-                return Ok(());
-            }
-            if Instant::now() >= deadline {
-                return Err("the Strata window never showed an entry list".to_owned());
-            }
-            match window.as_ref().and_then(WidgetExt::frame_clock) {
-                Some(clock) => next_paint(&clock, POLL_INTERVAL).await,
-                None => glib::timeout_future(READY_POLL).await,
-            }
-        }
-    }
-
-    fn reply(&mut self, outcome: Outcome) {
-        let app = self
-            .window()
-            .map(|window| state::scan(&self.backend, &window).observation.app_state())
-            .and_then(|app| serde_json::to_value(app).ok())
-            .unwrap_or_else(|| match self.backend.host {
-                Host::Portal(_) => state::empty_app_state(),
-                Host::Application(_) => Value::Null,
-            });
-        let changed = protocol::changed_keys(self.previous.as_ref(), &app);
-        self.previous = Some(app.clone());
-        let reply = Reply {
-            ok: outcome.error.is_none() && outcome.failures.is_empty(),
-            app,
-            changed,
-            criticals: criticals::take(),
-            result: outcome.result,
-            failures: outcome.failures,
-            error: outcome.error,
-        };
-        let line = serde_json::to_string(&reply).unwrap_or_else(|error| {
-            format!(r#"{{"ok":false,"error":"cannot encode the reply: {error}"}}"#)
-        });
-        if writeln!(self.protocol, "{line}")
-            .and_then(|()| self.protocol.flush())
-            .is_err()
-        {
-            self.backend.quit();
-        }
-    }
-}
-
-fn replace_streams(spec: &str) -> Result<(), String> {
-    for part in spec.split(',') {
-        let (stream, kind) = part
-            .split_once('=')
-            .ok_or_else(|| format!("{STREAMS_VARIABLE} has no stream=kind in {part:?}"))?;
-        let replacement: rustix::fd::OwnedFd = match kind {
-            "closed" => {
-                let (reader, writer) =
-                    rustix::pipe::pipe().map_err(|error| format!("cannot open a pipe: {error}"))?;
-                drop(reader);
-                writer
-            }
-            "null" => File::options()
-                .write(true)
-                .open("/dev/null")
-                .map_err(|error| format!("cannot open /dev/null: {error}"))?
-                .into(),
-            other => return Err(format!("{STREAMS_VARIABLE}: unknown kind {other:?}")),
-        };
-        match stream {
-            "stdout" => rustix::stdio::dup2_stdout(&replacement),
-            "stderr" => rustix::stdio::dup2_stderr(&replacement),
-            other => return Err(format!("{STREAMS_VARIABLE}: unknown stream {other:?}")),
-        }
-        .map_err(|error| format!("cannot replace {stream}: {error}"))?;
-    }
-    Ok(())
 }
 
 async fn settle(window: Option<&gtk::Window>) {

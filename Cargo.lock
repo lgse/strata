@@ -3200,7 +3200,10 @@ dependencies = [
 name = "strata-qa"
 version = "0.0.0"
 dependencies = [
+ "futures-channel",
+ "futures-lite",
  "regex",
+ "rustix",
  "serde",
  "serde_json",
  "toml 1.1.6+spec-1.1.0",

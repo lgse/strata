@@ -66,6 +66,18 @@ impl Backend for Fake {
     type Node = usize;
     type Kept = usize;
 
+    async fn ready(&self) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn quit(&self) {
+        self.sent.borrow_mut().push("quit".to_owned());
+    }
+
+    fn criticals(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     fn window(&self) -> Option<usize> {
         Some(WINDOW)
     }

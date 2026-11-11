@@ -6,19 +6,20 @@ use std::{
     cell::{OnceCell, RefCell},
     collections::HashMap,
     path::PathBuf,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{gdk, gio, glib, prelude::*};
 
 use super::{
-    Sample,
+    POLL_INTERVAL, READY_POLL, READY_TIMEOUT, Sample, criticals,
     input::{Event, Injector},
+    next_paint,
     protocol::{
         Backend, Chord, Command, EntryRow, FieldState, Labels, Mark, Modifier, Orientation,
         Outcome, Predicate, Rect, Scope, Scroll, States, Verdict,
     },
-    state, targets,
+    settle, state, targets,
 };
 use crate::ui::accessibility_qa as names;
 
@@ -56,10 +57,30 @@ impl Gtk {
             .ok_or_else(|| "no input connection".to_owned())
     }
 
-    pub(super) fn quit(&self) {
+    /// Keeps the application running while it has no window yet.
+    pub(super) fn hold(&self) -> Option<gio::ApplicationHoldGuard> {
         match &self.host {
-            Host::Application(application) => application.quit(),
-            Host::Portal(main_loop) => main_loop.quit(),
+            Host::Application(application) => Some(application.hold()),
+            Host::Portal(_) => None,
+        }
+    }
+
+    async fn await_ready(&self) -> Result<(), String> {
+        let deadline = Instant::now() + READY_TIMEOUT;
+        loop {
+            let window = self.main_window();
+            if let Some(window) = window.as_ref().filter(|window| state::is_ready(window)) {
+                self.main.set(Some(window));
+                settle(Some(window)).await;
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err("the Strata window never showed an entry list".to_owned());
+            }
+            match window.as_ref().and_then(WidgetExt::frame_clock) {
+                Some(clock) => next_paint(&clock, POLL_INTERVAL).await,
+                None => glib::timeout_future(READY_POLL).await,
+            }
         }
     }
 
@@ -95,6 +116,30 @@ fn rect(bounds: &gtk::graphene::Rect) -> Rect {
 impl Backend for Gtk {
     type Node = gtk::Widget;
     type Kept = glib::WeakRef<gtk::Widget>;
+
+    async fn ready(&self) -> Result<(), String> {
+        match self.host {
+            Host::Application(_) => self.await_ready().await?,
+            Host::Portal(_) => {}
+        }
+        let _ = self.injector.set(Injector::connect()?);
+        Ok(())
+    }
+
+    fn quit(&self) {
+        match &self.host {
+            Host::Application(application) => application.quit(),
+            Host::Portal(main_loop) => main_loop.quit(),
+        }
+    }
+
+    fn windowless(&self) -> bool {
+        matches!(self.host, Host::Portal(_))
+    }
+
+    fn criticals(&self) -> Vec<String> {
+        criticals::take()
+    }
 
     fn window(&self) -> Option<gtk::Widget> {
         self.main_window().map(Cast::upcast)
@@ -273,7 +318,7 @@ impl Backend for Gtk {
     }
 
     async fn settle(&self, window: &gtk::Widget) {
-        super::settle(window.downcast_ref::<gtk::Window>()).await;
+        settle(window.downcast_ref::<gtk::Window>()).await;
     }
 
     async fn sleep(&self, time: Duration) {

@@ -75,6 +75,19 @@ pub trait Backend {
     /// A handle that does not keep its node alive: `remember` holds these.
     type Kept: Clone;
 
+    /// Waits until the application can take steps: its window is up and input can reach it.
+    async fn ready(&self) -> Result<(), String>;
+    /// Ends the application. The session calls it when stdin closes or a reply cannot be
+    /// written.
+    fn quit(&self);
+    /// True for a host that takes steps before it has a window, as the portal chooser does:
+    /// `app` is then the empty state and not null.
+    fn windowless(&self) -> bool {
+        false
+    }
+    /// The warnings and criticals the toolkit logged since the last call.
+    fn criticals(&self) -> Vec<String>;
+
     /// The window the steps act on.
     fn window(&self) -> Option<Self::Node>;
     /// Every window the toolkit has open, whether or not it is drawn.

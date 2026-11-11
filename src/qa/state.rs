@@ -6,8 +6,8 @@ use std::{collections::HashMap, fmt::Write as _};
 
 use gtk::{graphene, prelude::*};
 
-pub(crate) use super::protocol::{FieldState, empty_app_state, inside, on_screen};
-use super::{backend::Gtk, protocol::EntryRow, targets};
+pub(crate) use super::protocol::{FieldState, inside, on_screen};
+use super::{protocol::EntryRow, targets};
 use crate::ui::accessibility_qa::{self as names, Mark};
 
 pub(crate) fn read_field(widget: &gtk::Widget) -> Option<FieldState> {
@@ -23,12 +23,6 @@ pub(crate) fn read_field(widget: &gtk::Widget) -> Option<FieldState> {
         focused: targets::editable_focused(widget),
         showing: widget.is_mapped(),
     })
-}
-
-pub(crate) type Scene = super::protocol::Scene<gtk::Widget>;
-
-pub(crate) fn scan(backend: &Gtk, window: &gtk::Window) -> Scene {
-    super::protocol::scan(backend, window.upcast_ref())
 }
 
 pub(crate) fn rendered_bounds(widget: &gtk::Widget) -> Option<graphene::Rect> {

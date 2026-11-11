@@ -14,6 +14,7 @@ mod observe;
 mod pointer;
 mod scan;
 mod scope;
+mod serve;
 mod waits;
 mod wanted;
 
@@ -28,6 +29,7 @@ pub use self::{
     observe::{VisibleRow, off_ui_thread, preferences},
     scan::{PaneNodes, Scene, scan},
     scope::{Memory, Remembered, Scope},
+    serve::{command_lines, reply_stream, serve},
     wanted::{Wanted, has_state},
 };
 

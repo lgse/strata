@@ -7,6 +7,7 @@ mod locating;
 mod pixels;
 mod predicates;
 mod scanning;
+mod serving;
 mod snapshot;
 mod stepping;
 mod targeting;
