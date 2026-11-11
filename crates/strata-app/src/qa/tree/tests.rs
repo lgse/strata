@@ -81,20 +81,8 @@ fn bounds(x: f64) -> Rect {
     }
 }
 
-/// `selection/right-click-selects-entry` waits for the pane's selection with the entry's
-/// menu open, when Rune's tree holds the menu alone.
-#[test]
-fn a_column_behind_an_open_menu_is_presented_from_what_is_drawn() {
-    let menu = json!({
-        "role": "window",
-        "children": [
-            { "role": "menu", "name": "todo.txt", "states": ["modal"], "children": [
-                { "role": "menu-item", "key": "menu-item3", "name": "Copy", "shortcut": "Ctrl+C" },
-                { "role": "menu-item", "key": "menu-item4", "name": "Open With…",
-                  "description": "Looking for compatible applications…", "shortcut": "" },
-            ] },
-        ],
-    });
+/// One column as drawn: `folder`, with `readme.md` and `todo.txt`, the second selected.
+fn drawn_folder() -> Drawn {
     let row = |key: &str, name: &str, selected: bool| DrawnRow {
         key: key.to_owned(),
         name: name.to_owned(),
@@ -111,11 +99,28 @@ fn a_column_behind_an_open_menu_is_presented_from_what_is_drawn() {
             row("row-2", "todo.txt", true),
         ],
     };
-    let drawn = Drawn {
+    Drawn {
         lists: vec![column.list.clone()],
         columns: vec![column],
         labels: Vec::new(),
-    };
+    }
+}
+
+/// `selection/right-click-selects-entry` waits for the pane's selection with the entry's
+/// menu open, when Rune's tree holds the menu alone.
+#[test]
+fn a_column_behind_an_open_menu_is_presented_from_what_is_drawn() {
+    let menu = json!({
+        "role": "window",
+        "children": [
+            { "role": "menu", "name": "todo.txt", "states": ["modal"], "children": [
+                { "role": "menu-item", "key": "menu-item3", "name": "Copy", "shortcut": "Ctrl+C" },
+                { "role": "menu-item", "key": "menu-item4", "name": "Open With…",
+                  "description": "Looking for compatible applications…", "shortcut": "" },
+            ] },
+        ],
+    });
+    let drawn = drawn_folder();
 
     let snapshot = Snapshot::read(&menu, &drawn);
 
@@ -153,12 +158,16 @@ fn a_column_behind_an_open_menu_is_presented_from_what_is_drawn() {
             ("Open With…", "Looking for compatible applications…")
         ]
     );
+}
 
-    // A column the tree does hold is not presented twice.
+#[test]
+fn a_column_the_tree_holds_is_not_presented_twice() {
     let held = json!({ "role": "window", "children": [
         { "role": "group", "name": "folder", "children": [
             { "role": "list-box", "key": "columns-col-1", "children": [] } ] } ] });
-    let once = Snapshot::read(&held, &drawn);
+
+    let once = Snapshot::read(&held, &drawn_folder());
+
     let lists = (0..).map_while(|index| once.at(index));
     assert_eq!(lists.filter(|seen| seen.role == "list-box").count(), 1);
 }

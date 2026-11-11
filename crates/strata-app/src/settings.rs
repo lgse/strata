@@ -65,7 +65,8 @@ impl Saved {
         let snapshot = table(&self.preferences);
         let before = self.changed.len();
         record_changes(&mut self.changed, &self.queued, &snapshot);
-        if self.unreadable || self.changed.len() == before && snapshot == self.queued {
+        let unchanged = self.changed.len() == before && snapshot == self.queued;
+        if self.unreadable || unchanged {
             return;
         }
         self.queued = snapshot.clone();
