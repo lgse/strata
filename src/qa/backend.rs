@@ -2,7 +2,7 @@
 
 //! GTK's side of the QA mode: what `strata_qa::Backend` asks, answered from widgets.
 
-use std::cell::OnceCell;
+use std::{cell::OnceCell, time::Duration};
 
 use gtk::{glib, prelude::*};
 
@@ -249,5 +249,13 @@ impl Backend for Gtk {
             .downcast_ref::<gtk::Window>()
             .map(state::dump)
             .unwrap_or_default()
+    }
+
+    async fn settle(&self, window: &gtk::Widget) {
+        super::settle(window.downcast_ref::<gtk::Window>()).await;
+    }
+
+    async fn sleep(&self, time: Duration) {
+        glib::timeout_future(time).await;
     }
 }

@@ -187,4 +187,8 @@ impl Backend for Fake {
     fn dump(&self, _window: &usize) -> String {
         String::new()
     }
+
+    async fn settle(&self, _window: &usize) {}
+
+    async fn sleep(&self, _time: std::time::Duration) {}
 }

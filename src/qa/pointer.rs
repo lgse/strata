@@ -15,7 +15,7 @@ use super::{
         step_towards,
     },
     settle, state,
-    targets::{self, Aim},
+    targets::Aim,
 };
 
 pub(super) struct Aimed<'a> {
@@ -78,10 +78,10 @@ impl Input<'_> {
     ) -> Result<(), String> {
         let deadline = Instant::now() + LOCATE_TIMEOUT;
         let rect = loop {
-            let before = targets::screen_rect(widget, self.injector)
+            let before = protocol::screen_rect(self.backend, widget)
                 .map_err(|error| error.message().to_owned())?;
             settle(Some(self.window)).await;
-            let after = targets::screen_rect(widget, self.injector)
+            let after = protocol::screen_rect(self.backend, widget)
                 .map_err(|error| error.message().to_owned())?;
             if after.pixels() == before.pixels() {
                 break after;

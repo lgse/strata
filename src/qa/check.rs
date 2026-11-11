@@ -13,11 +13,12 @@ use super::{
         scroll_value, theme_accent, visible_rows, visible_top,
     },
     protocol::{
-        Check, Direction, Failure, FieldRef, PointAxis, Predicate, Target, number_json, pixels,
+        self, Check, Direction, Failure, FieldRef, PointAxis, Predicate, Scope, Target,
+        number_json, pixels,
     },
     samples::grab,
     state,
-    targets::{self, Aim, Kept, LookupError},
+    targets::{self, Aim, LookupError},
 };
 
 impl Controller {
@@ -151,7 +152,7 @@ impl Controller {
                     .since
                     .clone()
                     .unwrap_or_else(|| movement.target.to_json().to_string());
-                let Some(before) = self.settled.borrow().get(&key).copied() else {
+                let Some(before) = self.kept.boxes.borrow().get(&key).copied() else {
                     return Err(format!(
                         "moved needs an earlier settle or remember on {key}"
                     ));
@@ -183,7 +184,7 @@ impl Controller {
             Check::OnScreen(target) => match locate(target)? {
                 None => Err(mismatch(json!("not on screen"))),
                 Some(located) => {
-                    let window = targets::screen_rect(input.window.upcast_ref(), input.injector)
+                    let window = protocol::screen_rect(input.backend, input.window.upcast_ref())
                         .map_err(|error| error.message().to_owned())?
                         .pixels();
                     let bounds = located.rect.pixels();
@@ -199,14 +200,14 @@ impl Controller {
                     let point = located.rect.point(blank.at.as_ref());
                     let point = (point.0.floor() as i64, point.1.floor() as i64);
                     let mut covering = Vec::new();
-                    for widget in targets::presented(&located.widget).into_iter().skip(1) {
+                    for widget in targets::presented(&located.node).into_iter().skip(1) {
                         let role = targets::role_name(&widget);
                         if matches!(role, "panel" | "filler" | "group")
                             || state::rendered_bounds(&widget).is_none()
                         {
                             continue;
                         }
-                        let Ok(rect) = targets::screen_rect(&widget, input.injector) else {
+                        let Ok(rect) = protocol::screen_rect(input.backend, &widget) else {
                             continue;
                         };
                         if state::contains(rect.pixels(), point) {
@@ -258,7 +259,7 @@ impl Controller {
                     let focus = gtk::prelude::GtkWindowExt::focus(input.window)
                         .filter(|focus| focus.has_focus() && focus.is_mapped());
                     let within = focus.as_ref().is_some_and(|focus| {
-                        *focus == located.widget || focus.is_ancestor(&located.widget)
+                        *focus == located.node || focus.is_ancestor(&located.node)
                     });
                     verdict(
                         within,
@@ -369,7 +370,7 @@ impl Controller {
                 verdict(holds, json!(actual))
             }
             Check::EditableFields(expected) => {
-                let count = targets::editable_fields(input.window);
+                let count = protocol::editable_fields(input.backend, input.window.upcast_ref());
                 verdict(count == *expected, json!(count))
             }
             Check::Description(check) => match input.resolve(&check.target)? {
@@ -382,7 +383,7 @@ impl Controller {
             Check::Mentions(mention) => match locate(&mention.target)? {
                 None => Err(mismatch(json!("not on screen"))),
                 Some(located) => {
-                    let mut widgets = targets::presented(&located.widget);
+                    let mut widgets = targets::presented(&located.node);
                     if let Some(role) = &mention.role {
                         widgets.retain(|widget| {
                             targets::role_name(widget) == role
@@ -424,18 +425,7 @@ impl Controller {
                 }
             },
             Check::Presented(target) => {
-                let found = targets::presented_target(
-                    input.window,
-                    input.injector,
-                    Kept {
-                        backend: input.backend,
-                        memory: &input.memory.borrow(),
-                        widgets: &input.widgets.borrow(),
-                        boxes: &input.boxes.borrow(),
-                    },
-                    target,
-                )
-                .map_err(|error| error.message().to_owned())?;
+                let found = input.presented(target)?;
                 verdict(found.is_some(), json!(false))
             }
             Check::File(file) => match (&file.exists, &file.mode_bits) {
@@ -509,21 +499,21 @@ impl Controller {
                 }
             }
             Check::Replaced(replaced) => {
-                let Some(kept) = input.widgets.borrow().get(&replaced.since).cloned() else {
-                    return Err(if input.memory.borrow().contains_key(&replaced.since) {
-                        format!(
-                            "{:?} was remembered as a field, not a widget",
-                            replaced.since
-                        )
-                    } else {
-                        format!("no widget was remembered as {:?}", replaced.since)
-                    });
+                let Some(kept) = input.kept.nodes.borrow().get(&replaced.since).cloned() else {
+                    return Err(
+                        if input.kept.fields.borrow().contains_key(&replaced.since) {
+                            format!(
+                                "{:?} was remembered as a field, not a widget",
+                                replaced.since
+                            )
+                        } else {
+                            format!("no widget was remembered as {:?}", replaced.since)
+                        },
+                    );
                 };
                 match locate(&replaced.target)? {
                     None => Err(mismatch(json!("not on screen"))),
-                    Some(now) => {
-                        verdict(kept.upgrade().as_ref() != Some(&now.widget), json!(false))
-                    }
+                    Some(now) => verdict(kept.upgrade().as_ref() != Some(&now.node), json!(false)),
                 }
             }
             Check::Pixel(pixel) => match locate(&pixel.target)? {
@@ -559,18 +549,19 @@ impl Controller {
                 }
             }
             Check::AnyResultRow(wanted) => {
-                let rows: Vec<Value> = targets::result_rows(input.window.upcast_ref())
-                    .iter()
-                    .map(|row| {
-                        let states = targets::states(row);
-                        json!([
-                            targets::accessible_name(row),
-                            states.selected,
-                            states.focused
-                        ])
-                    })
-                    .collect();
-                let holds = targets::result_rows(input.window.upcast_ref())
+                let rows: Vec<Value> =
+                    protocol::result_rows(input.backend, input.window.upcast_ref())
+                        .iter()
+                        .map(|row| {
+                            let states = targets::states(row);
+                            json!([
+                                targets::accessible_name(row),
+                                states.selected,
+                                states.focused
+                            ])
+                        })
+                        .collect();
+                let holds = protocol::result_rows(input.backend, input.window.upcast_ref())
                     .iter()
                     .any(|row| {
                         let states = targets::states(row);
@@ -600,7 +591,7 @@ impl Controller {
                 }
             }
             Check::PanesWith(panes) => {
-                let wanted = targets::Wanted::of(&panes.target)
+                let wanted = protocol::Wanted::of(&panes.target)
                     .map_err(|error| error.message().to_owned())?;
                 let scene = state::scan(input.backend, input.window);
                 let mut owners = Vec::new();
@@ -608,7 +599,7 @@ impl Controller {
                     let Some(widgets) = scene.pane_at(index) else {
                         continue;
                     };
-                    match wanted.find(&widgets.pane) {
+                    match wanted.find(input.backend, &widgets.pane) {
                         Ok(_) => owners.push(pane.name.clone()),
                         Err(LookupError::Missing(_)) => {}
                         Err(LookupError::Broken(error)) => return Err(error),
@@ -618,20 +609,9 @@ impl Controller {
             }
             Check::Name(check) | Check::Text(check) => {
                 let found = if check.rendered {
-                    locate(&check.target)?.map(|located| located.widget)
+                    locate(&check.target)?.map(|located| located.node)
                 } else {
-                    targets::presented_target(
-                        input.window,
-                        input.injector,
-                        Kept {
-                            backend: input.backend,
-                            memory: &input.memory.borrow(),
-                            widgets: &input.widgets.borrow(),
-                            boxes: &input.boxes.borrow(),
-                        },
-                        &check.target,
-                    )
-                    .map_err(|error| error.message().to_owned())?
+                    input.presented(&check.target)?
                 };
                 match found {
                     None => Err(mismatch(json!("not found"))),
@@ -649,13 +629,13 @@ impl Controller {
                 None => Err(mismatch(json!("not on screen"))),
                 Some(located) => {
                     let mut boxes = Vec::new();
-                    for widget in targets::presented(&located.widget) {
+                    for widget in targets::presented(&located.node) {
                         if targets::role_name(&widget) != "image"
                             || state::rendered_bounds(&widget).is_none()
                         {
                             continue;
                         }
-                        let [_, _, width, height] = targets::screen_rect(&widget, input.injector)
+                        let [_, _, width, height] = protocol::screen_rect(input.backend, &widget)
                             .map_err(|error| error.message().to_owned())?
                             .pixels();
                         if width > largest.wider_than {
@@ -687,7 +667,7 @@ impl Controller {
             Check::ListSections(sections) => match locate(&sections.within)? {
                 None => Err(mismatch(json!("not on screen"))),
                 Some(located) => {
-                    let grouped = list_sections(&located.widget);
+                    let grouped = list_sections(&located.node);
                     let rows = grouped
                         .iter()
                         .find(|(heading, _)| *heading == sections.section)
@@ -697,7 +677,7 @@ impl Controller {
                 }
             },
             Check::EditableText(text) => {
-                let shown = targets::editable_texts(input.window);
+                let shown = protocol::editable_texts(input.backend, input.window.upcast_ref());
                 verdict(shown.iter().any(|shown| shown == text), json!(shown))
             }
             Check::VisibleTop(names) => {
@@ -706,10 +686,18 @@ impl Controller {
             }
             Check::SomeWindow(some) => {
                 let mut actual = Vec::new();
-                for window in targets::windows_titled(&some.title) {
+                for window in protocol::windows_titled(input.backend, &some.title) {
+                    let Some(titled) = window.downcast_ref::<gtk::Window>() else {
+                        continue;
+                    };
                     let inside = Input {
-                        window: &window,
-                        ..*input
+                        scope: Scope {
+                            backend: input.backend,
+                            window: window.clone(),
+                            kept: input.kept,
+                        },
+                        injector: input.injector,
+                        window: titled,
                     };
                     match self.check(&inside, &some.holds)? {
                         Ok(()) => return Ok(Ok(())),
@@ -719,7 +707,7 @@ impl Controller {
                 Err(mismatch(json!(actual)))
             }
             Check::Windows(count) => {
-                let found = targets::windows_titled(&count.title).len();
+                let found = protocol::windows_titled(input.backend, &count.title).len();
                 verdict(found == count.count, json!(found))
             }
             Check::ChildNames(check) => match input.resolve(&check.of)? {
@@ -738,7 +726,7 @@ impl Controller {
             },
             Check::FocusOutside(target) => {
                 let surface = input.resolve(target)?;
-                let focused = input.focused_widget();
+                let focused = input.focused();
                 let outside = focused.as_ref().is_some_and(|node| {
                     !targets::accessible_name(node).is_empty()
                         && surface
@@ -752,15 +740,15 @@ impl Controller {
             }
             Check::FocusedWidgetIs(target) => {
                 let wanted = input.resolve(target)?;
-                let focused = input.focused_widget();
+                let focused = input.focused();
                 verdict(
                     focused.is_some() && focused == wanted,
                     json!(focused.as_ref().map(targets::accessible_name)),
                 )
             }
             Check::Alive(name) => {
-                let widget = input.widgets.borrow().get(name).cloned();
-                let field = input.memory.borrow().get(name).cloned();
+                let widget = input.kept.nodes.borrow().get(name).cloned();
+                let field = input.kept.fields.borrow().get(name).cloned();
                 let kept = widget
                     .or(field)
                     .ok_or_else(|| format!("no widget was remembered as {name:?}"))?;

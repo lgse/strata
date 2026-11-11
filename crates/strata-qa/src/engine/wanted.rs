@@ -1,39 +1,33 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::prelude::*;
+use super::lookup::{missing, presented, rendered};
+use crate::{Backend, LookupError, Orientation, StateName, Target};
 
-use super::{
-    super::{
-        protocol::{StateName, Target},
-        state,
-    },
-    LookupError, accessible_description, accessible_name, missing, presented, role_name, states,
-};
-
-pub(crate) struct Wanted<'a> {
-    pub(crate) role: &'a str,
-    pub(crate) other_roles: &'a [String],
-    pub(crate) name: Option<&'a str>,
-    pub(crate) description: Option<&'a str>,
-    pub(crate) name_ends_with: &'a [String],
-    pub(crate) nth: Option<i64>,
-    pub(crate) states: &'a [StateName],
-    pub(crate) name_matches: Option<regex::Regex>,
-    pub(crate) has: Option<Box<Wanted<'a>>>,
+/// A role target's criteria, with its name pattern compiled.
+pub struct Wanted<'a> {
+    pub role: &'a str,
+    pub other_roles: &'a [String],
+    pub name: Option<&'a str>,
+    pub description: Option<&'a str>,
+    pub name_ends_with: &'a [String],
+    pub nth: Option<i64>,
+    pub states: &'a [StateName],
+    pub name_matches: Option<regex::Regex>,
+    pub has: Option<Box<Wanted<'a>>>,
 }
 
-pub(crate) fn pattern(pattern: Option<&str>) -> Result<Option<regex::Regex>, LookupError> {
+fn pattern(pattern: Option<&str>) -> Result<Option<regex::Regex>, LookupError> {
     pattern
         .map(regex::Regex::new)
         .transpose()
         .map_err(|error| LookupError::Broken(error.to_string()))
 }
 
-pub(crate) fn has_state(widget: &gtk::Widget, state: StateName) -> bool {
-    let now = states(widget);
-    let orientation = widget
-        .dynamic_cast_ref::<gtk::Orientable>()
-        .map(OrientableExt::orientation);
+pub fn has_state<B: Backend + ?Sized>(backend: &B, node: &B::Node, state: StateName) -> bool {
+    let now = backend.states(node);
+    // Read for every state and not only the two that use it: a reply reports the criticals
+    // GTK logs when some widgets are asked, so reading it less often could change a reply.
+    let orientation = backend.orientation(node);
     match state {
         StateName::Selected => now.selected,
         StateName::Focused => now.focused,
@@ -43,13 +37,13 @@ pub(crate) fn has_state(widget: &gtk::Widget, state: StateName) -> bool {
         StateName::Selectable => now.selectable,
         StateName::Editable => now.editable,
         StateName::Busy => now.busy,
-        StateName::Horizontal => orientation == Some(gtk::Orientation::Horizontal),
-        StateName::Vertical => orientation == Some(gtk::Orientation::Vertical),
+        StateName::Horizontal => orientation == Some(Orientation::Horizontal),
+        StateName::Vertical => orientation == Some(Orientation::Vertical),
     }
 }
 
 impl<'a> Wanted<'a> {
-    pub(crate) fn of(target: &'a Target) -> Result<Self, LookupError> {
+    pub fn of(target: &'a Target) -> Result<Self, LookupError> {
         let Target::Role {
             role,
             other_roles,
@@ -84,37 +78,45 @@ impl<'a> Wanted<'a> {
         })
     }
 
-    pub(crate) fn matches(&self, widget: &gtk::Widget) -> bool {
-        let role = role_name(widget);
+    pub fn matches<B: Backend + ?Sized>(&self, backend: &B, node: &B::Node) -> bool {
+        let role = backend.role(node);
         (self.role == "*"
             || role == self.role
             || self.other_roles.iter().any(|other| other == role))
             && self.has.as_ref().is_none_or(|has| {
-                presented(widget)
+                presented(backend, node)
                     .iter()
-                    .any(|inner| has.matches(inner) && state::rendered_bounds(inner).is_some())
+                    .any(|inner| has.matches(backend, inner) && rendered(backend, inner))
             })
-            && self.name.is_none_or(|name| accessible_name(widget) == name)
+            && self.name.is_none_or(|name| backend.name(node) == name)
             && self
                 .name_matches
                 .as_ref()
-                .is_none_or(|pattern| pattern.is_match(&accessible_name(widget)))
-            && self.states.iter().all(|state| has_state(widget, *state))
+                .is_none_or(|pattern| pattern.is_match(&backend.name(node)))
+            && self
+                .states
+                .iter()
+                .all(|state| has_state(backend, node, *state))
             && (self.name_ends_with.is_empty() || {
-                let name = accessible_name(widget);
+                let name = backend.name(node);
                 self.name_ends_with
                     .iter()
                     .any(|suffix| name.ends_with(suffix.as_str()))
             })
             && self
                 .description
-                .is_none_or(|description| accessible_description(widget) == description)
+                .is_none_or(|description| backend.description(node) == description)
     }
 
-    pub(crate) fn find(&self, root: &gtk::Widget) -> Result<gtk::Widget, LookupError> {
-        let found = presented(root)
+    /// The drawn match the target's `nth` picks.
+    pub fn find<B: Backend + ?Sized>(
+        &self,
+        backend: &B,
+        root: &B::Node,
+    ) -> Result<B::Node, LookupError> {
+        let found = presented(backend, root)
             .into_iter()
-            .filter(|widget| self.matches(widget) && state::rendered_bounds(widget).is_some());
+            .filter(|node| self.matches(backend, node) && rendered(backend, node));
         pick(found.collect(), self.nth.unwrap_or(0)).ok_or_else(|| {
             missing(format!(
                 "no {}{}{}{}{} on screen",
@@ -137,15 +139,21 @@ impl<'a> Wanted<'a> {
         })
     }
 
-    pub(crate) fn find_presented(&self, root: &gtk::Widget) -> Option<gtk::Widget> {
-        let found = presented(root)
+    /// The match the target's `nth` picks, drawn or not.
+    pub fn find_presented<B: Backend + ?Sized>(
+        &self,
+        backend: &B,
+        root: &B::Node,
+    ) -> Option<B::Node> {
+        let found = presented(backend, root)
             .into_iter()
-            .filter(|widget| self.matches(widget));
+            .filter(|node| self.matches(backend, node));
         pick(found.collect(), self.nth.unwrap_or(0))
     }
 }
 
-pub(super) fn pick(mut items: Vec<gtk::Widget>, index: i64) -> Option<gtk::Widget> {
+/// A negative index counts from the end.
+pub(crate) fn pick<Item>(mut items: Vec<Item>, index: i64) -> Option<Item> {
     let length = i64::try_from(items.len()).ok()?;
     let index = if index < 0 { length + index } else { index };
     let index = usize::try_from(index).ok()?;

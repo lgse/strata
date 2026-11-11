@@ -5,8 +5,8 @@ use serde_json::{Value, json};
 
 use super::{
     backend::Gtk,
-    protocol::{Accessor, Shape},
-    state, targets,
+    protocol::{self, Accessor, Shape},
+    state,
 };
 
 pub(super) fn note(
@@ -74,7 +74,10 @@ pub(super) fn note(
             "visible, visible_top, scroll_target, bounds, and number are read with the X screen"
                 .to_owned(),
         ),
-        Accessor::EditableFields => Ok(json!(targets::editable_fields(window))),
+        Accessor::EditableFields => Ok(json!(protocol::editable_fields(
+            backend,
+            window.upcast_ref()
+        ))),
         Accessor::MenuItems => list(observation.menu.clone().unwrap_or_default()),
     }
 }

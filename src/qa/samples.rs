@@ -36,7 +36,8 @@ impl Controller {
     }
 
     pub(super) fn kept_box(&self, name: &str) -> Result<Rect, String> {
-        self.settled
+        self.kept
+            .boxes
             .borrow()
             .get(name)
             .copied()

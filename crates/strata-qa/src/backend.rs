@@ -2,6 +2,8 @@
 
 //! What the QA mode asks of the toolkit an application is drawn with.
 
+use std::time::Duration;
+
 use crate::{FieldState, Orientation, Rect};
 
 /// What the application says a node is for, where its role and name do not.
@@ -62,6 +64,10 @@ pub struct Scroll {
 /// The methods answer for one node at a time and decide nothing: which node a target means,
 /// what a predicate holds and how a step waits are the engine's, so two backends cannot
 /// come to mean different things by `selected` or "the entry named X".
+#[expect(
+    async_fn_in_trait,
+    reason = "the engine runs on the toolkit's own thread, so no future has to be Send"
+)]
 pub trait Backend {
     type Node: Clone + PartialEq;
     /// A handle that does not keep its node alive: `remember` holds these.
@@ -143,4 +149,9 @@ pub trait Backend {
 
     /// The tree a failed wait reports and the `tree` query returns.
     fn dump(&self, window: &Self::Node) -> String;
+
+    /// Returns once the window has painted a frame, or at once if it has nothing to paint.
+    async fn settle(&self, window: &Self::Node);
+    /// Lets the application run for this long.
+    async fn sleep(&self, time: Duration);
 }

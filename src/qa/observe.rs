@@ -109,7 +109,7 @@ pub(super) fn evaluate(input: &Input<'_>, expr: &Expr) -> Result<Result<f64, Str
                     Measure::CenterX => pixels(x + width.div_euclid(2)),
                     Measure::CenterY => pixels(y + height.div_euclid(2)),
                     Measure::Value => located
-                        .widget
+                        .node
                         .downcast_ref::<gtk::Range>()
                         .map(|range| range.value())
                         .ok_or_else(|| "the target has no numeric value".to_owned()),
@@ -134,7 +134,7 @@ pub(super) fn evaluate(input: &Input<'_>, expr: &Expr) -> Result<Result<f64, Str
                 Some(within) => match input.locate_now(within, None, Aim::Point) {
                     Err(LookupError::Broken(error)) => return Err(error),
                     Err(LookupError::Missing(missing)) => return Ok(Err(missing)),
-                    Ok(located) => located.widget,
+                    Ok(located) => located.node,
                 },
             };
             #[expect(
@@ -158,7 +158,7 @@ pub(super) fn evaluate(input: &Input<'_>, expr: &Expr) -> Result<Result<f64, Str
                         && spec
                             .states
                             .iter()
-                            .all(|wanted| targets::has_state(widget, *wanted))
+                            .all(|wanted| protocol::has_state(input.backend, widget, *wanted))
                 })
                 .count() as f64;
             Ok(count)
@@ -206,7 +206,7 @@ pub(super) fn visible_top(input: &Input<'_>) -> Result<Vec<String>, String> {
         return Ok(Vec::new());
     };
     let screen = |widget: &gtk::Widget| {
-        targets::screen_rect(widget, input.injector).map(|rect| rect.pixels())
+        protocol::screen_rect(input.backend, widget).map(|rect| rect.pixels())
     };
     let Ok([_, top, _, height]) = screen(&viewport) else {
         return Ok(Vec::new());
@@ -305,7 +305,7 @@ pub(super) fn visible_rows(
         return Ok(Vec::new());
     };
     let screen = |widget: &gtk::Widget| {
-        targets::screen_rect(widget, input.injector).map(|rect| rect.pixels())
+        protocol::screen_rect(input.backend, widget).map(|rect| rect.pixels())
     };
     let Ok([_, top, _, height]) = screen(&viewport) else {
         return Ok(Vec::new());
@@ -379,7 +379,7 @@ pub(super) fn scroll_target(
         .map_err(|error| error.message().to_owned())?
         .rect
         .pixels();
-    let [_, top, ..] = targets::screen_rect(&viewport, input.injector)
+    let [_, top, ..] = protocol::screen_rect(input.backend, &viewport)
         .map_err(|error| error.message().to_owned())?
         .pixels();
     #[expect(
@@ -398,7 +398,7 @@ pub(super) fn footer_fill(
     let (Some(pane), Some(widgets)) = (scene.observation.pane(None), scene.pane(None)) else {
         return Ok(Err(json!("no pane")));
     };
-    let window = targets::screen_rect(input.window.upcast_ref(), input.injector)
+    let window = protocol::screen_rect(input.backend, input.window.upcast_ref())
         .map_err(|error| error.message().to_owned())?
         .pixels();
     let ends: Vec<(&state::EntryObservation, &gtk::Widget)> = pane
@@ -410,7 +410,7 @@ pub(super) fn footer_fill(
     let ends_ready = ends.len() == fill.ends.len()
         && ends.iter().all(|(entry, widget)| {
             !entry.selected
-                && targets::screen_rect(widget, input.injector)
+                && protocol::screen_rect(input.backend, widget)
                     .is_ok_and(|rect| state::on_screen(rect.pixels(), window))
         });
     if !ends_ready {

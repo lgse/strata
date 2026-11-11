@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{
-    cell::RefCell,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use gtk::{glib, prelude::*};
 
@@ -12,18 +9,24 @@ use super::{
     backend::Gtk,
     input::{Event, Injector},
     pointer::Aimed,
-    protocol::{At, FieldRef, Target, coordinate},
-    settle, state,
-    targets::{self, Aim, Boxes, Kept, LookupError, Memory, Rect},
+    protocol::{self, At, Scope, Target, coordinate},
+    settle,
+    targets::{self, Aim, Rect},
 };
 
+/// A step's lookups, with the input connection that GTK's own sequences send through.
 pub(super) struct Input<'a> {
-    pub(super) backend: &'a Gtk,
+    pub(super) scope: Scope<'a, Gtk>,
     pub(super) injector: &'a Injector,
     pub(super) window: &'a gtk::Window,
-    pub(super) memory: &'a RefCell<Memory>,
-    pub(super) widgets: &'a RefCell<Memory>,
-    pub(super) boxes: &'a RefCell<Boxes>,
+}
+
+impl<'a> std::ops::Deref for Input<'a> {
+    type Target = Scope<'a, Gtk>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.scope
+    }
 }
 
 impl Input<'_> {
@@ -39,65 +42,6 @@ impl Input<'_> {
         self.injector.send(event)?;
         self.pause(gap).await;
         Ok(())
-    }
-
-    pub(super) fn locate_now(
-        &self,
-        target: &Target,
-        at: Option<&At>,
-        aim: Aim,
-    ) -> Result<targets::Located, LookupError> {
-        targets::locate(
-            self.window,
-            self.injector,
-            Kept {
-                backend: self.backend,
-                memory: &self.memory.borrow(),
-                widgets: &self.widgets.borrow(),
-                boxes: &self.boxes.borrow(),
-            },
-            target,
-            at,
-            aim,
-        )
-    }
-
-    pub(super) fn presented(&self, target: &Target) -> Result<Option<gtk::Widget>, String> {
-        targets::presented_target(
-            self.window,
-            self.injector,
-            Kept {
-                backend: self.backend,
-                memory: &self.memory.borrow(),
-                widgets: &self.widgets.borrow(),
-                boxes: &self.boxes.borrow(),
-            },
-            target,
-        )
-        .map_err(|error| error.message().to_owned())
-    }
-
-    pub(super) fn resolve(&self, target: &Target) -> Result<Option<gtk::Widget>, String> {
-        if matches!(
-            target,
-            Target::Role {
-                rendered: false,
-                ..
-            }
-        ) {
-            return self.presented(target);
-        }
-        match self.locate_now(target, None, Aim::Point) {
-            Ok(located) => Ok(Some(located.widget)),
-            Err(LookupError::Missing(_)) => Ok(None),
-            Err(LookupError::Broken(error)) => Err(error),
-        }
-    }
-
-    pub(super) fn field(&self, field: &FieldRef) -> Result<Option<gtk::Widget>, String> {
-        targets::field(self.window, &self.memory.borrow(), field).map_err(|error| match error {
-            LookupError::Missing(message) | LookupError::Broken(message) => message,
-        })
     }
 
     pub(super) async fn activate(
@@ -145,7 +89,8 @@ impl Input<'_> {
         {
             let deadline = Instant::now() + LOCATE_TIMEOUT;
             loop {
-                if let Some(widget) = targets::find_presented(self.window.upcast_ref(), role, name)
+                if let Some(widget) =
+                    protocol::find_presented(self.backend, &self.scope.window, role, name)
                 {
                     break widget;
                 }
@@ -167,49 +112,13 @@ impl Input<'_> {
                     Some(message) => format!("timed out waiting for {message}: {error}"),
                     None => error,
                 })?
-                .widget
+                .node
         };
         if !widget.activate() {
             return Err(format!("{} has no default action", target.to_json()));
         }
         settle(Some(self.window)).await;
         Ok(())
-    }
-
-    /// A row a listing just added can report a box before its first allocation lands, so the
-    /// box must come through a painted frame unchanged.
-    pub(super) async fn find(
-        &self,
-        target: &Target,
-        at: Option<&At>,
-        aim: Aim,
-    ) -> Result<targets::Located, String> {
-        let deadline = Instant::now() + LOCATE_TIMEOUT;
-        loop {
-            match self.locate_now(target, at, aim) {
-                Ok(located) => {
-                    settle(Some(self.window)).await;
-                    match self.locate_now(target, at, aim) {
-                        Ok(painted) if painted.rect.pixels() == located.rect.pixels() => {
-                            return Ok(painted);
-                        }
-                        Err(LookupError::Broken(error)) => return Err(error),
-                        _ if Instant::now() >= deadline => {
-                            return Err(format!(
-                                "the target kept moving for {} s",
-                                LOCATE_TIMEOUT.as_secs()
-                            ));
-                        }
-                        _ => {}
-                    }
-                }
-                Err(LookupError::Broken(error)) => return Err(error),
-                Err(LookupError::Missing(error)) if Instant::now() >= deadline => {
-                    return Err(format!("{error} after {} s", LOCATE_TIMEOUT.as_secs()));
-                }
-                Err(LookupError::Missing(_)) => glib::timeout_future(POLL_INTERVAL).await,
-            }
-        }
     }
 
     pub(super) async fn locate(
@@ -247,7 +156,7 @@ impl Input<'_> {
         let Some(name) = aim.left_bound else {
             return Ok(located.point);
         };
-        let bound = self.boxes.borrow().get(name).copied().ok_or_else(|| {
+        let bound = self.kept.boxes.borrow().get(name).copied().ok_or_else(|| {
             format!("left_bound needs a box kept as {name:?} by remember or settle")
         })?;
         let left = located.rect.x.max(bound.x);
@@ -257,13 +166,5 @@ impl Input<'_> {
             ..located.rect
         }
         .point(aim.at))
-    }
-
-    pub(super) fn focused_widget(&self) -> Option<gtk::Widget> {
-        targets::presented(self.window.upcast_ref())
-            .into_iter()
-            .find(|widget| {
-                targets::states(widget).focused && state::rendered_bounds(widget).is_some()
-            })
     }
 }

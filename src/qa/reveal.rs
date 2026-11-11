@@ -20,11 +20,11 @@ impl Controller {
         target: &Target,
         message: String,
     ) -> Result<(gtk::Widget, gtk::Widget), Outcome> {
-        let wanted = targets::Wanted::of(target)
+        let wanted = protocol::Wanted::of(target)
             .map_err(|error| Outcome::error(error.message().to_owned()))?;
         let deadline = Instant::now() + protocol::DEFAULT_WAIT;
         let node = loop {
-            if let Some(node) = wanted.find_presented(input.window.upcast_ref()) {
+            if let Some(node) = wanted.find_presented(input.backend, input.window.upcast_ref()) {
                 break node;
             }
             if Instant::now() >= deadline {
@@ -169,7 +169,7 @@ impl Controller {
             Ok(true) => return Outcome::default(),
             Ok(false) => {}
         }
-        let window = match targets::screen_rect(input.window.upcast_ref(), input.injector) {
+        let window = match protocol::screen_rect(input.backend, input.window.upcast_ref()) {
             Ok(window) => window.pixels(),
             Err(error) => return Outcome::error(error.message().to_owned()),
         };

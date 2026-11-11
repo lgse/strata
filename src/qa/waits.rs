@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use gtk::glib;
+use gtk::{glib, prelude::*};
 use serde_json::json;
 
 use super::{
@@ -11,7 +11,7 @@ use super::{
     pointer::Aimed,
     protocol::{self, At, Failure, Modifier, Predicate, Repeat, StateName, Target},
     settle, state,
-    targets::{self, Aim, LookupError},
+    targets::{Aim, LookupError},
 };
 
 impl Controller {
@@ -23,7 +23,10 @@ impl Controller {
     ) -> Outcome {
         let deadline = Instant::now() + timeout;
         loop {
-            if let Some(window) = targets::window_titled(title, None) {
+            if let Some(window) = protocol::windows_titled(&self.backend, title)
+                .into_iter()
+                .find_map(|window| window.downcast::<gtk::Window>().ok())
+            {
                 self.backend.main.set(Some(&window));
                 settle(Some(&window)).await;
                 return Outcome::default();
@@ -78,7 +81,7 @@ impl Controller {
                 .is_ok_and(|located| {
                     open_states
                         .iter()
-                        .any(|state| targets::has_state(&located.widget, *state))
+                        .any(|state| protocol::has_state(input.backend, &located.node, *state))
                 });
             if clicked.elapsed() > MENU_RETRY_AFTER && !open {
                 if let Err(error) = input.click(&aim, 1, 1, &[]).await {
@@ -112,7 +115,7 @@ impl Controller {
                 && history.len() == SETTLE_SAMPLES
                 && history.iter().all(|sample| *sample == history[0])
             {
-                let mut settled = self.settled.borrow_mut();
+                let mut settled = self.kept.boxes.borrow_mut();
                 settled.insert(target.to_json().to_string(), located.rect);
                 if let Some(name) = name {
                     settled.insert(name, located.rect);

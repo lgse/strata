@@ -29,7 +29,6 @@ pub(crate) fn read_field(widget: &gtk::Widget) -> Option<FieldState> {
 }
 
 pub(crate) type Scene = super::protocol::Scene<gtk::Widget>;
-pub(crate) type PaneWidgets = super::protocol::PaneNodes<gtk::Widget>;
 
 pub(crate) fn scan(backend: &Gtk, window: &gtk::Window) -> Scene {
     super::protocol::scan(backend, window.upcast_ref())

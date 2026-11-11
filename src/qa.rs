@@ -37,8 +37,7 @@ use serde_json::{Value, json};
 use self::{
     backend::{Gtk, Host},
     input::Injector,
-    protocol::{Boxes, Capture, Outcome, Reply},
-    targets::Memory,
+    protocol::{Capture, LOCATE_TIMEOUT, Outcome, POLL_INTERVAL, Remembered, Reply},
 };
 
 /// The release workflow and QA job grep for its `usage: strata --qa` prefix;
@@ -47,7 +46,6 @@ const USAGE: &str = "usage: strata --qa <directory|--portal>";
 /// Mirrors the private `ui::browser::peek::PEEK_LABEL`; a peek test fails if they drift.
 pub(crate) const PEEK_LABEL: &str = "Folder peek";
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
-const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const READY_POLL: Duration = Duration::from_millis(5);
 const FRAME_TIMEOUT: Duration = Duration::from_millis(250);
 /// A layout change from the press makes GTK synthesize motion a frame later, and a
@@ -61,7 +59,6 @@ const EVENT_GAP: Duration = Duration::from_millis(20);
 const POINTER_GAP: Duration = Duration::from_millis(50);
 /// A click can land before GTK maps the row for input, so it clicks again after this long.
 const SELECT_RETRY_AFTER: Duration = Duration::from_secs(4);
-const LOCATE_TIMEOUT: Duration = Duration::from_secs(15);
 const SETTLE_SAMPLES: usize = 3;
 const MENU_RETRY_AFTER: Duration = Duration::from_secs(1);
 const KEYBOARD_SELECT_STEPS: usize = 40;
@@ -152,9 +149,7 @@ impl Session {
             backend: Gtk::new(host),
             protocol: self.protocol,
             previous: None,
-            settled: RefCell::default(),
-            memory: RefCell::default(),
-            widgets: RefCell::default(),
+            kept: Remembered::default(),
             samples: RefCell::default(),
             clipboard: RefCell::default(),
         };
@@ -196,9 +191,7 @@ struct Controller {
     backend: Gtk,
     protocol: File,
     previous: Option<Value>,
-    settled: RefCell<Boxes>,
-    memory: RefCell<Memory>,
-    widgets: RefCell<Memory>,
+    kept: Remembered<Gtk>,
     samples: RefCell<HashMap<String, Sample>>,
     /// Owns the clipboard a `clipboard_set` set, until the `clipboard` read closes it.
     clipboard: RefCell<Option<gdk::Display>>,

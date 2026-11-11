@@ -7,7 +7,7 @@ use gtk::prelude::*;
 
 use super::{
     driver::Input,
-    protocol::{Modifier, travel, wheel_clicks},
+    protocol::{self, Modifier, travel, wheel_clicks},
     targets::{self, Located, LookupError},
 };
 
@@ -43,11 +43,11 @@ fn clipping(
     input: &Input<'_>,
 ) -> Result<Option<Clipped>, String> {
     let rect = located.rect;
-    for ancestor in std::iter::successors(located.widget.parent(), WidgetExt::parent) {
+    for ancestor in std::iter::successors(located.node.parent(), WidgetExt::parent) {
         let Ok(scroller) = ancestor.downcast::<gtk::ScrolledWindow>() else {
             continue;
         };
-        let viewport = match targets::screen_rect(scroller.upcast_ref(), input.injector) {
+        let viewport = match protocol::screen_rect(input.backend, scroller.upcast_ref()) {
             Ok(viewport) => viewport,
             Err(LookupError::Missing(_)) => continue,
             Err(LookupError::Broken(error)) => return Err(error),
@@ -95,7 +95,7 @@ impl Input<'_> {
         let Some(clipped) = clipping(located, point, self)? else {
             return Ok(false);
         };
-        let window = targets::screen_rect(self.window.upcast_ref(), self.injector)
+        let window = protocol::screen_rect(self.backend, self.window.upcast_ref())
             .map_err(|error| error.message().to_owned())?;
         let left = clipped.viewport.x.max(window.x);
         let top = clipped.viewport.y.max(window.y);

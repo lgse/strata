@@ -13,7 +13,9 @@ use super::{
     note::note,
     observe::{evaluate, preferences, scroll_target, visible_rows, visible_top},
     pointer::{AfterPress, Aimed, DragEnds},
-    protocol::{self, Accessor, Command, Failure, Predicate, Query, Shape, Target, number_json},
+    protocol::{
+        self, Accessor, Command, Failure, Predicate, Query, Scope, Shape, Target, number_json,
+    },
     reveal::set_scrollbar,
     samples::grab,
     settle, state,
@@ -47,12 +49,13 @@ impl Controller {
             }
         }
         let input = Input {
-            backend: &self.backend,
+            scope: Scope {
+                backend: &self.backend,
+                window: window.clone().upcast(),
+                kept: &self.kept,
+            },
             injector,
             window: &window,
-            memory: &self.memory,
-            widgets: &self.widgets,
-            boxes: &self.settled,
         };
         match command {
             Command::Key { chord, repeat } => {
@@ -98,7 +101,7 @@ impl Controller {
                     width: width as f64,
                     height: height as f64,
                 };
-                self.settled.borrow_mut().insert(name, rect);
+                self.kept.boxes.borrow_mut().insert(name, rect);
                 Outcome::default()
             }
             Command::RevealControl { target } => self.reveal_control(&input, &target).await,
@@ -125,11 +128,14 @@ impl Controller {
                     match input.presented(&target) {
                         Err(error) => return Outcome::error(error),
                         Ok(Some(widget)) => {
-                            self.memory.borrow_mut().remove(&name);
-                            if let Ok(rect) = targets::screen_rect(&widget, injector) {
-                                self.settled.borrow_mut().insert(name.clone(), rect);
+                            self.kept.fields.borrow_mut().remove(&name);
+                            if let Ok(rect) = protocol::screen_rect(&self.backend, &widget) {
+                                self.kept.boxes.borrow_mut().insert(name.clone(), rect);
                             }
-                            self.widgets.borrow_mut().insert(name, widget.downgrade());
+                            self.kept
+                                .nodes
+                                .borrow_mut()
+                                .insert(name, widget.downgrade());
                             return Outcome::default();
                         }
                         Ok(None) if Instant::now() >= deadline => {
@@ -146,18 +152,20 @@ impl Controller {
             Command::Remember { target, name } => match input.find(&target, None, Aim::Point).await
             {
                 Ok(located) if matches!(target, Target::Field(None) | Target::FieldWithin(_)) => {
-                    self.widgets.borrow_mut().remove(&name);
-                    self.memory
+                    self.kept.nodes.borrow_mut().remove(&name);
+                    self.kept
+                        .fields
                         .borrow_mut()
-                        .insert(name, located.widget.downgrade());
+                        .insert(name, located.node.downgrade());
                     Outcome::default()
                 }
                 Ok(located) => {
-                    self.memory.borrow_mut().remove(&name);
-                    self.widgets
+                    self.kept.fields.borrow_mut().remove(&name);
+                    self.kept
+                        .nodes
                         .borrow_mut()
-                        .insert(name.clone(), located.widget.downgrade());
-                    self.settled.borrow_mut().insert(name, located.rect);
+                        .insert(name.clone(), located.node.downgrade());
+                    self.kept.boxes.borrow_mut().insert(name, located.rect);
                     Outcome::default()
                 }
                 Err(error) => Outcome::error(error),
@@ -207,7 +215,10 @@ impl Controller {
                             "Bounds(x={x}, y={y}, width={width}, height={height})"
                         )))
                     }
-                    Accessor::EditableFields => Ok(json!(targets::editable_fields(&window))),
+                    Accessor::EditableFields => Ok(json!(protocol::editable_fields(
+                        &self.backend,
+                        window.upcast_ref()
+                    ))),
                     Accessor::Number => {
                         let Some(expr) = expr.as_ref() else {
                             return Err("number needs expr".to_owned());
@@ -312,7 +323,7 @@ impl Controller {
                 })
             }
             Command::ClickResultRows { states, modifiers } => {
-                let rows = targets::result_rows(window.upcast_ref());
+                let rows = protocol::result_rows(&self.backend, window.upcast_ref());
                 for row in rows {
                     let now = targets::states(&row);
                     if !states.matches(now.selected, now.focused) {
@@ -394,7 +405,7 @@ impl Controller {
                             Ok(Err(failure)) => last = Some(failure),
                         }
                     }
-                    let before = input.focused_widget();
+                    let before = input.focused();
                     for chord in &keys {
                         if let Err(error) = input.press(chord).await {
                             return Outcome::error(error);
@@ -402,7 +413,7 @@ impl Controller {
                     }
                     if let Some((timeout, message)) = &await_focus_change {
                         let deadline = Instant::now() + *timeout;
-                        while input.focused_widget() == before {
+                        while input.focused() == before {
                             if Instant::now() >= deadline {
                                 let failure = Failure {
                                     predicate: json!({ "await_focus_change": true }),
