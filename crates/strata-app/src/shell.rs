@@ -136,17 +136,9 @@ impl App {
     }
 }
 
-/// What the offscreen host and its tests read.
-#[cfg(test)]
+/// What the offscreen host reads.
+#[cfg(any(test, feature = "qa"))]
 impl App {
-    pub(crate) fn browser(&self) -> &Rc<Browser> {
-        &self.browser
-    }
-
-    pub(crate) fn location(&self) -> Option<&Location> {
-        self.location.as_ref()
-    }
-
     /// The window title this state last asked for.
     pub(crate) fn title(&self) -> &str {
         &self.title
@@ -155,6 +147,18 @@ impl App {
     /// Whether the browser has sent something `poll` has not applied.
     pub(crate) fn has_queued_changes(&self) -> bool {
         !self.events.is_empty()
+    }
+}
+
+/// What the tests read.
+#[cfg(test)]
+impl App {
+    pub(crate) fn browser(&self) -> &Rc<Browser> {
+        &self.browser
+    }
+
+    pub(crate) fn location(&self) -> Option<&Location> {
+        self.location.as_ref()
     }
 
     /// How many rows the browser's events have had copied out of it.

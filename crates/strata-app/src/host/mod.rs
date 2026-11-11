@@ -5,8 +5,8 @@
 
 use std::time::Duration;
 
-// Only the tests run on it until the `--qa` mode does (V7).
-#[cfg(test)]
+// The tests run on it, and the `--qa` mode.
+#[cfg(any(test, feature = "qa"))]
 pub(crate) mod offscreen;
 pub(crate) mod windowed;
 

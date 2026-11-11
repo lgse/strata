@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 //! The host without a window: one thread owns a Rune `Runtime` and the default GLib context,
-//! and steps both in real time. The in-process tests run on it, and the `--qa` mode will.
+//! and steps both in real time. The in-process tests run on it, and the `--qa` mode does.
 
 use std::time::{Duration, Instant};
 
@@ -15,7 +15,8 @@ use crate::{
     startup::UiThread,
 };
 
-/// The QA runner's window (`tests/qa/`: Xvfb at 1440x900).
+/// The QA runner's screen (`tests/qa/`: Xvfb at 1440x900): what the tests draw on.
+#[cfg(test)]
 const SIZE: (f32, f32) = (1440.0, 900.0);
 
 pub(crate) struct Offscreen {
@@ -26,7 +27,13 @@ pub(crate) struct Offscreen {
 }
 
 impl Offscreen {
+    #[cfg(test)]
     pub(crate) fn new(ui: UiThread, settings: &Preferences) -> Self {
+        Self::sized(ui, settings, SIZE)
+    }
+
+    /// A host that draws at `size`, in points.
+    pub(crate) fn sized(ui: UiThread, settings: &Preferences, size: (f32, f32)) -> Self {
         let app = App::new(
             &ui,
             Csd::new(Policy::Auto.frame(), Backend::Headless),
@@ -35,7 +42,7 @@ impl Offscreen {
         let mut runtime = Runtime::with_text(
             app,
             shell::view,
-            SIZE,
+            size,
             Env::new(true, 1.0),
             TextSystem::new(FONTS, FAMILIES),
         );
@@ -51,6 +58,14 @@ impl Offscreen {
 
     pub(crate) fn app(&self) -> &App {
         &self.runtime.state
+    }
+
+    /// Turns the look's motion off, as the GTK QA runs do through `gtk-enable-animations`:
+    /// a column that closes then leaves the tree at once.
+    #[cfg(feature = "qa")]
+    pub(crate) fn without_animations(mut self) -> Self {
+        self.runtime.update(|app, _| app.look.animations = false);
+        self
     }
 
     /// Rune's side of the host: where input goes in, and the tree comes out.
@@ -105,6 +120,7 @@ impl Offscreen {
     }
 
     /// Turns until `done`, waiting whenever a turn finds nothing to do. False on a timeout.
+    #[cfg(test)]
     pub(crate) fn run_until(&mut self, timeout: Duration, done: impl Fn(&Self) -> bool) -> bool {
         let deadline = Instant::now() + timeout;
         loop {

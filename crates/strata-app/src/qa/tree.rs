@@ -1,0 +1,292 @@
+// SPDX-License-Identifier: MIT
+
+//! Rune's accessibility tree as the QA engine walks it: one snapshot of
+//! `Runtime::accessibility_json`, with each node under the path of keys that leads to it.
+
+use std::{collections::HashMap, fmt::Write as _, rc::Rc};
+
+use serde_json::Value;
+use strata_qa::{Mark, Rect};
+
+use super::roles;
+
+/// A node of the tree: the keys from the window down to it. An element without a key stands
+/// under its place among its siblings. A row's key holds its entry's id, so the path of a
+/// row a list has given to another entry is another path.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct Node(Rc<str>);
+
+/// What `remember` holds of a node: its path, and the role it had, so a different element
+/// that later stands at the same place is not taken for it.
+#[derive(Clone, Debug)]
+pub(crate) struct Kept {
+    node: Node,
+    role: String,
+}
+
+/// One node as Rune reports it.
+#[derive(Debug, Default)]
+pub(super) struct Seen {
+    pub(super) node: Option<Node>,
+    pub(super) parent: Option<usize>,
+    pub(super) children: Vec<usize>,
+    /// Rune's own role name: `list-box-option`.
+    pub(super) role: String,
+    pub(super) key: Option<String>,
+    pub(super) name: String,
+    pub(super) description: String,
+    pub(super) value: Option<String>,
+    pub(super) number: Option<f64>,
+    pub(super) states: Vec<String>,
+    pub(super) actions: Vec<String>,
+    /// In window points.
+    pub(super) bounds: Option<Rect>,
+    pub(super) active_descendant: Option<String>,
+    pub(super) mark: Option<Mark>,
+}
+
+impl Seen {
+    pub(super) fn has_state(&self, state: &str) -> bool {
+        self.states.iter().any(|held| held == state)
+    }
+
+    pub(super) fn has_action(&self, action: &str) -> bool {
+        self.actions.iter().any(|offered| offered == action)
+    }
+
+    /// The AT-SPI role name the scenarios use.
+    pub(super) fn role(&self) -> &'static str {
+        roles::at_spi(&self.role, !self.name.is_empty())
+    }
+}
+
+#[derive(Debug, Default)]
+pub(super) struct Snapshot {
+    nodes: Vec<Seen>,
+    index: HashMap<Node, usize>,
+    /// The node that takes key presses: the focused element's active descendant when it
+    /// names one, since a Rune list keeps focus and points at its current row.
+    focus: Option<usize>,
+}
+
+fn text(node: &Value, field: &str) -> String {
+    node[field].as_str().unwrap_or_default().to_owned()
+}
+
+fn texts(node: &Value, field: &str) -> Vec<String> {
+    let items = node[field].as_array().map_or(&[][..], Vec::as_slice);
+    items
+        .iter()
+        .filter_map(|item| item.as_str().map(str::to_owned))
+        .collect()
+}
+
+fn bounds(node: &Value) -> Option<Rect> {
+    let [x, y, width, height] = node["bounds"].as_array()?.as_slice() else {
+        return None;
+    };
+    Some(Rect {
+        x: x.as_f64()?,
+        y: y.as_f64()?,
+        width: width.as_f64()?,
+        height: height.as_f64()?,
+    })
+}
+
+impl Snapshot {
+    /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`. `lists` are the keys of
+    /// the entry lists the Columns adapter shows, one for each column.
+    pub(super) fn read(tree: &Value, lists: &[String]) -> Self {
+        let mut snapshot = Self::default();
+        if tree.is_object() {
+            snapshot.add(tree, None, "window".to_owned());
+        }
+        snapshot.focus = snapshot.keyboard_focus();
+        for list in lists {
+            snapshot.mark_column(list);
+        }
+        snapshot
+    }
+
+    fn add(&mut self, value: &Value, parent: Option<usize>, path: String) -> usize {
+        let index = self.nodes.len();
+        let node = Node(Rc::from(path.as_str()));
+        self.index.insert(node.clone(), index);
+        self.nodes.push(Seen {
+            node: Some(node),
+            parent,
+            children: Vec::new(),
+            role: text(value, "role"),
+            key: value["key"].as_str().map(str::to_owned),
+            name: text(value, "name"),
+            description: text(value, "description"),
+            value: value["value"].as_str().map(str::to_owned),
+            number: value["range"][0].as_f64(),
+            states: texts(value, "states"),
+            actions: texts(value, "actions"),
+            bounds: bounds(value),
+            active_descendant: value["activeDescendant"].as_str().map(str::to_owned),
+            mark: None,
+        });
+        let children = value["children"].as_array().map_or(&[][..], Vec::as_slice);
+        let mut taken: Vec<String> = Vec::new();
+        for (place, child) in children.iter().enumerate() {
+            let mut segment = child["key"]
+                .as_str()
+                .map_or_else(|| format!("#{place}"), str::to_owned);
+            if taken.contains(&segment) {
+                let _ = write!(segment, "~{place}");
+            }
+            let added = self.add(child, Some(index), format!("{path}/{segment}"));
+            self.nodes[index].children.push(added);
+            taken.push(segment);
+        }
+        index
+    }
+
+    fn keyboard_focus(&self) -> Option<usize> {
+        let focused = self
+            .nodes
+            .iter()
+            .position(|seen| seen.has_state("focused"))?;
+        let active = self.nodes[focused].active_descendant.as_deref();
+        let inside = self.below(focused);
+        let pointed = active.and_then(|key| {
+            let named = |index: &usize| self.nodes[*index].key.as_deref() == Some(key);
+            inside.into_iter().find(named)
+        });
+        Some(pointed.unwrap_or(focused))
+    }
+
+    /// Everything under `index`, parents first.
+    fn below(&self, index: usize) -> Vec<usize> {
+        let mut found = Vec::new();
+        let mut stack: Vec<usize> = self.nodes[index].children.iter().rev().copied().collect();
+        while let Some(next) = stack.pop() {
+            stack.extend(self.nodes[next].children.iter().rev());
+            found.push(next);
+        }
+        found
+    }
+
+    /// Marks one column where the adapter put it: the list with the column's key is the entry
+    /// container, the options under it are the entries, and the named group around it, which
+    /// the view names by the folder, is the pane.
+    fn mark_column(&mut self, list: &str) {
+        let is_list = |seen: &Seen| seen.role == "list-box" && seen.key.as_deref() == Some(list);
+        let Some(container) = self.nodes.iter().position(is_list) else {
+            return;
+        };
+        self.nodes[container].mark = Some(Mark::EntryContainer);
+        for index in self.below(container) {
+            if self.nodes[index].role == "list-box-option" {
+                self.nodes[index].mark = Some(Mark::Entry);
+            }
+        }
+        let above = std::iter::successors(self.nodes[container].parent, |index| {
+            self.nodes[*index].parent
+        });
+        let pane = above.into_iter().find(|index| {
+            let seen = &self.nodes[*index];
+            seen.role == "group" && !seen.name.is_empty()
+        });
+        if let Some(pane) = pane {
+            self.nodes[pane].mark = Some(Mark::Pane("Columns"));
+        }
+    }
+
+    pub(super) fn get(&self, node: &Node) -> Option<&Seen> {
+        self.index.get(node).map(|index| &self.nodes[*index])
+    }
+
+    pub(super) fn at(&self, index: usize) -> Option<&Seen> {
+        self.nodes.get(index)
+    }
+
+    pub(super) fn root(&self) -> Option<&Seen> {
+        self.nodes.first()
+    }
+
+    pub(super) fn focus(&self) -> Option<&Seen> {
+        self.focus.and_then(|index| self.nodes.get(index))
+    }
+
+    pub(super) fn is_focus(&self, seen: &Seen) -> bool {
+        self.focus().is_some_and(|focus| focus.node == seen.node)
+    }
+
+    pub(super) fn keep(&self, node: &Node) -> Kept {
+        Kept {
+            node: node.clone(),
+            role: self
+                .get(node)
+                .map(|seen| seen.role.clone())
+                .unwrap_or_default(),
+        }
+    }
+
+    pub(super) fn recall(&self, kept: &Kept) -> Option<Node> {
+        let seen = self.get(&kept.node)?;
+        (seen.role == kept.role).then(|| kept.node.clone())
+    }
+
+    /// The tree as text, a line for each node: Rune's role and key, the AT-SPI role, the name,
+    /// the description, the states the scenarios test and the box. The GTK harness prints its
+    /// widgets in the same shape.
+    pub(super) fn dump(&self) -> String {
+        let mut output = String::new();
+        if let Some(focus) = self.focus() {
+            let _ = writeln!(
+                output,
+                "focus: {} role={:?} name={:?}",
+                focus.role,
+                focus.role(),
+                focus.name
+            );
+        }
+        if !self.nodes.is_empty() {
+            self.dump_node(0, 0, &mut output);
+        }
+        output
+    }
+
+    fn dump_node(&self, index: usize, depth: usize, output: &mut String) {
+        let seen = &self.nodes[index];
+        let _ = write!(output, "{:indent$}{}", "", seen.role, indent = depth * 2);
+        if let Some(key) = &seen.key {
+            let _ = write!(output, "#{key}");
+        }
+        let _ = write!(output, " role={:?}", seen.role());
+        self.dump_words(seen, output);
+        if let Some(bounds) = seen.bounds {
+            let _ = write!(
+                output,
+                " ({:.0},{:.0} {:.0}x{:.0})",
+                bounds.x, bounds.y, bounds.width, bounds.height
+            );
+        }
+        output.push('\n');
+        for child in &seen.children {
+            self.dump_node(*child, depth + 1, output);
+        }
+    }
+
+    /// What a node says of itself, in the order the GTK harness prints it.
+    fn dump_words(&self, seen: &Seen, output: &mut String) {
+        if !seen.name.is_empty() {
+            let _ = write!(output, " name={:?}", seen.name);
+        }
+        if seen.has_state("selected") {
+            output.push_str(" [selected]");
+        }
+        if !seen.description.is_empty() {
+            let _ = write!(output, " description={:?}", seen.description);
+        }
+        if let Some(value) = seen.value.as_ref().filter(|value| **value != seen.name) {
+            let _ = write!(output, " text={value:?}");
+        }
+        if self.is_focus(seen) {
+            output.push_str(" [focused]");
+        }
+    }
+}

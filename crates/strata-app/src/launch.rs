@@ -61,7 +61,7 @@ fn home_directory() -> PathBuf {
 }
 
 /// The launch folder may sit on a volume the user later wants to unmount.
-fn leave_launch_folder() {
+pub(crate) fn leave_launch_folder() {
     if let Err(error) = env::set_current_dir("/") {
         tracing::warn!(%error, "unable to leave the launch folder");
     }
@@ -76,6 +76,11 @@ fn open(directory: Option<&OsStr>) -> Result<(), String> {
 
 /// Runs `strata-rune` with the process's arguments, the program name first.
 pub fn run(arguments: impl IntoIterator<Item = OsString>) -> ExitCode {
+    let arguments: Vec<OsString> = arguments.into_iter().collect();
+    #[cfg(feature = "qa")]
+    if let Some(code) = crate::qa::launch(&arguments) {
+        return code;
+    }
     match parse(arguments.into_iter().skip(1)) {
         Ok(Command::Help) => {
             println!("{USAGE}");

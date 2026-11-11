@@ -16,6 +16,8 @@ mod columns;
 mod events;
 mod host;
 mod launch;
+#[cfg(feature = "qa")]
+mod qa;
 mod shell;
 mod startup;
 #[cfg(test)]

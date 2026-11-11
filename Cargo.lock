@@ -4820,9 +4820,11 @@ dependencies = [
  "strata-fs",
  "strata-kit",
  "strata-platform",
+ "strata-qa",
  "strata-test-support",
  "tempfile",
  "tracing",
+ "xkbcommon",
 ]
 
 [[package]]
@@ -5035,6 +5037,7 @@ dependencies = [
  "serde_json",
  "strata-app",
  "strata-test-peer",
+ "tempfile",
 ]
 
 [[package]]

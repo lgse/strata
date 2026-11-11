@@ -12,6 +12,10 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# `strata-rune --qa <directory>`: the scripted QA mode. Never in a release build.
+qa = ["strata-app/qa"]
+
 # `main` only: everything else is strata-app's, which the `strata` binary runs at parity.
 [dependencies]
 strata-app.workspace = true
@@ -21,3 +25,4 @@ strata-app.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 strata-test-peer.workspace = true
+tempfile.workspace = true

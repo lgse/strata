@@ -297,16 +297,29 @@ impl Columns {
     }
 }
 
-/// What the tests read of the adapter beside the tree.
+/// What the offscreen host's readers ask of the adapter beside the tree.
+#[cfg(any(test, feature = "qa"))]
+impl Columns {
+    pub(crate) fn load(&self, depth: usize) -> Option<&Load> {
+        self.listings.columns.get(depth).map(Column::load)
+    }
+}
+
+#[cfg(feature = "qa")]
+impl Columns {
+    /// The key of each column's entry list in the tree, the first column's first.
+    pub(crate) fn list_keys(&self) -> Vec<String> {
+        (0..)
+            .map_while(|depth| self.state.column_key(depth))
+            .collect()
+    }
+}
+
 #[cfg(test)]
 impl Columns {
     /// How many rows column `depth` shows, mounted or not.
     pub(crate) fn rows_shown(&self, depth: usize) -> usize {
         self.listings.columns.get(depth).map_or(0, Column::len)
-    }
-
-    pub(crate) fn load(&self, depth: usize) -> Option<&Load> {
-        self.listings.columns.get(depth).map(Column::load)
     }
 }
 
