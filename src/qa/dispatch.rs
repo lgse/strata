@@ -47,6 +47,7 @@ impl Controller {
             }
         }
         let input = Input {
+            backend: &self.backend,
             injector,
             window: &window,
             memory: &self.memory,
@@ -234,6 +235,7 @@ impl Controller {
                             .collect(),
                     ),
                     _ => note(
+                        &self.backend,
                         &window,
                         value,
                         dir.as_deref(),
@@ -762,8 +764,10 @@ impl Controller {
                 }
             }
             Command::Query(Query::State) => Outcome {
-                result: serde_json::to_value(state::scan(&window).observation.app_state())
-                    .unwrap_or(Value::Null),
+                result: serde_json::to_value(
+                    state::scan(&self.backend, &window).observation.app_state(),
+                )
+                .unwrap_or(Value::Null),
                 ..Outcome::default()
             },
             Command::Query(Query::Tree) => Outcome {

@@ -275,7 +275,7 @@ impl Controller {
     fn reply(&mut self, outcome: Outcome) {
         let app = self
             .window()
-            .map(|window| state::scan(&window).observation.app_state())
+            .map(|window| state::scan(&self.backend, &window).observation.app_state())
             .and_then(|app| serde_json::to_value(app).ok())
             .unwrap_or_else(|| match self.backend.host {
                 Host::Portal(_) => state::empty_app_state(),

@@ -4,18 +4,20 @@ use gtk::prelude::*;
 use serde_json::{Value, json};
 
 use super::{
+    backend::Gtk,
     protocol::{Accessor, Shape},
     state, targets,
 };
 
 pub(super) fn note(
+    backend: &Gtk,
     window: &gtk::Window,
     value: Accessor,
     directory: Option<&str>,
     shape: &Shape<'_>,
     unless_first: Option<&str>,
 ) -> Result<Value, String> {
-    let scene = state::scan(window);
+    let scene = state::scan(backend, window);
     let observation = &scene.observation;
     let list = |names: Vec<String>| shape.apply(names);
     match value {
@@ -42,8 +44,7 @@ pub(super) fn note(
                         .map(|value| f64::from(value).floor() as i64)
                 })
             };
-            let (Some(pane), Some(widgets)) = (observation.pane(None), scene.pane_widgets(None))
-            else {
+            let (Some(pane), Some(widgets)) = (observation.pane(None), scene.pane(None)) else {
                 return Ok(Value::Null);
             };
             let viewport = widgets.container.as_ref().and_then(|container| {

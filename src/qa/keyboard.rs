@@ -150,7 +150,7 @@ impl Input<'_> {
     ) -> Result<(), Outcome> {
         let deadline = Instant::now() + protocol::DEFAULT_WAIT;
         loop {
-            let observation = state::scan(self.window).observation;
+            let observation = state::scan(self.backend, self.window).observation;
             if holds(&observation) {
                 return Ok(());
             }
@@ -194,7 +194,10 @@ impl Input<'_> {
         {
             return outcome;
         }
-        let icons = state::scan(self.window).observation.view_mode() == Some("Icons");
+        let icons = state::scan(self.backend, self.window)
+            .observation
+            .view_mode()
+            == Some("Icons");
         let next = Chord {
             modifiers: Vec::new(),
             key: if icons { "Right" } else { "Down" }.to_owned(),
@@ -217,7 +220,9 @@ impl Input<'_> {
             return outcome;
         }
         for _ in 0..KEYBOARD_SELECT_STEPS {
-            let previous = state::scan(self.window).observation.focused_entry;
+            let previous = state::scan(self.backend, self.window)
+                .observation
+                .focused_entry;
             if previous.as_deref() == Some(name) {
                 return match self
                     .wait_for(
@@ -248,7 +253,11 @@ impl Input<'_> {
         Outcome {
             failures: vec![Failure {
                 predicate: json!({ "select_with_keyboard": name }),
-                actual: json!(state::scan(self.window).observation.focused_entry),
+                actual: json!(
+                    state::scan(self.backend, self.window)
+                        .observation
+                        .focused_entry
+                ),
                 message: Some(format!("the keyboard cursor to reach {name:?}")),
             }],
             error: Some(format!("the keyboard cursor never reached {name:?}")),

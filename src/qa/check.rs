@@ -28,7 +28,9 @@ impl Controller {
         predicate: &Predicate,
     ) -> Result<Result<(), Failure>, String> {
         if !predicate.check.is_live() {
-            return Ok(state::scan(input.window).observation.evaluate(predicate));
+            return Ok(state::scan(input.backend, input.window)
+                .observation
+                .evaluate(predicate));
         }
         let mismatch = |actual: Value| Failure {
             predicate: serde_json::to_value(predicate).unwrap_or(Value::Null),
@@ -82,9 +84,9 @@ impl Controller {
                     return Ok(Err(mismatch(json!("no field"))));
                 };
                 let window = input.window.upcast_ref::<gtk::Widget>();
-                let scene = state::scan(input.window);
+                let scene = state::scan(input.backend, input.window);
                 let pane = scene
-                    .pane_widgets(None)
+                    .pane(None)
                     .and_then(|pane| pane.pane.compute_bounds(window));
                 let editor = editor.compute_bounds(window);
                 match (editor, pane) {
@@ -426,6 +428,7 @@ impl Controller {
                     input.window,
                     input.injector,
                     Kept {
+                        backend: input.backend,
                         memory: &input.memory.borrow(),
                         widgets: &input.widgets.borrow(),
                         boxes: &input.boxes.borrow(),
@@ -487,9 +490,9 @@ impl Controller {
                     return Ok(Err(mismatch(json!("no field"))));
                 };
                 let window = input.window.upcast_ref::<gtk::Widget>();
-                let scene = state::scan(input.window);
+                let scene = state::scan(input.backend, input.window);
                 let pane = scene
-                    .pane_widgets(check.pane.as_deref())
+                    .pane(check.pane.as_deref())
                     .and_then(|pane| pane.pane.compute_bounds(window));
                 match (editor.compute_bounds(window), pane) {
                     (Some(editor), Some(pane)) => {
@@ -599,10 +602,10 @@ impl Controller {
             Check::PanesWith(panes) => {
                 let wanted = targets::Wanted::of(&panes.target)
                     .map_err(|error| error.message().to_owned())?;
-                let scene = state::scan(input.window);
+                let scene = state::scan(input.backend, input.window);
                 let mut owners = Vec::new();
                 for (index, pane) in scene.observation.panes.iter().enumerate() {
-                    let Some(widgets) = scene.pane_widgets_at(index) else {
+                    let Some(widgets) = scene.pane_at(index) else {
                         continue;
                     };
                     match wanted.find(&widgets.pane) {
@@ -621,6 +624,7 @@ impl Controller {
                         input.window,
                         input.injector,
                         Kept {
+                            backend: input.backend,
                             memory: &input.memory.borrow(),
                             widgets: &input.widgets.borrow(),
                             boxes: &input.boxes.borrow(),
@@ -778,7 +782,9 @@ impl Controller {
                     verdict(text.contains(&check.contains), json!(text))
                 }
             },
-            _ => state::scan(input.window).observation.evaluate(predicate),
+            _ => state::scan(input.backend, input.window)
+                .observation
+                .evaluate(predicate),
         })
     }
 }

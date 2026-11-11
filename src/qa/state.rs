@@ -6,13 +6,11 @@ use std::{collections::HashMap, fmt::Write as _};
 
 use gtk::{graphene, prelude::*};
 
-use super::protocol::EntryRow;
 pub(crate) use super::protocol::{
-    EntryObservation, FieldState, Observation, PaneObservation, collapse_whitespace, contains,
-    empty_app_state, field_matches, inside, middle_visible, on_screen, within_viewport,
-    within_window,
+    EntryObservation, FieldState, Observation, collapse_whitespace, contains, empty_app_state,
+    field_matches, inside, middle_visible, on_screen, within_viewport, within_window,
 };
-use super::targets;
+use super::{backend::Gtk, protocol::EntryRow, targets};
 use crate::ui::accessibility_qa::{self as names, Mark};
 
 pub(crate) fn read_field(widget: &gtk::Widget) -> Option<FieldState> {
@@ -30,48 +28,11 @@ pub(crate) fn read_field(widget: &gtk::Widget) -> Option<FieldState> {
     })
 }
 
-pub(crate) struct Scene {
-    pub(crate) observation: Observation,
-    widgets: Vec<PaneWidgets>,
-}
+pub(crate) type Scene = super::protocol::Scene<gtk::Widget>;
+pub(crate) type PaneWidgets = super::protocol::PaneNodes<gtk::Widget>;
 
-pub(crate) struct PaneWidgets {
-    pub(crate) pane: gtk::Widget,
-    pub(crate) container: Option<gtk::Widget>,
-    pub(crate) entries: Vec<gtk::Widget>,
-}
-
-impl Scene {
-    pub(crate) fn entry_widget(&self, name: &str, directory: Option<&str>) -> Option<&gtk::Widget> {
-        let panes = &self.observation.panes;
-        let candidates: Vec<usize> = match directory {
-            Some(_) => self.pane_index(directory).into_iter().collect(),
-            None => (0..panes.len()).collect(),
-        };
-        candidates.into_iter().find_map(|pane| {
-            let index = panes[pane]
-                .entries
-                .iter()
-                .position(|entry| entry.name == name)?;
-            self.widgets[pane].entries.get(index)
-        })
-    }
-
-    pub(crate) fn pane_index(&self, directory: Option<&str>) -> Option<usize> {
-        let panes = &self.observation.panes;
-        match directory {
-            None => panes.len().checked_sub(1),
-            Some(directory) => panes.iter().rposition(|pane| pane.name == directory),
-        }
-    }
-
-    pub(crate) fn pane_widgets(&self, directory: Option<&str>) -> Option<&PaneWidgets> {
-        self.pane_index(directory)
-            .and_then(|index| self.widgets.get(index))
-    }
-    pub(crate) fn pane_widgets_at(&self, index: usize) -> Option<&PaneWidgets> {
-        self.widgets.get(index)
-    }
+pub(crate) fn scan(backend: &Gtk, window: &gtk::Window) -> Scene {
+    super::protocol::scan(backend, window.upcast_ref())
 }
 
 pub(crate) fn rendered_bounds(widget: &gtk::Widget) -> Option<graphene::Rect> {
@@ -145,161 +106,6 @@ pub(crate) fn row_selected(widget: &gtk::Widget) -> bool {
             .is_some_and(|row| row == *widget)
             && item.is_selected()
     })
-}
-
-pub(crate) fn scan(window: &gtk::Window) -> Scene {
-    let rows = rows();
-    // AT-SPI reports no focus for a focused row a list keeps unmapped while
-    // it is scrolled away, so neither does `focused_pane()`.
-    let focus = gtk::prelude::GtkWindowExt::focus(window)
-        .filter(|focus| focus.has_focus() && focus.is_mapped());
-    let root = window.upcast_ref::<gtk::Widget>();
-    let all = descendants(root);
-
-    let mut panes: Vec<(f32, PaneObservation, PaneWidgets, bool)> = Vec::new();
-    for widget in &all {
-        let Some(naming) = names::naming(widget) else {
-            continue;
-        };
-        let Some(Mark::Pane(view)) = naming.mark else {
-            continue;
-        };
-        let Some(bounds) = rendered_bounds(widget) else {
-            continue;
-        };
-        let (entries, widgets) = pane_entries(widget);
-        let holds_focus = focus
-            .as_ref()
-            .is_some_and(|focus| focus == widget || focus.is_ancestor(widget));
-        panes.push((
-            bounds.x(),
-            PaneObservation {
-                name: naming.label.unwrap_or_default(),
-                view,
-                entries,
-            },
-            widgets,
-            holds_focus,
-        ));
-    }
-    panes.sort_by(|left, right| left.0.total_cmp(&right.0));
-
-    let focused_entry = all.iter().find_map(|widget| {
-        let row = rows.get(&address(widget))?;
-        (widget.has_focus() && rendered_bounds(widget).is_some()).then(|| row.name.clone())
-    });
-    let focused_pane = panes.iter().rposition(|pane| pane.3);
-    let (observed, widgets) = panes
-        .into_iter()
-        .map(|(_, pane, widgets, _)| (pane, widgets))
-        .unzip();
-    let presented = targets::presented(root);
-    Scene {
-        observation: Observation {
-            panes: observed,
-            focused_entry,
-            focused_pane,
-            window_width: Some(window.width()),
-            dialog: targets::open_dialog(&presented)
-                .map(|dialog| targets::accessible_name(&dialog)),
-            menu: open_menu(&presented),
-            preview: open_preview(&presented),
-            peek: presented.iter().any(|widget| {
-                rendered_bounds(widget).is_some()
-                    && targets::accessible_name(widget) == crate::i18n::tr(super::PEEK_LABEL)
-            }),
-            results: search_results(&presented),
-            field: targets::focused_field(&presented).and_then(|field| read_field(&field)),
-        },
-        widgets,
-    }
-}
-
-fn rendered_with_role<'a>(
-    presented: &'a [gtk::Widget],
-    role: &'a str,
-) -> impl Iterator<Item = &'a gtk::Widget> {
-    presented.iter().filter(move |widget| {
-        targets::role_name(widget) == role && rendered_bounds(widget).is_some()
-    })
-}
-
-fn open_menu(presented: &[gtk::Widget]) -> Option<Vec<String>> {
-    let menu = rendered_with_role(presented, "menu").next()?;
-    let inside = targets::presented(menu);
-    Some(
-        rendered_with_role(&inside, "menu item")
-            .map(targets::accessible_name)
-            .collect(),
-    )
-}
-
-fn open_preview(presented: &[gtk::Widget]) -> Option<Vec<String>> {
-    let label = crate::i18n::tr(crate::ui::PREVIEW_LABEL);
-    let drawer = presented.iter().find(|widget| {
-        rendered_bounds(widget).is_some() && targets::accessible_name(widget) == label
-    })?;
-    let mut shown = Vec::new();
-    for widget in targets::presented(drawer) {
-        let name = targets::accessible_name(&widget);
-        let text = targets::text_content(&widget);
-        if !name.is_empty() {
-            shown.push(name);
-        }
-        if let Some(text) = text.filter(|text| !text.is_empty()) {
-            shown.push(text);
-        }
-    }
-    Some(shown)
-}
-
-fn search_results(presented: &[gtk::Widget]) -> Option<Vec<String>> {
-    let (results, row_role) = targets::search_results(presented)?;
-    let inside = targets::presented(&results);
-    Some(
-        rendered_with_role(&inside, row_role)
-            .map(targets::accessible_name)
-            .filter(|name| !name.is_empty())
-            .collect(),
-    )
-}
-
-fn pane_entries(pane: &gtk::Widget) -> (Vec<EntryObservation>, PaneWidgets) {
-    let container = descendants(pane).into_iter().find(|widget| {
-        names::naming(widget).is_some_and(|naming| naming.mark == Some(Mark::EntryContainer))
-            && rendered_bounds(widget).is_some()
-    });
-    let mut widgets = PaneWidgets {
-        pane: pane.clone(),
-        container: container.clone(),
-        entries: Vec::new(),
-    };
-    let Some(container) = container else {
-        return (Vec::new(), widgets);
-    };
-    let mut found: Vec<(graphene::Rect, EntryRow<gtk::Widget>)> = container_rows(&container)
-        .into_iter()
-        .filter_map(|row| Some((rendered_bounds(&row.node)?, row)))
-        .collect();
-    found.sort_by(|left, right| {
-        left.0
-            .y()
-            .total_cmp(&right.0.y())
-            .then(left.0.x().total_cmp(&right.0.x()))
-    });
-    let (entries, rows): (Vec<EntryObservation>, Vec<gtk::Widget>) = found
-        .into_iter()
-        .map(|(_, row)| {
-            let entry = EntryObservation {
-                name: row.name,
-                selected: row.selected,
-                focused: row.focused,
-            };
-            (entry, row.node)
-        })
-        .unzip();
-    widgets.entries = rows;
-    (entries, widgets)
 }
 
 /// The row a widget is, when a list item recorded as an entry is bound to it.

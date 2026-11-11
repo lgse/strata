@@ -321,7 +321,7 @@ impl Input<'_> {
     pub(super) async fn select(&self, target: &EntryTarget) -> Outcome {
         let wanted = Target::Entry(target.clone());
         let selected = || {
-            state::scan(self.window)
+            state::scan(self.backend, self.window)
                 .observation
                 .entry_selected(&target.entry, target.dir.as_deref())
         };

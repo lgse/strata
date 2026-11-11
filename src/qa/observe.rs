@@ -195,9 +195,8 @@ pub(super) fn evaluate(input: &Input<'_>, expr: &Expr) -> Result<Result<f64, Str
 }
 
 pub(super) fn visible_top(input: &Input<'_>) -> Result<Vec<String>, String> {
-    let scene = state::scan(input.window);
-    let (Some(pane), Some(widgets)) = (scene.observation.pane(None), scene.pane_widgets(None))
-    else {
+    let scene = state::scan(input.backend, input.window);
+    let (Some(pane), Some(widgets)) = (scene.observation.pane(None), scene.pane(None)) else {
         return Ok(Vec::new());
     };
     let Some(viewport) = widgets.container.as_ref().and_then(|container| {
@@ -294,11 +293,9 @@ pub(super) fn visible_rows(
     input: &Input<'_>,
     directory: Option<&str>,
 ) -> Result<Vec<VisibleRow>, String> {
-    let scene = state::scan(input.window);
-    let (Some(pane), Some(widgets)) = (
-        scene.observation.pane(directory),
-        scene.pane_widgets(directory),
-    ) else {
+    let scene = state::scan(input.backend, input.window);
+    let (Some(pane), Some(widgets)) = (scene.observation.pane(directory), scene.pane(directory))
+    else {
         return Ok(Vec::new());
     };
     let Some(viewport) = widgets.container.as_ref().and_then(|container| {
@@ -349,9 +346,9 @@ fn pane_scroll(
     input: &Input<'_>,
     directory: Option<&str>,
 ) -> Result<Option<(gtk::Widget, gtk::Scrollbar)>, String> {
-    let scene = state::scan(input.window);
+    let scene = state::scan(input.backend, input.window);
     let Some(viewport) = scene
-        .pane_widgets(directory)
+        .pane(directory)
         .and_then(|widgets| widgets.container.clone())
         .and_then(|container| {
             std::iter::successors(container.parent(), WidgetExt::parent)
@@ -397,9 +394,8 @@ pub(super) fn footer_fill(
     input: &Input<'_>,
     fill: &protocol::FooterFill,
 ) -> Result<Result<(), Value>, String> {
-    let scene = state::scan(input.window);
-    let (Some(pane), Some(widgets)) = (scene.observation.pane(None), scene.pane_widgets(None))
-    else {
+    let scene = state::scan(input.backend, input.window);
+    let (Some(pane), Some(widgets)) = (scene.observation.pane(None), scene.pane(None)) else {
         return Ok(Err(json!("no pane")));
     };
     let window = targets::screen_rect(input.window.upcast_ref(), input.injector)

@@ -45,6 +45,7 @@ fn missing(message: impl Into<String>) -> LookupError {
 
 #[derive(Clone, Copy)]
 pub(crate) struct Kept<'a> {
+    pub(crate) backend: &'a super::backend::Gtk,
     pub(crate) memory: &'a Memory,
     pub(crate) widgets: &'a Memory,
     pub(crate) boxes: &'a Boxes,

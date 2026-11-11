@@ -9,6 +9,7 @@ use gtk::{glib, prelude::*};
 
 use super::{
     LOCATE_TIMEOUT, POLL_INTERVAL, REVEAL_SCROLL_ATTEMPTS,
+    backend::Gtk,
     input::{Event, Injector},
     pointer::Aimed,
     protocol::{At, FieldRef, Target, coordinate},
@@ -17,6 +18,7 @@ use super::{
 };
 
 pub(super) struct Input<'a> {
+    pub(super) backend: &'a Gtk,
     pub(super) injector: &'a Injector,
     pub(super) window: &'a gtk::Window,
     pub(super) memory: &'a RefCell<Memory>,
@@ -49,6 +51,7 @@ impl Input<'_> {
             self.window,
             self.injector,
             Kept {
+                backend: self.backend,
                 memory: &self.memory.borrow(),
                 widgets: &self.widgets.borrow(),
                 boxes: &self.boxes.borrow(),
@@ -64,6 +67,7 @@ impl Input<'_> {
             self.window,
             self.injector,
             Kept {
+                backend: self.backend,
                 memory: &self.memory.borrow(),
                 widgets: &self.widgets.borrow(),
                 boxes: &self.boxes.borrow(),

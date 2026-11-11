@@ -16,6 +16,7 @@ mod backend;
 mod checks;
 mod chord;
 mod command;
+mod engine;
 mod expr;
 mod geometry;
 mod matchers;
@@ -27,12 +28,11 @@ mod scroll;
 mod shape;
 mod snapshot;
 mod target;
-mod tree;
 
 pub use self::{
-    backend::*, checks::*, chord::*, command::*, expr::*, geometry::*, matchers::*, offset::*,
-    outcome::*, pixels::Capture, predicate::*, scroll::*, shape::*, snapshot::*, target::*,
-    tree::*,
+    backend::*, checks::*, chord::*, command::*, engine::*, expr::*, geometry::*, matchers::*,
+    offset::*, outcome::*, pixels::Capture, predicate::*, scroll::*, shape::*, snapshot::*,
+    target::*,
 };
 
 pub const DEFAULT_WAIT: Duration = Duration::from_millis(15_000);

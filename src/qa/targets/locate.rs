@@ -29,12 +29,12 @@ pub(crate) fn locate(
     aim: Aim,
 ) -> Result<Located, LookupError> {
     let memory = kept.memory;
-    let scene = state::scan(window);
+    let scene = state::scan(kept.backend, window);
     let root = window.upcast_ref::<gtk::Widget>();
     let widget = match target {
         Target::Entry(entry) => {
             let row = scene
-                .entry_widget(&entry.entry, entry.dir.as_deref())
+                .entry(&entry.entry, entry.dir.as_deref())
                 .cloned()
                 .ok_or_else(|| {
                     missing(format!(
@@ -337,7 +337,7 @@ fn pane<'a>(
     scene: &'a Scene,
     directory: Option<&str>,
 ) -> Result<&'a state::PaneWidgets, LookupError> {
-    scene.pane_widgets(directory).ok_or_else(|| {
+    scene.pane(directory).ok_or_else(|| {
         missing(format!(
             "no {} pane on screen",
             directory.map_or_else(|| "browser".to_owned(), |dir| format!("{dir:?}"))

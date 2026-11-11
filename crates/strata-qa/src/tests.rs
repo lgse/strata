@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 mod commands;
+mod fake;
 mod pixels;
 mod predicates;
+mod scanning;
 mod snapshot;
 mod targeting;
 
