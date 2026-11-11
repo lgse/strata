@@ -482,6 +482,14 @@ fn a_change_on_disk_reaches_the_listing() {
         // Neither change was the user's: the cursor and the selection stay where they were.
         assert_eq!(removed.focused.as_deref(), Some("archive"));
         assert_browser_agrees(&host, "the changes on disk");
+
+        // Where the cursor goes when its own entry leaves is the browser's to say.
+        std::fs::remove_dir(folder.path().join("archive")).expect("removed");
+        wait(&mut host, "the next entry to take the cursor", |seen| {
+            !seen.panes[0].names().contains(&"archive")
+                && seen.focused.as_deref() == Some("documents")
+        });
+        assert_browser_agrees(&host, "the cursor's entry leaving");
     });
 }
 
