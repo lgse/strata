@@ -11,6 +11,7 @@ ignore = [
   { id = "RUSTSEC-2026-0370", reason = "zbus 5 is required by ashpd 0.13" },
   { id = "RUSTSEC-2026-0371", reason = "zbus 5 is required by ashpd 0.13" },
   { id = "RUSTSEC-2026-0372", reason = "zbus 5 is required by ashpd 0.13" },
+  { id = "RUSTSEC-2025-0141", reason = "bincode 1 is syntect's syntax dump format on the Rune side; unmaintained, no known vulnerability, and its authors call 1.3.3 complete" },
 ]
 
 [licenses]
@@ -44,6 +45,15 @@ allow = ["BSD-2-Clause"]
 name = "mutate_once"
 allow = ["BSD-2-Clause"]
 
+# Rune's clipboard dependency (arboard) names these for Windows only; no Linux build links them.
+[[licenses.exceptions]]
+name = "clipboard-win"
+allow = ["BSL-1.0"]
+
+[[licenses.exceptions]]
+name = "error-code"
+allow = ["BSL-1.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
@@ -51,7 +61,9 @@ highlight = "simplest-path"
 
 # The crate layering. Each entry names the only crates that may depend directly on one:
 # the interface toolkits stay in the application package, and a workspace crate is used
-# only by the layers above it (core, then preview, then fs, then desktop).
+# only by the layers above it (core, then preview, then fs, then desktop). The Rune side
+# (platform, kit, components, gallery) uses Rune and never the shared crates; the
+# application reaches nothing on the Rune side (docs/workspace.md).
 deny = [
   { crate = "gtk4", wrappers = ["sourceview5", "strata"] },
   { crate = "gdk4", wrappers = ["gdk4-wayland", "gdk4-x11", "gsk4", "gtk4", "sourceview5"] },
@@ -60,14 +72,22 @@ deny = [
   { crate = "sourceview5", wrappers = ["strata"] },
   { crate = "gstreamer", wrappers = ["gstreamer-app", "gstreamer-base", "strata"] },
   { crate = "gstreamer-app", wrappers = ["strata"] },
+  { crate = "strata-core", wrappers = ["strata", "strata-desktop", "strata-fs", "strata-preview"] },
   { crate = "strata-preview", wrappers = ["strata", "strata-fs"] },
   { crate = "strata-fs", wrappers = ["strata", "strata-desktop"] },
   { crate = "strata-desktop", wrappers = ["strata"] },
   { crate = "strata-qa", wrappers = ["strata"] },
+  { crate = "rune", wrappers = ["rune-kit", "strata-components", "strata-gallery", "strata-kit", "strata-platform"] },
+  { crate = "rune-kit", wrappers = ["strata-components", "strata-gallery", "strata-kit"] },
+  { crate = "strata-platform", wrappers = ["strata-gallery"] },
+  { crate = "strata-kit", wrappers = ["strata-components", "strata-gallery"] },
+  { crate = "strata-components", wrappers = ["strata-gallery"] },
+  { crate = "strata-test-peer", wrappers = ["strata-gallery", "strata-platform"] },
 ]
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+# Rune is pinned by git rev until it is on crates.io (docs/rune/plan.md §8).
+allow-git = ["https://github.com/anomalyco/rune"]
