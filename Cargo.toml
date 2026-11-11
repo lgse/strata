@@ -132,6 +132,7 @@ rar = ["strata-core/rar", "strata-fs/rar", "strata-preview/rar"]
 # The scripted `--qa` launch mode and its in-process X or Wayland input. Never in releases.
 qa = [
     "dep:strata-qa",
+    "strata-core/qa",
     "dep:x11rb",
     "dep:regex",
     "dep:wayland-client",

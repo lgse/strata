@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-use std::sync::Mutex;
+//! What GLib logged as a warning, a critical or an error, kept for the QA mode: each reply
+//! reports them, and a run fails on any. Both interfaces use it, since GIO stays under both.
 
-use gtk::glib;
+use std::sync::Mutex;
 
 static PENDING: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-pub(crate) fn capture() {
+/// Routes GLib's log through a writer that keeps those lines, and still prints them.
+pub fn capture() {
     glib::log_set_writer_func(|level, fields| {
         if matches!(
             level,
@@ -42,7 +44,8 @@ fn level_name(level: glib::LogLevel) -> &'static str {
     }
 }
 
-pub(crate) fn take() -> Vec<String> {
+/// The lines kept since the last call.
+pub fn take() -> Vec<String> {
     PENDING
         .lock()
         .map(|mut pending| std::mem::take(&mut *pending))

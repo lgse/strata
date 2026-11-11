@@ -12,6 +12,9 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
 };
 
+#[cfg(feature = "qa")]
+pub mod criticals;
+
 // Closed launcher pipes must not turn logging failures into panics at a GLib boundary.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PipeSafeWriter<W>(pub W);

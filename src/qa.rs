@@ -7,7 +7,6 @@
 mod backend;
 mod check;
 mod clipboard;
-mod criticals;
 mod dispatch;
 mod input;
 mod keyboard;
@@ -23,6 +22,7 @@ use std::{
     fs::File,
     time::{Duration, Instant},
 };
+use strata_core::logging::criticals;
 use strata_qa as protocol;
 
 use gtk::{gdk, glib, prelude::*};
