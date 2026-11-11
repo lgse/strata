@@ -218,9 +218,23 @@ const SEQUENCES: &[(&str, &[Step])] = &[
     ),
 ];
 
-/// Behaviours of slice decision 17: what the GTK view does, which the Columns component now
-/// does too, with the browser holding the result.
+/// The five of slice decision 17's six behaviours the fixture can show: what the GTK view
+/// does, which the Columns component now does too, with the browser holding the result.
+/// The sixth, a key that only changes the active column, is
+/// `a_key_between_open_columns_mirrors_though_the_pointer_moved_last`.
 const AS_THE_GTK_VIEW: &[(&str, &[Step])] = &[
+    (
+        "Return on a folder whose column mirroring opened lands on its first entry",
+        &[
+            ("Down", focused("documents").panes(&["$root", "documents"])),
+            (
+                "Return",
+                focused("notes.txt")
+                    .within("documents", &["notes.txt"])
+                    .working_in("documents"),
+            ),
+        ],
+    ),
     (
         "an arrow at the list's end selects the cursor's entry alone",
         &[
@@ -240,6 +254,24 @@ const AS_THE_GTK_VIEW: &[(&str, &[Step])] = &[
             ("Down", focused("documents")),
             ("ctrl+a", selected(ALL).on("todo.txt")),
             ("Up", selected(&["readme.md"]).on("readme.md")),
+        ],
+    ),
+    (
+        "Right opens the cursor's folder in place of another folder's column",
+        &[
+            ("Down", focused("documents").panes(&["$root", "documents"])),
+            (
+                "shift+Down",
+                selected(&["documents", "pictures"])
+                    .on("pictures")
+                    .panes(&["$root", "documents"]),
+            ),
+            (
+                "Right",
+                focused("diagram.txt")
+                    .panes(&["$root", "pictures"])
+                    .working_in("pictures"),
+            ),
         ],
     ),
 ];
@@ -275,5 +307,39 @@ fn keys_do_what_the_gtk_view_does_where_the_component_differed() {
     hosted(
         "keys::keys_do_what_the_gtk_view_does_where_the_component_differed",
         |mut host| run(&mut host, AS_THE_GTK_VIEW),
+    );
+}
+
+/// `Browser::focus_child` raises `FocusChanged`, so the GTK views mirror the entry the
+/// keyboard lands on whatever moved last. The view now reports the key, so the adapter knows
+/// the keyboard is navigating again.
+#[test]
+fn a_key_between_open_columns_mirrors_though_the_pointer_moved_last() {
+    hosted(
+        "keys::a_key_between_open_columns_mirrors_though_the_pointer_moved_last",
+        |mut host| {
+            let folder = tempfile::tempdir().expect("folder");
+            std::fs::create_dir_all(folder.path().join("outer/inner")).expect("folders");
+            std::fs::write(folder.path().join("outer/inner/file.txt"), "file").expect("file");
+            let root = folder_name(folder.path());
+            open(&mut host, folder.path());
+            press(&mut host, "Home");
+            wait(&mut host, "outer's column", |seen| {
+                seen.pane_names() == [root.as_str(), "outer"]
+            });
+            // The pointer moves over the view, which ends keyboard navigation.
+            for at in [(700.0, 500.0), (720.0, 520.0)] {
+                host.runtime().pointer_move(at.0, at.1);
+                super::idle(&mut host);
+            }
+
+            press(&mut host, "Right");
+
+            let entered = wait(&mut host, "inner's column", |seen| {
+                seen.pane_names() == [root.as_str(), "outer", "inner"]
+            });
+            assert_eq!(entered.focused.as_deref(), Some("inner"));
+            assert_browser_agrees(&host, "Right into the open column");
+        },
     );
 }

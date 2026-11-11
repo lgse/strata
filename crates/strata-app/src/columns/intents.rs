@@ -92,8 +92,10 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
         ColumnsIntent::Collection { depth, intent } => app.collection(depth, intent),
         ColumnsIntent::EnterFolder { depth, id } => app.enter(depth, id),
         ColumnsIntent::CloseFrom(depth) => app.browser.close_column(depth),
-        // Published above.
-        ColumnsIntent::Cursor { .. } | ColumnsIntent::Selection { .. } => {}
+        // Published above, and with it the active column a key moved the keyboard to.
+        ColumnsIntent::Cursor { .. }
+        | ColumnsIntent::Selection { .. }
+        | ColumnsIntent::Active { .. } => {}
         // `LeftOfRoot` is the sidebar's, which the slice has not. `Width`, `HeaderMenu` and
         // `Dropped` are saved widths, menus and drag and drop: out of the slice.
         _ => {}
