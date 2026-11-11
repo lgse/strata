@@ -58,6 +58,8 @@ Rules that keep them in step:
 
 Merges should stay cheap because `src/ui`, `src/assets` and `src/qa` never move on the
 branch. What needs a hand merge is a fix that touches code an extraction has rewritten.
+One part of `src/ui` did move, by an owner ruling: the settings schema.
+[slice/V5b](slice/V5b-settings-store.md) says where a change from `main` goes.
 
 ## Target layout on the branch
 
@@ -76,8 +78,8 @@ strata/                   branch: strata-next
     strata-kit/           Rune side; imported, exists
     strata-components/    Rune side; imported, exists
     strata-gallery/       Rune side; imported, exists
-    strata-app/           Rune side; new: the Rune interface
-    strata-rune/          Rune side; new: the second binary
+    strata-app/           Rune side; exists: the Rune interface
+    strata-rune/          Rune side; exists: the second binary
   tests/
     qa/ qa.rs             GTK scenarios, unchanged until parity
     golden/ scripts/      Rune goldens and headless scripts, paths unchanged
@@ -103,7 +105,7 @@ yet are added with them.
 | `strata-core` | Plain Rust crates, `gio`, `glib` | GTK, GDK, Rune |
 | `strata-preview` | core | Either interface |
 | `strata-fs` | core, preview, `gio`, `glib`, `rustix` | `gtk4`, Rune |
-| `strata-desktop` | core, fs, `zbus`, `ashpd` | Either interface |
+| `strata-desktop` | core, preview, fs, `zbus`, `ashpd` | Either interface |
 | `strata-qa` | Plain Rust crates | Either interface, GLib |
 | `strata-platform` | `rune` only | rune-kit, strata-kit, any Strata crate, Strata names in its API |
 | `strata-kit` | `rune`, `rune-kit` | Shared crates |
@@ -170,7 +172,7 @@ pull request that lands the branch.
 | 5. Extract the shared crates | Done: core, preview, fs, desktop, test-support, qa |
 | 6. Import the component crates | Done. [slice/V4b](slice/V4b-import-components.md) |
 | 7. Close the old repository | `wmfeht/strata-components` is frozen at `e4f2df1a`: every component change is now a commit on `strata-next`. The owner archives it |
-| 8. Start the Rune app | Not started. The vertical slice, [slice/README.md](slice/README.md) |
+| 8. Start the Rune app | Started: `strata-app` and `strata-rune` exist ([slice/V5](slice/V5-shell-and-loop.md)). The vertical slice, [slice/README.md](slice/README.md) |
 | 9. Parity: delete `src/ui`, `src/assets`, `src/qa`, the GTK scenarios and the GTK dependencies | Later |
 | 10. Release preparation: repair everything in the table above | Later |
 | 11. Merge to `main` and release | Later |
@@ -182,13 +184,15 @@ private media runtime patch kit, and a version that sorts above the last 1.x.
 
 ## What the split still owes
 
-The proposal listed work the split had to include. Three items are not done:
+The proposal listed work the split had to include. Two items are not done, and one is:
 
-- **Shared state under `src/ui`.** `PreferenceManager`, the key catalog and tab sessions are
-  still in the root package. Of the 22 files in `src/ui/preferences`, 8 use GTK. The slice
-  needs the settings store ([slice/V5](slice/V5-shell-and-loop.md)).
-- **The GLib main loop.** `strata-fs` schedules on the default `MainContext`. A Rune window
-  needs a way to run it ([slice/V5](slice/V5-shell-and-loop.md)).
+- **Shared state under `src/ui`.** The settings schema and the reading of `settings.toml`
+  moved to `strata_desktop::settings` ([slice/V5b](slice/V5b-settings-store.md)), by an
+  owner ruling against the rule above on moving `src/ui`. `PreferenceManager` itself, the
+  per-folder views, the key catalog and tab sessions are still in the root package.
+- **The GLib main loop.** Done. `strata-fs` schedules on the default `MainContext`, and
+  `strata-platform`'s `glib_loop` runs it on Rune's loop
+  ([slice/V5](slice/V5-shell-and-loop.md)).
 - **The portal chooser.** Its D-Bus service was to move to `strata-desktop`; its window is
   GTK and stays until the Rune chooser replaces it.
 

@@ -34,6 +34,30 @@ CI runs Clippy with warnings treated as errors, so violations block merges.
 
 ## Current inventory
 
+### GLib context embedded in Rune's loop
+
+Location: `crates/strata-platform/src/glib_loop/mod.rs::query` and
+`crates/strata-platform/src/glib_loop/waiter.rs::poll`
+
+Reason: the Rune interface keeps Strata's `Browser` on its UI thread, and `Browser`
+schedules on the default GLib context, which Rune's loop never iterates. Embedding a
+context in a foreign loop means asking it what it waits for and waiting for that
+elsewhere. glib 0.22 binds `g_main_context_prepare`, but not `g_main_context_query`,
+and nothing safe polls the `GPollFD` records `query` returns. The alternative is a
+timer that polls the context, which Rune delays to four a second while a Wayland
+window is covered (`docs/rune/slice/V5-shell-and-loop.md`).
+
+`query` runs on the thread that owns the context, which `GlibLoop::start` checks and
+the type, neither `Send` nor `Sync`, keeps. It passes an array of initialized records
+with its length and grows it when GLib asks for more; GLib retains nothing. `g_poll`
+runs on the helper thread over a copy of those records and its own interruption
+socket. It reads descriptor numbers and writes `revents`, nothing else. A descriptor
+the UI thread closes meanwhile makes `poll(2)` report it, or wake for an unrelated
+file that took the number; either only causes one more pump, which asks the context
+again. Dispatch itself stays GLib's: the UI thread calls `MainContext::iteration`.
+
+If glib-rs binds `query` with a safe poll, this exception should be removed.
+
 ### Bundled font registration
 
 Location: `src/assets.rs::register_application_fonts`

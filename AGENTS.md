@@ -204,7 +204,9 @@ pass before merge.
 ## The Rune side
 
 `crates/strata-platform`, `strata-kit`, `strata-components` and `strata-gallery` are the
-crates of the Rune interface that replaces GTK. Read `docs/rune/plan.md` and the work
+crates of the Rune interface that replaces GTK. `crates/strata-app` joins them to Strata's
+shared crates, and `crates/strata-rune` is its binary: read `docs/rune/slice/` before
+changing either. Read `docs/rune/plan.md` and the work
 package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` tracks them.
 
 ### Crate rules
@@ -221,6 +223,12 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
 - Strata's file-manager behaviour stays out of the components. A component holds the
   interaction model and placement, not the policy.
 - The application and the shared crates never depend on Rune or on a Rune-side crate.
+- `strata-app` is the only crate that depends on both sides, and only `strata-rune` depends
+  on it. Neither ever depends on `gtk4`, `gdk4`, `sourceview5` or the `strata` package.
+- In `strata-app`, a `Browser` observer only queues: it runs inside GLib's dispatch, while
+  Rune holds the application state. The state changes in `poll` or in an update.
+- Reach Rune's loop from another thread with `AppHandle::update_if`, never with a `Waker`
+  alone: under a covered Wayland window a `Waker` call does not run `poll`.
 
 ### Rune
 
@@ -238,7 +246,8 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
 - Rune-side tests run headless on Rune's virtual clock and never use the desktop display or
   session bus. Run them with `mise run test-rune [filter]` and confirm the filter matched
   at least one test. The compositor tests run with `mise run test-platform`, each in a
-  private headless sway session. Follow `docs/rune/testing.md`.
+  private headless sway session; `strata-rune`'s window tests are among them. Follow
+  `docs/rune/testing.md`.
 - Each component ships a gallery scene for each state, light and dark, an accessibility
   golden, and a headless script for each feature-map Behavior bullet it implements.
 - Goldens under `tests/golden/` change only on purpose: run `mise run bless <page>`, then
@@ -254,7 +263,9 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
   hand-written copy. `strata-next` is never rebased.
 - All migration work stays on `strata-next`, including refactors that move no files. Do not
   move or reorganize `src/ui`, `src/assets` or `src/qa` there: they are deleted at parity,
-  and every move makes the merges from `main` harder.
+  and every move makes the merges from `main` harder. The settings schema is the one part
+  that moved, by an owner ruling; `docs/rune/slice/V5b-settings-store.md` says where a
+  change from `main` to it goes.
 - Until the vertical slice in `docs/rune/slice/` is approved, the owner has migration work
   land as focused commits directly on `strata-next`. The issue and pull request rules above
   apply to `main` and to everything else.
@@ -313,7 +324,9 @@ the files changed against `origin/main`. It needs `CS_ACCESS_TOKEN`.
 
 ## Saved preferences
 
-- Follow `docs/preferences.md` when adding or changing application-wide settings.
+- Follow `docs/preferences.md` when adding or changing application-wide settings. On
+  `strata-next` a setting's field and default live in `strata_desktop::settings`; its
+  setter, binding and tests stay under `src/ui/preferences`.
 - Use `ThemeManager::bind_preference` for immediate initialization and live updates, or read the manager at action dispatch. Settings pages must only edit preferences, never initialize browser behavior.
 - Use shared control bindings rather than window-local copies or one-off broadcasts. Preserve documented chooser and window-local exceptions.
 - Extend the exhaustive saved-preferences fixture and behavioral coverage for startup before Settings opens, changes across two windows, and relevant view rebuilds. Serialization-only tests are not sufficient.

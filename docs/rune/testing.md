@@ -381,7 +381,9 @@ harness refuses a session display that matches them.
 | `mise run test-platform -- w3:: --test-threads=1 --nocapture` | Any libtest arguments |
 
 The task builds the peer and strata-platform's examples, then runs the `#[ignore]`d tests of
-`crates/strata-platform/tests/session/`. `mise run test` and `check` never start a session.
+`crates/strata-platform/tests/session/`, the gallery's `x2` and `x3`, and `strata-rune`'s
+`tests/window.rs`, which starts the real binary on a folder (`mise run test-platform
+window::`). `mise run test` and `check` never start a session.
 
 | Variable | Effect |
 | --- | --- |
@@ -400,7 +402,8 @@ package that needs another package adds its own block there.
 ### Writing one
 
 The tests are one binary: `tests/session/main.rs` declares a module per work package
-(`w3`, `p0`–`p5`, `p8`), gated on the package's feature. Write yours in
+(`w3`, `p0`–`p5`, `p8`, and `wake`, which measures Rune's ways into its loop under a covered
+window), gated on the package's feature. Write yours in
 `tests/session/<id>.rs`; don't edit `main.rs`. Mark each test
 `#[ignore = "needs a private session: mise run test-platform"]`.
 

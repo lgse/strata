@@ -10,7 +10,7 @@ crates live under `crates/` too. [The Rune side](#the-rune-side) describes them.
 | `strata-core` | Model, localization, storage, I/O error text, logging, trusted commands, the UI-thread guard, file-activity tracking | `gio`, `glib` |
 | `strata-preview` | Sandbox launcher, the preview helper it runs, document parsers, preview types | `strata-core` |
 | `strata-fs` | Listing, file operations, trash, volumes, search, jobs, actions, the browser's state (`app`) | `strata-core`, `strata-preview` |
-| `strata-desktop` | Portal and D-Bus setup, the updater, integrations, build information | `strata-core`, `strata-fs` |
+| `strata-desktop` | Portal and D-Bus setup, the updater, integrations, build information, the saved settings (`settings`) | `strata-core`, `strata-preview`, `strata-fs` |
 | `strata-qa` | The `--qa` protocol (steps, targets, predicates and their parsers) and the engine that runs a session through its `Backend` trait | none |
 | `strata-test-support` | Test helpers that need no toolkit. A dev-dependency | none |
 | `strata` (root) | The GTK interface, assets, GTK's QA backend, diagnostics | all of the above |
@@ -22,15 +22,19 @@ each crate, the only crates that may depend on it directly.
 ## The Rune side
 
 Four crates and a test tool came from `wmfeht/strata-components` at `e4f2df1a`, at the
-paths they had there. The GTK application depends on none of them.
+paths they had there. `strata-app` and `strata-rune` were written on this branch
+([rune/slice/V5](rune/slice/V5-shell-and-loop.md)). The GTK application depends on none of
+them.
 
 | Crate | Holds | Depends on |
 | --- | --- | --- |
-| `strata-platform` | Linux shims for what Rune lacks: drag and drop, the clipboard, client-side decorations, foreign parenting, desktop settings, icon themes, single instance and the GLib bridge. One cargo feature per shim | `rune` |
+| `strata-platform` | Linux shims for what Rune lacks: drag and drop, the clipboard, client-side decorations, foreign parenting, desktop settings, icon themes, single instance, the GLib bridge and the GLib loop. One cargo feature per shim | `rune` |
 | `strata-kit` | Strata's look on rune-kit: theme mapping, icon catalogs, density, text size and the bundled font | `rune`, `rune-kit` |
 | `strata-components` | The file-manager components: collections, views, chrome, previews and controls | `rune`, `rune-kit`, `strata-kit` |
 | `strata-gallery` | One headless scene per component state, the golden tests and the integration demos | The three crates above |
 | `strata-test-peer` | The second process of the compositor tests. It lives at `crates/strata-platform/tests/support/strata-test-peer` | none |
+| `strata-app` | The Rune interface: its state and view, the queue `Browser`'s events wait in, start-up, and the offscreen and windowed hosts. Written here, not imported | The four crates above it but the gallery, and `strata-core`, `strata-fs`, `strata-desktop` |
+| `strata-rune` | The `strata-rune` binary: `main`, and the window tests | `strata-app` |
 
 - **Rune is pinned once.** `rune` and `rune-kit` name one git rev in the root manifest. Move
   them together, in a change of their own.
@@ -38,6 +42,9 @@ paths they had there. The GTK application depends on none of them.
   crate, and its API carries no Strata names.
 - **Components never depend on `strata-platform` or on a shared crate.** They take their data
   through accessors, so the gallery runs on generated data.
+- **`strata-app` is the one crate that knows both sides.** It feeds the components from
+  `Browser`, and only `strata-rune` uses it. At parity `src/main.rs` runs it and
+  `strata-rune` is removed.
 - **The shared crates and the application never depend on Rune or on a Rune-side crate.**
 - **These crates inherit `version` and `rust-version` from `[workspace.package]`.** The shared
   crates set their own `0.0.0`.
@@ -70,7 +77,7 @@ fails: Cargo gives a dependency the features of every package in the run, Rune t
 - **`mise run compile` and `mise run clippy` run both lanes,** one after the other.
   `mise run test` runs the GTK lane and `mise run test-rune` the Rune lane.
 - **The Rune test tasks build without debug info** (`CARGO_PROFILE_DEV_DEBUG=0`). Each of
-  their 67 test binaries links Rune and its renderer. With debug info for every dependency a
+  their 71 test binaries links Rune and its renderer. With debug info for every dependency a
   link took more than two gigabytes of memory, and Cargo ran 23 at once. The old repository
   turned debug info off for all dependencies in its dev profile; that setting was not
   carried over, because it would change the GTK application's debug builds too.
@@ -88,7 +95,10 @@ fails: Cargo gives a dependency the features of every package in the run, Rune t
 The root package re-exports every moved module at its old path. `crate::model`,
 `crate::services::FileSource`, `crate::adapters::…` and `crate::app::Browser` still resolve
 there. `src/services/mod.rs` and `src/util/mod.rs` are small facades that combine the
-crates' modules with what stayed behind.
+crates' modules with what stayed behind. `src/ui/preferences.rs` does the same for the
+saved settings: the schema, its defaults and the reading of the file are
+`strata_desktop::settings`, and `PreferenceManager` wraps them
+([rune/slice/V5b](rune/slice/V5b-settings-store.md)).
 
 Inside a crate, `crate::services` holds that crate's part of the services plus the parts
 of the crates below it, so moved code kept its paths too.

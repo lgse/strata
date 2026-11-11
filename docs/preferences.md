@@ -1,6 +1,8 @@
 # Preference lifecycle
 
-Application-wide preferences live in `ui::preferences::Preferences`. The
+Application-wide preferences live in `strata_desktop::settings::Preferences`, with
+their defaults, their stored forms and the reading and salvage of the file. That
+module has no toolkit, so the Rune interface reads the same file through it. The
 `ui::preferences::PreferenceManager` loads them once per application process and
 persists changes atomically to
 `$XDG_CONFIG_HOME/strata/settings.toml` (normally `~/.config/strata/settings.toml`).
