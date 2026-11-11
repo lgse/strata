@@ -416,7 +416,7 @@ fn bundled_entries_parse_and_are_translated() {
         bundle::BUNDLED.len(),
         "every bundled integration must parse"
     );
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("data/locales");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/locales");
     for entry in bundled() {
         for locale in rust_i18n::available_locales!() {
             let catalog: serde_json::Value = serde_json::from_str(

@@ -3,7 +3,7 @@
 use std::fs;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PackageManager {
+pub enum PackageManager {
     Pacman,
     Apt,
     Dnf,
@@ -11,7 +11,7 @@ pub(crate) enum PackageManager {
 }
 
 impl PackageManager {
-    pub(crate) fn detect() -> Option<Self> {
+    pub fn detect() -> Option<Self> {
         crate::util::ui_thread::assert_off();
         let release = fs::read_to_string("/etc/os-release")
             .or_else(|_| fs::read_to_string("/usr/lib/os-release"))
@@ -41,7 +41,7 @@ impl PackageManager {
     }
 
     /// The key catalog manifests use for this manager's package names.
-    pub(crate) fn id(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         match self {
             Self::Pacman => "pacman",
             Self::Apt => "apt",
@@ -50,7 +50,7 @@ impl PackageManager {
         }
     }
 
-    pub(crate) fn install_command(self, packages: &[&str]) -> Option<String> {
+    pub fn install_command(self, packages: &[&str]) -> Option<String> {
         let mut unique = Vec::new();
         for package in packages {
             // Commands are copied to a shell, so reject options and shell syntax.

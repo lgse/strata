@@ -820,7 +820,11 @@ fn executable(root: &Path) -> PathBuf {
 fn fixture() -> tempfile::TempDir {
     tempfile::Builder::new()
         .prefix("strata-udiskie-")
-        .tempdir_in("target")
+        .tempdir_in(
+            std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target"))
+                .canonicalize()
+                .expect("the workspace target directory"),
+        )
         .expect("fixture directory")
 }
 

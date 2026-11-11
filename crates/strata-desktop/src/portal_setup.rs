@@ -4,7 +4,7 @@
 mod tests;
 
 mod omarchy;
-pub(crate) mod udiskie;
+pub mod udiskie;
 
 use std::{
     env, fs, io,
@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use glib::{KeyFile, KeyFileFlags};
 
-pub(crate) use omarchy::omarchy_is_present;
+pub use omarchy::omarchy_is_present;
 
 const FILE_CHOOSER_KEY: &str = "org.freedesktop.impl.portal.FileChooser";
 const PORTAL_FILE: &str = "strata.portal";
@@ -38,7 +38,7 @@ const FILE_MANAGER_STATE_DIRECTORY: &str = "strata/file-manager-install";
 const FILE_MANAGER_STATE_FILE: &str = "state.toml";
 const INODE_DIRECTORY: &str = "inode/directory";
 
-pub(crate) const PACKAGE_PROVIDED: &str = "The package that installed this build provides its desktop integrations. Configure them in your system configuration instead.";
+pub const PACKAGE_PROVIDED: &str = "The package that installed this build provides its desktop integrations. Configure them in your system configuration instead.";
 
 /// A `STRATA_INTEGRATIONS=package` build never writes, removes, or refreshes the
 /// files its package ships.
@@ -50,7 +50,7 @@ fn require_runtime_integrations() -> Result<(), String> {
     }
 }
 
-pub(crate) fn install() -> Result<String, String> {
+pub fn install() -> Result<String, String> {
     require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
@@ -70,7 +70,7 @@ pub(crate) fn install() -> Result<String, String> {
     ))
 }
 
-pub(crate) fn uninstall() -> Result<String, String> {
+pub fn uninstall() -> Result<String, String> {
     require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     let preserved_edits = uninstall_at(&context)?;
@@ -86,7 +86,7 @@ pub(crate) fn uninstall() -> Result<String, String> {
     ))
 }
 
-pub(crate) fn install_file_manager() -> Result<String, String> {
+pub fn install_file_manager() -> Result<String, String> {
     require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
@@ -104,7 +104,7 @@ pub(crate) fn install_file_manager() -> Result<String, String> {
     Ok("Installed Strata as the default file manager. Reveal and Open Containing Folder from other apps will now use Strata.".into())
 }
 
-pub(crate) fn uninstall_file_manager() -> Result<String, String> {
+pub fn uninstall_file_manager() -> Result<String, String> {
     require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     let restored = restore_file_manager_at(&context, |previous| {
@@ -128,14 +128,14 @@ pub(crate) fn uninstall_file_manager() -> Result<String, String> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct FileManagerStatus {
+pub struct FileManagerStatus {
     pub default: bool,
     pub has_service: bool,
     pub has_installation: bool,
     pub shortcuts: Option<bool>,
 }
 
-pub(crate) fn file_manager_status() -> Result<FileManagerStatus, String> {
+pub fn file_manager_status() -> Result<FileManagerStatus, String> {
     let context = SetupContext::from_environment()?;
     file_manager_status_at(&context)
 }
@@ -172,7 +172,7 @@ fn install_file_manager_at(
         .into_owned());
     }
 
-    let service = include_str!("../data/io.github.lgse.Strata.FileManager1.service")
+    let service = include_str!("../../../data/io.github.lgse.Strata.FileManager1.service")
         .replace("/usr/bin/strata", executable);
     let state_directory = context.data_home.join(FILE_MANAGER_STATE_DIRECTORY);
     if read_file_manager_state(&state_directory)?.is_none() {
@@ -497,16 +497,16 @@ fn remove_file_manager_state(directory: &Path) -> Result<(), String> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct PortalStatus {
+pub struct PortalStatus {
     pub configured: bool,
     pub has_installation: bool,
 }
 
-pub(crate) fn status() -> Result<PortalStatus, String> {
+pub fn status() -> Result<PortalStatus, String> {
     status_at(&SetupContext::from_environment()?)
 }
 
-pub(crate) fn refresh_after_in_place_update() -> Result<(), String> {
+pub fn refresh_after_in_place_update() -> Result<(), String> {
     if !crate::build_info::runtime_integrations_enabled() {
         return Ok(());
     }
@@ -514,7 +514,7 @@ pub(crate) fn refresh_after_in_place_update() -> Result<(), String> {
     refresh_configured_portal_at(&context, refresh_portals)
 }
 
-pub(crate) fn refresh_stale_portal() -> Result<(), String> {
+pub fn refresh_stale_portal() -> Result<(), String> {
     if !crate::build_info::runtime_integrations_enabled() {
         return Ok(());
     }
@@ -643,7 +643,7 @@ fn status_at(context: &SetupContext) -> Result<PortalStatus, String> {
     })
 }
 
-pub(crate) fn dismiss_prompt() -> Result<String, String> {
+pub fn dismiss_prompt() -> Result<String, String> {
     require_runtime_integrations()?;
     dismiss_prompt_at(&SetupContext::from_environment()?)?;
     Ok("File chooser offer dismissed. You can enable it later in Settings → General → System file manager.".into())
@@ -841,10 +841,10 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
     }
     write_public(
         &portal_directory.join(PORTAL_FILE),
-        include_bytes!("../data/portal/strata.portal"),
+        include_bytes!("../../../data/portal/strata.portal"),
     )?;
     let service =
-        include_str!("../data/portal/org.freedesktop.impl.portal.desktop.strata.service.in")
+        include_str!("../../../data/portal/org.freedesktop.impl.portal.desktop.strata.service.in")
             .replace("@STRATA_EXECUTABLE@", executable);
     write_public(&service_directory.join(SERVICE_FILE), service.as_bytes())?;
     if let Some(state) = state {

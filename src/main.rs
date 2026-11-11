@@ -11,9 +11,7 @@ rust_i18n::i18n!(
 compile_error!("the unit tests need the test-support feature: pass --all-features");
 
 mod assets;
-mod build_info;
 mod portal;
-mod portal_setup;
 #[cfg(feature = "qa")]
 mod qa;
 mod services;
@@ -23,6 +21,7 @@ mod ui;
 mod util;
 
 use strata_core::{i18n, logging, metrics, model, storage, trusted_command};
+use strata_desktop::{build_info, portal_setup};
 use strata_fs::{adapters, app, child_environment};
 use strata_preview::{media, sandbox, sandbox_helper};
 

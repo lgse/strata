@@ -18,9 +18,9 @@ use std::{
 use super::{file_providers, package_manager::PackageManager};
 
 /// One embedded file: its plain name and contents.
-pub(crate) type BundledFile = (&'static str, &'static [u8]);
+pub type BundledFile = (&'static str, &'static [u8]);
 /// One embedded integration directory: its id and files.
-pub(crate) type BundledEntry = (&'static str, &'static [BundledFile]);
+pub type BundledEntry = (&'static str, &'static [BundledFile]);
 
 mod bundle {
     include!(concat!(env!("OUT_DIR"), "/integrations.rs"));
@@ -29,12 +29,12 @@ mod bundle {
 #[cfg(test)]
 mod tests;
 
-pub(crate) const CATALOG_FILE: &str = "catalog.toml";
+pub const CATALOG_FILE: &str = "catalog.toml";
 /// Written beside an installed copy; its absence marks a manual installation.
-pub(crate) const RECORD_FILE: &str = "catalog-install.json";
+pub const RECORD_FILE: &str = "catalog-install.json";
 /// An `integrations/`-layout directory that replaces the bundled catalog while
 /// developing an integration.
-pub(crate) const CATALOG_OVERRIDE: &str = "STRATA_INTEGRATION_CATALOG";
+pub const CATALOG_OVERRIDE: &str = "STRATA_INTEGRATION_CATALOG";
 const MANIFEST_FILE: &str = "provider.json";
 const FILE_LIMIT: usize = 32;
 const FILE_SIZE_LIMIT: usize = 1024 * 1024;
@@ -44,7 +44,7 @@ const MODULE_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "kebab-case")]
-pub(crate) enum Category {
+pub enum Category {
     Cloud,
     Devices,
     VersionControl,
@@ -52,7 +52,7 @@ pub(crate) enum Category {
 }
 
 impl Category {
-    pub(crate) const ALL: [Self; 4] = [
+    pub const ALL: [Self; 4] = [
         Self::Cloud,
         Self::Devices,
         Self::VersionControl,
@@ -60,7 +60,7 @@ impl Category {
     ];
 
     /// The manifest spelling, also written to installed registrations.
-    pub(crate) fn id(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         match self {
             Self::Cloud => "cloud",
             Self::Devices => "devices",
@@ -69,14 +69,14 @@ impl Category {
         }
     }
 
-    pub(crate) fn from_id(id: &str) -> Option<Self> {
+    pub fn from_id(id: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|category| category.id() == id)
     }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Requirement {
+pub struct Requirement {
     /// Executable expected in a trusted system directory.
     #[serde(default)]
     pub command: Option<String>,
@@ -93,14 +93,14 @@ pub(crate) struct Requirement {
 }
 
 impl Requirement {
-    pub(crate) fn label(&self) -> &str {
+    pub fn label(&self) -> &str {
         self.command
             .as_deref()
             .or(self.module.as_deref())
             .unwrap_or_default()
     }
 
-    pub(crate) fn install_command(&self, manager: Option<PackageManager>) -> Option<String> {
+    pub fn install_command(&self, manager: Option<PackageManager>) -> Option<String> {
         let manager = manager?;
         manager.install_command(&[self.packages.get(manager.id())?])
     }
@@ -162,7 +162,7 @@ struct Manifest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Entry {
+pub struct Entry {
     pub id: String,
     pub name: String,
     pub description: String,
@@ -181,14 +181,14 @@ pub(crate) struct Entry {
 }
 
 impl Entry {
-    pub(crate) fn icon_bytes(&self) -> Option<&[u8]> {
+    pub fn icon_bytes(&self) -> Option<&[u8]> {
         self.files
             .get(self.icons.get(self.icon.as_ref()?)?)
             .map(Vec::as_slice)
     }
 
     /// The runtime first, then the declared requirements.
-    pub(crate) fn requirements(&self) -> Vec<Requirement> {
+    pub fn requirements(&self) -> Vec<Requirement> {
         let mut requirements = self.requirements.clone();
         if !requirements
             .iter()
@@ -221,7 +221,7 @@ fn plain_text(text: &str, limit: usize) -> bool {
     !text.trim().is_empty() && text.len() <= limit && !text.chars().any(char::is_control)
 }
 
-pub(crate) fn parse(id: &str, files: BTreeMap<String, Vec<u8>>) -> Result<Entry, String> {
+pub fn parse(id: &str, files: BTreeMap<String, Vec<u8>>) -> Result<Entry, String> {
     if !file_providers::slug(id) {
         return Err("directory name must be a slug".into());
     }
@@ -356,7 +356,7 @@ fn read_directory(directory: &Path) -> Result<Entry, String> {
     parse(id, files)
 }
 
-pub(crate) fn load_directory(root: &Path) -> Vec<Entry> {
+pub fn load_directory(root: &Path) -> Vec<Entry> {
     let Ok(entries) = fs::read_dir(root) else {
         return Vec::new();
     };
@@ -384,7 +384,7 @@ pub(crate) fn load_directory(root: &Path) -> Vec<Entry> {
         .collect()
 }
 
-pub(crate) fn bundled() -> &'static [Entry] {
+pub fn bundled() -> &'static [Entry] {
     static ENTRIES: OnceLock<Vec<Entry>> = OnceLock::new();
     ENTRIES.get_or_init(|| {
         bundle::BUNDLED
@@ -407,7 +407,7 @@ pub(crate) fn bundled() -> &'static [Entry] {
 }
 
 /// The bundled catalog, or the directory named by `STRATA_INTEGRATION_CATALOG`.
-pub(crate) fn catalog() -> Vec<Entry> {
+pub fn catalog() -> Vec<Entry> {
     match std::env::var_os(CATALOG_OVERRIDE) {
         Some(directory) => load_directory(Path::new(&directory)),
         None => bundled().to_vec(),
@@ -415,7 +415,7 @@ pub(crate) fn catalog() -> Vec<Entry> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Status {
+pub enum Status {
     NotInstalled,
     /// Installed from the catalog. `update` when the catalog copy changed since
     /// installation, `modified` when the installed files were edited.
@@ -446,7 +446,7 @@ fn is_directory(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir())
 }
 
-pub(crate) fn status(entry: &Entry, root: &Path) -> Status {
+pub fn status(entry: &Entry, root: &Path) -> Status {
     let directory = root.join(&entry.id);
     if fs::symlink_metadata(&directory).is_err() {
         return Status::NotInstalled;
@@ -470,7 +470,7 @@ pub(crate) fn status(entry: &Entry, root: &Path) -> Status {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Installation {
+pub struct Installation {
     pub id: String,
     pub name: String,
     /// The declared icon, when the registration loads as a trusted provider.
@@ -479,12 +479,12 @@ pub(crate) struct Installation {
 }
 
 /// Whether the installed registration loads; a `disabled` marker turns it off.
-pub(crate) fn enabled(root: &Path, id: &str) -> bool {
+pub fn enabled(root: &Path, id: &str) -> bool {
     !root.join(id).join(file_providers::DISABLED_FILE).exists()
 }
 
 /// Writes or removes the `disabled` marker of an installed registration.
-pub(crate) fn set_enabled(root: &Path, id: &str, enabled: bool) -> Result<(), String> {
+pub fn set_enabled(root: &Path, id: &str, enabled: bool) -> Result<(), String> {
     if !file_providers::slug(id) {
         return Err(format!("{id}: not a provider id"));
     }
@@ -507,7 +507,7 @@ pub(crate) fn set_enabled(root: &Path, id: &str, enabled: bool) -> Result<(), St
 }
 
 /// Provider directories that no catalog entry owns.
-pub(crate) fn manual_installations(root: &Path, catalog: &[Entry]) -> Vec<Installation> {
+pub fn manual_installations(root: &Path, catalog: &[Entry]) -> Vec<Installation> {
     #[derive(Deserialize)]
     struct Name {
         name: Option<String>,
@@ -595,7 +595,7 @@ fn private_directory(path: &Path) -> Result<(), String> {
 /// Copies the entry into `root/<id>`, registers it with the interpreter and
 /// script paths resolved now, and records what was written. Re-installing
 /// replaces the files and removes ones the previous installation recorded.
-pub(crate) fn install(entry: &Entry, root: &Path) -> Result<PathBuf, String> {
+pub fn install(entry: &Entry, root: &Path) -> Result<PathBuf, String> {
     let interpreter = crate::trusted_command::resolve(&entry.runtime)
         .map_err(|_| format!("{} is not installed in a system directory", entry.runtime))?;
     if let Some(parent) = root.parent()
@@ -647,7 +647,7 @@ pub(crate) fn install(entry: &Entry, root: &Path) -> Result<PathBuf, String> {
 }
 
 /// Deletes `root/<id>`, whether Strata or the user installed it.
-pub(crate) fn remove(root: &Path, id: &str) -> Result<(), String> {
+pub fn remove(root: &Path, id: &str) -> Result<(), String> {
     if !file_providers::slug(id) {
         return Err(format!("{id:?} is not a provider id"));
     }
@@ -663,14 +663,14 @@ pub(crate) fn remove(root: &Path, id: &str) -> Result<(), String> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RequirementResult {
+pub struct RequirementResult {
     pub requirement: Requirement,
     pub satisfied: bool,
 }
 
 /// Looks up each requirement without running provider code. Module checks
 /// ask the interpreter whether the module can be found, not to import it.
-pub(crate) fn check_requirements(entry: &Entry) -> Vec<RequirementResult> {
+pub fn check_requirements(entry: &Entry) -> Vec<RequirementResult> {
     let interpreter = crate::trusted_command::resolve(&entry.runtime).ok();
     entry
         .requirements()

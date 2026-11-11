@@ -92,11 +92,11 @@ impl InstallCancel {
     }
 
     /// Returns false if cancellation won the race; the binary must not be replaced.
-    pub(crate) fn try_commit(&self) -> bool {
+    pub fn try_commit(&self) -> bool {
         self.settle(INSTALL_COMMITTED)
     }
 
-    pub(crate) fn is_cancelled(&self) -> bool {
+    pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::Acquire) == INSTALL_CANCELLED
     }
 
@@ -687,7 +687,7 @@ fn prepare_release_binary(
     Ok((package, staged))
 }
 
-pub(crate) fn rollback_path(exe_dir: &Path) -> PathBuf {
+pub fn rollback_path(exe_dir: &Path) -> PathBuf {
     exe_dir.join(".strata-update-rollback")
 }
 

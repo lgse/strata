@@ -26,6 +26,7 @@ gio = { version = "0.22.9", features = ["v2_72"] }
 gio-unix = "0.22.8"
 glib = "0.22.9"
 glib-build-tools = "0.22.8"
+hex = "0.4.3"
 html5gum = { version = "0.9", default-features = false }
 ignore = "0.4.23"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
@@ -42,11 +43,14 @@ ring = "0.17.14"
 rquickjs = "0.13.0"
 rust-i18n = "4.2.4"
 rust-i18n-support = { version = "4.2.4", features = ["codegen"] }
+rustls = { version = "0.23.46", default-features = false, features = ["std", "ring", "tls12"] }
 rustix = { version = "1.1.4", features = ["fs", "process", "event", "net", "mount", "thread", "stdio", "pipe", "time"] }
 seccompiler = "0.5.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_norway = "0.9"
 sevenz-rust2 = "0.22.2"
+sha2 = "0.11.0"
 tar = "0.4.46"
 tempfile = "3.27.0"
 toml = "1.1"
@@ -57,8 +61,10 @@ unrar = "0.5.8"
 unrar_sys = "0.5.8"
 ureq = { version = "~3.4", features = ["json"] }
 zip = "9.0.4"
+zstd = "0.14.3"
 
 strata-core = { path = "crates/strata-core", default-features = false }
+strata-desktop = { path = "crates/strata-desktop" }
 strata-fs = { path = "crates/strata-fs", default-features = false }
 strata-preview = { path = "crates/strata-preview", default-features = false }
 strata-test-support = { path = "crates/strata-test-support" }
@@ -96,12 +102,14 @@ invariant-checks = ["strata-fs/invariant-checks"]
 # `cargo test --test qa` builds without it, carries no test hooks.
 test-support = [
     "strata-core/test-support",
+    "strata-desktop/test-support",
     "strata-fs/test-support",
     "strata-preview/test-support",
 ]
 
 [dependencies]
 strata-core.workspace = true
+strata-desktop.workspace = true
 strata-fs.workspace = true
 strata-preview.workspace = true
 ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
@@ -120,29 +128,23 @@ glib.workspace = true
 gstreamer = { version = "0.25.3", features = ["v1_20"] }
 gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
-hex = "0.4.3"
+hex.workspace = true
 image.workspace = true
 libc.workspace = true
 pango.workspace = true
 pangocairo = "0.22.0"
-ring.workspace = true
 resvg.workspace = true
 rust-i18n.workspace = true
 rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_norway = "0.9"
-sha2 = "0.11.0"
+sha2.workspace = true
 sourceview5 = { version = "0.11.2", features = ["gtk_v4_12"] }
 tar.workspace = true
 tempfile.workspace = true
 toml.workspace = true
 tracing.workspace = true
-# The update downloader implements `ureq::unversioned` transport traits, which
-# may change in a minor release.
-ureq.workspace = true
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
-zstd = "0.14.3"
 zip.workspace = true
 x11rb = { version = "0.14.0", default-features = false, features = ["xkb", "xtest"], optional = true }
 regex = { version = "1.13.1", optional = true }
@@ -153,7 +155,6 @@ xkbcommon = { version = "0.9.0", default-features = false, optional = true }
 
 [dev-dependencies]
 strata-test-support.workspace = true
-rustls = { version = "0.23.46", default-features = false, features = ["std", "ring", "tls12"] }
 
 [[test]]
 name = "qa"

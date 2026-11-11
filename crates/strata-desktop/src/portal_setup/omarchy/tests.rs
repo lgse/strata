@@ -3,7 +3,7 @@
 use super::*;
 
 fn installed(major: u8) -> String {
-    let installer = include_str!("../../../install.sh");
+    let installer = include_str!("../../../../../install.sh");
     let prefix = if major == 4 { "--" } else { "#" };
     let start = format!("{prefix} strata-installer: file-manager start");
     let end = format!("{prefix} strata-installer: file-manager end");

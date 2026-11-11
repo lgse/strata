@@ -3044,16 +3044,14 @@ dependencies = [
  "pangocairo",
  "regex",
  "resvg",
- "ring",
  "rust-i18n",
  "rustix",
- "rustls",
  "serde",
  "serde_json",
- "serde_norway",
  "sha2",
  "sourceview5",
  "strata-core",
+ "strata-desktop",
  "strata-fs",
  "strata-preview",
  "strata-test-support",
@@ -3061,7 +3059,6 @@ dependencies = [
  "tempfile",
  "toml 1.1.6+spec-1.1.0",
  "tracing",
- "ureq",
  "wayland-client",
  "wayland-protocols-misc",
  "wayland-protocols-wlr",
@@ -3070,7 +3067,6 @@ dependencies = [
  "yeslogic-fontconfig-sys",
  "zbus",
  "zip 9.1.3",
- "zstd",
 ]
 
 [[package]]
@@ -3091,6 +3087,35 @@ dependencies = [
  "toml 1.1.6+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "strata-desktop"
+version = "0.0.0"
+dependencies = [
+ "flate2",
+ "gio",
+ "gio-unix",
+ "glib",
+ "hex",
+ "libc",
+ "ring",
+ "rust-i18n",
+ "rustix",
+ "rustls",
+ "serde",
+ "serde_json",
+ "serde_norway",
+ "sha2",
+ "strata-core",
+ "strata-fs",
+ "strata-test-support",
+ "tar",
+ "tempfile",
+ "toml 1.1.6+spec-1.1.0",
+ "tracing",
+ "ureq",
+ "zstd",
 ]
 
 [[package]]

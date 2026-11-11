@@ -43,7 +43,7 @@ const RELEASE_LIST_MAX_PAGES: u32 = 5;
 
 impl BuildKind {
     /// The build kind's name in the app language, for display.
-    pub(crate) fn localized_label(self) -> String {
+    pub fn localized_label(self) -> String {
         crate::i18n::tr(match self {
             BuildKind::Stable => "Stable",
             BuildKind::Nightly => "build_kind.nightly",
@@ -150,7 +150,7 @@ fn request_json<T: serde::de::DeserializeOwned>(url: &str) -> Result<T, ureq::Er
 }
 
 /// Reaches the update server the way an update check does, without using its rate limit.
-pub(super) fn test_connection() -> Result<(), NetworkError> {
+pub fn test_connection() -> Result<(), NetworkError> {
     agent()
         .get(CONNECTION_TEST_URL)
         .header("Accept", "application/vnd.github+json")

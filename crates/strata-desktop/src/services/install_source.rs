@@ -41,14 +41,14 @@ static DETECTED: OnceLock<InstallSource> = OnceLock::new();
 impl InstallSource {
     pub fn detect() -> &'static Self {
         DETECTED.get_or_init(|| {
-            #[cfg(not(test))]
+            #[cfg(not(any(test, feature = "test-support")))]
             crate::util::ui_thread::assert_off();
             Self::from_marker_path(marker_path())
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn seed_for_test(marker: &str) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn seed_for_test(marker: &str) {
         let managed = toml::from_str::<ManagedInstall>(marker).expect("install marker");
         assert!(
             DETECTED.set(Self::Managed(managed.normalized())).is_ok(),
@@ -129,11 +129,11 @@ impl ManagedInstall {
         self.update_instruction_with(|helper| self.is_installed_aur_helper(helper))
     }
 
-    pub(crate) fn aur_update_target(&self) -> Option<(&str, &str)> {
+    pub fn aur_update_target(&self) -> Option<(&str, &str)> {
         self.aur_update_target_with(|helper| self.is_installed_aur_helper(helper))
     }
 
-    pub(crate) fn find_installed_aur_helper(&self) {
+    pub fn find_installed_aur_helper(&self) {
         self.installed_aur_helper.get_or_init(|| {
             self.aur_helpers
                 .iter()
@@ -218,7 +218,7 @@ impl ManagedInstall {
     }
 }
 
-pub(crate) fn installed_executable() -> io::Result<PathBuf> {
+pub fn installed_executable() -> io::Result<PathBuf> {
     std::env::current_exe().map(|path| replaced_executable_path(&path))
 }
 
@@ -262,7 +262,7 @@ fn marker_path_for_executable(executable: &Path) -> Option<PathBuf> {
     Some(executable.parent()?.parent()?.join(MARKER_RELATIVE_PATH))
 }
 
-pub(crate) fn ensure_self_managed(source: &InstallSource) -> Result<(), String> {
+pub fn ensure_self_managed(source: &InstallSource) -> Result<(), String> {
     match source.managed() {
         None => Ok(()),
         Some(managed) => Err(crate::i18n::join_sentences(

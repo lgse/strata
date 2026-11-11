@@ -2,7 +2,7 @@
 
 use crate::services::{BuildKind, Version};
 
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = env!("STRATA_APP_VERSION");
 pub const COMMIT: &str = env!("STRATA_BUILD_COMMIT");
 pub const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 pub const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
@@ -45,20 +45,20 @@ pub fn build_kind() -> BuildKind {
 /// Whether this build includes the in-app updater. Distribution packages turn it
 /// off with `STRATA_UPDATER=disabled`; their package manager delivers updates.
 pub fn updater_enabled() -> bool {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if UPDATER_DISABLED_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
         return false;
     }
     !cfg!(strata_updater_disabled)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 static UPDATER_DISABLED_FOR_TEST: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 /// Process-wide, so only for isolated GTK test processes.
-#[cfg(test)]
-pub(crate) fn disable_updater_for_test() {
+#[cfg(any(test, feature = "test-support"))]
+pub fn disable_updater_for_test() {
     UPDATER_DISABLED_FOR_TEST.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
@@ -66,20 +66,20 @@ pub(crate) fn disable_updater_for_test() {
 /// FileManager1 service, Omarchy shortcuts, udiskie hook) at runtime. Store-based
 /// packages turn that off with `STRATA_INTEGRATIONS=package` and ship the files.
 pub fn runtime_integrations_enabled() -> bool {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if RUNTIME_INTEGRATIONS_DISABLED_FOR_TEST.load(std::sync::atomic::Ordering::Relaxed) {
         return false;
     }
     !cfg!(strata_integrations_package)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 static RUNTIME_INTEGRATIONS_DISABLED_FOR_TEST: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 /// Process-wide, so only for isolated GTK test processes.
-#[cfg(test)]
-pub(crate) fn disable_runtime_integrations_for_test() {
+#[cfg(any(test, feature = "test-support"))]
+pub fn disable_runtime_integrations_for_test() {
     RUNTIME_INTEGRATIONS_DISABLED_FOR_TEST.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 

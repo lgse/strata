@@ -42,7 +42,7 @@ const SESSION_ENVIRONMENT: [&str; 4] = [
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct UdiskieStatus {
+pub struct UdiskieStatus {
     pub available: bool,
     pub configured: bool,
     pub has_installation: bool,
@@ -111,19 +111,19 @@ enum RestartMode {
 }
 
 #[derive(Debug)]
-pub(crate) struct UdiskieChange {
+pub struct UdiskieChange {
     summary: String,
     restart: RestartOutcome,
 }
 
 impl UdiskieChange {
-    pub(crate) fn restart_warning(&self) -> Option<String> {
+    pub fn restart_warning(&self) -> Option<String> {
         (self.restart == RestartOutcome::ManualRestartNeeded)
             .then(|| crate::i18n::tr(RESTART_WARNING))
     }
 
-    #[cfg(test)]
-    pub(crate) fn for_test(restart_needed: bool) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_test(restart_needed: bool) -> Self {
         Self {
             summary: String::new(),
             restart: if restart_needed {
@@ -134,7 +134,7 @@ impl UdiskieChange {
         }
     }
 
-    pub(crate) fn report(self) -> String {
+    pub fn report(self) -> String {
         match self.restart_warning() {
             Some(warning) => format!("{}\n{warning}", self.summary),
             None => self.summary,
@@ -142,7 +142,7 @@ impl UdiskieChange {
     }
 }
 
-pub(crate) fn install() -> Result<UdiskieChange, String> {
+pub fn install() -> Result<UdiskieChange, String> {
     super::require_runtime_integrations()?;
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
@@ -162,7 +162,7 @@ pub(crate) fn install() -> Result<UdiskieChange, String> {
     Ok(UdiskieChange { summary, restart })
 }
 
-pub(crate) fn uninstall() -> Result<UdiskieChange, String> {
+pub fn uninstall() -> Result<UdiskieChange, String> {
     super::require_runtime_integrations()?;
     let context = SetupContext::from_environment()?;
     uninstall_at(&context)?;
@@ -171,7 +171,7 @@ pub(crate) fn uninstall() -> Result<UdiskieChange, String> {
     Ok(UdiskieChange { summary, restart })
 }
 
-pub(crate) fn status() -> Result<UdiskieStatus, String> {
+pub fn status() -> Result<UdiskieStatus, String> {
     let executable = crate::services::installed_executable().map_err(|error| {
         rust_i18n::t!(
             "Could not locate the Strata executable: %{error}",

@@ -120,7 +120,7 @@ pub(super) fn restore(context: &SetupContext) -> Result<(), String> {
     replace_bindings(&path, &original, &updated, reload)
 }
 
-pub(crate) fn omarchy_is_present() -> bool {
+pub fn omarchy_is_present() -> bool {
     detected_major().is_some()
 }
 

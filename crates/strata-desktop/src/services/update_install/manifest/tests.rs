@@ -5,11 +5,11 @@ use ring::signature::KeyPair;
 use serde_json::{Value, json};
 
 const FIXTURE: &[u8] =
-    include_bytes!("../../../../tests/fixtures/signed-update/strata-update-manifest.json");
+    include_bytes!("../../../../../../tests/fixtures/signed-update/strata-update-manifest.json");
 const SIGNATURES: &[u8] = include_bytes!(
-    "../../../../tests/fixtures/signed-update/strata-update-manifest.signatures.json"
+    "../../../../../../tests/fixtures/signed-update/strata-update-manifest.signatures.json"
 );
-const PUBLIC: &str = include_str!("../../../../tests/fixtures/signed-update/public-key.hex");
+const PUBLIC: &str = include_str!("../../../../../../tests/fixtures/signed-update/public-key.hex");
 const CONTENT: &[u8] = b"strata update fixture\n";
 
 fn request() -> InstallRequest {

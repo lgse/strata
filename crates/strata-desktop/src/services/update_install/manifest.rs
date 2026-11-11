@@ -12,7 +12,7 @@ pub(super) const SIGNATURES_NAME: &str = "strata-update-manifest.signatures.json
 pub(super) const MAX_MANIFEST_BYTES: u64 = 32 * 1024;
 pub(super) const MAX_SIGNATURES_BYTES: u64 = 8 * 1024;
 const DOMAIN: &[u8] = b"strata-update-manifest-v1\0";
-const TRUSTED_KEYS_JSON: &str = include_str!("../../../data/update-keys.json");
+const TRUSTED_KEYS_JSON: &str = include_str!("../../../../../data/update-keys.json");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
