@@ -5,6 +5,11 @@ pieces Rune doesn't ship yet. Any Rune app on Linux can use it. Of Rune's crates
 `rune` only, and each shim adds optional dependencies of its own. It has no app-specific names in
 its API.
 
+In Strata's workspace the crate has no release of its own: it is a workspace member, and the
+sections below on tags, pinning and versioning describe the repository it was imported from
+(`wmfeht/strata-components` at `e4f2df1a`). The `media-audio` shim, which plays PCM through
+GStreamer, was not imported and remains in that repository (`docs/workspace.md`).
+
 Each shim is a module behind its own cargo feature, so an app builds only what it uses. Most are
 asked of Rune upstream, and a shim is deprecated once Rune ships its feature (see
 [Shim lifecycle](#shim-lifecycle)). One isn't: the GLib bridge is outside Rune's scope.
@@ -15,8 +20,8 @@ only (see [Pinning a release](#pinning-a-release)).
 
 ## Features
 
-None is on by default. `dnd`, `clipboard`, `foreign-parent`, `glib-bridge`, `csd`, `settings`, `icon-theme`,
-`single-instance` and `media-audio` are implemented; the other modules are placeholders until their work packages land. "Issue" is the upstream ask, drafted in
+None is on by default. `dnd`, `clipboard`, `foreign-parent`, `glib-bridge`, `csd`, `settings`, `icon-theme`
+and `single-instance` are implemented. "Issue" is the upstream ask, drafted in
 [`docs/rune/decisions/S5-upstream.md`](../../docs/rune/decisions/S5-upstream.md#draft-index), with its link
 once filed.
 
@@ -28,7 +33,6 @@ once filed.
 | `foreign-parent` | `foreign_parent` | Making a window transient for another app's window, before it maps, and marking it modal (X11). Implemented: a portal's `wayland:` and `x11:` parent handles parsed, then on Wayland `zxdg_importer_v2` and `set_parent_of` on winit's display, and on X11 `WM_TRANSIENT_FOR`, the dialog type and `_NET_WM_STATE_MODAL`, with an outcome naming the fallback when it can't. Open the window hidden and apply from `App::on_window`. Wayland has no modality (Rune hands out no `xdg_toplevel`), an `x11:` parent leaves a Wayland window parentless, and libwayland below 1.23 (Ubuntu 24.04) leaves it parentless. | [U11](../../docs/rune/decisions/S5-upstream.md#u11), [U9](../../docs/rune/decisions/S5-upstream.md#u9) |
 | `settings` | `settings` | Settings portal keys beyond `color-scheme`, and the desktop's double-click interval. Implemented: the text scale, double-click interval, drag threshold, caret blink, animations switch, `reduced-motion` and recent-files switch from the Settings portal, with their changes on Rune's loop. Rune's own double press keeps its fixed 0.5 s. The portal is the only source: a session without one gets the defaults. | [U12](../../docs/rune/decisions/S5-upstream.md#u12), [U13](../../docs/rune/decisions/S5-upstream.md#u13) |
 | `icon-theme` | `icon_theme` | The user's icon theme: `ImageCache::app_icon` reads hicolor only (no theme, no `Inherits`, no `index.theme` sizes), takes no icon names, and fails a missing icon like a broken file. Implemented: icons by name, with fallback names, or by file, at a size and scale, as GTK 4's `GtkIconTheme` finds them (`Inherits` then hicolor, `index.theme` sizes, scale directories, unthemed icons and pixmaps), looked up on a thread and decoded by Rune's `ImageCache` into `rune::Pixels`, with "not found" apart from a broken file. Symbolic icons draw as their files paint them, not recoloured; no XPM and no `icon-theme.cache`. | Upstream [#21](https://github.com/anomalyco/rune/issues/21); [U-P6-1](../../docs/rune/decisions/S5-upstream.md#u-p6-1), [U-P6-2](../../docs/rune/decisions/S5-upstream.md#u-p6-2) |
-| `media-audio` | `media` | Any audio output: `Player` has no Linux backend, and nothing plays PCM or reports a playback clock. Implemented: an audio sink for interleaved PCM through GStreamer's `appsrc`, whose clock is the device's position (play, pause, seek, flush, volume, events for underruns, stalls, the end and a lost device), and a frame pacer that writes the frame the clock is at into a `rune::Pixels` with no view commit. Needs GStreamer and gst-plugins-base (`libgstreamer1.0-dev` and `libgstreamer-plugins-base1.0-dev` to build), and gst-plugins-good for the default output. | Related: upstream [#30](https://github.com/anomalyco/rune/issues/30), [#112](https://github.com/anomalyco/rune/issues/112); [U-P7-1](../../docs/rune/decisions/S5-upstream.md#u-p7-1) (draft, in the P7 issue) |
 | `single-instance` | `single_instance` | Single instance on Linux: Rune starts every launch as a new process. Implemented: one primary per app id on the session bus, with a later launch's arguments, working directory and activation token forwarded over GApplication's wire protocol, `org.freedesktop.Application`, and an opt-in `org.freedesktop.FileManager1`. On X11, focusing a window already open ignores the startup id. | Upstream [#22](https://github.com/anomalyco/rune/issues/22); [U-P8-1](../../docs/rune/decisions/S5-upstream.md#u-p8-1) |
 | `glib-bridge` | `glib_bridge` | A GLib main loop: Rune never iterates a `GMainContext`, so GIO's async calls, signals and monitors never dispatch. Implemented: `GlibThread` runs one on its own thread, and answers land in app state for `poll`. Needs GLib and GIO (`libglib2.0-dev` to build). | None: outside Rune's scope |
 
@@ -75,7 +79,7 @@ The tag shown is an example; take a real one from [Supported Rune revs](#support
 ## Versioning
 
 The crate follows semver. Moving to a new Rune rev is a minor release, because Rune's types
-appear in the API. The [changelog](../../CHANGELOG.md) lists every release, with the Rune rev and
+appear in the API. The [changelog](https://github.com/wmfeht/strata-components/blob/e4f2df1a718dfe5ad282f27d20b4d1b8858fe7e7/CHANGELOG.md) lists every release, with the Rune rev and
 Rust version it supports.
 
 ## Shim lifecycle

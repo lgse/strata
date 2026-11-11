@@ -3,6 +3,26 @@
 A component library that fills the gaps between Rune and what Strata's interface needs, so
 Strata can move off GTK 4.
 
+## Amended at the import into Strata
+
+This plan was written in `wmfeht/strata-components`. Its crates, test data and documents
+were imported into Strata's workspace on `strata-next` at `e4f2df1a`
+([`slice/V4b`](slice/V4b-import-components.md)). The import changed these points; the
+sections below are amended where they state them, and otherwise stand as written.
+
+| Where | Said | Now |
+| --- | --- | --- |
+| §3 layout | A separate repository | Four crates in Strata's workspace on `strata-next`. The crate rules are unchanged |
+| §3 rules, §9 decisions 2 and 5 | `strata-platform` is a published crate with its own tags | A workspace crate with no separate release |
+| S5 | A tag scheme and release workflow for `strata-platform` | Dropped. Filing the Rune issues remains |
+| §7 | Releases come from the GTK branch | Unchanged: `main` is the GTK branch |
+| X1 | A shell example inside the gallery | Unchanged. It is the starting point of `strata-app` |
+| Rune rev bumps | A change in the component repository | A change on `strata-next`, which can also move the toolchain and the test image |
+| Strings | Not mentioned | Components carry no user-facing text. Labels and accessible names arrive as data, so Strata's thirteen catalogs stay the only source |
+| P7, `media-audio` | A shim in `strata-platform`, with a gallery demo | Not imported: no crate under `crates/` may use GStreamer. Its sources remain in the old repository, and it needs a home before phase 5 |
+| Document paths | `docs/plan.md`, `docs/work/`, `docs/decisions/`, `docs/upstream/`, `docs/testing.md` | The same names under `docs/rune/` |
+| Tasks | `mise run test` | `mise run test-rune`. `mise run test` runs the GTK application's tests |
+
 ## 0. Baselines
 
 | Input | Version |
@@ -119,9 +139,9 @@ packaging, updates engine) carry over unchanged. Their dialogs use C15.
 ## 3. Repository layout
 
 ```
-strata-components/
+strata/                branch strata-next; the GTK application and the shared crates sit beside these
   crates/
-    strata-platform/   tier 1: Linux shims Rune lacks (Wayland + X11). Published. Each module names its Rune issue.
+    strata-platform/   tier 1: Linux shims Rune lacks (Wayland + X11). Each module names its Rune issue.
       tests/support/strata-test-peer/  the compositor tests' peer process (test tooling, unpublished)
     strata-kit/        theme mapping onto rune_kit::Kit, icon catalogs, density, text size, the bundled font
     strata-components/ tier 2 and 3 widgets, on rune + rune-kit + strata-kit
@@ -130,7 +150,7 @@ strata-components/
     golden/            PNG and accessibility-tree goldens, and the tree each script ends on (RUNE_BLESS=1 rewrites)
     scripts/           Rune headless input scripts, one per behavior group
     fixtures/          shared test inputs (S4's code fixtures)
-  docs/
+  docs/rune/
     decisions/         the spike records (S1–S5) and the owner's rulings on them
     work/              one work package per component part, and their status
 ```
@@ -142,7 +162,9 @@ Rules:
 - Components read only `Kit` tokens and `strata-kit` extensions, never a theme by name.
 - Each component ships with a gallery scene, an a11y golden, and a headless script for every
   feature-map Behavior bullet it implements. `featuremap.py qa --node <id>` lists the bullets.
-- `strata-platform` is a published crate for any Rune app on Linux, not just Strata:
+- `strata-platform` is generic to any Rune app on Linux, not just Strata. It was planned as
+  a published crate; in Strata's workspace it has no release of its own, so the points on
+  semver, minor releases and deprecation below describe that plan and are not in force:
   - It keeps the name `strata-platform` (the owner's ruling; §0).
   - It depends on `rune` only, never on rune-kit, strata-kit or Strata, and has no Strata names
     in its API.
@@ -625,7 +647,7 @@ GTK branch, and the Rune build ships only as a nightly.
 | # | Question | Decision | Where it applies |
 | --- | --- | --- | --- |
 | 1 | Full port, or keep the portal chooser on GTK for a while? | Full port. No GTK in any shipped binary. | §7 (phase 6 exit, release rule), §8 |
-| 2 | Shims private or published? | Published `strata-platform` crate, generic to any Rune app on Linux | §3 rules, §7 phases 0–1, §8 |
+| 2 | Shims private or published? | Was: a published `strata-platform` crate, generic to any Rune app on Linux. At the import: a workspace crate with no separate release, still generic | §3 rules, §7 phases 0–1, §8 |
 | 3 | Keep user stylesheets? | Yes, as a token override file with CSS migration | K4, §5 |
 | 4 | Highlighting engine for C10? | syntect, on the `onig` backend with a dedicated highlighter thread and a checkpoint every 64 lines (S4) | C10, C11, K1 |
 | 5 | Crate name (was §10 question 1)? | Keep `strata-platform`. It is taken on crates.io, so releases are git tags only. | §0, §3, §8 |

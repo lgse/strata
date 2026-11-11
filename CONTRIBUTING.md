@@ -88,10 +88,15 @@ The always-available checks are:
 
 ```bash
 cargo fmt --all --check
-cargo check --workspace --all-targets --all-features
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-targets --all-features
+cargo check $(python3 scripts/lanes.py gtk) --all-targets --all-features
+cargo clippy $(python3 scripts/lanes.py gtk) --all-targets --all-features -- -D warnings
+cargo test $(python3 scripts/lanes.py gtk) --all-targets --all-features
 ```
+
+On `strata-next` the workspace also holds the Rune-side crates, which build in their own
+cargo runs: repeat the commands with `$(python3 scripts/lanes.py rune)`, and run the tests
+through `mise run test-rune` so they cannot reach your desktop. A plain `--workspace` run
+does not compile; [`docs/workspace.md`](docs/workspace.md) explains why.
 
 CI additionally runs:
 

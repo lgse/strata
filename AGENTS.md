@@ -80,8 +80,10 @@ pass before merge.
   the push. CI continues to run its existing lint and formatting checks.
 - Use `scripts/test-headless.py` for native targeted Rust tests, for example
   `./scripts/test-headless.py services::operations::tests`; its arguments are
-  forwarded after the fixed `cargo test --workspace --all-targets --all-features`
-  arguments. This filters test names across targets, not compilation to one target.
+  forwarded after the fixed `cargo test --all-targets --all-features` arguments for
+  the application and the shared crates. This filters test names across targets, not
+  compilation to one target. The Rune-side crates have their own task,
+  `mise run test-rune [filter]`; see "The Rune side" below.
   The selected filter must match at least one test, including relevant views,
   callers, or preferences coverage.
 - QA selections name scenarios, or `<scenario>/<run>` for one run, for
@@ -194,6 +196,70 @@ pass before merge.
 - Test-only code that another crate's tests use is gated with
   `#[cfg(any(test, feature = "test-support"))]`; a `tests` module is never compiled
   outside tests. Run tests with `--all-features`.
+- Never run cargo with `--workspace` alone. The application and the Rune side build in
+  separate runs, selected with `$(python3 scripts/lanes.py gtk)` and
+  `$(python3 scripts/lanes.py rune)`; the `mise` tasks and the scripts already do.
+  `docs/workspace.md` explains why.
+
+## The Rune side
+
+`crates/strata-platform`, `strata-kit`, `strata-components` and `strata-gallery` are the
+crates of the Rune interface that replaces GTK. Read `docs/rune/plan.md` and the work
+package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` tracks them.
+
+### Crate rules
+
+- `strata-platform` depends on `rune` only: never on rune-kit, strata-kit or a shared crate.
+  Its API carries no Strata names. Each shim is a module behind its own cargo feature, and
+  its docs link the Rune issue and say what Rune lacks.
+- Components take state by accessor (`fn(&S) -> &X`, `fn(&mut S) -> &mut X`), as rune-kit's
+  Table and Tree do. They own no I/O: listings, thumbnails and search results arrive as data.
+- Components read only `Kit` tokens and strata-kit extensions, never a theme by name, and
+  never hardcoded colours.
+- Components carry no user-facing text. Labels and accessible names arrive as data, so the
+  thirteen catalogs under `data/locales/` stay the only source.
+- Strata's file-manager behaviour stays out of the components. A component holds the
+  interaction model and placement, not the policy.
+- The application and the shared crates never depend on Rune or on a Rune-side crate.
+
+### Rune
+
+- Rune is pre-release and takes no pull requests. When Rune core lacks something, file an
+  issue upstream with a headless repro, or add a thin shim in `strata-platform` that names
+  the issue. Never vendor or patch Rune.
+- Every Rune crate pins the same `dev` rev in the root `Cargo.toml`. Move the rev on purpose
+  in its own change, and update `docs/rune/plan.md` §0, the Rust version in `mise.toml` and
+  the test image's toolchain with it.
+- Rune's API reference is `crates/rune/README.md` and `crates/rune-kit/README.md` at the
+  pinned rev. Read them there, not from memory.
+
+### Tests and goldens
+
+- Rune-side tests run headless on Rune's virtual clock and never use the desktop display or
+  session bus. Run them with `mise run test-rune [filter]` and confirm the filter matched
+  at least one test. The compositor tests run with `mise run test-platform`, each in a
+  private headless sway session. Follow `docs/rune/testing.md`.
+- Each component ships a gallery scene for each state, light and dark, an accessibility
+  golden, and a headless script for each feature-map Behavior bullet it implements.
+- Goldens under `tests/golden/` change only on purpose: run `mise run bless <page>`, then
+  review every golden diff, each PNG included, before committing it.
+- PNG goldens and screenshots cover the look. Do not assert layout geometry, spacing or
+  pixel placement.
+
+## Two branches
+
+- `main` is the GTK application and keeps releasing 1.x. `strata-next` holds the migration
+  to Rune. Follow `docs/rune/workspace-migration.md`.
+- Fixes land on `main` first and reach `strata-next` by merge, never by a second
+  hand-written copy. `strata-next` is never rebased.
+- All migration work stays on `strata-next`, including refactors that move no files. Do not
+  move or reorganize `src/ui`, `src/assets` or `src/qa` there: they are deleted at parity,
+  and every move makes the merges from `main` harder.
+- Until the vertical slice in `docs/rune/slice/` is approved, the owner has migration work
+  land as focused commits directly on `strata-next`. The issue and pull request rules above
+  apply to `main` and to everything else.
+- Work package documents are the exception to keeping task records out of the tree: the
+  plans and their status under `docs/rune/` stay in the repository as Markdown.
 
 ## Test organization
 

@@ -4,6 +4,17 @@ How the gallery, its goldens and its scripts fit together, and how a work packag
 them without touching another's files. The plan's testing rules are in
 [`plan.md` §6](plan.md#6-testing). The repository rules are in [`AGENTS.md`](../../AGENTS.md).
 
+This document was written in `wmfeht/strata-components` and imported with its crates. Three
+things differ in Strata's workspace:
+
+- **`mise run test` is `mise run test-rune` here.** `mise run test` runs the GTK
+  application's tests, and `mise run check` runs both sides.
+- **No CI job runs these tests yet.** Where a section says CI renders on lavapipe, it
+  describes the old repository's workflow. Strata's pinned test image has no Vulkan driver.
+- **The `media-audio` shim was not imported,** so the last section, on media output,
+  describes code that remains in the old repository. `strata-platform` has no release of
+  its own, so "Publishing strata-platform" does not apply either.
+
 ## Gallery pages
 
 The gallery (`crates/strata-gallery`) has an index and one page per component, plus a page

@@ -2,6 +2,8 @@
 
 Strata is one Cargo workspace. The root package `strata` is the GTK application. The code
 that does not need GTK lives in crates under `crates/`, so a second interface can use it.
+That second interface is being built on [Rune](https://github.com/anomalyco/rune), and its
+crates live under `crates/` too. [The Rune side](#the-rune-side) describes them.
 
 | Crate | Holds | Depends on |
 | --- | --- | --- |
@@ -16,6 +18,70 @@ that does not need GTK lives in crates under `crates/`, so a second interface ca
 None of the crates may depend on `gtk4`, `gdk4`, `sourceview5` or `gstreamer`.
 `cargo deny check` enforces this and the layering: `deny.toml` lists, for each toolkit and
 each crate, the only crates that may depend on it directly.
+
+## The Rune side
+
+Four crates and a test tool came from `wmfeht/strata-components` at `e4f2df1a`, at the
+paths they had there. The GTK application depends on none of them.
+
+| Crate | Holds | Depends on |
+| --- | --- | --- |
+| `strata-platform` | Linux shims for what Rune lacks: drag and drop, the clipboard, client-side decorations, foreign parenting, desktop settings, icon themes, single instance and the GLib bridge. One cargo feature per shim | `rune` |
+| `strata-kit` | Strata's look on rune-kit: theme mapping, icon catalogs, density, text size and the bundled font | `rune`, `rune-kit` |
+| `strata-components` | The file-manager components: collections, views, chrome, previews and controls | `rune`, `rune-kit`, `strata-kit` |
+| `strata-gallery` | One headless scene per component state, the golden tests and the integration demos | The three crates above |
+| `strata-test-peer` | The second process of the compositor tests. It lives at `crates/strata-platform/tests/support/strata-test-peer` | none |
+
+- **Rune is pinned once.** `rune` and `rune-kit` name one git rev in the root manifest. Move
+  them together, in a change of their own.
+- **`strata-platform` depends on `rune` alone,** never on rune-kit, strata-kit or a shared
+  crate, and its API carries no Strata names.
+- **Components never depend on `strata-platform` or on a shared crate.** They take their data
+  through accessors, so the gallery runs on generated data.
+- **The shared crates and the application never depend on Rune or on a Rune-side crate.**
+- **These crates inherit `version` and `rust-version` from `[workspace.package]`.** The shared
+  crates set their own `0.0.0`.
+- **Each has its own `clippy.toml`,** with the settings it was written under. Clippy reads
+  the nearest file, so the application's rules in the root `clippy.toml` do not reach them.
+  That includes the rule on private GLib contexts, which `strata-platform`'s GLib bridge
+  would otherwise have to answer at `src/glib_bridge/thread.rs`.
+- **The `media-audio` shim was not imported.** It plays PCM through GStreamer, which no crate
+  under `crates/` may use. Its sources, example and tests remain in the old repository.
+
+`deny.toml` holds these rules beside the ones for the shared crates. The plan and the work
+packages the crates were built from are under [`docs/rune/`](rune/plan.md), and
+[`docs/rune/testing.md`](rune/testing.md) covers their goldens, scripts and compositor tests.
+
+## Two lanes
+
+The application and the Rune side never build in one cargo run. `cargo check --workspace`
+fails: Cargo gives a dependency the features of every package in the run, Rune turns on
+`dlopen` in `yeslogic-fontconfig-sys`, and under that feature the fontconfig functions
+`src/assets.rs` calls are not exported.
+
+| Lane | Packages | Selected with |
+| --- | --- | --- |
+| GTK | The application and the shared crates | `$(python3 scripts/lanes.py gtk)`: `--workspace` and an `--exclude` for each Rune-side package |
+| Rune | The Rune-side crates | `$(python3 scripts/lanes.py rune)`: a `--package` for each |
+
+- **`scripts/lanes.py` is the one list.** `mise.toml`, `scripts/check.sh`,
+  `scripts/quality.sh`, `scripts/quality_ci.py`, `scripts/test-headless.py` and `ci.yml` read
+  it. `scripts/test_lanes.py` fails when a package that depends on Rune is missing from it.
+- **`mise run compile` and `mise run clippy` run both lanes,** one after the other.
+  `mise run test` runs the GTK lane and `mise run test-rune` the Rune lane.
+- **The Rune test tasks build without debug info** (`CARGO_PROFILE_DEV_DEBUG=0`). Each of
+  their test binaries links Rune and its renderer, and with debug info for every dependency
+  those links take several gigabytes of memory and disk each. The old repository turned
+  debug info off for all dependencies in its dev profile; that setting was not carried over,
+  because it would change the GTK application's debug builds too.
+- **The pinned test image and CI run the GTK lane only.** The image has no Vulkan driver,
+  which the Rune goldens need. Formatting, the dependency policy and spelling cover the
+  whole workspace in CI. Compiling, linting and testing the Rune side is a local step until
+  a CI job for it exists.
+- **A built GTK application is the same as before the Rune side joined.** Its lane selects
+  the packages it always did, so its dependencies get the features they always had.
+- **An editor that checks the whole workspace reports the fontconfig errors.** Point it at
+  one lane's packages.
 
 ## Paths stay the same in the application
 
@@ -81,5 +147,12 @@ The root build script compiles the resource bundle.
 3. Add its rule to `deny.toml`, and its name to `EXTRACTED_CRATES` if it logs.
 4. Give it a `test-support` feature if other crates' tests need its test-only code, and
    forward the root feature to it.
+5. If it depends on Rune or on a Rune-side crate, add it to `RUNE_SIDE` in
+   `scripts/lanes.py` and give it the Rune side's `clippy.toml`.
 
-The test image needs no change: its dependency stage stubs every crate from its manifest.
+For a shared crate the test image needs no change: its dependency stage stubs every crate
+directly under `crates/` from its manifest. That stage does not load the workspace as it is
+now. It copies no manifest for `strata-test-peer`, which sits deeper, and it deletes the
+example sources `strata-gallery`'s manifest names. Until the stage handles both, the image
+publisher fails on `strata-next`. The base image the quality and QA runs use is keyed by
+`tests/container/` alone and is not affected.

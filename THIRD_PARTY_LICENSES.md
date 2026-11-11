@@ -58,6 +58,38 @@ The SVG geometry is unchanged. Each `var(--vscode-ctp-*)` color is resolved at r
 
 The bundled catalog contains curated Base16 palettes derived from this project, with a few foreground values adjusted for readability (noted in the catalog), alongside Strata's original themes. The Base16 mapping to Strata's semantic UI tokens is documented in the catalog.
 
+## Copies bundled by the Rune-side crates
+
+The crates of the Rune interface compile in their own copies of assets listed above, each
+with its licence file beside it. No release ships them yet.
+
+- JetBrains Mono 2.304, unmodified: `crates/strata-kit/fonts/`, with
+  [`LICENSE-JetBrains-Mono-OFL-1.1.txt`](crates/strata-kit/fonts/LICENSE-JetBrains-Mono-OFL-1.1.txt).
+- Lucide 1.35.0: the icons under `crates/strata-kit/icons/lucide/`, copied from
+  `data/icons/scalable/actions/`, and eleven more under `crates/strata-kit/icons/lucide-extra/`,
+  taken from the same Lucide tag and renamed `strata-kit-<name>.svg`. The two chevrons under
+  `crates/strata-kit/icons/own/` are Lucide chevrons turned half a turn. Licence:
+  [`LICENSE-Lucide-ISC.txt`](crates/strata-kit/icons/LICENSE-Lucide-ISC.txt).
+- Catppuccin VSCode Icons at `b6915da9f6889b683a110aa747de96c2820a537d`:
+  `crates/strata-kit/icons/catppuccin/`, with
+  [`LICENSE-Catppuccin-VSCode-Icons-MIT.txt`](crates/strata-kit/icons/LICENSE-Catppuccin-VSCode-Icons-MIT.txt).
+- The theme catalog derived from Tinted Theming schemes: `crates/strata-kit/themes/catalog.toml`,
+  with [`LICENSE-Tinted-Theming.txt`](crates/strata-kit/themes/LICENSE-Tinted-Theming.txt).
+
+`crates/strata-kit/icons/README.md`, `fonts/README.md` and `themes/README.md` record each
+copy's source revision and what the build changes.
+
+## Unicode emoji data
+
+- Projects: <https://www.unicode.org/Public/18.0.0/emoji/>, <https://github.com/unicode-org/cldr>
+- Version: Unicode emoji 18.0 and CLDR release-49
+- Copyright: 1991–2026 Unicode, Inc.
+- License: Unicode License V3
+- Derived asset: `crates/strata-components/src/controls/icon_picker/emoji/emoji.tsv`, the emoji, their names and their English keywords, written by `generate.py` beside it
+- Full license: [`LICENSE-Unicode.txt`](crates/strata-components/src/controls/icon_picker/emoji/LICENSE-Unicode.txt)
+
+Only the Rune-side icon picker reads this data. No release ships it yet.
+
 ## GTK and GStreamer media-runtime patch kit
 
 - Projects: <https://gitlab.gnome.org/GNOME/gtk> and <https://gitlab.freedesktop.org/gstreamer/gstreamer>

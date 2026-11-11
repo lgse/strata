@@ -6,6 +6,9 @@ application on a headless X display, send real keyboard and pointer input from
 inside the process, and check both what the window shows and what happened on
 disk. Both run in one pinned container image.
 
+These suites cover the GTK application and the crates it shares. The Rune-side crates have
+their own tests, which run on the host; see [The Rune side](#the-rune-side).
+
 ## Running the suites
 
 ```bash
@@ -44,7 +47,8 @@ checks. Renew consent if the authorized scope changes, or run the required tests
 
 For native Rust selection, `scripts/test-headless.py` starts the private display
 and session buses, then appends its arguments to the fixed
-`cargo test --workspace --all-targets --all-features` command. Use module/name filters:
+`cargo test --all-targets --all-features` command for the application and the shared
+crates (`scripts/lanes.py gtk` names the packages). Use module/name filters:
 
 ```bash
 ./scripts/test-headless.py services::operations::tests
@@ -202,7 +206,8 @@ the aggregate gate separately requires all test shards to pass. Cold quality
 compilation includes test-only and all-feature dependencies, so the published
 dependency layers are not a full quality hit.
 
-The Rust suite runs with `--workspace --all-targets --all-features --locked` inside private
+The Rust suite runs with `--all-targets --all-features --locked`, over the application and
+the shared crates, inside private
 Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
 Each Xvfb server uses `-noreset` so consecutive test processes do not
 race a server reset when the last display client exits. GTK initialization
@@ -219,7 +224,8 @@ their existing runners rather than downloading a large GUI image unnecessarily.
 ### Rust quality shards
 
 CI's **Quality build and lint** job runs formatting and Clippy, then compiles
-`cargo test --locked --workspace --all-targets --all-features --no-run` once. It exports only
+`cargo test --locked --all-targets --all-features --no-run` once, for the application and
+the shared crates. It exports only
 test executables and a plan, not Cargo caches. `scripts/quality_ci.py` collects
 each libtest inventory, including the explicitly ignored tests, and assigns every
 entry to one of four shards. Tests are balanced longest-first across the shards
@@ -871,6 +877,42 @@ The watchdog is off unless the variable is set. `scripts/qa.sh` forwards it to
 every Strata launch, and `--stall-ms` passes it to an audit run, whose report
 lists the logged stalls per scenario. Debug builds stall at start-up while the
 first window is built, and more so under `strace`.
+
+## The Rune side
+
+`strata-platform`, `strata-kit`, `strata-components` and `strata-gallery` are tested apart
+from the GTK application, in their own cargo runs (`docs/workspace.md`, "Two lanes").
+[`docs/rune/testing.md`](rune/testing.md) is the full reference: gallery pages, the script
+format, the PNG tolerance, blessing and the compositor tests.
+
+| Command | Runs |
+| --- | --- |
+| `mise run test-rune` | Every Rune-side test, headless |
+| `mise run test-rune c1::` | Page c1's three golden tests. The trailing `::` keeps `c1` from matching `c10` |
+| `mise run bless c1` | Rewrites only `tests/golden/*/c1/`. Review every diff before committing it |
+| `mise run compile-features` | `strata-platform` with no features, then with each feature alone |
+| `mise run test-platform` | The compositor tests, each in a private headless sway session |
+
+- **Nothing reaches the desktop.** The tasks clear `DISPLAY` and `WAYLAND_SOCKET` and point
+  `WAYLAND_DISPLAY` and the session bus at names that do not exist. The tests run on Rune's
+  virtual clock.
+- **The test data is laid out by gallery page.** `<id>` is a page id such as `c1`, `c14a` or
+  `gallery` for the index, so a change adds and blesses only its own files.
+
+  | Path | Holds |
+  | --- | --- |
+  | `tests/golden/a11y/<id>/<scene>.json` | Each golden scene's accessibility tree, without bounds, scroll offsets, text selection or shortcuts |
+  | `tests/golden/png/<id>/<scene>.png` | Each golden scene rendered headless at scale 1 |
+  | `tests/golden/scripts/<id>/<script>.json` | The accessibility tree each script ends on |
+  | `tests/scripts/<id>/<script>.json` | Rune headless input scripts, one per behaviour group. Each names the feature-map Behavior bullets it checks in `bullets` |
+  | `tests/fixtures/code/` | Source files the code view's highlighting tests read |
+
+  `crates/strata-gallery/tests/goldens/` checks all of them.
+- **PNG goldens and scripts need a Vulkan adapter.** The harness takes lavapipe where it is
+  installed and the default adapter otherwise. The goldens were blessed on an NVIDIA card.
+- **They do not run in the pinned test image or in CI.** The image has no Vulkan driver, and
+  `./scripts/quality.sh` selects the GTK lane. CI checks the Rune side's formatting,
+  dependency policy and spelling only.
 
 ## In CI
 
