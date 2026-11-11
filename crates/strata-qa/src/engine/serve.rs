@@ -13,7 +13,7 @@ use futures_lite::{FutureExt as _, StreamExt as _};
 use serde_json::{Value, json};
 
 use super::{dispatch::execute, scan::scan, scope::Remembered};
-use crate::{Backend, Outcome, Reply, changed_keys, empty_app_state, parse_command};
+use crate::{Backend, Outcome, Reply, changed_keys, empty_app_state, parse_request};
 
 /// Names the streams a run replaces: `stdout=closed,stderr=null`.
 const STREAMS_VARIABLE: &str = "STRATA_QA_STREAMS";
@@ -143,7 +143,7 @@ impl<B: Backend> Session<'_, B> {
         self.reply(ready);
         if started {
             while let Some(line) = commands.next().await {
-                let outcome = match parse_command(&line) {
+                let outcome = match parse_request(&line) {
                     Ok(command) => execute(self.backend, &self.kept, command).await,
                     Err(error) => Outcome::error(error),
                 };

@@ -56,6 +56,7 @@ fn step_name(command: &Command) -> &'static str {
         Command::DropSamples { .. } => "drop_samples",
         Command::ClipboardSet(_) => "clipboard_set",
         Command::Clipboard { .. } => "clipboard",
+        Command::Keymap(_) => "keymap",
         _ => "the step",
     }
 }
@@ -585,14 +586,13 @@ impl<B: Backend> Scope<'_, B> {
             | Command::MeasureText { .. }
             | Command::DropSamples { .. }
             | Command::ClipboardSet(_)
-            | Command::Clipboard { .. }) => {
-                backend.command(self, &command).await.unwrap_or_else(|| {
-                    Outcome::error(format!(
-                        "{} is not supported on this target",
-                        step_name(&command)
-                    ))
-                })
-            }
+            | Command::Clipboard { .. }
+            | Command::Keymap(_)) => backend.command(self, &command).await.unwrap_or_else(|| {
+                Outcome::error(format!(
+                    "{} is not supported on this target",
+                    step_name(&command)
+                ))
+            }),
         }
     }
 

@@ -6,9 +6,9 @@ use serde_json::json;
 
 use super::{
     super::{
-        Accessor, At, Check, Chord, ClipboardContent, ClipboardOffer, ClipboardOffers, Command,
-        EntryTarget, Modifier, Offset, Predicate, Presence, Query, StateName, Target, TextMatch,
-        changed_keys, parse_command,
+        Accessor, At, COMMANDS, Check, Chord, ClipboardContent, ClipboardOffer, ClipboardOffers,
+        Command, EntryTarget, Keymap, Modifier, Offset, Predicate, Presence, Query, StateName,
+        Target, TextMatch, changed_keys, parse_command, parse_request,
     },
     predicate,
 };
@@ -611,4 +611,46 @@ fn portal_reveal_and_window_steps_parse_and_reject_what_they_cannot_mean() {
     ] {
         assert!(parse_command(valid).is_ok(), "{valid} should parse");
     }
+}
+
+#[test]
+fn only_the_runner_sends_a_keymap_and_it_names_its_layouts() {
+    assert_eq!(
+        parse_request(r#"{"keymap":{"layouts":"us,ru","group":1}}"#),
+        Ok(Command::Keymap(Keymap {
+            layouts: "us,ru".to_owned(),
+            variants: String::new(),
+            group: 1,
+            caps_lock: false,
+        }))
+    );
+    assert_eq!(
+        parse_request(
+            r#"{"keymap":{"layouts":"cn","variants":"altgr-pinyin","group":0,"caps_lock":true}}"#
+        ),
+        Ok(Command::Keymap(Keymap {
+            layouts: "cn".to_owned(),
+            variants: "altgr-pinyin".to_owned(),
+            group: 0,
+            caps_lock: true,
+        }))
+    );
+    for invalid in [
+        r#"{"keymap":"ru"}"#,
+        r#"{"keymap":{"layouts":""}}"#,
+        r#"{"keymap":{"group":1}}"#,
+        r#"{"keymap":{"layouts":"ru","rules":"evdev"}}"#,
+        r#"{"keymap":{"layouts":"ru"},"key":"Down"}"#,
+    ] {
+        let error = parse_request(invalid).expect_err("the keymap should be rejected");
+        assert!(error.contains("keymap"), "{invalid}: {error}");
+    }
+    // A scenario step is read as before, and a scenario cannot write the runner's step.
+    assert_eq!(
+        parse_request(r#"{"key":"ctrl+Return"}"#),
+        parse_command(r#"{"key":"ctrl+Return"}"#)
+    );
+    assert!(parse_request("not json").is_err());
+    assert!(parse_command(r#"{"keymap":{"layouts":"ru"}}"#).is_err());
+    assert!(!COMMANDS.contains(&"keymap"));
 }

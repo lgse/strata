@@ -9,17 +9,35 @@ use super::{
     Accessor, ActivateFields, AdoptFields, ButtonDownFields, ButtonUpFields, COMMANDS,
     CaptureFields, ClickFields, ClickResultRowsFields, ClipboardFields, ClipboardSetFields,
     Command, DragFields, DropSamplesFields, DuringCheck, DuringFields, ExpectFields, HoldsFields,
-    KeepFields, KeyDownFields, KeyFields, KeyUpFields, KeysUntilFields, MeasureTextFields,
-    MoveByFields, MoveFields, NoteFields, OpenMenuFields, PressCheck, PressStepFields, QueryFields,
-    RememberFields, Repeat, ResizeFields, RevealControlFields, RevealFields, RowStates,
-    SelectFields, SelectWithKeyboardFields, SetScrollbarFields, SettleFields, SleepFields,
-    TypeFields, WaitFields, WheelDirection, WheelFields,
+    KeepFields, KeyDownFields, KeyFields, KeyUpFields, KeymapFields, KeysUntilFields,
+    MeasureTextFields, MoveByFields, MoveFields, NoteFields, OpenMenuFields, PressCheck,
+    PressStepFields, QueryFields, RememberFields, Repeat, ResizeFields, RevealControlFields,
+    RevealFields, RowStates, SelectFields, SelectWithKeyboardFields, SetScrollbarFields,
+    SettleFields, SleepFields, TypeFields, WaitFields, WheelDirection, WheelFields,
 };
 
 fn modifiers(names: &[String]) -> Result<Vec<Modifier>, String> {
     names.iter().map(|name| Modifier::parse(name)).collect()
 }
 
+/// The step the runner sends on its own account, which no scenario may write.
+const KEYMAP: &str = "keymap";
+
+/// A line the runner sends the application: a scenario's step, or the runner's own `keymap`.
+pub fn parse_request(line: &str) -> Result<Command, String> {
+    let sent: Option<Value> = serde_json::from_str(line).ok();
+    let Some(fields) = sent.filter(|sent| sent.get(KEYMAP).is_some()) else {
+        return parse_command(line);
+    };
+    let fields: KeymapFields = serde_json::from_value(fields)
+        .map_err(|error| format!("invalid {KEYMAP} command: {error}"))?;
+    if fields.keymap.layouts.is_empty() {
+        return Err(format!("{KEYMAP} names at least one layout"));
+    }
+    Ok(Command::Keymap(fields.keymap))
+}
+
+/// A step as a scenario writes it.
 pub fn parse_command(line: &str) -> Result<Command, String> {
     let value: Value =
         serde_json::from_str(line).map_err(|error| format!("invalid JSON: {error}"))?;

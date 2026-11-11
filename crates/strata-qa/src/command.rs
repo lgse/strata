@@ -12,7 +12,7 @@ use super::{
 
 mod parse;
 
-pub use parse::parse_command;
+pub use parse::{parse_command, parse_request};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -181,6 +181,23 @@ pub enum Command {
         message: Option<String>,
     },
     Query(Query),
+    /// The layout a backend that sends its own keys types with. It is no scenario step and
+    /// not among [`COMMANDS`]: the runner sends it to such a target after a `layout` step,
+    /// which it runs itself, and only [`parse_request`] reads it.
+    Keymap(Keymap),
+}
+
+/// A keyboard layout as `setxkbmap` is given one, with the group and the lock that are on.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Keymap {
+    pub layouts: String,
+    #[serde(default)]
+    pub variants: String,
+    #[serde(default)]
+    pub group: u8,
+    #[serde(default)]
+    pub caps_lock: bool,
 }
 
 pub const COMMANDS: [&str; 37] = [
@@ -619,6 +636,12 @@ struct ExpectFields {
     /// The runner keeps this flag for a later `if` or `unless`; the process ignores it.
     #[serde(rename = "as")]
     _name: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KeymapFields {
+    keymap: Keymap,
 }
 
 #[derive(Deserialize)]

@@ -5,7 +5,7 @@ use std::{future::Future, pin::pin, task};
 use serde_json::json;
 
 use super::{
-    super::{Backend, Outcome, Remembered, execute, parse_command},
+    super::{Backend, Outcome, Remembered, execute, parse_request},
     fake::{Fake, Node, WINDOW, drawn},
 };
 
@@ -19,7 +19,7 @@ fn finish<Output>(step: impl Future<Output = Output>) -> Output {
 }
 
 fn run(fake: &Fake, kept: &Remembered<Fake>, step: serde_json::Value) -> Outcome {
-    let command = parse_command(&step.to_string()).expect("the step should parse");
+    let command = parse_request(&step.to_string()).expect("the step should parse");
     finish(execute(fake, kept, command))
 }
 
@@ -160,5 +160,16 @@ fn activation_and_typing_go_to_the_backend_and_an_unknown_step_says_so() {
         .error
         .as_deref(),
         Some("reveal is not supported on this target")
+    );
+    assert_eq!(
+        run(
+            &fake,
+            &kept,
+            json!({ "keymap": { "layouts": "us,ru", "group": 1 } })
+        )
+        .error
+        .as_deref(),
+        Some("keymap is not supported on this target"),
+        "a toolkit that types through a display server takes its layout from that server"
     );
 }
