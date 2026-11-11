@@ -40,6 +40,7 @@ impl Offscreen {
             TextSystem::new(FONTS, FAMILIES),
         );
         runtime.poll = Some(shell::poll);
+        runtime.on_key = Some(shell::on_key);
         Self {
             runtime,
             context: glib::MainContext::default(),
@@ -50,6 +51,16 @@ impl Offscreen {
 
     pub(crate) fn app(&self) -> &App {
         &self.runtime.state
+    }
+
+    /// Rune's side of the host: where input goes in, and the tree comes out.
+    pub(crate) fn runtime(&mut self) -> &mut Runtime<App> {
+        &mut self.runtime
+    }
+
+    /// The accessibility tree, as an assistive client and the QA harness read it.
+    pub(crate) fn tree(&self) -> serde_json::Value {
+        self.runtime.accessibility_json()
     }
 
     /// Dispatches the sources GLib has ready. Returns whether any ran.
@@ -69,6 +80,7 @@ impl Offscreen {
     /// clock, whose `poll` applies what the dispatch queued. Returns whether either side did
     /// anything.
     pub(crate) fn turn(&mut self) -> bool {
+        shell::publish(&mut self.runtime.state);
         let dispatched = self.dispatch_ready();
         let queued = self.runtime.state.has_queued_changes();
         let now = Instant::now();
@@ -93,11 +105,11 @@ impl Offscreen {
     }
 
     /// Turns until `done`, waiting whenever a turn finds nothing to do. False on a timeout.
-    pub(crate) fn run_until(&mut self, timeout: Duration, done: impl Fn(&App) -> bool) -> bool {
+    pub(crate) fn run_until(&mut self, timeout: Duration, done: impl Fn(&Self) -> bool) -> bool {
         let deadline = Instant::now() + timeout;
         loop {
             let worked = self.turn();
-            if done(self.app()) {
+            if done(self) {
                 return true;
             }
             let Some(left) = deadline.checked_duration_since(Instant::now()) else {

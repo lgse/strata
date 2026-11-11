@@ -7,38 +7,13 @@ use strata_core::model::{Location, NameComparison, SortDirection, SortKey, ViewP
 use super::Offscreen;
 use crate::{
     launch,
-    startup::{self, UiThread},
+    test_support::{PATIENCE, folder_of, hosted_after},
 };
 
-const PATIENCE: Duration = Duration::from_secs(30);
-
-/// Runs the test `name` on a host in a process of its own: the default GLib context, the
-/// start-up sequence and the saved settings belong to one process. `prepare` runs there
-/// first, before anything is read.
-fn hosted_after(name: &str, prepare: impl FnOnce(), run: impl FnOnce(Offscreen)) {
-    strata_test_support::isolated_test(
-        &format!("host::offscreen::tests::{name}"),
-        std::iter::empty::<(&str, &str)>(),
-        || true,
-        || {
-            prepare();
-            let settings = startup::load_settings();
-            let ui = UiThread::claim().expect("the UI thread");
-            run(Offscreen::new(ui, &settings));
-        },
-    );
-}
+const MODULE: &str = "host::offscreen::tests";
 
 fn hosted(name: &str, run: impl FnOnce(Offscreen)) {
-    hosted_after(name, || {}, run);
-}
-
-fn folder_of(names: &[&str]) -> tempfile::TempDir {
-    let folder = tempfile::tempdir().expect("folder");
-    for name in names {
-        std::fs::write(folder.path().join(name), name).expect("file");
-    }
-    folder
+    crate::test_support::hosted(MODULE, name, run);
 }
 
 fn listed(host: &Offscreen) -> usize {
@@ -77,9 +52,7 @@ fn the_first_listing_after_start_up_stays_off_the_ui_thread_guard() {
             let folder = folder_of(&["one", "two", "three"]);
             host.app().open(Location::local(folder.path()));
 
-            let complete = host.run_until(PATIENCE, |app| {
-                app.browser().with_column_entries(0, <[_]>::len) == Some(3)
-            });
+            let complete = host.run_until(PATIENCE, |host| listed(host) == 3);
 
             assert!(complete, "listed {} of 3 entries", listed(&host));
         },
@@ -109,7 +82,8 @@ fn a_launch_opens_its_directory_and_titles_the_window_for_it() {
 
                 host.app()
                     .open(launch::location(argument).expect("a location"));
-                let shown = host.run_until(PATIENCE, |app| app.location() == Some(&expected));
+                let shown =
+                    host.run_until(PATIENCE, |host| host.app().location() == Some(&expected));
 
                 assert!(shown, "{argument:?} never showed");
                 assert_eq!(
@@ -157,6 +131,7 @@ fn waiting_ends_when_glib_has_work_or_a_rune_timer_is_due() {
 #[test]
 fn saved_settings_reach_the_browser_and_the_language() {
     hosted_after(
+        MODULE,
         "saved_settings_reach_the_browser_and_the_language",
         || {
             let folder = strata_core::storage::config_directory();

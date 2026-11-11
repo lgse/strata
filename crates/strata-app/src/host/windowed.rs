@@ -41,16 +41,18 @@ fn unused() -> App {
 /// when the helper thread says GLib has work, and in `poll`: a handler may have attached a
 /// source since, which the helper cannot know of.
 fn pump(app: &mut App, tx: &mut Tx) -> bool {
+    shell::publish(app);
     GLIB.with(|glib| {
         if let Some(glib) = glib.get() {
             glib.pump(super::DISPATCH_BUDGET);
         }
     });
-    shell::apply_queued(app, tx)
+    shell::settle(app, tx)
 }
 
-fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
-    pump(app, tx)
+fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let pumped = pump(app, tx);
+    shell::poll(app, clock, tx) | pumped
 }
 
 /// Opens the window on `location` and returns when it closes.
@@ -59,6 +61,7 @@ pub(crate) fn run(ui: UiThread, settings: Preferences, location: Location) -> Re
     let frame = Policy::Auto.frame();
     let app = rune::App::new(AppSpec {
         poll: Some(poll),
+        on_key: Some(shell::on_key),
         fonts: FONTS,
         families: FAMILIES,
         ..AppSpec::new("Strata", SIZE, unused, shell::view)

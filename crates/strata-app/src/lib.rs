@@ -12,10 +12,13 @@ rust_i18n::i18n!(
     backend = strata_core::i18n::Catalogs::compiled()
 );
 
+mod columns;
 mod events;
 mod host;
 mod launch;
 mod shell;
 mod startup;
+#[cfg(test)]
+mod test_support;
 
 pub use launch::run;

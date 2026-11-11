@@ -4,11 +4,11 @@
 //!
 //! The header is the one strata-components' X1 demo draws
 //! (`crates/strata-gallery/src/scenes/x1/shell.rs`). Its actions do nothing yet; the window
-//! buttons go to the window manager. The body names the folder until the Columns view lands.
+//! buttons go to the window manager. The body is the Columns view ([`crate::columns`]).
 
 use std::rc::Rc;
 
-use rune::{Cx, El, Tx, col, text};
+use rune::{Cx, El, KeyEvent, Keybind, Tx, col};
 use strata_components::header::{
     self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
 };
@@ -22,6 +22,7 @@ use strata_kit::{icons::IconName, look::Look};
 use strata_platform::csd::{self, Csd};
 
 use crate::{
+    columns::{self, Columns, Hands, Ids},
     events::{Change, Inbox},
     startup::UiThread,
 };
@@ -56,8 +57,9 @@ impl Labels {
 }
 
 pub(crate) struct App {
-    look: Look,
-    browser: Rc<Browser>,
+    pub(crate) look: Look,
+    pub(crate) browser: Rc<Browser>,
+    pub(crate) columns: Columns,
     events: Inbox,
     /// The browser's active location as of the last `poll`: what the body and the title name.
     location: Option<Location>,
@@ -66,8 +68,9 @@ pub(crate) struct App {
     /// Whether the window has keyboard focus.
     active: bool,
     labels: Labels,
-    /// How many of the browser's events `apply_queued` has seen, for its trace line.
-    applied: u64,
+    /// How many of the browser's events, and of the rows they copied, `apply_queued` has
+    /// seen, for its trace line.
+    applied: (u64, u64),
 }
 
 impl App {
@@ -78,16 +81,18 @@ impl App {
         let browser =
             Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(settings));
         browser.set_operation_provider(Rc::new(LocalOperationProvider));
+        let ids = Ids::default();
         Self {
             look: Look::fallback(true),
-            events: Inbox::observing(&browser),
+            events: Inbox::observing(&browser, ids.clone()),
+            columns: Columns::new(settings, ids),
             browser,
             location: None,
             title: title_for(None),
             csd,
             active: true,
             labels: Labels::translated(),
-            applied: 0,
+            applied: (0, 0),
         }
     }
 
@@ -105,9 +110,17 @@ impl App {
                 self.title = title_for(location.as_ref());
                 tx.set_title(self.title.clone());
                 self.location = location;
-                true
             }
+            change => self.columns.apply(
+                change,
+                &mut Hands {
+                    browser: &self.browser,
+                    look: &self.look,
+                    tx,
+                },
+            ),
         }
+        true
     }
 
     fn chrome(&self) -> WindowChrome {
@@ -142,6 +155,11 @@ impl App {
     /// Whether the browser has sent something `poll` has not applied.
     pub(crate) fn has_queued_changes(&self) -> bool {
         !self.events.is_empty()
+    }
+
+    /// How many rows the browser's events have had copied out of it.
+    pub(crate) fn rows_copied(&self) -> u64 {
+        self.events.copied()
     }
 }
 
@@ -194,25 +212,17 @@ fn bar(app: &App, chrome: &WindowChrome) -> El {
 }
 
 fn body(app: &App) -> El {
-    let look = &app.look;
-    let folder = col()
+    col()
         .key("body")
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .fill(look.kit.c.bg_base)
-        .items_center()
-        .justify_center();
-    match &app.location {
-        Some(location) => folder.child(
-            text(location.display_name())
-                .key("body-folder")
-                .font(look.kit.ty.ui_medium)
-                .color(look.kit.c.text_base)
-                .max_lines(1),
-        ),
-        None => folder,
-    }
+        .fill(app.look.kit.c.bg_base)
+        .on_pointer_move_local(|app: &mut App, pointer, tx: &mut Tx| {
+            app.columns.pointer_at((pointer.window_x, pointer.window_y));
+            tx.live_only();
+        })
+        .child(columns::view(app).build(app))
 }
 
 pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
@@ -236,26 +246,59 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     })
 }
 
-/// Rune's `poll` hook, where a host has nothing to do before it.
-#[cfg(test)]
-pub(crate) fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
-    apply_queued(app, tx)
+/// Rune's `poll` hook: what the browser's observers queued, then the view's own timers.
+pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let settled = settle(app, tx);
+    columns::view(app).tick(app, clock, tx) | settled
 }
 
-/// Applies what the browser's observers queued while GLib dispatched. Returns whether the
-/// view has to run.
-pub(crate) fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
-    let heard = app.events.heard();
-    if heard != app.applied {
-        tracing::trace!(
-            events = heard - app.applied,
-            "browser events reached the interface"
-        );
-        app.applied = heard;
+/// Hands the browser what the view changed. A host calls it before it lets GLib dispatch, so
+/// what the browser's events say of its cursor and selection is never older than the view's.
+pub(crate) fn publish(app: &mut App) {
+    app.columns.publish(&app.browser, None);
+}
+
+/// Brings the two sides in step: what the view changed goes to the browser, what the
+/// browser's observers queued goes to the view, and what that left the view to say (a cursor
+/// it was waiting to place) goes to the browser. Returns whether the view has to run.
+pub(crate) fn settle(app: &mut App, tx: &mut Tx) -> bool {
+    publish(app);
+    let changed = apply_queued(app, tx);
+    publish(app);
+    changed
+}
+
+/// Applies what the browser's observers queued while GLib dispatched, or while a handler
+/// called the browser.
+fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
+    if app.events.is_empty() {
+        return false;
     }
+    let (heard, copied) = (app.events.heard(), app.events.copied());
+    tracing::trace!(
+        events = heard - app.applied.0,
+        rows = copied - app.applied.1,
+        "browser events reached the interface"
+    );
+    app.applied = (heard, copied);
     let mut changed = false;
     while let Some(change) = app.events.pop() {
         changed |= app.apply(change, tx);
     }
+    app.columns.caught_up();
     changed
+}
+
+/// The window's keys: what the focused element passed on.
+pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
+    // `HIDDEN_FILES` in `src/ui/keys/bindings/window.rs`.
+    if !Keybind::new("ctrl+h, ctrl+.").matches_tx(event, tx) {
+        // Nothing the view reads changed: no commit for a key that is not the window's.
+        tx.live_only();
+        return false;
+    }
+    publish(app);
+    app.browser.toggle_hidden();
+    settle(app, tx);
+    true
 }

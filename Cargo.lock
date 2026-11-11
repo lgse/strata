@@ -4813,6 +4813,7 @@ dependencies = [
  "rune",
  "rune-kit",
  "rust-i18n",
+ "serde_json",
  "strata-components",
  "strata-core",
  "strata-desktop",
