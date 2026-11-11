@@ -10,7 +10,7 @@ use super::{
     locate::{Kept, Located, focused, locate, presented_target},
     scan::{Scene, scan},
 };
-use crate::{Aim, At, Backend, Boxes, FieldRef, LookupError, Target};
+use crate::{Aim, At, Backend, Boxes, FieldRef, LookupError, Rect, Target};
 
 /// The nodes `remember` keeps under a name.
 pub type Memory<B> = HashMap<String, <B as Backend>::Kept>;
@@ -146,7 +146,18 @@ impl<B: Backend> Scope<'_, B> {
         }
     }
 
+    /// The first drawn node, in tree order, that reports itself focused.
     pub fn focused(&self) -> Option<B::Node> {
         focused(self.backend, &self.window)
+    }
+
+    /// A box `settle`, `remember` or `keep` kept under the name.
+    pub fn kept_box(&self, name: &str) -> Result<Rect, String> {
+        self.kept
+            .boxes
+            .borrow()
+            .get(name)
+            .copied()
+            .ok_or_else(|| format!("no box was kept as {name:?}"))
     }
 }

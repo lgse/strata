@@ -8,22 +8,23 @@ use serde_json::{Value, json};
 use super::{
     Controller, DROP_SAMPLE_DELAYS, DROP_SAMPLE_DRIFT, DROP_SAMPLE_LIMIT, DROP_SAMPLE_RECOVERY,
     Outcome, Sample,
+    backend::Gtk,
     driver::Input,
     input::{self, Event, Injector},
     protocol::{
         Failure,
         pixels::{self, Capture},
     },
-    targets::Rect,
 };
 
 impl Controller {
     pub(super) fn measure_text(
         &self,
-        injector: &Injector,
+        input: &Input<'_>,
         kept: &str,
     ) -> Result<Result<(f64, u64), Failure>, String> {
-        let rect = self.kept_box(kept)?;
+        let injector = input.injector;
+        let rect = input.kept_box(kept)?;
         let capture = grab_on_screen(injector, rect.pixels())?;
         Ok(match pixels::text_position(&capture) {
             (Some(position), contrast) => Ok((position, contrast)),
@@ -33,22 +34,6 @@ impl Controller {
                 message: Some("the source label disappeared".to_owned()),
             }),
         })
-    }
-
-    pub(super) fn kept_box(&self, name: &str) -> Result<Rect, String> {
-        self.kept
-            .boxes
-            .borrow()
-            .get(name)
-            .copied()
-            .ok_or_else(|| format!("no box was kept as {name:?}"))
-    }
-
-    pub(super) fn text_sample(&self, name: &str) -> Result<(f64, u64), String> {
-        match self.samples.borrow().get(name) {
-            Some(Sample::Text { position, contrast }) => Ok((*position, *contrast)),
-            _ => Err(format!("no text was measured as {name:?}")),
-        }
     }
 
     /// Grabs at the exact delays rather than polling, measuring only after all are taken.
@@ -63,9 +48,9 @@ impl Controller {
     ) -> Outcome {
         let measured = (|| {
             Ok::<_, String>((
-                self.kept_box(kept)?,
-                self.text_sample(resting)?.0,
-                self.text_sample(dragging)?.1,
+                input.kept_box(kept)?,
+                self.backend.text_sample(resting)?.0,
+                self.backend.text_sample(dragging)?.1,
             ))
         })();
         let (rect, resting_position, dragging_contrast) = match measured {
@@ -73,7 +58,8 @@ impl Controller {
             Err(error) => return Outcome::error(error),
         };
         let released = Instant::now();
-        self.samples
+        self.backend
+            .samples
             .borrow_mut()
             .insert(name, Sample::Instant(released));
         let mut events = Vec::new();
@@ -141,6 +127,15 @@ impl Controller {
             return drop_failure("dragging opacity must recover", &samples);
         }
         Outcome::default()
+    }
+}
+
+impl Gtk {
+    pub(super) fn text_sample(&self, name: &str) -> Result<(f64, u64), String> {
+        match self.samples.borrow().get(name) {
+            Some(Sample::Text { position, contrast }) => Ok((*position, *contrast)),
+            _ => Err(format!("no text was measured as {name:?}")),
+        }
     }
 }
 

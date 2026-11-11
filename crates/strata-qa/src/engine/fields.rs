@@ -16,7 +16,7 @@ pub fn editable_fields<B: Backend + ?Sized>(backend: &B, window: &B::Node) -> us
         .count()
 }
 
-pub fn editable_texts<B: Backend + ?Sized>(backend: &B, window: &B::Node) -> Vec<String> {
+pub(crate) fn editable_texts<B: Backend + ?Sized>(backend: &B, window: &B::Node) -> Vec<String> {
     presented(backend, window)
         .iter()
         .filter(|node| is_field(backend, node) && rendered(backend, node))

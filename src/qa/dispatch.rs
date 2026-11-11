@@ -11,7 +11,6 @@ use super::{
     driver::Input,
     input::Event,
     note::note,
-    observe::{evaluate, preferences, scroll_target, visible_rows, visible_top},
     pointer::{AfterPress, Aimed, DragEnds},
     protocol::{
         self, Accessor, Command, Failure, Predicate, Query, Scope, Shape, Target, number_json,
@@ -109,7 +108,7 @@ impl Controller {
             Command::Activate { target, message } => {
                 Outcome::from(input.activate(&target, message.as_deref()).await)
             }
-            Command::Holds(predicate) => match self.check(&input, &predicate) {
+            Command::Holds(predicate) => match input.check(&predicate) {
                 Ok(verdict) => Outcome {
                     result: json!(verdict.is_ok()),
                     ..Outcome::default()
@@ -200,7 +199,7 @@ impl Controller {
                         let Some(of) = of.as_ref() else {
                             return Err("scroll_target needs of".to_owned());
                         };
-                        scroll_target(&input, of, dir.as_deref())
+                        input.scroll_target(of, dir.as_deref())
                     }
                     Accessor::Bounds => {
                         let Some(of) = of.as_ref() else {
@@ -223,7 +222,7 @@ impl Controller {
                         let Some(expr) = expr.as_ref() else {
                             return Err("number needs expr".to_owned());
                         };
-                        let number = match evaluate(&input, expr)? {
+                        let number = match input.evaluate(expr)? {
                             Ok(number) => number,
                             Err(_) if wait.is_some() => return Ok(Value::Null),
                             Err(missing) => {
@@ -231,16 +230,17 @@ impl Controller {
                             }
                         };
                         for bound in &until {
-                            match evaluate(&input, &bound.than)? {
+                            match input.evaluate(&bound.than)? {
                                 Ok(than) if bound.op.holds(number, than) => {}
                                 _ => return Ok(Value::Null),
                             }
                         }
                         Ok(number_json(number))
                     }
-                    Accessor::VisibleTop => shape.apply(visible_top(&input)?),
+                    Accessor::VisibleTop => shape.apply(input.visible_top()?),
                     Accessor::Visible => shape.apply(
-                        visible_rows(&input, dir.as_deref())?
+                        input
+                            .visible_rows(dir.as_deref())?
                             .into_iter()
                             .map(|row| row.name)
                             .collect(),
@@ -399,7 +399,7 @@ impl Controller {
                 let mut last = None;
                 for _ in 0..times {
                     if check_first {
-                        match self.check(&input, &predicate) {
+                        match input.check(&predicate) {
                             Err(error) => return Outcome::error(error),
                             Ok(Ok(())) => return Outcome::default(),
                             Ok(Err(failure)) => last = Some(failure),
@@ -430,7 +430,7 @@ impl Controller {
                         }
                     }
                     if !check_first {
-                        match self.check(&input, &predicate) {
+                        match input.check(&predicate) {
                             Err(error) => return Outcome::error(error),
                             Ok(Ok(())) => return Outcome::default(),
                             Ok(Err(failure)) => last = Some(failure),
@@ -459,7 +459,7 @@ impl Controller {
                 let deadline = Instant::now() + duration;
                 loop {
                     for (predicate, message) in &checks {
-                        match self.check(&input, predicate) {
+                        match input.check(predicate) {
                             Err(error) => return Outcome::error(error),
                             Ok(Err(mut failure)) => {
                                 failure.message.clone_from(message);
@@ -494,16 +494,18 @@ impl Controller {
                     )
                 }) {
                 Ok(capture) => {
-                    self.samples
+                    self.backend
+                        .samples
                         .borrow_mut()
                         .insert(name, Sample::Pixels(capture));
                     Outcome::default()
                 }
                 Err(error) => Outcome::error(error),
             },
-            Command::MeasureText { kept, name } => match self.measure_text(injector, &kept) {
+            Command::MeasureText { kept, name } => match self.measure_text(&input, &kept) {
                 Ok(Ok((position, contrast))) => {
-                    self.samples
+                    self.backend
+                        .samples
                         .borrow_mut()
                         .insert(name, Sample::Text { position, contrast });
                     Outcome::default()
@@ -535,7 +537,7 @@ impl Controller {
                 modifiers,
                 after_press,
             } => {
-                let check = |predicate: &Predicate| self.check(&input, predicate);
+                let check = |predicate: &Predicate| input.check(predicate);
                 let ends = DragEnds {
                     from: &from,
                     to: &to,
@@ -624,7 +626,7 @@ impl Controller {
                     if let Some((forbidden, forbidden_message)) = never.as_deref()
                         && seen.is_none()
                     {
-                        match self.check(&input, forbidden) {
+                        match input.check(forbidden) {
                             Err(error) => return Outcome::error(error),
                             Ok(Ok(())) => {
                                 seen = Some(Failure {
@@ -636,7 +638,7 @@ impl Controller {
                             Ok(Err(_)) => {}
                         }
                     }
-                    match self.check(&input, &predicate) {
+                    match input.check(&predicate) {
                         Err(error) => return Outcome::error(error),
                         Ok(Ok(())) => {
                             steady += 1;
@@ -682,7 +684,7 @@ impl Controller {
                 loop {
                     let mut failures = Vec::new();
                     for predicate in &predicates {
-                        match self.check(&input, predicate) {
+                        match input.check(predicate) {
                             Ok(Ok(())) => {}
                             Ok(Err(mut failure)) => {
                                 failure.message.clone_from(&message);
@@ -785,7 +787,7 @@ impl Controller {
                 result: Value::String(state::dump(&window)),
                 ..Outcome::default()
             },
-            Command::Query(Query::Prefs) => match preferences() {
+            Command::Query(Query::Prefs) => match protocol::preferences(&self.backend) {
                 Ok(preferences) => Outcome {
                     result: preferences,
                     ..Outcome::default()

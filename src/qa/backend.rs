@@ -2,13 +2,22 @@
 
 //! GTK's side of the QA mode: what `strata_qa::Backend` asks, answered from widgets.
 
-use std::{cell::OnceCell, time::Duration};
+use std::{
+    cell::{OnceCell, RefCell},
+    collections::HashMap,
+    path::PathBuf,
+    time::Duration,
+};
 
 use gtk::{glib, prelude::*};
 
 use super::{
+    Sample,
     input::Injector,
-    protocol::{Backend, EntryRow, FieldState, Labels, Mark, Orientation, Rect, Scroll, States},
+    protocol::{
+        Backend, EntryRow, FieldState, Labels, Mark, Orientation, Predicate, Rect, Scope, Scroll,
+        States, Verdict,
+    },
     state, targets,
 };
 use crate::ui::accessibility_qa as names;
@@ -24,6 +33,8 @@ pub(super) struct Gtk {
     pub(super) injector: OnceCell<Injector>,
     /// A floating chooser becomes the active window while open; state is read from the browser.
     pub(super) main: glib::WeakRef<gtk::Window>,
+    /// Captures, text measurements and instants that GTK's own steps keep under a name.
+    pub(super) samples: RefCell<HashMap<String, Sample>>,
 }
 
 impl Gtk {
@@ -32,7 +43,14 @@ impl Gtk {
             host,
             injector: OnceCell::new(),
             main: glib::WeakRef::new(),
+            samples: RefCell::default(),
         }
+    }
+
+    pub(super) fn injector(&self) -> Result<&Injector, String> {
+        self.injector
+            .get()
+            .ok_or_else(|| "no input connection".to_owned())
     }
 
     pub(super) fn quit(&self) {
@@ -182,11 +200,7 @@ impl Backend for Gtk {
             .surface()
             .ok_or("the target's surface is not realized")?;
         let (offset_x, offset_y) = native.surface_transform();
-        let (origin_x, origin_y) = self
-            .injector
-            .get()
-            .ok_or("no input connection")?
-            .surface_origin(&surface)?;
+        let (origin_x, origin_y) = self.injector()?.surface_origin(&surface)?;
         Ok((
             f64::from(origin_x) + offset_x,
             f64::from(origin_y) + offset_y,
@@ -236,6 +250,10 @@ impl Backend for Gtk {
         }
     }
 
+    fn settings_file(&self) -> PathBuf {
+        crate::storage::config_directory().join("settings.toml")
+    }
+
     fn keep(&self, node: &gtk::Widget) -> Self::Kept {
         node.downgrade()
     }
@@ -257,5 +275,9 @@ impl Backend for Gtk {
 
     async fn sleep(&self, time: Duration) {
         glib::timeout_future(time).await;
+    }
+
+    fn check(&self, scope: &Scope<'_, Self>, predicate: &Predicate) -> Option<Verdict> {
+        self.check_own(scope, predicate).transpose()
     }
 }

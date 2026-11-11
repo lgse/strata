@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod checking;
 mod commands;
 mod fake;
 mod locating;

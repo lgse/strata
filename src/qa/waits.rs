@@ -62,7 +62,7 @@ impl Controller {
         let mut clicked = Instant::now();
         let deadline = clicked + protocol::DEFAULT_WAIT;
         loop {
-            match self.check(input, until) {
+            match input.check(until) {
                 Err(error) => return Outcome::error(error),
                 Ok(Ok(())) => return Outcome::default(),
                 Ok(Err(mut failure)) if Instant::now() >= deadline => {
@@ -154,7 +154,7 @@ impl Controller {
         let deadline = Instant::now() + repeat.timeout;
         let mut turns = 0;
         loop {
-            match self.check(input, &repeat.predicate) {
+            match input.check(&repeat.predicate) {
                 Err(error) => return Outcome::error(error),
                 Ok(Ok(())) => return Outcome::default(),
                 Ok(Err(_)) if repeat.tries.is_some_and(|tries| turns >= tries) => {

@@ -176,6 +176,10 @@ impl Backend for Fake {
         }
     }
 
+    fn settings_file(&self) -> std::path::PathBuf {
+        std::path::PathBuf::from("/nonexistent/strata-qa-fake/settings.toml")
+    }
+
     fn keep(&self, node: &usize) -> usize {
         *node
     }

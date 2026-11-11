@@ -2,9 +2,9 @@
 
 //! What the QA mode asks of the toolkit an application is drawn with.
 
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
-use crate::{FieldState, Orientation, Rect};
+use crate::{FieldState, Orientation, Predicate, Rect, Scope, Verdict};
 
 /// What the application says a node is for, where its role and name do not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -143,6 +143,8 @@ pub trait Backend {
     }
 
     fn labels(&self) -> Labels;
+    /// The file the application saves its preferences to.
+    fn settings_file(&self) -> PathBuf;
 
     fn keep(&self, node: &Self::Node) -> Self::Kept;
     fn recall(&self, kept: &Self::Kept) -> Option<Self::Node>;
@@ -154,4 +156,13 @@ pub trait Backend {
     async fn settle(&self, window: &Self::Node);
     /// Lets the application run for this long.
     async fn sleep(&self, time: Duration);
+
+    /// A predicate only this toolkit can answer: one that reads screen pixels, say. `None`
+    /// when it cannot, and the reply then says the predicate is not supported.
+    fn check(&self, _scope: &Scope<'_, Self>, _predicate: &Predicate) -> Option<Verdict>
+    where
+        Self: Sized,
+    {
+        None
+    }
 }

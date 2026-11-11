@@ -3,9 +3,11 @@
 //! What the QA mode decides without knowing the toolkit: which nodes a snapshot reports, in
 //! what order, and what each of them is.
 
+mod check;
 mod fields;
 mod locate;
 mod lookup;
+mod observe;
 mod scan;
 mod scope;
 mod wanted;
@@ -13,9 +15,11 @@ mod wanted;
 use std::time::Duration;
 
 pub use self::{
-    fields::{editable_fields, editable_texts},
+    check::{Verdict, mismatch},
+    fields::editable_fields,
     locate::{Kept, Located, focused, locate, presented_target, screen_rect},
     lookup::{descendants, find_presented, presented, rendered, result_rows, windows_titled},
+    observe::{VisibleRow, off_ui_thread, preferences},
     scan::{PaneNodes, Scene, scan},
     scope::{Memory, Remembered, Scope},
     wanted::{Wanted, has_state},

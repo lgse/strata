@@ -204,7 +204,7 @@ impl Controller {
         };
         let deadline = Instant::now() + protocol::DEFAULT_WAIT;
         loop {
-            match self.check(input, &on_screen) {
+            match input.check(&on_screen) {
                 Err(error) => return Outcome::error(error),
                 Ok(Ok(())) => return Outcome::default(),
                 Ok(Err(mut failure)) if Instant::now() >= deadline => {

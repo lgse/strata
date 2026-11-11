@@ -20,7 +20,6 @@ mod waits;
 
 use std::{
     cell::RefCell,
-    collections::HashMap,
     ffi::OsString,
     fs::File,
     io::{BufRead, Write},
@@ -150,7 +149,6 @@ impl Session {
             protocol: self.protocol,
             previous: None,
             kept: Remembered::default(),
-            samples: RefCell::default(),
             clipboard: RefCell::default(),
         };
         // GLib would keep a panic in the task's join handle and leave the
@@ -192,7 +190,6 @@ struct Controller {
     protocol: File,
     previous: Option<Value>,
     kept: Remembered<Gtk>,
-    samples: RefCell<HashMap<String, Sample>>,
     /// Owns the clipboard a `clipboard_set` set, until the `clipboard` read closes it.
     clipboard: RefCell<Option<gdk::Display>>,
 }
@@ -240,10 +237,6 @@ impl Controller {
 
     fn window(&self) -> Option<gtk::Window> {
         self.backend.main_window()
-    }
-
-    fn windows(&self) -> Vec<gtk::Window> {
-        self.backend.windows()
     }
 
     async fn await_ready(&self) -> Result<(), String> {
