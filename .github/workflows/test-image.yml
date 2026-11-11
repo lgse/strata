@@ -3,7 +3,7 @@ name: Publish the pinned test image
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, strata-next]
     paths:
       - Cargo.toml
       - Cargo.lock
@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/strata-next'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
