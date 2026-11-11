@@ -75,7 +75,11 @@ exec "$engine" run "${options[@]}" \
     mkdir -p "$HOME" "$CARGO_HOME"
     rustc --version
     case "$1" in all|fmt) cargo fmt --all --check ;; esac
-    case "$1" in all|clippy) cargo clippy --locked --workspace --all-targets --all-features -- -D warnings ;; esac
+    # The application without the Rune side, which builds in its own cargo runs.
+    case "$1" in all|clippy)
+      gtk="$(python3 scripts/lanes.py gtk)"
+      cargo clippy --locked $gtk --all-targets --all-features -- -D warnings ;;
+    esac
     case "$1" in all|test)
       case "${STRATA_QUALITY_TASK:-test}" in
         build) python3 scripts/quality_ci.py build ;;

@@ -20,12 +20,16 @@ class HeadlessRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             tools = Path(directory)
             cargo = tools / "cargo"
+            # The GTK lane runs with no Wayland display and GDK on X11; the Rune lane names a
+            # Wayland socket that does not exist.
             cargo.write_text(
                 '#!/bin/sh\n'
-                'if [ "$1" = test ]; then\n'
-                '  [ -z "${DISPLAY+x}" ] && [ -z "${WAYLAND_DISPLAY+x}" ] '
-                '&& [ "$GDK_BACKEND" = x11 ] || exit 1\n'
-                'fi\n'
+                '[ "$1" = test ] || exit 0\n'
+                '[ -z "${DISPLAY+x}" ] || exit 1\n'
+                'case " $* " in\n'
+                '  *" --workspace "*) [ -z "${WAYLAND_DISPLAY+x}" ] && [ "$GDK_BACKEND" = x11 ] || exit 1 ;;\n'
+                '  *) [ "$WAYLAND_DISPLAY" = strata-test-no-wayland ] && [ -z "${WAYLAND_SOCKET+x}" ] || exit 1 ;;\n'
+                'esac\n'
             )
             cargo.chmod(0o755)
             for name in ("cargo-deny", "typos"):
@@ -36,7 +40,7 @@ class HeadlessRunnerTests(unittest.TestCase):
                 ["bash", str(Path(__file__).with_name("check.sh"))],
                 cwd=directory,
                 env={**os.environ, "PATH": f"{directory}:/usr/bin:/bin", "DISPLAY": ":0",
-                     "WAYLAND_DISPLAY": "wayland-1", "GDK_BACKEND": "wayland"},
+                     "WAYLAND_DISPLAY": "wayland-1", "WAYLAND_SOCKET": "7", "GDK_BACKEND": "wayland"},
                 capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stderr)

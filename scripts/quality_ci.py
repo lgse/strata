@@ -16,6 +16,7 @@ import sys
 import time
 
 from image_inputs import image_key, source_key
+import lanes
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "target/quality-bundle"
@@ -84,7 +85,7 @@ def test_source_key(repository):
 def build():
     BUNDLE.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
-        ["cargo", "test", "--locked", "--workspace", "--all-targets", "--all-features", "--no-run",
+        ["cargo", "test", "--locked", *lanes.gtk(), "--all-targets", "--all-features", "--no-run",
          "--message-format=json"], cwd=ROOT, text=True, stdout=subprocess.PIPE,
     )
     artifacts = {}

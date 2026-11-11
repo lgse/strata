@@ -15,17 +15,121 @@ CARGO_TERM_COLOR = "always"
 description = "Check Rust formatting"
 run = "cargo fmt --all --check"
 
+# The GTK application and the Rune side build in separate cargo runs: one run would unify
+# their dependency features, and the application does not compile under Rune's
+# (docs/workspace.md). scripts/lanes.py names each side's packages.
 [tasks.compile]
-description = "Type-check all targets"
-run = "cargo check --workspace --all-targets --all-features --locked"
+description = "Type-check all targets, each side of the workspace on its own"
+run = '''
+set -eu
+for name in gtk rune; do
+  lane="$(python3 scripts/lanes.py "$name")"
+  cargo check $lane --all-targets --all-features --locked
+done
+'''
 
 [tasks.clippy]
-description = "Lint with Clippy"
-run = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
+description = "Lint with Clippy, each side of the workspace on its own"
+run = '''
+set -eu
+for name in gtk rune; do
+  lane="$(python3 scripts/lanes.py "$name")"
+  cargo clippy $lane --all-targets --all-features --locked -- -D warnings
+done
+'''
 
 [tasks.test]
-description = "Run Rust tests without a desktop display"
-run = "env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test --workspace --all-targets --all-features --locked"
+description = "Run the application's Rust tests without a desktop display"
+run = '''
+set -eu
+lane="$(python3 scripts/lanes.py gtk)"
+env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test $lane --all-targets --all-features --locked
+'''
+
+# Headless: no X display, and a Wayland socket and a session bus that don't exist, so nothing
+# can reach the desktop session (libwayland would otherwise fall back to wayland-0).
+# Built without debug info, here and in the tasks below: every test binary links Rune and
+# its renderer, and with debug info the links take several gigabytes each.
+[tasks.test-rune]
+description = "Run the Rune side's tests headless, never on the desktop display"
+raw_args = true
+run = '''
+lane="$(python3 scripts/lanes.py rune)" || exit
+env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
+  CARGO_PROFILE_DEV_DEBUG=0 \
+  cargo test $lane --all-targets --all-features --locked
+'''
+
+# `mise run bless c1` rewrites only page c1's goldens (tests/golden/*/c1/). The filter is a
+# page id, a scene name (c1-empty-folder-dark) or <id>/<script> (c5/stem-selection), in
+# lowercase; with none, every golden is rewritten. RUNE_BLESS turns blessing on, STRATA_BLESS narrows it,
+# and the cargo filter `<id>::` runs only that page's golden tests, plus the test that fails
+# when the filter names nothing (docs/rune/testing.md).
+[tasks.bless]
+description = "Rewrite the Rune goldens (all, or one page, scene or script); review every diff"
+usage = '''
+arg "[filter]" help="A page (c1), a scene (c1-empty-folder-dark) or <id>/<script>; empty: all" default=""
+'''
+run = '''
+set -eu
+f="${usage_filter:-}"
+case "$f" in
+  *[!a-z0-9_/-]*)
+    echo "bless: filter '$f' must be lowercase: a page id, a scene or <id>/<script>" >&2
+    exit 2 ;;
+esac
+lane="$(python3 scripts/lanes.py rune)"
+set -- cargo test $lane --all-targets --all-features --locked
+if [ -n "$f" ]; then
+  set -- "$@" -- "${f%%[-/]*}::" registry::bless_filter_names_a_page_scene_or_script
+fi
+env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
+  DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
+  CARGO_PROFILE_DEV_DEBUG=0 RUNE_BLESS=1 STRATA_BLESS="$f" "$@"
+'''
+
+# Each strata-platform feature alone, so no shim leans on another's dependencies. The list is
+# read from the crate's [features] table.
+[tasks.compile-features]
+description = "Check strata-platform with no features and with each feature alone"
+run = '''
+set -eu
+cargo check -p strata-platform --all-targets --no-default-features --locked
+features=$(awk '/^\[features\]/{s=1;next} /^\[/{s=0} s && /^[A-Za-z0-9_-]+ *=/{print $1}' \
+  crates/strata-platform/Cargo.toml | grep -vx default)
+for f in $features; do
+  echo "== strata-platform --features $f"
+  cargo check -p strata-platform --all-targets --no-default-features --features "$f" --locked
+done
+'''
+
+# strata-platform's compositor and D-Bus tests: the #[ignore]d tests in
+# crates/strata-platform/tests/session/, each in its own headless sway, Xwayland and session bus
+# (crates/strata-platform/tests/support/). Nothing reaches the desktop's display or bus. Builds
+# the peer and the examples first: a test can't make cargo build another package's binary, and
+# `cargo test` leaves examples under hashed names only.
+[tasks.test-platform]
+description = "Run the compositor tests (strata-platform's and the gallery's x2 and x3), each in a private headless sway session"
+usage = '''
+arg "[args]..." help="libtest arguments: a filter (w3::, p2::), --test-threads=1, --nocapture" var=#true
+'''
+run = '''
+set -eu
+# The harness refuses a session display that is the desktop's, so tell it what they were.
+export STRATA_OUTER_DISPLAY="${DISPLAY:-}" STRATA_OUTER_WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}"
+export STRATA_OUTER_XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}"
+unset DISPLAY WAYLAND_SOCKET HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK I3SOCK DBUS_SESSION_BUS_ADDRESS
+export WAYLAND_DISPLAY=strata-test-no-wayland CARGO_PROFILE_DEV_DEBUG=0
+cargo build -p strata-test-peer -p strata-platform --bins --examples --all-features --locked
+# The drag-and-drop and clipboard demos, which the gallery's session tests (tests/x2.rs,
+# tests/x3.rs) drive against the peer.
+cargo build -p strata-gallery --example dnd_wiring --example clipboard_wiring --all-features --locked
+eval "set -- ${usage_args:-}"
+cargo test -p strata-platform --all-targets --all-features --locked -- --ignored "$@"
+cargo test -p strata-gallery --test x2 --all-features --locked -- --ignored "$@"
+cargo test -p strata-gallery --test x3 --all-features --locked -- --ignored "$@"
+'''
 
 [tasks.scripts]
 description = "Run Python unit tests under scripts/"
@@ -33,7 +137,7 @@ run = "python3 -m unittest discover -s scripts -p 'test_*.py'"
 
 [tasks.deny]
 description = "Check advisories, licenses, bans, and sources"
-run = "cargo deny check"
+run = "cargo deny --workspace check"
 
 [tasks.typos]
 description = "Check spelling"
@@ -46,7 +150,7 @@ run = "./scripts/qa.sh"
 
 [tasks.check]
 description = "Local pre-push quality checks"
-depends = ["fmt", "compile", "clippy", "test", "deny", "typos"]
+depends = ["fmt", "compile", "compile-features", "clippy", "test", "test-rune", "deny", "typos"]
 
 [tasks.start-dev]
 description = "Rebuild and restart as files change"
@@ -55,6 +159,11 @@ run = "./scripts/start-dev.sh"
 [tasks.dev]
 description = "Build and launch the main app once"
 run = "cargo run"
+
+[tasks.gallery]
+description = "Open the Rune component gallery"
+raw_args = true
+run = "cargo run -p strata-gallery --"
 
 [tasks.chooser-dev]
 description = "Build and open an isolated file chooser"

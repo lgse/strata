@@ -1,0 +1,7 @@
+# The Rune side's lint settings, as its crates were written under them. Clippy reads the
+# nearest clippy.toml, so the application's rules in the root file do not apply here
+# (docs/workspace.md).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true

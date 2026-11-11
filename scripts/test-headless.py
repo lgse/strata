@@ -13,6 +13,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 from headless.display import HeadlessDisplay  # noqa: E402
 from headless.environment import TestEnvironment, process_environment  # noqa: E402
 from headless.process import terminate  # noqa: E402
+import lanes  # noqa: E402
 
 
 def test_tmpdir() -> str | None:
@@ -46,7 +47,7 @@ def main() -> int:
         if tmpdir:
             environment["TMPDIR"] = tmpdir
         child = subprocess.Popen(
-            ["cargo", "test", "--workspace", "--all-targets", "--all-features", *sys.argv[1:]],
+            ["cargo", "test", *lanes.gtk(), "--all-targets", "--all-features", *sys.argv[1:]],
             cwd=REPOSITORY,
             env=environment,
             start_new_session=True,
