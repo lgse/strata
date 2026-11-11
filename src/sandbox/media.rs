@@ -143,14 +143,14 @@ fn spawn_helper(
     let input = source
         .path
         .canonicalize()
-        .map_err(|error| crate::services::io_error_message(&error))?;
+        .map_err(|error| crate::error_text::io_error_message(&error))?;
     let stop = cancellation.clone();
     let hold = file_activity::hold([&source.path, &input], move || stop.cancel())?;
     if !input.is_file() {
         return Err("Preview input is not a regular file".into());
     }
     let output =
-        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?;
+        PrivateOutput::create().map_err(|error| crate::error_text::io_error_message(&error))?;
     let current = std::env::current_exe().map_err(|error| error.to_string())?;
     let running = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable = resolve_renderer_executable(&current, &running, output.path())?;
@@ -205,7 +205,7 @@ fn render(
     if result.is_err() {
         terminate(&mut child);
     }
-    hold.settle(result.map_err(|error| crate::services::io_error_message(&error)))
+    hold.settle(result.map_err(|error| crate::error_text::io_error_message(&error)))
 }
 
 fn consume(
@@ -330,7 +330,7 @@ fn render_peaks(
     if result.is_err() {
         terminate(&mut child);
     }
-    result.map_err(|error| crate::services::io_error_message(&error))
+    result.map_err(|error| crate::error_text::io_error_message(&error))
 }
 
 fn consume_peaks(
@@ -441,7 +441,7 @@ fn render_storyboard(
     if result.is_err() {
         terminate(&mut child);
     }
-    result.map_err(|error| crate::services::io_error_message(&error))
+    result.map_err(|error| crate::error_text::io_error_message(&error))
 }
 
 fn consume_storyboard(

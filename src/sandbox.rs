@@ -152,7 +152,7 @@ fn parse_sandboxed(
     let canonical = request
         .input
         .canonicalize()
-        .map_err(|error| crate::services::io_error_message(&error))?;
+        .map_err(|error| crate::error_text::io_error_message(&error))?;
     let stop = request.cancellation.clone();
     let hold = Arc::new(crate::services::file_activity::hold(
         [request.input, &canonical],
@@ -186,7 +186,7 @@ fn input_limit_message(operation: &ParseOperation) -> String {
 
 fn check_input(input: &Path, operation: &ParseOperation) -> Result<(), String> {
     let input_metadata =
-        fs::metadata(input).map_err(|error| crate::services::io_error_message(&error))?;
+        fs::metadata(input).map_err(|error| crate::error_text::io_error_message(&error))?;
     if !input_metadata.is_file() {
         return Err("Preview input is not a regular file".to_owned());
     }
@@ -408,7 +408,7 @@ fn parse_canonical(
         return result.map(browser_output);
     }
     let output = Arc::new(
-        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?,
+        PrivateOutput::create().map_err(|error| crate::error_text::io_error_message(&error))?,
     );
     let mut child = spawn_sandboxed(&request, &output)?;
     let timeout = renderer_timeout(operation);
@@ -480,7 +480,7 @@ pub(crate) fn sandbox_start_failed(error: &io::Error) -> String {
     tracing::warn!(%error, "unable to start the sandbox");
     rust_i18n::t!(
         "Unable to start the sandbox: %{error}",
-        error = crate::services::io_error_detail(error)
+        error = crate::error_text::io_error_detail(error)
     )
     .into_owned()
 }

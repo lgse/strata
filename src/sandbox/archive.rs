@@ -112,9 +112,9 @@ fn reap(child: &mut Renderer, cancelled: &AtomicBool) -> Result<(), String> {
 fn spawn(archive_path: &Path, password: Option<&str>) -> Result<Renderer, String> {
     let archive_path = archive_path
         .canonicalize()
-        .map_err(|error| crate::services::io_error_message(&error))?;
+        .map_err(|error| crate::error_text::io_error_message(&error))?;
     let output =
-        PrivateOutput::create().map_err(|error| crate::services::io_error_message(&error))?;
+        PrivateOutput::create().map_err(|error| crate::error_text::io_error_message(&error))?;
     let current_executable = std::env::current_exe()
         .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));

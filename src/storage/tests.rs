@@ -197,7 +197,7 @@ fn config_write_rejects_unsafe_links() -> io::Result<()> {
                         case.name
                     ));
                 }
-                let shown = crate::services::io_error_message(&error);
+                let shown = crate::error_text::io_error_message(&error);
                 if case.name == "dangling"
                     && shown
                         != format!(

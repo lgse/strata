@@ -137,7 +137,7 @@ impl DestinationError {
             Self::AtTarget { target, error } => rust_i18n::t!(
                 "Could not write the symlink target “%{path}”: %{error}",
                 path = target.display(),
-                error = crate::services::io_error_detail(error)
+                error = crate::error_text::io_error_detail(error)
             )
             .into_owned(),
         }
