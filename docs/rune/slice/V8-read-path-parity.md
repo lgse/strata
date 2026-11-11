@@ -2,156 +2,40 @@
 
 | | |
 | --- | --- |
-| Status | Stopped on 2026-11-11 at [the stop condition](#the-stop-condition), after the survey and the sort. Nothing was fixed, and the ledger is unchanged. It waits on owner decision 19 |
+| Status | Done, but for one part that stopped: the Appearance popover is not mounted ([why](#the-appearance-popover-stopped)). Gate G2 passes: 23 of its 42 runs are `required` on both targets, three times running |
 | Depends on | V7 |
 | Unblocks | V9 |
 | Owns | `tests/qa/parity/slice.toml`, `tests/qa/parity/mutations/`, fixes in `crates/strata-app` |
-| Lands as | Commits on `strata-next`: fixes, ledger updates, mutation patches |
+| Commits | `dc1f7ed9c` (the survey and the stop), then `aa3960033` to the record's own commit: the `scope` code, three fixes, the row's label, the upstream request, C2d in four commits, the context menus, the backend's menu support, the mutations, the ledger |
 
-## Where it stopped
+## The result
 
-The first survey ran, every run was sorted, and the stop condition was counted before any
-fix, as the plan asks. **20 of G2's 42 runs would end as `component` or `rune` pending,
-which is more than a third (14).** The work stopped there.
-
-What the count does and does not say:
-
-- **It is a count of scope, not of readiness.** All 20 need a part of the interface the
-  slice marks Out: the sidebar, the location bar, menus, the preview, dialogs, tabs, the
-  List view, 10xer mode, a second window. Every one of those components is `merged` in
-  [`STATUS.md`](../work/STATUS.md). `strata-app` does not mount them, by the slice's own
-  scope. No run of the survey failed at a step where a component in `strata-components`
-  lacks a behaviour or behaves differently, unless the row's missing label node is ruled
-  one (decision 20). What those 20 runs do past their first failing step is unseen.
-- **The codes are the plan's.** [The table above the scope](#the-set) says a run that needs
-  one of those parts is likely `component`, and that is how the 20 were counted. The
-  README defines `component` as "strata-components lacks or differs in the behaviour". By
-  that wording alone the count is 1: the one run that is also `rune`. The six codes have
-  none for "the slice does not mount it", and which reading the stop condition means is
-  the owner's to say (decision 19 in the [README](README.md#owner-decisions)).
-- **What does run, passes.** 17 of the 42 pass on the Rune target as V7 left it, G1's run
-  among them, with nothing changed. The 16 new ones passed in three surveys out of three,
-  and each agrees with the GTK transcript in every verdict field of every line.
-- **Decision 11 holds.** The risk this plan names, many small selection failures, did not
-  show. Of the 11 runs of `selection`, `escape_selection` and `background_selection` that
-  need nothing outside the slice, 10 pass, and the eleventh fails where the harness looks
-  for a row's label, before it selects anything.
-
-If the work goes on as scoped, G2 ends with 20 or 21 runs `required` and 21 or 22
-`pending`: the 17 that pass, three that need a fix in `strata-app`, and one that needs a
-ruling.
-
-### The survey
-
-At `2acdb32e8`, in the pinned image, from the worktree at `~/dev/strata-next-verify`:
-`./scripts/qa-parity.sh g2 --pending`, three times. Each time 16 of the 41 pending runs
-pass and 25 fail, the same 16 and the same 25, each failing at the same line. Logs and
-kept artifacts are in that worktree's `target/v8-2acdb32e8/`: `survey-{1,2,3}.log` and
-`survey-{1,2,3}-rune-artifacts/<scenario>/<run>/`.
-
-The 16 transcripts were compared with the GTK ones V7 kept from its full run at
-`e97b84e0b` (`target/v7-e97b84e0b/qa-full-artifacts/`): the same number of lines, and the
-same `ok`, `error`, `failures` and `criticals` on each. No scenario file changed between
-the two commits.
-
-### The sort
-
-Line numbers are the scenario file's, as `failures.txt` gives them. "Counted" is the stop
-condition's count.
-
-**Pass on Rune as it is (17).** Each goes to `required` once it has passed on both targets
-from `./scripts/qa-parity.sh g2`.
-
-| Folder | Runs |
-| --- | --- |
-| `keyboard_navigation` | `arrow-keys-move-focus/columns-arrows` (G1, already `required`), `columns-home-end-mirror/columns`, `select-all-selects-every-entry/columns`, `shift-arrow-extends-selection/columns` |
-| `selection` | `control-click-sets-shift-anchor/columns`, `home-end-page-move-shift-anchor/columns`, `shift-click-range/columns` |
-| `escape_selection` | `enter-after-escape-opens-folder/columns`, `escape-only-clears-active-column/columns`, `shift-after-escape-starts-on-focused/columns-no-range`, `shift-after-escape-starts-on-focused/columns-had-range` |
-| `background_selection` | `background-click-clears-selection/columns`, `background-press-clears-before-drag/columns`, `beside-last-column-clears/columns` |
-| `startup_arguments` | `startup-with-closed-pipes/columns-stdout`, `columns-stderr`, `columns-both` |
-
-**Fail for something the slice should have (3).** Each is a fix in `strata-app` with an
-in-process test. None was made.
-
-| Run | Fails at | Cause | Fix |
-| --- | --- | --- | --- |
-| `alt-up-and-history/columns` | Line 7: after Alt+Up the directory is still `documents` | The window handles no Alt+Up, Alt+Left or Alt+Right | Take the three keys to `Browser::parent`, `back` and `forward`. The run then checks that the child column stays closed and the folder left is selected, which is `Browser`'s to place |
-| `arrow-keys-move-focus-remaining/columns-hjkl` | Line 7: `j` moves nothing | The header sets `type_to_search` to false, where `h j k l` are the arrows. The component has that (`Letters::Arrows`); the adapter passes the view no key settings | Read the saved `type_to_search` and pass `KeySettings` through `ColumnsView::collection` |
-| `hidden-files-persist-across-restart/columns` | Line 8: `show_hidden` is not saved | `strata-rune` saves nothing ([V6](V6-columns-adapter.md#open)) | Save `show_hidden` when it is toggled, through `strata_desktop::settings` |
-
-**Needs a ruling (1).**
-
-| Run | Fails at | Cause | Ways on |
-| --- | --- | --- | --- |
-| `leftover-click-honors-modifiers/columns` | Line 3: "no name label on pictures" | A click on an entry's `part: label` looks for a `label` named by the entry under the row. GTK's row has one. Rune's row is one accessible node, and its name part is hidden from the tree | `harness` is not open: the backend reads `Runtime::accessibility_json`, which has no box for the name. Either the row exposes its name as a label node (a C1e change that touches every collection golden, as decision 5's did for C2), or the run is `toolkit` pending: it aims two points inside the right edge of GTK's label, and could be reworded to aim at the row's end. Two of the counted runs below use the same target |
-
-**Needs a real clipboard (1).** `platform`, not counted.
-
-| Run | Fails at | Needs |
+| | Runs | Of 42 |
 | --- | --- | --- |
-| `keyboard-only-copy-paste/columns` | Line 13: the pasted file never appears | Ctrl+C and Ctrl+V. The clipboard is Out, and the offscreen host has none (P2 and X3 hold the pieces) |
+| `required`, passing on GTK and on Rune, three times running | 23 | 55% |
+| `scope` pending: a part the slice leaves out | 18 | 43% |
+| `platform` pending: the clipboard | 1 | 2% |
+| `component`, `rune`, `harness`, `toolkit`, `deviation` | 0 | |
 
-**Needs a part the slice marks Out (20, all counted).** The code is the plan's likely one,
-`component`, pointing at the work package whose component `strata-app` does not mount.
-"Also" lists what the rest of the file needs, since the first failing step hides it.
+One of the 18 names a `rune` blocker as well: it needs 10xer mode first.
 
-| Run | Fails at | Needs first | Also |
-| --- | --- | --- | --- |
-| `arrow-keys-move-focus/columns-hjkl-tenxer-ru` | Line 7: `j` under `ru` moves nothing | 10xer mode (`tenxer_mode`; C1c's 10xer map) | `rune` as well: a plain-letter binding under a non-Latin layout needs a key press with its physical key, and `Runtime::physical_key_input` is not public at the pinned rev ([V7](V7-rune-qa-backend.md#decision-6-a-layout-on-a-target-with-no-display)). The request upstream is not written yet |
-| `tenxer-keeps-location-edit/columns` | Line 9: no field after Ctrl+L | The location field (C6) | 10xer mode |
-| `tenxer-escape-closes-peek/columns` | Line 6: Space does not move the cursor on | 10xer mode (C1c) | Nothing else in a Columns run |
-| `tenxer-escape-filter-preview-fill/columns` | Line 4: no field after `f` | 10xer mode and the filter (C18) | The preview (C9) |
-| `back-then-file-keys-target-focused-folder/columns` | Line 10: no sidebar button "Home" | The sidebar (C8) | Alt+Left, F2 (V9's editor), Delete to the trash |
-| `sidebar-navigation-range-anchor/columns` | Line 5: no sidebar button "Home" | The sidebar (C8) | Nothing |
-| `columns-return-selects-source-folder/columns` | Line 15: no breadcrumb button | The location bar's crumbs, pressed (C6). The slice allows a location bar in its static form only | BackSpace to the parent |
-| `focus-usable-after-view-change/columns` | Line 5: Ctrl+3 does not switch | The List view (C4) | Tabs (C7), the Icons view (C3) |
-| `control-click-toggles/columns` | Line 2: no toggle button "Appearance" | The Appearance menu (C21 over X1's header, whose button is inert and a plain `button`) | The preview's toggle in it (C9), the location field (C6) |
-| `parent-pane-anchors-first-entry/columns` | Line 2, the same | The same | The same |
-| `empty-column-clears-other-columns/columns` | Line 2, the same | The same | The same |
-| `shift-click-revisits-after-folder/columns-name` | Line 2, the same | The same | The same, and `part: label` |
-| `shift-click-revisits-after-folder/columns-row-space` | Line 2, the same | The same | The same, and `part: label` |
-| `right-click-selects-entry/columns-file` | Line 5: no menu after a right click | The context menu (C21) | Nothing |
-| `right-click-selects-entry/columns-folder` | Line 5, the same | The same | Nothing |
-| `escape-dismisses-transient/columns` | Line 4: no menu after a right click | The context menu (C21) | The properties dialog (C15), the location field (C6), the filter (C18), the rename editor (V9), the preview (C9), a new folder |
-| `disabled-transport-click/columns-audio` | Line 4: no transport button in a preview | The preview drawer and the media player (C9, C13) | Nothing |
-| `disabled-transport-click/columns-video` | Line 4, the same | The same | Nothing |
-| `preview-blank-click-keeps-selection/columns` | Line 5: no preview | The preview drawer and the image viewer (C9, C14b) | Nothing |
-| `multiple-arguments-non-utf8/columns` | Line 10: the `launch` of five arguments exits with 2 | A window for each argument, a file argument revealed, and the session bus (P8). `strata-rune` takes one directory | Nothing |
+The package stopped once, at its stop condition, and went on by an owner ruling
+([below](#the-stop-condition)). The record of that stop is in `dc1f7ed9c`; this file now
+records the whole package.
 
-The five runs that open the Appearance menu do so only to close the preview panel and
-then put the keyboard back in the listing, before the clicks they are about. On a target
-with no preview panel that preamble has nothing to do, and those five and the two
-right-click runs are where a reworded scenario or a small menu would buy the most runs.
-Neither is this package's to do.
+## Owner rulings in this package
 
-### The count, three ways
+All of 2026-11-11, relayed by the orchestrator.
 
-| Reading | Counted | Of 42 | Over a third |
-| --- | --- | --- | --- |
-| The plan's likely codes: a run that needs a part the slice leaves out is `component` | 20 | 48% | Yes |
-| The same, with the runs that need only a menu as `harness`, which the plan's table allows: the two right-click runs. The other six menu runs need the preview, a dialog or the location field as well | 18 | 43% | Yes |
-| The README's wording: `component` only where `strata-components` lacks or differs in the behaviour, or `rune` | 1 | 2% | No |
-
-The label node of the run that needs a ruling would add one to each row if it were ruled a
-component change.
-
-### Not done
-
-Everything after the count: no fix in `strata-app`, no backend addition, none of decision
-17's six component changes (the owner ruled on 2026-11-11 that all six match GTK; their
-GTK behaviour is not verified yet), no ledger change, no mutation patch and no `mutations`
-selection, no upstream request for the physical key, no run of `./scripts/qa-parity.sh g2`
-on both targets. `tests/qa/parity/slice.toml` still lists G2's 41 runs as `harness`, "not
-yet attempted", which is no longer true of any of them: the sort above is what replaces
-it when the work resumes. No file outside `docs/rune/slice/` changed, so nothing was built
-or linted beyond the three surveys.
-
-### To resume
-
-The owner rules on decision 19. If the slice goes on as scoped, the order is the plan's:
-promote the 17, make the three fixes, rule on the label, write the 21 or 22 pending
-entries from the sort, then decision 17, the two mutation patches and the three clean
-runs.
+- **Decision 19: go on, and widen the slice to menus.** The context menu and the
+  Appearance menu are mounted in `strata-app`; every other Out part stays out. A run that
+  gets past its menu and then needs one is `scope` pending.
+- **A seventh reason code, `scope`,** for a run that needs a part the slice marks Out.
+  `component` keeps the README's meaning: strata-components lacks or differs.
+- **Decision 20: backend-only first** for a row's name label, with no change to the
+  accessibility tree. It was found: [the row's label](#the-rows-name-label-decision-20).
+- **Decision 17: match GTK on all six,** each verified against the GTK code first.
+- **Decision 6** as before: layout runs are required.
 
 ## Goal
 
@@ -182,7 +66,7 @@ Expect these to end as `pending`, because the slice leaves them out:
 
 | Needs | Likely code |
 | --- | --- |
-| A context menu (`open_menu`, `menu_items`, `menu_item`) | `component` or `harness`, pointing at the menu work package |
+| A context menu (`open_menu`, `menu_items`, `menu_item`) | `component` or `harness`, pointing at the menu work package. Since decision 19 the context menu is in the slice |
 | The preview drawer or folder peek (`preview`, `peek`) | `component` |
 | A dialog or a second window (`dialog`, `some_window`) | `component` |
 | The sidebar (`sidebar`) | `component` |
@@ -221,9 +105,19 @@ If more than a third of G2's 42 runs end as `component` or `rune` pending, stop 
 That is a finding about how ready the components are, not a reason to patch around them.
 Count it as soon as the first sort is done, before fixing anything.
 
-**Counted on 2026-11-11: hit, on the plan's own codes.** 20 of 42. See
-[where it stopped](#where-it-stopped) for what the 20 are and for the reading under which
-the count is 1.
+**Counted on 2026-11-11, both ways.**
+
+| Coding | `component` or `rune` pending | Of 42 | Over a third |
+| --- | --- | --- | --- |
+| As first counted, by this plan's table of likely codes: a run that needs a part the slice leaves out is `component` | 20 | 48% | Yes: hit, and the package stopped (`dc1f7ed9c`) |
+| As the owner then ruled: such a run is `scope`, and `component` is a component that lacks or differs | 0 | 0% | No |
+
+Under the ruled coding no run is `component` pending, and one `scope` run names a `rune`
+blocker behind its first one. That is why the package went on. All 20 runs of the first
+count needed a part whose component is `merged` in [`STATUS.md`](../work/STATUS.md) and
+that `strata-app` does not mount; none failed at a step where a component lacks a
+behaviour or behaves differently. Two of the 20 are `required` now, with the context menu
+mounted.
 
 ## Out of scope
 
@@ -263,3 +157,301 @@ from, so the behaviour is held without the container.
 - **Selection ownership.** If V6's choice was wrong, it shows here as many small failures
   across `selection` and `escape_selection`. Revisit the choice rather than fix them one
   by one.
+
+## The record
+
+### The surveys
+
+`./scripts/qa-parity.sh g2 --pending`, in the pinned image, from the worktree at
+`~/dev/strata-next-verify`:
+
+| At | Pass on Rune | What changed |
+| --- | --- | --- |
+| `2acdb32e8`, three times | 16 of 41, the same 16, each agreeing with V7's GTK transcript in every verdict | Nothing: V7's backend as it was |
+| `b0c2910f8` | 19 | The three fixes |
+| `0ef577ff8` | 20 | The row's label; C2d |
+| `991e931c8` with the sorted ledger | 22 required pass on both targets; none of the 19 pending passes | The context menu |
+
+The first three surveys' logs and artifacts are in that worktree's `target/v8-2acdb32e8/`;
+the later ones in `target/v8-work/`.
+
+### The sort
+
+**Required (23).** The 17 that passed untouched, and six that pass now.
+
+| Folder | Runs |
+| --- | --- |
+| `keyboard_navigation` | `arrow-keys-move-focus/columns-arrows` (G1), `columns-home-end-mirror`, `select-all-selects-every-entry`, `shift-arrow-extends-selection`; and now `alt-up-and-history`, `arrow-keys-move-focus-remaining/columns-hjkl` |
+| `selection` | `control-click-sets-shift-anchor`, `home-end-page-move-shift-anchor`, `shift-click-range`; and now `leftover-click-honors-modifiers`, `right-click-selects-entry/columns-file` and `columns-folder` |
+| `escape_selection` | `enter-after-escape-opens-folder`, `escape-only-clears-active-column`, `shift-after-escape-starts-on-focused/columns-no-range` and `columns-had-range` |
+| `background_selection` | `background-click-clears-selection`, `background-press-clears-before-drag`, `beside-last-column-clears` |
+| `hidden_files` | now `hidden-files-persist-across-restart` |
+| `startup_arguments` | `startup-with-closed-pipes/columns-stdout`, `columns-stderr`, `columns-both` |
+
+**Pending (19).** The ledger has each run's blocker in full. Line numbers are the scenario
+file's, where the run stops on Rune now.
+
+| Run | Code | Stops at | Blocker |
+| --- | --- | --- | --- |
+| `arrow-keys-move-focus/columns-hjkl-tenxer-ru` | `scope` | Line 7 | 10xer mode (C1c). Then `rune`: a plain-letter binding under a non-Latin layout ([the request](../upstream/rune/97-key-press-with-physical-key.md)) |
+| `tenxer-keeps-location-edit` | `scope` | Line 9 | The location field at Ctrl+L (C6); the run is 10xer mode's |
+| `tenxer-escape-closes-peek` | `scope` | Line 6 | 10xer mode (C1c) |
+| `tenxer-escape-filter-preview-fill` | `scope` | Line 4 | 10xer mode's `f` and the filter (C1c, C18), then the preview (C9) |
+| `back-then-file-keys-target-focused-folder` | `scope` | Line 10 | The sidebar (C8), then V9's editor and Delete |
+| `sidebar-navigation-range-anchor` | `scope` | Line 5 | The sidebar (C8) |
+| `columns-return-selects-source-folder` | `scope` | Line 15 | A breadcrumb, pressed (C6) |
+| `focus-usable-after-view-change` | `scope` | Line 5 | The List view (C4), then tabs (C7) and Icons (C3) |
+| `control-click-toggles`, `parent-pane-anchors-first-entry`, `empty-column-clears-other-columns`, `shift-click-revisits-after-folder/columns-name` and `columns-row-space` | `scope` | Line 2 | The Appearance popover, then the location field at Ctrl+L (C6) |
+| `escape-dismisses-transient` | `scope` | Line 10, past the context menu | The properties dialog (C15), then the location field, the filter, V9's editor, the preview |
+| `disabled-transport-click/columns-audio` and `columns-video` | `scope` | Line 4 | The preview drawer and its transport (C9, C13) |
+| `preview-blank-click-keeps-selection` | `scope` | Line 5 | The preview drawer (C9, C14) |
+| `multiple-arguments-non-utf8` | `scope` | Line 10 | A window for each argument, a revealed file, the session bus (P8) |
+| `keyboard-only-copy-paste` | `platform` | Line 13 | The clipboard |
+
+No run is `toolkit` pending: nothing was reworded and nothing is proposed.
+
+### The three fixes
+
+Each is in `strata-app`, with an in-process test that names its scenario.
+
+| Run | Was | Fix | Test |
+| --- | --- | --- | --- |
+| `alt-up-and-history` | The window took no history key | Alt+Left, Alt+Right, Alt+Up and Alt+Home go to `Browser::back`, `forward`, `parent` and `navigate`, as `history_jump` in `src/ui/window/keyboard/items.rs` has them (`2b7d89a38`) | `columns::tests::history::alt_up_and_the_history_keys_…` |
+| `arrow-keys-move-focus-remaining/columns-hjkl` | The adapter passed the view no key settings | With "Type to search" off (or 10xer mode on) the view reads `h j k l` as the arrows: `KeySettings::letters(Letters::Arrows)` (`b56fb7d2e`) | `columns::tests::letters::with_type_to_search_off_…`, `…on_a_letter_moves_nothing` |
+| `hidden-files-persist-across-restart` | `strata-rune` never saved | `settings::Saved` saves the hidden-files choice and the sort when the browser says they changed, merged key by key on the shared writer, and never over a file it could not read (`b0c2910f8`). [V5b](V5b-settings-store.md) has the detail | `columns::tests::saved::the_hidden_files_choice_is_saved_…`, `…an_unreadable_settings_file_is_never_saved_over` |
+
+### The row's name label (decision 20)
+
+**Found backend-only: no accessibility-tree change and no golden.** `70fbb110f`.
+
+A scenario's `part: label` looks for a `label` named by the entry under its row. Rune's
+row is one accessible node. The collection already keys its name element for its hosts
+(`strata_components::collection::element::LABEL`, "so hosts, scripts and motion effects can
+name a row, its icon and its label"), and `Runtime::elements()` lists every drawn element
+with its key and box. The backend reads the name's box from there and presents it as a
+`label` under its row in the tree the engine walks. Nothing is guessed: the box is the
+element's own.
+
+One difference from GTK stays, and is not hidden: Rune's label is as wide as its text, so
+it has none of the leftover space GTK's label has. `leftover-click-honors-modifiers` aims
+two points inside the label's right edge, which on Rune is on the name's last glyph. What
+the run checks, a Shift or Ctrl click whose modifier is let go before the button, passes
+there.
+
+Tests: `qa::tree::tests::a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else`,
+`qa::tests::a_click_on_a_rows_name_label_lands_on_the_name_the_view_draws`.
+
+### Decision 17: the six keys
+
+Each was read in the GTK code before it was changed. "Verified" is the call chain from the
+window's key dispatcher (`src/ui/window/keyboard/items.rs`) into `Browser`.
+
+| # | Key | The GTK view, verified | What changed, and where |
+| --- | --- | --- | --- |
+| 1 | Return on the folder whose column is open | `activate_focused` ends in `Browser::focus_child` (`browser/activation.rs`, `navigation/cursor.rs`): the open column takes the keyboard, with the cursor on its own cursor, else its first visible entry, selected alone; `FocusChanged` follows, so that entry mirrors. A click goes through `Browser::activate` instead and places no cursor | C2 `columns/view.rs`: `reopen` goes in as Right does for `Activation::Key` (`c072c317f`) |
+| 2 | An arrow at the list's end | `Browser::move_selection` always re-places the cursor (`place_committed_cursor`): several selected, or none after Escape, become the cursor's entry alone, and `FocusChanged` is raised. Up on the first entry first tries the pane header's actions when "Keep arrows in file list" is off and one takes the focus, and only otherwise does this | C1c `keyboard/machine.rs`: `select` re-selects at a vertical edge with `KeySettings::reselects_in_place`, which C2 turns on (`ad73edd15`). The edge is still reported |
+| 3 | A key that leaves the cursor in place | Home, End and the page keys go to `Browser::page_along`, which also always re-places the cursor and raises `FocusChanged` again; the GTK views mirror from `FocusChanged` (`on_focus_changed`), so the folder under the cursor opens if it was not | C1c emits `Outcome::Rested` there; C2 reports it as `ColumnsIntent::Cursor` (`ad73edd15`); the adapter mirrors again (`6078b1350`) |
+| 4 | Ctrl+A | In Columns it selects through GTK's selection model, and `SelectionSync` reports the newest selected row, the last, as `Browser`'s cursor (`columns/append/models.rs`); `set_selection` keeps the anchor; no `FocusChanged`, so nothing mirrors. The outline Strata draws follows the cursor | C1c: with `KeySettings::select_all_to_last` the cursor goes to the last entry, the anchor stays and nothing is revealed (`ad73edd15`) |
+| 5 | A key that only changes the active column | `Browser::focus_parent` and `focus_child` raise `FocusChanged` for the column the keyboard lands in, so its cursor is mirrored. The dispatcher marks keyboard navigation before the key, so it mirrors though the pointer moved last. This was reasoned in V6 and is now read from the code | C2: new `ColumnsIntent::Active { depth }` from Left, from Right into an open column and from Return into one (`c072c317f`); the adapter publishes it as a key (`466097be0`) |
+| 6 | Right when the open column is another folder's | `enter_focused_directory`: the open child is entered only when it is the cursor's folder (`is_open_child`); any other folder is descended into in its place; a file enters whatever column is open | C2: `enter_right` asks the host to open the cursor's folder unless the open column is its own (`c072c317f`) |
+
+Where each lives, and why: the two rules of the keyboard machine are C1c's because the
+machine alone knows a Select command from 10xer's cursor command, which must not collapse a
+selection; they are settings that only C2 turns on, so Icons and List keep theirs. The
+rest is C2's handling of a column's edge. Mirroring stays the adapter's: it is Strata's
+policy.
+
+Left out, and said in C2's module docs: Up reaching the header's actions (no host gives
+them focus), and GTK's cursor on the entry before the last when Ctrl+A finds only the last
+entry selected, which was inferred from GTK's selection model and not confirmed.
+
+Goldens, by `mise run bless c2/<script>`, each diff read: `c2/ctrl-a-active-column` (the
+strip's active descendant is the last row) and `c2/left-right-active` (the page shows
+"Keyboard in column 0"), one line each. No accessibility golden and no PNG changed, so no
+picture was there to look at. Tests: six page tests in `crates/strata-gallery/tests/c2d.rs`,
+three unit tests in C1c, and in `strata-app`
+`keys::keys_do_what_the_gtk_view_does_where_the_component_differed` and
+`keys::a_key_between_open_columns_mirrors_though_the_pointer_moved_last`, which check the
+browser holds what the view shows. [`STATUS.md`](../work/STATUS.md) has the row, C2d.
+
+The six landed as two component commits and two adapter commits, not six: one function of
+the machine decides 2 and 3 and one settings value carries 2, 3 and 4, and 1, 5 and 6
+share the function that enters a column.
+
+### The context menus (decision 19)
+
+`c95434573`. A right click on an entry, on a pane's empty space or on its header opens
+strata-components' C21 menu. The rows, their order, their sections and their hints are a
+policy ported into `crates/strata-app/src/menus.rs` from `src/ui/browser/context_menu/`
+(`item_options.rs`, `item_menu.rs`, `folder_menu.rs`) and `default_hint` in
+`src/ui/shortcut_reference.rs`: no menu model exists outside `src/ui`, and nothing under
+`src/ui` moved. Labels are the catalogs' through `strata_core::i18n`; no string was added.
+Hints are rendered from chords with Rune's `Keybind::label`, not typed.
+
+| Menu | Rows, a line for each section |
+| --- | --- |
+| A file | Its name and path; New Folder, New File; New Folder with Selection; Open, Open With…, Quick preview, Run (a program), Extract here and Extract to… (an archive); Cut, Copy, Duplicate, Rename; Move to…, Copy to…; Compress…; Customize…, Copy path, Copy name, Properties; Move to Trash, Permanently delete |
+| A folder | The same, with Open in Terminal and Open in… (New Tab, New Window) for Quick preview, and Pin to sidebar before Customize… |
+| Several entries | "N items selected" and their names; the creation rows; Open, Open With…, Open in… (with a folder among them); Cut, Copy, Duplicate; Move to…, Copy to…; Compress…; Copy paths, Copy names, Properties; the delete rows |
+| A pane | New Folder, New File, Paste; Open With…, Open in Terminal; Select All, Refresh, Show or Hide Hidden Files; Customize…, Properties |
+
+**Rows that act:** Open (as a click on the entry), Select All, Refresh, and Show or Hide
+Hidden Files. Rename is wired to where V9 opens the editor, and logs until then.
+
+**Rows that are shown as GTK shows them at rest and do nothing,** each waiting on a part
+the slice leaves out: New Folder, New File, New Folder with Selection, Open With…, Quick
+preview, Run, Open in Terminal, Open in… with New Tab and New Window, Extract here,
+Extract to…, Cut, Copy, Duplicate, Move to…, Copy to…, Compress…, Pin to sidebar,
+Customize…, Copy path, Copy name, Copy paths, Copy names, Properties, Move to Trash and
+Permanently delete; in a pane's menu also Paste, which is greyed as GTK greys it with an
+empty clipboard. Open on several entries opens the one under the pointer, where GTK opens
+them all.
+
+**Not ported,** and named in the module: the Trash and Recent variants, "Send to…", custom
+actions and file-provider rows, the 10xer hints, each row's icon, and Open With…'s greyed
+state while GTK looks for applications. **Not wired:** the Menu key and Shift+F10. C2's
+columns install their own keyboard controller, and C21's `MenuKeys` has to wrap it there.
+
+**The backend** (`cf936192a`). A menu is modal in Rune, and Rune's accessibility tree then
+holds the menu alone, where the GTK tree keeps the panes: `right-click-selects-entry`
+waits for the pane's selection with the menu open. While the tree leaves a column out, the
+backend presents it from the drawn elements, name, selection and box, without the rows'
+descriptions, which a drawn element does not carry. A menu row's keyboard shortcut is
+presented as its description, as the GTK menu has it. The role names `menu` and `menu item`
+were seen live; `check menu item` and `radio menu item` are still mapped by name only. The
+engine did not change.
+
+Tests: eight in `menus::tests` (the rows against the order two `dialogs_and_menus`
+scenarios read, the hints, the catalogs), `qa::tree::tests::a_column_behind_an_open_menu_…`
+and `qa::tests::a_right_click_opens_an_entry_menu_and_escape_gives_the_keyboard_back`,
+which runs both variants of the scenario step for step.
+
+### The Appearance popover: stopped
+
+**Not mounted.** The ruling asked for it as a C21 menu and allowed a stop on this part if
+mounting it properly needs an Out part or a Rune gap. It needs both.
+
+- **It is not a menu.** `build_appearance_menu` (`src/ui/window/appearance_menu.rs`) fills
+  a plain `gtk::Popover` with controls: three view-mode rows with the radio role, a
+  "Preview panel" toggle button, two density sliders with their snap buttons, a text-size
+  stepper, and three check rows. C21 draws rune-kit's `Menu`, whose rows are `menuitem` or
+  `menuitemcheckbox` and nothing else: no radio row, no toggle button, no slider.
+- **Its controls are Out parts' controls.** Of twelve, one acts on something the slice
+  has, "Hidden files". The rest switch to Icons or List, toggle the preview panel, set the
+  density and the text size of the look, group List's rows, or show Columns' size badges,
+  which the adapter does not feed. Mounting them inert would be a stub that exists to
+  satisfy two predicates, which the ruling rules out.
+- **No work package composes it.** C20a has the slider "for the density sliders"; the
+  header's button is X1's and inert. The popover itself is a host's composition that
+  nobody has planned.
+- **It would turn no run green.** All five runs that open it then press Ctrl+L and wait
+  for the location field, which stays Out.
+
+What it takes, for whoever plans it: the view switch (C3, C4), the preview toggle (C9), the
+density and text size applied to the look, the popover with Escape and an outside press
+closing it, a radio row (rune-kit's `MenuItem` has none), and in the backend the header
+button as a `toggle button` with `pressed`, which Rune reports as `checked` on a button.
+The five runs are `scope` pending with that blocker.
+
+### The mutation patches
+
+`991e931c8`. `./scripts/qa-parity.sh mutations` applies each patch under
+`tests/qa/parity/mutations/` to this checkout, runs the required runs of the scenario the
+patch is named for on the Rune target, and reverts it. A patch is caught when a run fails
+a step and none fails to run, as `scripts/qa-mutation.sh` judges the GTK patches; it
+shares that script's parsing and verdicts. `slice` runs them after its runs.
+
+| Patch | Breaks, in `strata-app` | Caught at |
+| --- | --- | --- |
+| `columns-home-end-mirror.patch` (keyboard navigation) | `columns/mirror.rs`: the child column never follows the keyboard cursor | Line 3, "the child column to open" |
+| `shift-click-range.patch` (selection) | `columns/selection.rs`: the cursor the browser places on a load never reaches the view, so a Shift click has no anchor to range from | Line 4, the range of three |
+
+### The upstream request
+
+[`docs/rune/upstream/rune/97-key-press-with-physical-key.md`](../upstream/rune/97-key-press-with-physical-key.md),
+`1a70f7726`: a host that owns a `Runtime` cannot send a key press with its physical key.
+Its headless repro was built against the pin and run. No shim is possible without
+patching Rune: the entry that pairs the two is `pub(crate)`.
+
+G2 has one non-US layout run, and it is `scope` pending for 10xer mode first. The `us`
+layout step runs in three required runs.
+
+## Done when, and the evidence
+
+All on 2026-11-11. The pinned-image runs are from the worktree at
+`~/dev/strata-next-verify`, in the unchanged base, with Docker; their logs and kept
+artifacts are in its `target/v8-24fb0b9c6/` unless another folder is named.
+
+| Done when | Met |
+| --- | --- |
+| The ledger covers all 42 runs | Yes: G1's run and G2's 41, each `required` or `pending` with a code and a blocker. The runner's ledger test passes in the full suite below |
+| The `required` runs passed in three consecutive full runs on both targets | Yes: `./scripts/qa-parity.sh g2` three times running at `24fb0b9c6`, 22 of 22 on GTK and 22 of 22 on Rune each time (`qa-parity-g2-{1,2,3}.log`; bundles in `g2-{1,2,3}-gtk-artifacts/` and `g2-{1,2,3}-rune-artifacts/`, under `<scenario>/<run>/`). `./scripts/qa-parity.sh g1` passes on both (`qa-parity-g1.log`) |
+| Both mutation patches fail their scenarios | Yes: `./scripts/qa-parity.sh mutations`, 2 of 2 caught (`qa-parity-mutations.log`, `qa-parity-mutation/summary.md`) |
+| The stop condition was counted and is recorded, hit or not | Yes, [both ways](#the-stop-condition) |
+
+| Test of the plan | Result |
+| --- | --- |
+| G2 on both targets, three times | Above |
+| The ledger | Above |
+| Mutations | Above |
+| GTK unchanged, for the six folders' scenarios | The whole GTK suite ran instead, since the runner's ledger code changed: below |
+| Unit tests, a test per fix | `mise run test-rune`, below |
+
+**The GTK application and the runner.** `tests/qa/parity.rs` and its test changed, so the
+shared-infrastructure checks ran, at `5118ca9b7` in `target/v8-5118ca9b7/` (the code under
+`src/`, `crates/strata-qa` and `tests/` is the same at `24fb0b9c6`):
+
+- `STRATA_QA_KEEP_ARTIFACTS=1 ./scripts/qa.sh`: 793 tests, 790 passed, 1 failed, 2 ignored,
+  in 80 s (`qa-full.log`, `qa-full-artifacts/`). The one failure is
+  `new-folder-with-selection-groups/columns`, at its wait for the opened folder's column to
+  take focus: the flaky run [V3](V3-qa-backend-trait.md) and
+  [V7](V7-rune-qa-backend.md) record, with the same failure. Run alone three times at `24fb0b9c6` it failed once the same way and passed twice (`target/v8-24fb0b9c6/flaky-new-{1,2,3}.log`); it was not chased.
+- `./scripts/qa-mutation.sh` with the 21 patches that apply: 21 of 21 caught, in 11.6 minutes (`qa-mutation.log`, `qa-mutation/summary.md`).
+- `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy`: clean (`quality-fmt.log`,
+  `quality-clippy.log`). `strata-desktop` lost one unused function and nothing else of the
+  GTK lane changed, so `./scripts/quality.sh test` was not run.
+
+**The Rune side,** on the host:
+
+- `mise run test-rune` at `78ceea9e2`: 73 test binaries, 2,365 tests passed, none failed,
+  253 ignored. That is V7's 2,337 and 253, plus 19 in `strata-app` (history 1, letters 2,
+  saved 2, keys 2, menus 8, the snapshot 2, the backend 2), three in C1c and the six of
+  the new `tests/c2d.rs`. After it, one snapshot test was split in two and a condition
+  named (`24fb0b9c6`); `mise run test-rune qa::` (28 tests) and `mise run test-rune saved::` (2 tests) pass after it.
+- Clippy on the Rune lane with warnings denied, with every feature and with none, and
+  `cargo fmt --all --check`: clean at `24fb0b9c6`.
+- `mise run test-platform window::`: three pass, at `78ceea9e2`. The windowed host takes its
+  settings by value now and flushes a pending save when the window closes.
+- `cargo tree -p strata-rune -i gtk4`, with and without `--features qa`: "package ID
+  specification `gtk4` did not match any packages".
+- Code health, through CodeScene's local tool since `CS_ACCESS_TOKEN` is not set: every new
+  file scores 10; no touched file scores lower than at `2acdb32e8` (`columns/view.rs` 7.99
+  and 7.99, `collection/keyboard/machine.rs` 8.64 and 8.69, `collection/keyboard/tests.rs`
+  7.55 and 7.55, `collection/element/mod.rs` 6.31 and 6.31, the gallery's `scenes/c2.rs`
+  7.2 and 7.2, `strata-app`'s `columns/mod.rs` and `columns/selection.rs` 9.68 and 9.68).
+- `python3 -m unittest discover -s scripts -p 'test_*.py'`: 243 tests pass, four of them
+  new. `typos` and `git diff --check` are clean.
+
+Not run, and why:
+
+- `./scripts/quality.sh test`: above.
+- `./scripts/qa-parity.sh slice`: it runs what ran here one by one, and its whole-suite
+  part inherits the flaky GTK run.
+- `./scripts/qa-mutation.sh` with `cut.patch`: it does not apply, as before V3.
+- A host QA run: no consent, and none needed.
+- `mise run test-platform` beyond `window::`: `strata-platform` did not change.
+- `cargo deny`'s advisories and licences: no package entered the lock (`strata-app` now
+  names `toml`, which the workspace already had). Its `bans` and `sources`, which hold the
+  layering, pass.
+- CI: nothing was pushed by this package after `dc1f7ed9c`.
+
+## Open
+
+- **The Appearance popover** (decision 21) and **the Menu key** (decision 22).
+- **18 `scope` runs** wait on parts of the interface, most of them on the location bar,
+  the preview and 10xer mode.
+- **The request upstream** for a key press with its physical key is drafted, not filed.
+- **`check menu item` and `radio menu item`** are mapped by name and were not seen live.
+- **A menu row's icon, and Open With…'s lookup state,** are not ported.
+- **Descriptions behind an open menu.** The backend presents those rows without their
+  "File" and "Folder" descriptions; a scenario that reads one there would not find it.
