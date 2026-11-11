@@ -292,6 +292,7 @@ impl ThemeManager {
                 manager.on_preferences_changed();
             }
         }));
+        super::motion::sync_toolkit();
         pin_manual_font_rendering();
         pin_base_theme();
         self.install_provider();
