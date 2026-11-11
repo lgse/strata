@@ -2,7 +2,7 @@
 
 //! The `list.*` slot tokens (for example `list.row`) that ListTable reads.
 //!
-//! Work package: C4, `docs/work/phase-3-views/C4-list-table.md`.
+//! Work package: C4, `docs/rune/work/phase-3-views/C4-list-table.md`.
 //!
 //! W2 seeded `list.row.height` so K4 has a slot to override before C4 lands. C4 owns this
 //! file: add tokens beside it, following `slots/mod.rs`. Keep the seed's name, since slot

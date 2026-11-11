@@ -2,7 +2,7 @@
 
 //! Viewers and archive preview (C14b), over the pixels viewport in `viewport` (C14a).
 //!
-//! Work package: C14b, `docs/work/phase-3-views/C14b-viewers.md`. Plan §4 C14. Feature map nodes
+//! Work package: C14b, `docs/rune/work/phase-3-views/C14b-viewers.md`. Plan §4 C14. Feature map nodes
 //! `preview/preview-panel/model-views`, `.../routes`, `.../gcode` and
 //! `operations/archives/preview`. Strata's code these follow is at `upstream/main` 35ee677ab.
 //!

@@ -178,7 +178,7 @@
 //! [U-C1f-4]: self#rune-drafts-not-filed
 //! [U-C1f-6]: self#rune-drafts-not-filed
 //!
-//! Work packages: C1e, `docs/work/phase-2-composites/C1e-collection-element.md`; C1f (group
+//! Work packages: C1e, `docs/rune/work/phase-2-composites/C1e-collection-element.md`; C1f (group
 //! header lines, the press hook and C1e's round-3 fixes) has no document of its own.
 
 #![warn(missing_docs)]

@@ -4,7 +4,7 @@
 //! Files on clipboard badge, 10X pill and marks, and the F1 key map panel
 //! (`app/shortcut-reference`).
 //!
-//! Work package: C19, `docs/work/phase-2-composites/C19-footer-shortcut-reference.md`.
+//! Work package: C19, `docs/rune/work/phase-2-composites/C19-footer-shortcut-reference.md`.
 //! Behaviour follows lgse/strata `upstream/main`: `src/ui/shortcut_footer/` (`build.rs`,
 //! `status.rs`, `indicators.rs`, `catalog.rs`, `reference.rs`, `reference_keys.rs`),
 //! `src/ui/shortcut_reference.rs` and `src/style.css`.

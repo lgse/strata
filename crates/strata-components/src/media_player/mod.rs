@@ -3,7 +3,7 @@
 //! MediaPlayer (C13): the media preview's interface, driven by a clock and frames it doesn't
 //! produce.
 //!
-//! Work package: C13, `docs/work/phase-2-composites/C13-media-player.md`. Plan §4 C13,
+//! Work package: C13, `docs/rune/work/phase-2-composites/C13-media-player.md`. Plan §4 C13,
 //! `preview/preview-panel/media`, `.../audio`, `.../video`.
 //!
 //! ```ignore

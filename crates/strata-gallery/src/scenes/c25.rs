@@ -3,7 +3,7 @@
 //! The gallery page for C25 ThumbnailStore: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c25-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C25-thumbnail-store.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C25-thumbnail-store.md`.
 //!
 //! The page is a folder of 600 entries in a C1e list whose icons are C25 thumbnails: images,
 //! a transparent model render, files that fail to render, text files and folders (which have

@@ -3,7 +3,7 @@
 //! The gallery page for C19 Footer and ShortcutReference: its scenes, demo state, view and key and
 //! poll hooks. Scene names start with `c19-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C19-footer-shortcut-reference.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C19-footer-shortcut-reference.md`.
 //!
 //! The page draws a stand-in window: a row of buttons that change what the footer counts and
 //! shows (scripts tap them by key), a location field, a five-entry listing, the footer, and the

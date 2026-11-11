@@ -3,7 +3,7 @@
 //! The gallery page for C6 LocationBar: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c6-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C6-location-bar.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C6-location-bar.md`.
 //!
 //! The page draws Strata's header with the location bar in its middle, a stand-in file pane
 //! (`c6-files`, focusable and pressable, its label counting presses) and a `c6-log` line naming

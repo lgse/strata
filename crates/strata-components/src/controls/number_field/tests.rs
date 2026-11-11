@@ -246,7 +246,7 @@ fn a_menu_press_that_opens_no_menu_keeps_the_blur_commit() {
         heard: Vec::new(),
     };
     // Rune's own font: a text system built here would move the fonts the crate's other tests
-    // measure with (docs/testing.md, R-K6-1).
+    // measure with (docs/rune/testing.md, R-K6-1).
     let mut rt = Runtime::new(host, view, (400.0, 200.0), Env::new(false, 1.0));
     rt.poll = Some(poll);
     let frames = |rt: &mut Runtime<Host>| {

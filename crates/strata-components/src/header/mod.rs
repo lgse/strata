@@ -3,8 +3,8 @@
 //! Strata's window header: the bar at the top of a browser window, with its actions and its
 //! window buttons, and the window's 1 px frame (`app/window`).
 //!
-//! Work package: X1, `docs/work/phase-2-composites/X1-shell-demo.md`. The owner folded the
-//! header component into X1 at P3's planning (`docs/work/phase-1-leaves/P3-client-side-decorations.md`).
+//! Work package: X1, `docs/rune/work/phase-2-composites/X1-shell-demo.md`. The owner folded the
+//! header component into X1 at P3's planning (`docs/rune/work/phase-1-leaves/P3-client-side-decorations.md`).
 //! Strata's header is read at lgse/strata `upstream/main` 35ee677ab
 //! (`src/ui/window/composition/layout.rs`, `src/style.css`).
 //!
@@ -100,7 +100,7 @@
 //!   region did (a move, a double-click zoom) reaches neither a script's `expect` nor `--tree`;
 //!   only `Runtime::take_titlebar_action` in process sees it.
 //! - Reused: U6 (maximised state), U7 (minimise), U8 (window menu, the double-click action),
-//!   U13 (the double-click interval), all in `docs/decisions/S5-upstream.md`.
+//!   U13 (the double-click interval), all in `docs/rune/decisions/S5-upstream.md`.
 
 mod bar;
 mod chrome;

@@ -3,7 +3,7 @@
 //! The gallery page for C10b CodeView: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c10-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C10b-code-view.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C10b-code-view.md`.
 //!
 //! A source preview in C9's drawer beside a fake listing, coloured by the real highlighter
 //! thread, and the custom-action script editor with C21's field menu. The page stands in for

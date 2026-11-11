@@ -3,7 +3,7 @@
 //! MountPrompts (C26): the dialogs a mount operation asks for, kept apart from GIO so they are
 //! testable without it. Strata's replacement for `gtk::MountOperation`'s dialogs.
 //!
-//! Work package: C26, `docs/work/phase-2-composites/C26-mount-prompts.md`.
+//! Work package: C26, `docs/rune/work/phase-2-composites/C26-mount-prompts.md`.
 //!
 //! Three C15 dialogs, each driven by a plain [`MountRequest`] and answered with a plain
 //! [`MountResponse`]:
@@ -26,7 +26,7 @@
 //!
 //! **Decided by the owner (C26 planning): the `gio::MountOperation` binding lives in Strata,
 //! not here.** strata-components depends only on rune, rune-kit and strata-kit: never on
-//! strata-platform (`docs/work/README.md`, rule 1) or GIO. The binding is tangled with
+//! strata-platform (`docs/rune/work/README.md`, rule 1) or GIO. The binding is tangled with
 //! Strata's policy (credentials typed in a URI answer the first ask unprompted, a second
 //! ask-password is a retry, a declined host key changes the error, which questions are trust
 //! questions), and `show-processes` needs `unsafe` to read its `GArray` of pids and `/proc` to

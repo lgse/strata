@@ -2,7 +2,7 @@
 
 //! The bundled font: JetBrains Mono, Strata's interface font and its previews' monospace.
 //!
-//! Work package: K6, `docs/work/phase-1-leaves/K6-bundled-font.md`.
+//! Work package: K6, `docs/rune/work/phase-1-leaves/K6-bundled-font.md`.
 //!
 //! The face and its families are data, as rune-kit's theme crates export theirs: a host passes
 //! [`FONTS`] to `AppSpec::fonts` and [`FAMILIES`] to `AppSpec::families`, together. Fonts in

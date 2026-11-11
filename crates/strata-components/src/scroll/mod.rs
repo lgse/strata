@@ -3,7 +3,7 @@
 //! Scroll extras (C24): Strata's overlay scroll bar and middle-click autoscroll, on any Rune
 //! scroll viewport, and on C1e's collection through its `edge` and `on_scroll` hooks.
 //!
-//! Work package: C24, `docs/work/phase-1-leaves/C24-scroll-extras.md`. Behaviour follows the
+//! Work package: C24, `docs/rune/work/phase-1-leaves/C24-scroll-extras.md`. Behaviour follows the
 //! feature map's `browser/scrolling` (and the scroll-bar bullets of
 //! `browser/selection/marquee`), against Strata's `src/ui/scrolling.rs` and `src/style.css`
 //! at `upstream/main` 35ee677ab.

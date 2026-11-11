@@ -212,7 +212,7 @@
 //! The gallery's status lines are built text, not `live_text`: a live label anywhere makes
 //! every shift of a virtual window run the view (C1e's draft U-C1f-6).
 //!
-//! Work package: C25, `docs/work/phase-1-leaves/C25-thumbnail-store.md`.
+//! Work package: C25, `docs/rune/work/phase-1-leaves/C25-thumbnail-store.md`.
 //!
 //! [`ThumbKey`]: crate::contract::ThumbKey
 //! [`EntryId`]: crate::contract::EntryId

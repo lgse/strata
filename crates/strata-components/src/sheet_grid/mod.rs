@@ -3,7 +3,7 @@
 //! SheetGrid (C11b): Strata's spreadsheet preview, for CSV, TSV, XLS, XLSX and ODS, drawn
 //! natively with sheet tabs, row numbers and column letters.
 //!
-//! No work package doc: split from C11 (`docs/work/phase-2-composites/C11-document-view.md`,
+//! No work package doc: split from C11 (`docs/rune/work/phase-2-composites/C11-document-view.md`,
 //! its spreadsheet half), scope from its status row. Feature map node
 //! `preview/preview-panel/documents` ("Tables and workbooks"), against Strata's
 //! `src/services/table.rs` and `src/ui/table_view*` at `upstream/main`

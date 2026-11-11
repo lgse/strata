@@ -9,7 +9,7 @@
 | Not done here | Nothing was filed, posted, reserved, tagged or pushed. Every issue below is a draft for the owner, and the release workflow hasn't run on GitHub. |
 
 > **Filing packet (2026-11-10).** Every draft below, and those the later work packages wrote,
-> is now in [`docs/upstream/rune/`](../upstream/rune/README.md): one ready-to-paste file per issue or
+> is now in [`docs/rune/upstream/rune/`](../upstream/rune/README.md): one ready-to-paste file per issue or
 > comment, ranked by value, de-duplicated against upstream at `dev` `04b38ae`, with a mapping
 > from each draft id to its entry. File from the packet; this record keeps the history.
 
@@ -92,10 +92,10 @@ the name. U9 goes first, since five others link it.
 | [U13](#u13) | The double-click interval is fixed at 0.5 s on Linux | S1 [R4](S1-linux-window.md#r4-the-double-click-interval-is-fixed-at-05-s-on-linux) | P5, C1b, P3 | No | New | 11 | — |
 | [U14](#u14) | Popup surfaces for menus: submenus run off the window | S1 [R6](S1-linux-window.md#r6-popup-surfaces-for-menus) | C21, C22, the chooser's minimum size | No | New | 12 | — |
 | [U15](#u15) | Virtual rows are vertical only: no grid or horizontal virtualization | S5 | C3 | No | New; related #203 | 13 | — |
-| [U3](#u3) | File drops: acceptance can't see app state or the whole drag, and no drag identity or action | W1 ([`contract/dnd/binder.rs`](../../crates/strata-components/src/contract/dnd/binder.rs)) | W1's `Dnd::rune` binder (C1e, C6–C8, X2) | No | New | 14 | — |
+| [U3](#u3) | File drops: acceptance can't see app state or the whole drag, and no drag identity or action | W1 ([`contract/dnd/binder.rs`](../../../crates/strata-components/src/contract/dnd/binder.rs)) | W1's `Dnd::rune` binder (C1e, C6–C8, X2) | No | New | 14 | — |
 | [U16](#u16) | List the installed font families | S5 | K2 | No | Comment on #114 | 15 | — |
-| [U17](#u17) | rune-kit: export the Combobox fuzzy matcher, with match positions | W1 ([`contract/matched.rs`](../../crates/strata-components/src/contract/matched.rs)) | W1's `contract::fuzzy` (C17, C19, C20c, C20d) | No | New | 16 | — |
-| [U4](#u4) | ~~Headless file drops can't carry held modifiers~~ | W1 ([`contract/dnd/tests.rs`](../../crates/strata-components/src/contract/dnd/tests.rs)) | — | — | Withdrawn | — | — |
+| [U17](#u17) | rune-kit: export the Combobox fuzzy matcher, with match positions | W1 ([`contract/matched.rs`](../../../crates/strata-components/src/contract/matched.rs)) | W1's `contract::fuzzy` (C17, C19, C20c, C20d) | No | New | 16 | — |
+| [U4](#u4) | ~~Headless file drops can't carry held modifiers~~ | W1 ([`contract/dnd/tests.rs`](../../../crates/strata-components/src/contract/dnd/tests.rs)) | — | — | Withdrawn | — | — |
 
 ## Filing
 
@@ -109,7 +109,7 @@ For the owner. Rune takes no pull requests and asks for agent-written issues (RE
 3. File the rest in the index's order. U16 is a comment on #114, not a new issue. U1 and U2 are
    new issues that link #171. Commenting on #171 instead is an owner question.
 4. Fill the index's "Filed as" column, and the README's
-   [feature table](../../crates/strata-platform/README.md#features).
+   [feature table](../../../crates/strata-platform/README.md#features).
 5. Each P-module's owner then replaces its `mod.rs` placeholder, `Rune issue: (filed by S5).` or
    (P9's) `Rune issue: S5 drafts.`, with the links from this index. P0 cites U9, P1 U1, U2, U9 and U10, P2 U5 and U9, P3 U6–U8, U9 and
    #145, P4 U11 and U9, P5 U12 and U13, P6 #21 (related), U-P6-1 and U-P6-2, P7 #30 (related), P8 #22, P9 "none:
@@ -1113,7 +1113,7 @@ items selected"); without the hold the tap replaces it.
 | Icon theme lookup (P6) | S5 missed upstream [#21](https://github.com/anomalyco/rune/issues/21), which asks for exactly this. P6 cites it and adds [U-P6-1](#u-p6-1), a comment on #21, and [U-P6-2](#u-p6-2). |
 | GLib bridge (P9) | Outside Rune's scope. It uses only `AppHandle` and the setup `Waker`. |
 | S1's panic on disconnect | S1 dropped it: `App::try_run` returns the error. |
-| S4 (syntect backend) | S4's record (`docs/decisions/S4-syntect-backend.md`, on S4's branch at `69be683`, not yet merged) makes no Rune ask. It picks syntect with `onig`, and mentions Rune only to note that rune-kit's highlighter has a similar long-line guard. |
+| S4 (syntect backend) | S4's record (`docs/rune/decisions/S4-syntect-backend.md`, on S4's branch at `69be683`, not yet merged) makes no Rune ask. It picks syntect with `onig`, and mentions Rune only to note that rune-kit's highlighter has a similar long-line guard. |
 
 ## Re-check at `dev` head
 
@@ -1204,7 +1204,7 @@ and has no `workflow_call`.
    database after `cargo fetch --locked`.
 5. The commit is on `origin/main`. A dry run only warns.
 6. `CHANGELOG.md` has `## [<version>] - YYYY-MM-DD` naming the full Rune rev, and the README's
-   [supported revs table](../../crates/strata-platform/README.md#supported-rune-revs) has a row
+   [supported revs table](../../../crates/strata-platform/README.md#supported-rune-revs) has a row
    with the tag. A dry run accepts `[Unreleased]` in place of the section, and only needs the
    README to name the rev.
 7. That changelog section becomes the release notes, passed to the release job as an output.

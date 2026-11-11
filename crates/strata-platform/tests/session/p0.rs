@@ -8,7 +8,7 @@
 //! or later. On an older host they check that the probe reports that route Unsupported (the
 //! specified result there) and say so on stderr; nothing else of theirs ran.
 //!
-//! Work package: P0, `docs/work/phase-1-leaves/P0-transfer-substrate.md`.
+//! Work package: P0, `docs/rune/work/phase-1-leaves/P0-transfer-substrate.md`.
 
 use std::path::Path;
 

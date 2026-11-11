@@ -5,7 +5,7 @@
 //! `ColorDialogButton` (Strata's theme editor) and `ColorChooserWidget` (its custom folder and
 //! file colours).
 //!
-//! Work package: C20b, `docs/work/phase-1-leaves/C20b-color-picker.md`.
+//! Work package: C20b, `docs/rune/work/phase-1-leaves/C20b-color-picker.md`.
 //!
 //! The host holds a [`ColorPickerState`] and builds a [`ColorPicker`] over it each frame, with
 //! its swatch rows as data and its `on_change`, calling [`ColorPicker::poll`] from its poll.

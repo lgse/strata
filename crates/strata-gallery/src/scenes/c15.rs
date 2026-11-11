@@ -3,7 +3,7 @@
 //! The gallery page for C15 StrataDialog: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c15-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C15-strata-dialog.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C15-strata-dialog.md`.
 //!
 //! The page draws a stand-in window (a header bar, a listing with a focusable cursor row, a
 //! path field) and a row of buttons that open each dialog, so scripts can open a dialog from

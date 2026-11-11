@@ -3,7 +3,7 @@
 //! PreviewDrawer (C9): the resizable drawer that hosts every preview, beside the file views in
 //! a browser window and in the chooser.
 //!
-//! Work package: C9, `docs/work/phase-1-leaves/C9-preview-drawer.md`. Feature map nodes
+//! Work package: C9, `docs/rune/work/phase-1-leaves/C9-preview-drawer.md`. Feature map nodes
 //! `preview/preview-panel` and `preview/preview-panel/layout`.
 //!
 //! ```ignore

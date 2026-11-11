@@ -23,8 +23,8 @@
 //! - Rune's text caret doesn't blink at `2a44156`, so the caret blink values have no consumer in
 //!   Rune; they are for an app that draws its own caret.
 //!
-//! Work package: P5, `docs/work/phase-1-leaves/P5-desktop-settings.md`. The findings behind it
-//! are `docs/decisions/S1-linux-window.md` (Q4, Q6).
+//! Work package: P5, `docs/rune/work/phase-1-leaves/P5-desktop-settings.md`. The findings behind it
+//! are `docs/rune/decisions/S1-linux-window.md` (Q4, Q6).
 //!
 //! # The shape
 //!

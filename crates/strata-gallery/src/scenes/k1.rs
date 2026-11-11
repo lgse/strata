@@ -3,7 +3,7 @@
 //! The gallery page for K1 Theme mapping: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `k1-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/K1-theme-mapping.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/K1-theme-mapping.md`.
 //!
 //! The page shows one theme's look: its fourteen colours down the left, and on the right a
 //! specimen drawn only from the look's tokens: a window's header, tabs, sidebar and file

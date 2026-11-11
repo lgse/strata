@@ -3,7 +3,7 @@
 //! The gallery page for C10a Highlighter: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c10a-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C10a-highlighter.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C10a-highlighter.md`.
 //!
 //! Two uses of the shared highlighter: rune-kit `Markdown` with its code blocks coloured by
 //! syntect through [`CodeBlocks::markdown`], and a TextArea editing a script, coloured by an

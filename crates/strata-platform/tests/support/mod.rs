@@ -20,7 +20,7 @@
 //! `target/tmp/session/<test>/`.
 //!
 //! Every test that starts a session is `#[ignore]`d: `mise run test-platform` runs them, and
-//! `mise run test` never does. See docs/testing.md, "Compositor and D-Bus tests".
+//! `mise run test` never does. See docs/rune/testing.md, "Compositor and D-Bus tests".
 
 mod bus;
 mod gpu;

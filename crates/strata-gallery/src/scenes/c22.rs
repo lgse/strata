@@ -3,7 +3,7 @@
 //! The gallery page for C22 Folder peek: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c22-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C22-folder-peek.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C22-folder-peek.md`.
 //!
 //! A Home folder in three views: List (C4's ListTable), Icons (a C1e grid stand-in until C3's
 //! IconsGrid lands) and Columns (C2's ColumnsView, which never peeks). Resting the pointer on a

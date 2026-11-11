@@ -2,8 +2,8 @@
 
 //! The syntect highlighter on its own thread, with checkpoints and colour spans (C10a).
 //!
-//! Work package: C10a, `docs/work/phase-1-leaves/C10a-highlighter.md`. Backend and numbers:
-//! `docs/decisions/S4-syntect-backend.md`.
+//! Work package: C10a, `docs/rune/work/phase-1-leaves/C10a-highlighter.md`. Backend and numbers:
+//! `docs/rune/decisions/S4-syntect-backend.md`.
 //!
 //! One [`Highlighter`] serves the app. It colours whole texts ([`CodeDoc`], for C10b's source
 //! preview and its editable variant) and code blocks ([`CodeBlocks`], for rune-kit's

@@ -54,7 +54,7 @@ pub enum Gap {
 
 impl Gap {
     /// The Rune issue draft that would close this gap
-    /// (`docs/decisions/S5-upstream.md`; drafts, not filed).
+    /// (`docs/rune/decisions/S5-upstream.md`; drafts, not filed).
     pub fn rune_draft(self) -> Option<&'static str> {
         match self {
             Gap::RuneResize => Some("U6"),

@@ -3,7 +3,7 @@
 //! DocumentView (C11): Strata's rendered document previews (Markdown, the HTML subset, RTF,
 //! DOCX, ODT and OTT) drawn natively from Strata's own laid-out model.
 //!
-//! Work package: C11, `docs/work/phase-2-composites/C11-document-view.md`. Feature map nodes
+//! Work package: C11, `docs/rune/work/phase-2-composites/C11-document-view.md`. Feature map nodes
 //! `preview/preview-panel/documents` and `.../odt`, against Strata's `src/services/document`
 //! and `src/ui/virtual_preview` at `upstream/main` 35ee677ab (the feature map's watermark,
 //! 5738aad, isn't in the local clone; K2 used the same commit). Spreadsheets, sortable and

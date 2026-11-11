@@ -6,11 +6,11 @@
 //!
 //! Rune lacks: a display handle on `WindowHandle`, a hook before winit closes the display, and
 //! an every-turn hook to dispatch a queue of one's own (all three: draft U9, not filed; see
-//! `docs/decisions/S5-upstream.md#u9`). Its consumers' asks are drafts U1, U2 and U5.
+//! `docs/rune/decisions/S5-upstream.md#u9`). Its consumers' asks are drafts U1, U2 and U5.
 //! Rune issue: none filed yet.
 //!
-//! Work package: P0, `docs/work/phase-1-leaves/P0-transfer-substrate.md`. The approach is
-//! S2's (`docs/decisions/S2-transfer.md`, "P0 binding approach").
+//! Work package: P0, `docs/rune/work/phase-1-leaves/P0-transfer-substrate.md`. The approach is
+//! S2's (`docs/rune/decisions/S2-transfer.md`, "P0 binding approach").
 //!
 //! # Routes
 //!

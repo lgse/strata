@@ -3,7 +3,7 @@
 //! The gallery page for K2 Shape, density and type: its scenes, demo state, view and key and poll
 //! hooks. Scene names start with `k2-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/K2-shape-density-type.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/K2-shape-density-type.md`.
 //!
 //! The page is the "look" scene: a stepper for every [`LookParams`] field down the left, and
 //! a specimen drawn from the resulting look on the right (a header and tab strip, sidebar and

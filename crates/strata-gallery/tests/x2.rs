@@ -9,7 +9,7 @@
 //! comes back as its JSON lines (`transfer`, `drag-end`, `spring`, …), and what the peer got
 //! as its events.
 //!
-//! Work package: X2, `docs/work/phase-4-integration/X2-dnd-wiring.md`.
+//! Work package: X2, `docs/rune/work/phase-4-integration/X2-dnd-wiring.md`.
 
 #[path = "../../strata-platform/tests/support/mod.rs"]
 #[expect(
@@ -546,7 +546,7 @@ mod x2 {
 
     /// Says a test ran nothing, on stderr past libtest's capture (which takes only `print!`
     /// and `eprint!`), so it shows in every run. libtest has no "skipped" result: the test
-    /// still reports ok, and this line is what says it didn't run (docs/testing.md).
+    /// still reports ok, and this line is what says it didn't run (docs/rune/testing.md).
     fn skip(test: &str, why: &str) {
         use std::io::Write;
         // One write on the locked handle, so a parallel test's output can't split the line.

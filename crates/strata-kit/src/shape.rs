@@ -4,7 +4,7 @@
 //! the interface font), plus the element glow and animations switches, applied to a [`Look`]
 //! in one step.
 //!
-//! Work package: K2, `docs/work/phase-1-leaves/K2-shape-density-type.md`.
+//! Work package: K2, `docs/rune/work/phase-1-leaves/K2-shape-density-type.md`.
 //!
 //! Values are Strata's, read at `lgse/strata` `upstream/main` 35ee677ab. Roundness:
 //! `src/ui/preferences/corner_roundness.rs` (0–200 %, steps of 10, default 60) and

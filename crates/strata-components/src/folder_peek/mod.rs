@@ -162,7 +162,7 @@
 //! and anchoring only gained right-to-left mirroring. The peek owns no timer (`hover_delays`),
 //! so `Tx::clock` changes nothing here.
 //!
-//! Work package: C22, `docs/work/phase-1-leaves/C22-folder-peek.md`.
+//! Work package: C22, `docs/rune/work/phase-1-leaves/C22-folder-peek.md`.
 //!
 //! [`Collection::rest`]: crate::collection::element::Collection::rest
 

@@ -2,7 +2,7 @@
 
 //! The `sidebar.*` slot tokens (for example `sidebar.row`) that PlacesSidebar reads.
 //!
-//! Work package: C8, `docs/work/phase-1-leaves/C8-places-sidebar.md`.
+//! Work package: C8, `docs/rune/work/phase-1-leaves/C8-places-sidebar.md`.
 //!
 //! W2 seeded `sidebar.row.height` so K4 has a slot to override before C8 lands. C8 owns this
 //! file. Slot names are API: renaming one breaks users' override files (plan K4).

@@ -2,7 +2,7 @@
 
 //! The `scroll.*` slot tokens that C24's overlay scroll bar and its autoscroll anchor read.
 //!
-//! Work package: C24, `docs/work/phase-1-leaves/C24-scroll-extras.md`. C24 owns this file:
+//! Work package: C24, `docs/rune/work/phase-1-leaves/C24-scroll-extras.md`. C24 owns this file:
 //! add tokens beside these, following `slots/mod.rs`. Keep their names, since slot names are
 //! API.
 //!

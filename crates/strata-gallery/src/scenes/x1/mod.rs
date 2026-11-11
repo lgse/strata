@@ -4,7 +4,7 @@
 //! `examples/shell` runs, on fake data. Scene names start with `x1-` and end in `-light` or
 //! `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/X1-shell-demo.md`.
+//! Work package: `docs/rune/work/phase-2-composites/X1-shell-demo.md`.
 //!
 //! - `x1-header-states-*` stacks four headers: a fresh profile (Close only), X11 with every
 //!   button, a maximised window, and Wayland with every button turned on (Minimize can't work

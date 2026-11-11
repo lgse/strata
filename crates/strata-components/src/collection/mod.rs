@@ -5,11 +5,11 @@
 //!
 //! Work packages:
 //!
-//! - C1a: `docs/work/phase-1-leaves/C1a-selection-model.md`
-//! - C1b: `docs/work/phase-2-composites/C1b-pointer-intent.md`
-//! - C1c: `docs/work/phase-2-composites/C1c-keyboard-navigation.md`
-//! - C1d: `docs/work/phase-2-composites/C1d-marquee.md`
-//! - C1e: `docs/work/phase-2-composites/C1e-collection-element.md`
+//! - C1a: `docs/rune/work/phase-1-leaves/C1a-selection-model.md`
+//! - C1b: `docs/rune/work/phase-2-composites/C1b-pointer-intent.md`
+//! - C1c: `docs/rune/work/phase-2-composites/C1c-keyboard-navigation.md`
+//! - C1d: `docs/rune/work/phase-2-composites/C1d-marquee.md`
+//! - C1e: `docs/rune/work/phase-2-composites/C1e-collection-element.md`
 
 pub mod element;
 pub mod keyboard;

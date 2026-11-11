@@ -18,7 +18,7 @@
 //! interval and animations switch that `browser/selection/click-modes` and the motion bullets
 //! read, as data.
 //!
-//! Work package: P5, `docs/work/phase-1-leaves/P5-desktop-settings.md`.
+//! Work package: P5, `docs/rune/work/phase-1-leaves/P5-desktop-settings.md`.
 
 mod fake_portal;
 

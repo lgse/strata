@@ -4,7 +4,7 @@
 //! (`browser/search/filter`, `.../filter/enter-target`), and the 10xer footer prompts, chord
 //! panel and flash (`integration/10xer-mode`).
 //!
-//! Work package: C18, `docs/work/phase-2-composites/C18-filter-bar-footer-prompt.md`.
+//! Work package: C18, `docs/rune/work/phase-2-composites/C18-filter-bar-footer-prompt.md`.
 //! Behaviour follows lgse/strata `upstream/main`: `src/ui/enter_target.rs`,
 //! `src/ui/browser_modes/filter.rs`, `src/ui/shortcut_footer/` (`prompt.rs`, `candidates.rs`,
 //! `chord_panel.rs`, `indicators.rs`), `src/ui/tenxer_mode.rs` and

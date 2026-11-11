@@ -13,7 +13,7 @@
 //! Minimise as far as the request reaching the window manager (sway minimises nothing).
 //! Maximise is a hand test: floating sway ignores it, so only the request is checked.
 //!
-//! Work package: P3, `docs/work/phase-1-leaves/P3-client-side-decorations.md`.
+//! Work package: P3, `docs/rune/work/phase-1-leaves/P3-client-side-decorations.md`.
 
 use std::time::{Duration, Instant};
 
@@ -86,7 +86,7 @@ fn wait_rect(s: &Session, pid: u32, what: &str, pred: impl Fn(&Window) -> bool) 
 /// Presses at `from`, moves to `to` with the button held, and releases.
 ///
 /// The pointer moves twice first and settles: a press right after a floating window maps or
-/// resizes can go nowhere (docs/testing.md, "Point, then press, after a relayout").
+/// resizes can go nowhere (docs/rune/testing.md, "Point, then press, after a relayout").
 fn drag(s: &Session, from: (f64, f64), to: (f64, f64)) {
     let input = s.input();
     input.pointer_move((from.0 + 1.0, from.1));

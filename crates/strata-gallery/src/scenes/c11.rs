@@ -3,7 +3,7 @@
 //! The gallery page for C11 DocumentView: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c11-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C11-document-view.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C11-document-view.md`.
 //!
 //! A document in C9's drawer beside a fake listing. Each fixture is what Strata's converters
 //! would hand over for one format: Strata's parsers aren't here, so the fixtures are built as

@@ -176,7 +176,7 @@
 //! keeps its controllers boxed where no accessor reaches. That handle is a recorded deviation
 //! from the accessor rule; C1e's `KeyController::tick` names it as the way to queue commands.
 //!
-//! Work package: C1c, `docs/work/phase-2-composites/C1c-keyboard-navigation.md`.
+//! Work package: C1c, `docs/rune/work/phase-2-composites/C1c-keyboard-navigation.md`.
 
 #![warn(missing_docs)]
 

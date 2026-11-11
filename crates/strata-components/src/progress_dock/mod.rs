@@ -5,7 +5,7 @@
 //! (`operations/progress`, `.../dock`, `.../jobs`). The component owns no operation:
 //! operations arrive as data, and Cancel is an intent.
 //!
-//! Work package: C16, `docs/work/phase-2-composites/C16-progress-dock.md`.
+//! Work package: C16, `docs/rune/work/phase-2-composites/C16-progress-dock.md`.
 //! Behaviour follows lgse/strata `upstream/main`: `src/ui/progress_dock.rs`,
 //! `src/ui/progress_dock/completion.rs`, `src/ui/notice.rs`, `src/ui/browser/progress/*`,
 //! `src/ui/jobs.rs`, `src/i18n.rs` and `src/style.css`.

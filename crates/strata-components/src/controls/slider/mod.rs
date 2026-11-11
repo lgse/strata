@@ -3,7 +3,7 @@
 //! Slider (C20a): a horizontal track with snap points, labelled or not, that reports while
 //! dragging and on commit (plan §4 C20: the density sliders, text size and thumbnail size).
 //!
-//! Work package: C20a, `docs/work/phase-1-leaves/C20a-slider-number-field.md`.
+//! Work package: C20a, `docs/rune/work/phase-1-leaves/C20a-slider-number-field.md`.
 //!
 //! The host holds a [`SliderState`] (the value and its [`Range`]) and builds a [`Slider`]
 //! over it each frame, with its snap points, name, value text and `on_change`. The slider

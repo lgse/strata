@@ -6,7 +6,7 @@
 //! Each row names a case on the left and shows its label on the right. The ranges come from
 //! `contract::fuzzy`, a substring search or `char_ranges`, as callers would get them.
 //!
-//! Work package: `docs/work/phase-0-groundwork/W1-component-contracts.md`.
+//! Work package: `docs/rune/work/phase-0-groundwork/W1-component-contracts.md`.
 
 use std::ops::Range;
 

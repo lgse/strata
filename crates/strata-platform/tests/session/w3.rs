@@ -4,7 +4,7 @@
 //! input reaching it, the peer's clipboard, drag and drop (with an `XdndProxy` too) and export
 //! on both backends, the private bus, and teardown, orderly and after a SIGKILL.
 //!
-//! Work package: W3, `docs/work/phase-0-groundwork/W3-compositor-harness.md`.
+//! Work package: W3, `docs/rune/work/phase-0-groundwork/W3-compositor-harness.md`.
 
 use strata_test_peer::protocol::{Action, Event, Offer, Payload, Selection, Via, fnv1a64, pattern};
 
@@ -530,7 +530,7 @@ fn drag_between_peers(display: Display, proxy: bool) {
     let a = s.peer(display);
     let b = s.peer(display);
     // sway tiles them side by side. The syncs make sure both have drawn at their tiled size;
-    // point_at makes sure the press reaches `a` (docs/testing.md, "Point, then press").
+    // point_at makes sure the press reaches `a` (docs/rune/testing.md, "Point, then press").
     a.map("w3 drag source");
     b.map("w3 drop target");
     let [from, to] = <[_; 2]>::try_from(s.wait_windows(&[a.pid(), b.pid()])).expect("two windows");

@@ -111,7 +111,7 @@ fn mount_look(mounting: Mounting, name: &str, look: Look) -> Runtime<Host> {
         error_from_poll: false,
     };
     // Rune's own font: a text system built here would move the fonts the crate's other tests
-    // measure with (docs/testing.md, R-K6-1).
+    // measure with (docs/rune/testing.md, R-K6-1).
     let mut rt = Runtime::new(host, view, (500.0, 400.0), Env::new(false, 1.0));
     rt.poll = Some(poll);
     rt.on_key = Some(on_key);

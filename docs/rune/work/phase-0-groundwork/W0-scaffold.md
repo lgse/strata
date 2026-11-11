@@ -49,7 +49,7 @@ After W0, a WP adds files in its own folders and touches shared files only by th
 - **Tasks:** `mise run bless [filter]` takes a filter, the way `test` does. Add
   `mise run compile-features` to check `strata-platform` with each feature alone, so no module
   relies on another's dependencies. `check` and CI run it.
-- **Docs:** `docs/testing.md` covers the script format, golden folders and bless filters.
+- **Docs:** `docs/rune/testing.md` covers the script format, golden folders and bless filters.
   Update `tests/README.md` to match.
 
 ## Out of scope

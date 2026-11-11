@@ -5,7 +5,7 @@
 //! Strata's does, and on Enter jumps to the best row, scrolls it into view, moves the keyboard
 //! to it and highlights it briefly.
 //!
-//! Work package: C20c, `docs/work/phase-1-leaves/C20c-tabbed-form-settings-search.md`.
+//! Work package: C20c, `docs/rune/work/phase-1-leaves/C20c-tabbed-form-settings-search.md`.
 //! Strata: `src/ui/settings/search.rs` and `search/{matching,filter,targets}.rs` at upstream
 //! `fb7eb0c4e`; the matcher is ported rule for rule ([`matching`]'s docs).
 //!

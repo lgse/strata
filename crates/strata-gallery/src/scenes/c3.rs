@@ -3,7 +3,7 @@
 //! The gallery page for C3 IconsGrid: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c3-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-3-views/C3-icons-grid.md`.
+//! Work package: `docs/rune/work/phase-3-views/C3-icons-grid.md`.
 //!
 //! The page is a stand-in Icons pane over five fake folders: Pictures (40 entries: folders,
 //! images and videos with thumbnails, audio, documents and two long names), Short (10, a short

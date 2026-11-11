@@ -4,7 +4,7 @@
 //! behind a button. It replaces GTK's `EmojiChooser` in Strata's Customize dialog, and can lay
 //! out the dialog's 16 bundled icons too.
 //!
-//! Work package: C20d, `docs/work/phase-4-integration/C20d-icon-picker.md`. Strata:
+//! Work package: C20d, `docs/rune/work/phase-4-integration/C20d-icon-picker.md`. Strata:
 //! `src/ui/browser/customization/icon_picker.rs` at lgse/strata `upstream/main` (a FlowBox of
 //! 16 icon buttons, and GTK's `EmojiChooser` in a popover); GTK 4.18's
 //! `gtk/gtkemojichooser.c` for the chooser's behaviour.

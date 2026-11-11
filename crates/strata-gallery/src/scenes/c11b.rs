@@ -4,7 +4,7 @@
 //! Scene names start with `c11b-` and end in `-light` or `-dark`.
 //!
 //! No work package doc of its own: split from C11's spreadsheet half
-//! (`docs/work/phase-2-composites/C11-document-view.md`).
+//! (`docs/rune/work/phase-2-composites/C11-document-view.md`).
 //!
 //! A sheet in C9's drawer beside a fake listing. Each fixture is what Strata's sandboxed
 //! reader would hand over: rows of text, the first the titles. The page stands in for

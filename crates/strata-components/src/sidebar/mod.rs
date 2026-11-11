@@ -4,7 +4,7 @@
 //! widths (full, icon rail, hidden), with pin insertion gaps, device rows and the Trash
 //! target.
 //!
-//! Work package: C8, `docs/work/phase-1-leaves/C8-places-sidebar.md`. Feature map nodes
+//! Work package: C8, `docs/rune/work/phase-1-leaves/C8-places-sidebar.md`. Feature map nodes
 //! `browser/sidebar`, `browser/sidebar/pins`, `browser/sidebar/pins/drag-to-pin`,
 //! `browser/sidebar/rail` and `devices/volumes/drive-order`. The GTK reference is lgse/strata
 //! `upstream/main` 35ee677ab (`src/ui/window/sidebar*.rs`); it has the rail and the

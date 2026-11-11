@@ -3,7 +3,7 @@
 //! The gallery page for C14b Viewers and archive preview: its scenes, demo state, view and key and
 //! poll hooks. Scene names start with `c14b-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-3-views/C14b-viewers.md`.
+//! Work package: `docs/rune/work/phase-3-views/C14b-viewers.md`.
 //!
 //! Each viewer sits in C9's preview drawer beside a fake listing, so the header's busy spinner
 //! and the drawer's width are real. Renders, loads and unlocks are fake workers on the virtual

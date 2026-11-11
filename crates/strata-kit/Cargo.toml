@@ -21,7 +21,7 @@ include = [
 # Each work package adds its third-party dependencies in its own block below. Keep the blank
 # lines: git conflicts when two branches edit neighbouring lines. A crate appears once: one
 # already declared in any block is usable from every module, so use it as it is. The shared
-# block takes a crate two work packages would add at once (docs/testing.md).
+# block takes a crate two work packages would add at once (docs/rune/testing.md).
 [dependencies]
 rune.workspace = true
 rune-kit.workspace = true

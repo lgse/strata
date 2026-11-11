@@ -18,7 +18,7 @@ and no pull requests; each entry below is one issue or one comment.
 1. **Collected** every draft: `git grep` for `U-…`, `R-…` and "Rune draft" in `crates` and
    `docs`, the "Rune drafts" and "Rune gaps" sections of each module's docs,
    [`S5-upstream.md`](../../decisions/S5-upstream.md) (U1–U17 and the later appendix), the S1–S3
-   records it cites, `docs/testing.md` and `docs/work/STATUS.md`.
+   records it cites, `docs/rune/testing.md` and `docs/rune/work/STATUS.md`.
 2. **Checked each gap twice**: at the pin, in cargo's checkout of Rune, and at `04b38ae`, in a
    worktree of the upstream clone. Each entry's `Checked` row says how: a repro run, the source
    read (with `file:line`), or an earlier probe by the work package that found it.
@@ -250,29 +250,29 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 
 | Draft | Written in | Packet |
 | --- | --- | --- |
-| U1 (S2 R1) | `docs/decisions/S5-upstream.md` | [05] |
-| U2 (S2 R2) | `docs/decisions/S5-upstream.md` | [06] |
-| U3 (W1) | `docs/decisions/S5-upstream.md` | [14] |
-| U4 | `docs/decisions/S5-upstream.md` | drop: withdrawn |
-| U5 (S2 R3, P2's amendment) | `docs/decisions/S5-upstream.md` | [07] |
-| U6 (S1 R1) | `docs/decisions/S5-upstream.md` | [11], [12] |
-| U7 (S1 R2) | `docs/decisions/S5-upstream.md` | [12] |
-| U8 (S1 R3) | `docs/decisions/S5-upstream.md` | [13] |
-| U9 (S1 R7, S2 R4, S3) | `docs/decisions/S5-upstream.md` | [01] |
-| U10 (S2 R5) | `docs/decisions/S5-upstream.md` | [08] |
-| U11 (S3) and P4's amendments | `docs/decisions/S5-upstream.md` | [23] |
-| U12 (S1 R5) | `docs/decisions/S5-upstream.md` | [24] |
-| U13 (S1 R4) | `docs/decisions/S5-upstream.md` | [25] |
-| U14 (S1 R6) | `docs/decisions/S5-upstream.md` | [04] |
-| U15 | `docs/decisions/S5-upstream.md` | [17] |
-| U16 | `docs/decisions/S5-upstream.md` | [84] |
-| U17 (W1) | `docs/decisions/S5-upstream.md` | [57] |
+| U1 (S2 R1) | `docs/rune/decisions/S5-upstream.md` | [05] |
+| U2 (S2 R2) | `docs/rune/decisions/S5-upstream.md` | [06] |
+| U3 (W1) | `docs/rune/decisions/S5-upstream.md` | [14] |
+| U4 | `docs/rune/decisions/S5-upstream.md` | drop: withdrawn |
+| U5 (S2 R3, P2's amendment) | `docs/rune/decisions/S5-upstream.md` | [07] |
+| U6 (S1 R1) | `docs/rune/decisions/S5-upstream.md` | [11], [12] |
+| U7 (S1 R2) | `docs/rune/decisions/S5-upstream.md` | [12] |
+| U8 (S1 R3) | `docs/rune/decisions/S5-upstream.md` | [13] |
+| U9 (S1 R7, S2 R4, S3) | `docs/rune/decisions/S5-upstream.md` | [01] |
+| U10 (S2 R5) | `docs/rune/decisions/S5-upstream.md` | [08] |
+| U11 (S3) and P4's amendments | `docs/rune/decisions/S5-upstream.md` | [23] |
+| U12 (S1 R5) | `docs/rune/decisions/S5-upstream.md` | [24] |
+| U13 (S1 R4) | `docs/rune/decisions/S5-upstream.md` | [25] |
+| U14 (S1 R6) | `docs/rune/decisions/S5-upstream.md` | [04] |
+| U15 | `docs/rune/decisions/S5-upstream.md` | [17] |
+| U16 | `docs/rune/decisions/S5-upstream.md` | [84] |
+| U17 (W1) | `docs/rune/decisions/S5-upstream.md` | [57] |
 | U-P1-1, U-P1-2 | `strata-platform/src/dnd/mod.rs`; S5 | [15] |
-| U-X2-1 | `docs/decisions/S5-upstream.md` | [15] |
+| U-X2-1 | `docs/rune/decisions/S5-upstream.md` | [15] |
 | U-P6-1 | `strata-platform/src/icon_theme`; S5 | [22] |
 | U-P6-2 | `strata-platform/src/icon_theme`; S5 | [93] |
 | U-P7-1 | `strata-platform/src/media`; S5 | [26] |
-| U-P7-2 | `docs/decisions/S5-upstream.md` | [92] |
+| U-P7-2 | `docs/rune/decisions/S5-upstream.md` | [92] |
 | U-P8-1 | `strata-platform/src/single_instance`; S5 | [58] |
 | U18, U19, U20, U21, U22 | `sidebar/mod.rs` | [40] |
 | U23 | `sidebar/mod.rs` | drop: fixed in `3847cf0a` |
@@ -343,7 +343,7 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 | U-C19-2 | `footer/mod.rs` | [47] |
 | U-C20a-1, rune-kit NumberField proposal | `controls/number_field/mod.rs` | [21] |
 | #149 comment | `controls/slider/mod.rs` | [54] |
-| U-C20a follow-up: a declined notch is dropped | `docs/work/STATUS.md` (C20a) | [10] |
+| U-C20a follow-up: a declined notch is dropped | `docs/rune/work/STATUS.md` (C20a) | [10] |
 | U-C20b-1 | `controls/color_picker/mod.rs` | [69] |
 | U-C20b-2, reason half | `controls/color_picker/mod.rs` | [32] |
 | U-C20b-2, `Tx` half | `controls/color_picker/mod.rs` | drop: fixed in `22aa8cde` |
@@ -391,7 +391,7 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 | R-C14b-1 | `viewers/mod.rs` | [42] |
 | R-C14b-2 | `viewers/mod.rs` | [77] |
 | R-C14b-3 | `viewers/mod.rs` | [03] |
-| R-K6-1 | `docs/testing.md` | [85] |
+| R-K6-1 | `docs/rune/testing.md` | [85] |
 | U-K3-3 | `strata-kit/icons/README.md` | [94] |
 | U-X1-1 | `header/mod.rs` | drop: doesn't apply |
 | U-X1-2 | `header/mod.rs` | [44] |

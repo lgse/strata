@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! S3's three owner decisions (`docs/decisions/S3-foreign-parent.md`, "Owner decisions"),
+//! S3's three owner decisions (`docs/rune/decisions/S3-foreign-parent.md`, "Owner decisions"),
 //! **ruled by the owner on 2026-11-10**. The rulings follow S3's recommendations, and the code
 //! for them is kept here so a later change touches only this file.
 //!

@@ -14,7 +14,7 @@
 //! D needs libwayland 1.23 or later (winit's display); on an older host its tests check only
 //! that the app reports no route there, and say so on stderr.
 //!
-//! Work package: P2, `docs/work/phase-2-composites/P2-clipboard.md`.
+//! Work package: P2, `docs/rune/work/phase-2-composites/P2-clipboard.md`.
 
 use std::time::{Duration, Instant};
 

@@ -420,7 +420,7 @@ No Rune patch. Everything goes behind P0's internal `transfer` module; P1, P2 an
      stop check. No crash is not
      evidence of safety for a use-after-free. Exit codes are from the shell (`$?`, 139 =
      SIGSEGV). In the first pass they were printed but not saved; the second pass saved them.
-   - This matches S3's E1.7 (`docs/decisions/S3-foreign-parent.md`). The first version of this
+   - This matches S3's E1.7 (`docs/rune/decisions/S3-foreign-parent.md`). The first version of this
      record called an un-stopped reader harmless. That was wrong: the prototype held the
      binding in a `static`, so its destructor never ran.
    - R4's lifetime hook would remove this rule.

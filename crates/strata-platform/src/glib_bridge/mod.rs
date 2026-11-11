@@ -8,7 +8,7 @@
 //!
 //! Rune issue: S5 drafts.
 //!
-//! Work package: P9, `docs/work/phase-1-leaves/P9-glib-bridge.md`.
+//! Work package: P9, `docs/rune/work/phase-1-leaves/P9-glib-bridge.md`.
 //!
 //! # The shape
 //!

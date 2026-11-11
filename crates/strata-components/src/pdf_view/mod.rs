@@ -3,7 +3,7 @@
 //! PdfView (C12): PDF pages from Strata's sandboxed renderer as a scrolling, zoomable and
 //! selectable view. The renderer and its protocol are unchanged.
 //!
-//! Work package: C12, `docs/work/phase-2-composites/C12-pdf-view.md`. Plan §4 C12. Feature map
+//! Work package: C12, `docs/rune/work/phase-2-composites/C12-pdf-view.md`. Plan §4 C12. Feature map
 //! node `preview/preview-panel/pdf`, with the PDF bullets of `preview/preview-panel`,
 //! `.../layout`, `preview/quick-preview` and `app/window/key-dispatch`, against Strata's
 //! `src/ui/preview/pdf.rs`, `pdf/`, `pdf_text.rs` and `src/sandbox_helper/pdf.rs` at

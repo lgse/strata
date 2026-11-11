@@ -2,7 +2,7 @@
 
 //! ListTable (C4): the List view, built on the collection element (C1e).
 //!
-//! Work package: C4, `docs/work/phase-3-views/C4-list-table.md`.
+//! Work package: C4, `docs/rune/work/phase-3-views/C4-list-table.md`.
 //!
 //! [`ListTable`] draws a [`Collection`] as a table: each row's cells come from the host's
 //! [`Column`]s, a heading strip above the rows sorts, resizes and reorders them, and a columns

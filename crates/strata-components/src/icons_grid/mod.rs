@@ -2,7 +2,7 @@
 
 //! IconsGrid (C3): the Icons view, a grid of thumbnail tiles on the collection element (C1e).
 //!
-//! Work package: C3, `docs/work/phase-3-views/C3-icons-grid.md`.
+//! Work package: C3, `docs/rune/work/phase-3-views/C3-icons-grid.md`.
 //!
 //! Rune virtualizes vertical rows only (Rune draft U15, S5), so the grid packs N tiles into each
 //! of C1e's virtual lines ([`GridLines`]), N from the viewport width and the tile size, and lays

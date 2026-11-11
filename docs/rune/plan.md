@@ -16,14 +16,14 @@ its maintainers ask for issues. Anything this plan needs from Rune core is eithe
 filed upstream or a shim in this repository that is deleted once Rune ships the feature.
 
 The published crate keeps the name `strata-platform` (the owner's ruling on §10 question 1;
-the options are in `docs/decisions/S5-upstream.md`, "Crate name"). The name is taken on
+the options are in `docs/rune/decisions/S5-upstream.md`, "Crate name"). The name is taken on
 crates.io by an unrelated crate, so releases are git tags only (§8). No release has been
 tagged yet.
 
 The minimum libwayland is 1.23 (the owner's ruling on S3's decision 1, 2026-11-10): P0, P1,
 P2 and P4 reach winit's display through `wl_proxy_get_display`, which 1.23 added. Ubuntu
 24.04 (libwayland 1.22) is not supported. On an older libwayland the shims still degrade
-rather than fail (`docs/decisions/S3-foreign-parent.md`, decision 1), but that path is
+rather than fail (`docs/rune/decisions/S3-foreign-parent.md`, decision 1), but that path is
 unsupported.
 
 ## 1. Findings in brief
@@ -199,7 +199,7 @@ These Wayland gaps are deliberate parity regressions against GTK Strata.
 for the requesting app's window. The handle is `wayland:<xdg_foreign handle>` or `x11:<xid>`,
 so the shim needs `zxdg_importer_v2` and X11 `WM_TRANSIENT_FOR`. Hyprland placement
 (`integration/portal-file-chooser/window-placement`) stays Strata-side. S3's three decisions,
-ruled by the owner on 2026-11-10 (`docs/decisions/S3-foreign-parent.md`):
+ruled by the owner on 2026-11-10 (`docs/rune/decisions/S3-foreign-parent.md`):
 1. libwayland 1.23 is the minimum (§0). On an older one the window opens parentless
    (`Reason::NoDisplay`), an unsupported environment rather than a supported fallback.
 2. An `x11:` parent on a Wayland chooser stays parentless, as GTK Strata does. An Xwayland
@@ -245,7 +245,7 @@ chooser's minimum to fit its menus meanwhile.
 
 ### Tier 2: Strata components
 
-Some components shipped as several work packages (`docs/work/README.md`): C1 as C1a–C1f, C2
+Some components shipped as several work packages (`docs/rune/work/README.md`): C1 as C1a–C1f, C2
 and C2b, C10 as C10a and C10b, C11 and C11b, C14 as C14a–C14c, C20 as C20a–C20d, and C24 and
 C24b. Where a component below differs from this plan's first draft, the text says what shipped
 and why; each such deviation is signed off by the owner, and its work package and module docs
@@ -343,7 +343,7 @@ slot. It hosts C10–C14 and serves both the browser and the chooser.
   128 KiB cut. Whether C10a moves to it is open for the owner (it reopens S4).
   - **Grammars:** syntect's default set plus `two-face` (bat's extra syntaxes), to come close
     to sourceview's language coverage. The backend is `onig`, the owner's decision after S4
-    (`docs/decisions/S4-syntect-backend.md`): `onig` meets the 8 ms viewport reading on every
+    (`docs/rune/decisions/S4-syntect-backend.md`): `onig` meets the 8 ms viewport reading on every
     fixture, where `fancy-regex` needs a state cached for every line and never meets it on
     Markdown. The build gains Oniguruma, a C library.
   - **The thread:** `onig`'s `ParseState` is neither `Send` nor `Sync`, so one thread owns
@@ -582,7 +582,7 @@ Strata-side work that no component owns, listed so nothing falls through:
 
 | Phase | Scope | Exit check |
 | --- | --- | --- |
-| 0. Spike | Rune window on Hyprland, GNOME and X11. File Rune issues for P1–P5 and popup surfaces. P9 bridge prototype. Settle the crate name (ruled: it keeps `strata-platform`, §0), and set up `strata-platform`'s CI and release workflow. syntect `fancy-regex` vs `onig` benchmark (S4: `onig`, `docs/decisions/S4-syntect-backend.md`). | Each of P1–P5: Rune shipped, or "shim here" decided. Crate name settled. |
+| 0. Spike | Rune window on Hyprland, GNOME and X11. File Rune issues for P1–P5 and popup surfaces. P9 bridge prototype. Settle the crate name (ruled: it keeps `strata-platform`, §0), and set up `strata-platform`'s CI and release workflow. syntect `fancy-regex` vs `onig` benchmark (S4: `onig`, `docs/rune/decisions/S4-syntect-backend.md`). | Each of P1–P5: Rune shipped, or "shim here" decided. Crate name settled. |
 | 1. Foundations | strata-kit K1–K4, P3, P5, P8, P9, C15, the gallery. First `strata-platform` release. | A themed empty window with the header, opened by `strata %U`, a second launch forwarded |
 | 2. Collection | C1, C3, C4, C2, C5, C24, C25 | 100k-entry folder at 60 Hz. Selection and rename scripts pass. |
 | 3. Chrome | C6, C7, C8, C19, C21, C22, C17, C18 | Navigation, tabs, sidebar, search and 10xer sweeps pass headless |

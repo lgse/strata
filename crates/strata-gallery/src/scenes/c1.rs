@@ -3,7 +3,7 @@
 //! The gallery page for C1e Collection element: its scenes, demo state, view and key and poll
 //! hooks. Scene names start with `c1-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C1e-collection-element.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C1e-collection-element.md`.
 //!
 //! The page is a stand-in file pane over four fake folders: Documents (10 entries), Photos
 //! (2,000), Archive (100,000) and Empty. Its header shows the folder, the preview (the

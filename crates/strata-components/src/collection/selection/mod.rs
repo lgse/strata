@@ -84,7 +84,7 @@
 //!   operations here leave the cursor and the anchor alone.
 //! - [`RestoreMemory`] is bounded both by folders and by the ids it holds in total.
 //!
-//! Work package: C1a, `docs/work/phase-1-leaves/C1a-selection-model.md`.
+//! Work package: C1a, `docs/rune/work/phase-1-leaves/C1a-selection-model.md`.
 
 #![warn(missing_docs)]
 

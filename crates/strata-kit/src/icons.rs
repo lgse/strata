@@ -4,8 +4,8 @@
 //!
 //! Work packages:
 //!
-//! - W2 (the semantic set): `docs/work/phase-0-groundwork/W2-look-contract.md`
-//! - K3 (the Lucide and Catppuccin catalogs): `docs/work/phase-1-leaves/K3-icon-catalogs.md`
+//! - W2 (the semantic set): `docs/rune/work/phase-0-groundwork/W2-look-contract.md`
+//! - K3 (the Lucide and Catppuccin catalogs): `docs/rune/work/phase-1-leaves/K3-icon-catalogs.md`
 //!
 //! W0 declared K3's catalog modules here, so K3 works only inside `icons/`.
 //!
@@ -14,7 +14,7 @@
 //! catalog's own name ([`IconSet::named`]), for Strata's file-name → icon mapping and C20d's
 //! picker. K3 generates them from `crates/strata-kit/icons/`; [`PLACEHOLDER`] stays for tests.
 //!
-//! Adding a name is a W2 contract change (rule 4 in `docs/work/README.md`): it needs an icon
+//! Adding a name is a W2 contract change (rule 4 in `docs/rune/work/README.md`): it needs an icon
 //! in every catalog, and K3's mapping fails to build without one.
 
 use rune::Icon;

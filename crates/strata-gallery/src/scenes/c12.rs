@@ -3,7 +3,7 @@
 //! The gallery page for C12 PdfView: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c12-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C12-pdf-view.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C12-pdf-view.md`.
 //!
 //! A PDF in C9's drawer beside a fake listing. A fake document stands in for the file: pages of
 //! generated prose, a landscape page, a scan with no text layer and a page that fails. A fake

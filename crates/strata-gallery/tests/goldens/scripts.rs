@@ -4,7 +4,7 @@
 //! (`--scene <scene> --script <file> --tree <out>`). It fails when the script is malformed or
 //! names no feature-map bullets, when Rune rejects it or reports key warnings, when an
 //! `expect` entry doesn't hold, or when the accessibility tree it ends on differs from
-//! `tests/golden/scripts/<id>/<name>.json`. `docs/testing.md` describes the format.
+//! `tests/golden/scripts/<id>/<name>.json`. `docs/rune/testing.md` describes the format.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};

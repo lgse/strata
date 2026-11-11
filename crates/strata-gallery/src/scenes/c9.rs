@@ -3,7 +3,7 @@
 //! The gallery page for C9 PreviewDrawer: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c9-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C9-preview-drawer.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C9-preview-drawer.md`.
 //!
 //! The drawer beside a fake listing (List, Icons, or a Columns strip), hosting a fake document
 //! that answers find. The page's keys stand in for Strata's policy: Space toggles the preview,

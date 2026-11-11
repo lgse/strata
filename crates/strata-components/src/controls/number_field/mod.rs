@@ -4,7 +4,7 @@
 //! a step and an optional unit (plan §4 C20: thumbnail workers, text size, the corner
 //! roundness percent).
 //!
-//! Work package: C20a, `docs/work/phase-1-leaves/C20a-slider-number-field.md`.
+//! Work package: C20a, `docs/rune/work/phase-1-leaves/C20a-slider-number-field.md`.
 //!
 //! The host holds a [`NumberFieldState`] (the value, its [`Range`], its unit and the text
 //! being edited) and builds a [`NumberField`] over it each frame, calling

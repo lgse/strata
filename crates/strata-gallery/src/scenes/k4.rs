@@ -3,7 +3,7 @@
 //! The gallery page for K4 User overrides: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `k4-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/K4-user-overrides.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/K4-user-overrides.md`.
 //!
 //! The page shows an override file applied to a bundled theme (Omarchy Light in light, Tokyo
 //! Night in dark): the file with its line numbers down the left, its problems as a user reads

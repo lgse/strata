@@ -29,7 +29,7 @@
 //!
 //! # What Rune lacks
 //!
-//! Rune issues: none filed yet; the drafts are in `docs/decisions/S5-upstream.md`.
+//! Rune issues: none filed yet; the drafts are in `docs/rune/decisions/S5-upstream.md`.
 //!
 //! - **U1** (draft, not filed): `drag_out` starts nothing off macOS, takes no MIME types and
 //!   no actions, and its live-frame element snapshot is `pub(crate)`. P1's source is an
@@ -164,7 +164,7 @@
 //! - W1's `choose_action` maps onto [`DropTarget::action`], which wins over P1's modifier
 //!   rule.
 //!
-//! Work package: P1, `docs/work/phase-2-composites/P1-drag-and-drop.md`.
+//! Work package: P1, `docs/rune/work/phase-2-composites/P1-drag-and-drop.md`.
 
 mod api;
 mod hub;

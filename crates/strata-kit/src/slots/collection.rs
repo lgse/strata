@@ -3,7 +3,7 @@
 //! The `collection.*` slot tokens (for example `collection.row`) that the collection element
 //! reads, and the views built on it through it.
 //!
-//! Work package: C1e, `docs/work/phase-2-composites/C1e-collection-element.md`. W1c added the
+//! Work package: C1e, `docs/rune/work/phase-2-composites/C1e-collection-element.md`. W1c added the
 //! first tokens so C1e can land against them. C1e owns this file: add tokens beside them,
 //! following `slots/mod.rs`. Keep their names, since slot names are API.
 

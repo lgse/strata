@@ -2,7 +2,7 @@
 
 //! Frame and Content density, and the bar and row sizes they set with the text size.
 //!
-//! Work package: K2, `docs/work/phase-1-leaves/K2-shape-density-type.md`.
+//! Work package: K2, `docs/rune/work/phase-1-leaves/K2-shape-density-type.md`.
 //!
 //! Values are Strata's, read at `lgse/strata` `upstream/main` 35ee677ab:
 //! `src/ui/browser_modes/density.rs` (the scales and the Custom interpolation),

@@ -198,7 +198,7 @@ const MARGINS: f32 = 16.0;
 /// The chooser's minimum size for `menus`, the menus it can open, each menu and submenu
 /// measured as [`super::ContextMenu`] draws it in `look`.
 ///
-/// The rule is S1's (Q5, `docs/decisions/S1-linux-window.md`), for menus of different
+/// The rule is S1's (Q5, `docs/rune/decisions/S1-linux-window.md`), for menus of different
 /// widths. Tiling compositors ignore a window's minimum size, so a tiled chooser can still be
 /// smaller.
 pub fn chooser_minimum(menus: &[MenuModel], look: &Look) -> ChooserMinimum {

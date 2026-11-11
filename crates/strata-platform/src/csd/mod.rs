@@ -33,8 +33,8 @@
 //!   `.window_drag()`, and a header with press handlers of its own is no longer a drag region,
 //!   while `.window_drag()` is the only way to start a move on Wayland.
 //!
-//! Work package: P3, `docs/work/phase-1-leaves/P3-client-side-decorations.md`. The findings
-//! behind it are `docs/decisions/S1-linux-window.md` (Q2, Q3).
+//! Work package: P3, `docs/rune/work/phase-1-leaves/P3-client-side-decorations.md`. The findings
+//! behind it are `docs/rune/decisions/S1-linux-window.md` (Q2, Q3).
 //!
 //! # The shape
 //!

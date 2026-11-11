@@ -169,7 +169,7 @@
 //! `middle-dragged` checks only the dragged half of its bullet: the page's intent label can't
 //! count tabs, so the double middle click is `a_double_middle_click_opens_one_tab_and_a_dragged_one_none`.
 
-//! Work package: C1b, `docs/work/phase-2-composites/C1b-pointer-intent.md`.
+//! Work package: C1b, `docs/rune/work/phase-2-composites/C1b-pointer-intent.md`.
 
 #![warn(missing_docs)]
 

@@ -3,7 +3,7 @@
 //! `Look`: the `rune_kit::Kit` plus Strata's extension tokens, the one surface components read
 //! their look from.
 //!
-//! Work package: W2, `docs/work/phase-0-groundwork/W2-look-contract.md`.
+//! Work package: W2, `docs/rune/work/phase-0-groundwork/W2-look-contract.md`.
 //!
 //! # Building a look
 //!

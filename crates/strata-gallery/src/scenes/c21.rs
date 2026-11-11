@@ -3,7 +3,7 @@
 //! The gallery page for C21 Context menus: its scenes, demo state, view and key and poll
 //! hooks. Scene names start with `c21-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C21-context-menus.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C21-context-menus.md`.
 //!
 //! The page is a stand-in pane over a fake Documents folder (40 entries), with a search field
 //! over it. The page plays Strata's part: it builds each menu's model from

@@ -2,7 +2,7 @@
 
 //! The `media.*` slot tokens (for example `media.waveform.played`) that MediaPlayer reads.
 //!
-//! Work package: C13, `docs/work/phase-2-composites/C13-media-player.md`. C13 owns this file.
+//! Work package: C13, `docs/rune/work/phase-2-composites/C13-media-player.md`. C13 owns this file.
 //! Slot names are API: renaming one breaks users' override files (plan K4).
 //!
 //! Every default follows the core tokens. Strata's media palette

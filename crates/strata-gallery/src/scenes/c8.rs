@@ -3,7 +3,7 @@
 //! The gallery page for C8 PlacesSidebar: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c8-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C8-places-sidebar.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C8-places-sidebar.md`.
 //!
 //! The page draws a header with the sidebar toggle, the sidebar, and a stand-in file pane: a
 //! focusable `c8-files` element and a `c8-log` line naming the last intent, which scripts read.

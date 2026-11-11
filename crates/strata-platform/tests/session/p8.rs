@@ -21,7 +21,7 @@
 //! taking the name from another owner, D-Bus activation). What a window opens and selects is
 //! Strata's.
 //!
-//! Work package: P8, `docs/work/phase-1-leaves/P8-single-instance.md`.
+//! Work package: P8, `docs/rune/work/phase-1-leaves/P8-single-instance.md`.
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -981,7 +981,7 @@ fn second_launch_opens_a_focused_window_in_the_primary_x11() {
 /// it take focus; without one sway marks it urgent. sway focuses an X11 window that asks
 /// (`focus_on_window_activation focus`, W3's config) with or without a startup id, so the X11
 /// case can't show what mutter and KWin do with the timestamp-less request (U-P8-1,
-/// `docs/decisions/S5-upstream.md#u-p8-1`).
+/// `docs/rune/decisions/S5-upstream.md#u-p8-1`).
 fn bare_launch_raises(display: Display) {
     let s = Session::start();
     let primary = start_primary(&s, "demo", command(&s, DEMO, display));

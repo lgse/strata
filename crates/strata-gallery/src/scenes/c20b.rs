@@ -3,7 +3,7 @@
 //! The gallery page for C20b ColorPicker: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c20b-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C20b-color-picker.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C20b-color-picker.md`.
 //!
 //! The page lays the picker out as Strata uses GTK's: inline as the custom folder colour
 //! editor (Strata's seven presets as the theme row, recent colours under them, and a folder

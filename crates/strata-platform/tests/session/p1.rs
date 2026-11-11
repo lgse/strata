@@ -3,7 +3,7 @@
 //! P1's session tests: drags out to the peer and drops in from it, on Wayland and X11, with
 //! the `dnd` example (`examples/dnd.rs`) as the app.
 //!
-//! Work package: P1, `docs/work/phase-2-composites/P1-drag-and-drop.md`.
+//! Work package: P1, `docs/rune/work/phase-2-composites/P1-drag-and-drop.md`.
 //!
 //! What runs here, per backend: a drag out with three MIME types that the peer reads; drops
 //! in of `text/uri-list`, `text/plain`, `text/x-moz-url`, `image/png` and HTML; the action

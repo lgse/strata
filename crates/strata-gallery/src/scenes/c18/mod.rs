@@ -3,7 +3,7 @@
 //! The gallery page for C18 FilterBar and FooterPrompt: its scenes, demo state, view and key and
 //! poll hooks. Scene names start with `c18-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C18-filter-bar-footer-prompt.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C18-filter-bar-footer-prompt.md`.
 //!
 //! A stand-in file pane over one fake folder: a header with the filter toggle, the filter bar,
 //! the listing (a C1e collection whose keys come from the pane, its one focus stop, so a chord

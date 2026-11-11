@@ -3,7 +3,7 @@
 //! The gallery page for C2 ColumnsView: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c2-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-3-views/C2-columns-view.md`.
+//! Work package: `docs/rune/work/phase-3-views/C2-columns-view.md`.
 //!
 //! The page is a stand-in Columns pane over a fake tree (see [`folder`]): Home, holding
 //! Documents, Pictures, Music, Projects, Empty, Slow (which takes 2 s to list), Big (100,000

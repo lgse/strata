@@ -3,7 +3,7 @@
 //! LocationBar (C6): breadcrumbs that switch to an entry with path completion, in the header's
 //! middle (`browser/navigation/location-bar` and `.../completion`).
 //!
-//! Work package: C6, `docs/work/phase-1-leaves/C6-location-bar.md`. Behaviour follows the
+//! Work package: C6, `docs/rune/work/phase-1-leaves/C6-location-bar.md`. Behaviour follows the
 //! feature map, against lgse/strata `upstream/main` 35ee677ab (`src/ui/browser/location.rs`,
 //! `location/breadcrumbs.rs`, `location/completion.rs`, `view_setup.rs`, `style.css`).
 //!

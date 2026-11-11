@@ -2,7 +2,7 @@
 
 How the gallery, its goldens and its scripts fit together, and how a work package adds to
 them without touching another's files. The plan's testing rules are in
-[`plan.md` §6](plan.md#6-testing). The repository rules are in [`AGENTS.md`](../AGENTS.md).
+[`plan.md` §6](plan.md#6-testing). The repository rules are in [`AGENTS.md`](../../AGENTS.md).
 
 ## Gallery pages
 

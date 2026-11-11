@@ -5,7 +5,7 @@
 //! including Catppuccin's file-type icons, which also get Strata's 15 % fill. Licences: ISC
 //! (Lucide, with Feather's MIT) and MIT (Catppuccin), `crates/strata-kit/icons/README.md`.
 //!
-//! Work package: K3, `docs/work/phase-1-leaves/K3-icon-catalogs.md`.
+//! Work package: K3, `docs/rune/work/phase-1-leaves/K3-icon-catalogs.md`.
 //!
 //! All three catalogs hold the same icons under the same names: Strata's Lucide interface and
 //! generic file-type icons (`strata-folder`), its Catppuccin icons for code and config files

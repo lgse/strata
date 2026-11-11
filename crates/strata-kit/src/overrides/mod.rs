@@ -3,7 +3,7 @@
 //! User overrides: `overrides.toml`, applied after the theme, with live reload and errors by
 //! line.
 //!
-//! Work package: K4, `docs/work/phase-1-leaves/K4-user-overrides.md`. This replaces Strata's
+//! Work package: K4, `docs/rune/work/phase-1-leaves/K4-user-overrides.md`. This replaces Strata's
 //! user stylesheet, `~/.config/strata/style.css` (lgse/strata `upstream/main` 35ee677ab), and
 //! [`migrate_css`] converts what of one can be converted. `MIGRATION.md`, beside this file, is
 //! the note for Strata's changelog (K4 and K5).

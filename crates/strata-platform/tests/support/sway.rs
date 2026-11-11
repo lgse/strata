@@ -2,7 +2,7 @@
 
 //! A nested headless sway, with Xwayland, and its IPC.
 //!
-//! Traps found by S1, S2 and S3 under headless sway (docs/testing.md):
+//! Traps found by S1, S2 and S3 under headless sway (docs/rune/testing.md):
 //!
 //! - `/usr/bin/sway` may carry `cap_sys_nice` and go realtime. Where `RLIMIT_RTTIME` is 0 the
 //!   kernel kills it at once, so it starts as `setpriv --no-new-privs sway`, which drops the

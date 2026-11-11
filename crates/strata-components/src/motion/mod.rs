@@ -3,7 +3,7 @@
 //! Motion effects (C23): the trash flight and the permanent-delete dissolve, built against
 //! keys, so they work with any row and any target.
 //!
-//! Work package: C23, `docs/work/phase-1-leaves/C23-motion-effects.md`.
+//! Work package: C23, `docs/rune/work/phase-1-leaves/C23-motion-effects.md`.
 //!
 //! Rune 2a44156: **partly**. `El::matched` flies the icons (one straight path on a
 //! spring, drawn above the window), `El::sequence` draws their fades and shrinks and the

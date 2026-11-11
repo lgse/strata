@@ -27,7 +27,7 @@
 //!
 //! # What Rune lacks
 //!
-//! Rune issues: none filed yet; the drafts are in `docs/decisions/S5-upstream.md`.
+//! Rune issues: none filed yet; the drafts are in `docs/rune/decisions/S5-upstream.md`.
 //!
 //! - **U5** (draft, not filed): Rune's `Tx::copy_rich` writes one form per copy on Linux (the
 //!   files as `text/uri-list` only, else a PNG, else HTML beside text, else text), with no
@@ -118,7 +118,7 @@
 //! | Hyprland | data control; Nautilus and Dolphin both ways |
 //! | Nemo, Caja, Thunar, the GNOME desktop icons | paste a copy and a cut made here |
 //!
-//! Work package: P2, `docs/work/phase-2-composites/P2-clipboard.md`.
+//! Work package: P2, `docs/rune/work/phase-2-composites/P2-clipboard.md`.
 
 mod api;
 mod book;

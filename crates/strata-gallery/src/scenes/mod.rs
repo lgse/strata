@@ -82,7 +82,7 @@ impl Page {
 }
 
 /// The groups the index lists pages under: the work plan's lanes
-/// (`docs/work/README.md`), with phase 0's contracts as their own group.
+/// (`docs/rune/work/README.md`), with phase 0's contracts as their own group.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lane {
     Groundwork,

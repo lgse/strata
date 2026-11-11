@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Generates the icon catalogs (K3, `docs/work/phase-1-leaves/K3-icon-catalogs.md`) from the
+//! Generates the icon catalogs (K3, `docs/rune/work/phase-1-leaves/K3-icon-catalogs.md`) from the
 //! SVG sources in `icons/` (`icons/README.md`) into `$OUT_DIR/catalog.rs`.
 //!
 //! This file reads and writes; `src/icons/lucide/generate.rs` holds the rules (what a source

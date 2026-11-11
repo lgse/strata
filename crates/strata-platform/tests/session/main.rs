@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 //! strata-platform's compositor and D-Bus tests: one binary, one module per work package, each
-//! test in a private session from `tests/support/` (docs/testing.md, "Compositor and D-Bus
+//! test in a private session from `tests/support/` (docs/rune/testing.md, "Compositor and D-Bus
 //! tests"). Every test that starts a session is `#[ignore]`d: `mise run test-platform` runs
 //! them (`mise run test-platform p2::` runs one package's), and `mise run test` never does.
 //!

@@ -2,7 +2,7 @@
 
 //! P4's session tests: parenting to the peer's exported window.
 //!
-//! Work package: P4, `docs/work/phase-2-composites/P4-foreign-parent.md`. The probe is
+//! Work package: P4, `docs/rune/work/phase-2-composites/P4-foreign-parent.md`. The probe is
 //! `examples/foreign-parent.rs`: a host window, and a chooser per `open` command, each opened
 //! hidden and parented from `App::on_window`, as a portal backend opens its dialog.
 //!

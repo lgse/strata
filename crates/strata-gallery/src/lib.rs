@@ -4,7 +4,7 @@
 //!
 //! The gallery has one page per component (and per contract or look work package that shows
 //! something). Each page lives in `scenes/<id>.rs` with its scenes, its demo state and its
-//! view; `docs/testing.md` describes the layout and the goldens built from it.
+//! view; `docs/rune/testing.md` describes the layout and the goldens built from it.
 
 use rune::text::TextSystem;
 use rune::{AppSpec, Cx, El, Env, Key, KeyEvent, Runtime, Tx, Waker, col};

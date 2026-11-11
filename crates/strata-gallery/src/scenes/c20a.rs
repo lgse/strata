@@ -3,7 +3,7 @@
 //! The gallery page for C20a Slider and NumberField: its scenes, demo state, view and key and poll
 //! hooks. Scene names start with `c20a-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C20a-slider-number-field.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C20a-slider-number-field.md`.
 //!
 //! The page lays the controls out as Strata's settings do, each in a rune-kit `Field`: the
 //! Appearance menu's Frame and Content density sliders (in a scroll view, as the menu is),

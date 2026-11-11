@@ -4,10 +4,10 @@
 //!
 //! Work packages:
 //!
-//! - C20a: `docs/work/phase-1-leaves/C20a-slider-number-field.md`
-//! - C20b: `docs/work/phase-1-leaves/C20b-color-picker.md`
-//! - C20c: `docs/work/phase-1-leaves/C20c-tabbed-form-settings-search.md`
-//! - C20d: `docs/work/phase-4-integration/C20d-icon-picker.md`
+//! - C20a: `docs/rune/work/phase-1-leaves/C20a-slider-number-field.md`
+//! - C20b: `docs/rune/work/phase-1-leaves/C20b-color-picker.md`
+//! - C20c: `docs/rune/work/phase-1-leaves/C20c-tabbed-form-settings-search.md`
+//! - C20d: `docs/rune/work/phase-4-integration/C20d-icon-picker.md`
 
 pub mod color_picker;
 pub mod icon_picker;

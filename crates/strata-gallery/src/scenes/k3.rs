@@ -3,7 +3,7 @@
 //! The gallery page for K3 Icon catalogs: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `k3-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/K3-icon-catalogs.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/K3-icon-catalogs.md`.
 //!
 //! Four sheets, each drawn from the look's catalog, as a component would:
 //!

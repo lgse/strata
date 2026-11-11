@@ -4,7 +4,7 @@
 //! between columns, its width caption, the wash over the column a file drag would drop into,
 //! and the rows' size badge.
 //!
-//! Work package: C2, `docs/work/phase-3-views/C2-columns-view.md`, and its follow-up C2b (the
+//! Work package: C2, `docs/rune/work/phase-3-views/C2-columns-view.md`, and its follow-up C2b (the
 //! badge, the title's weight). C2 owns this file: add tokens beside these, following
 //! `slots/mod.rs`. Keep their names, since slot names are API.
 //!

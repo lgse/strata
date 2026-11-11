@@ -3,7 +3,7 @@
 //! CodeView (C10b): Strata's source and plain-text previews and its custom-action script
 //! editor, replacing `sourceview5`, with the shared highlighter in `highlight` (C10a).
 //!
-//! Work package: C10b, `docs/work/phase-2-composites/C10b-code-view.md`. Feature map nodes
+//! Work package: C10b, `docs/rune/work/phase-2-composites/C10b-code-view.md`. Feature map nodes
 //! `preview/preview-panel` (Text), `preview/preview-panel/find`,
 //! `preview/preview-panel/documents/scrollbar` and `integration/custom-actions`, against
 //! Strata's `src/ui/preview/source_view.rs`, `src/ui/virtual_preview` and

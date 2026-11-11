@@ -3,7 +3,7 @@
 //! The gallery page for C4 ListTable: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c4-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-3-views/C4-list-table.md`.
+//! Work package: `docs/rune/work/phase-3-views/C4-list-table.md`.
 //!
 //! The page is a stand-in List pane over four fake folders: Documents (12 entries, one with a
 //! long name), Mixed (600 entries in six file types), Archive (100,000) and Empty. Its header

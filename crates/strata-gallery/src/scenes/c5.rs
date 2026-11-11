@@ -19,7 +19,7 @@
 //! - **Search** (`c5-other`): another field, so the keyboard can move to it.
 //! - **List** (Ctrl+L): the same editor inside C4's ListTable, in its primary column.
 //!
-//! Work package: `docs/work/phase-1-leaves/C5-inline-rename.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C5-inline-rename.md`.
 
 use rune::{Align, Cx, El, Key, KeyEvent, TextEdit, Tx, col, row, text, text_input};
 use rune_kit::{Button, ButtonVariant};

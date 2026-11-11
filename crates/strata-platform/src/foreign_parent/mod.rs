@@ -20,8 +20,8 @@
 //!   [U9](https://github.com/wmfeht/strata-components/blob/main/docs/decisions/S5-upstream.md#u9),
 //!   not filed.
 //!
-//! Work package: P4, `docs/work/phase-2-composites/P4-foreign-parent.md`. The findings behind
-//! it are `docs/decisions/S3-foreign-parent.md`.
+//! Work package: P4, `docs/rune/work/phase-2-composites/P4-foreign-parent.md`. The findings behind
+//! it are `docs/rune/decisions/S3-foreign-parent.md`.
 //!
 //! # The shape
 //!

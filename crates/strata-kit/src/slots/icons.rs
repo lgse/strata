@@ -2,7 +2,7 @@
 
 //! The `icons.*` slot tokens (for example `icons.frame.pad`) that IconsGrid reads.
 //!
-//! Work package: C3, `docs/work/phase-3-views/C3-icons-grid.md`. C3 owns this file. Slot names
+//! Work package: C3, `docs/rune/work/phase-3-views/C3-icons-grid.md`. C3 owns this file. Slot names
 //! are API: renaming one breaks users' override files (plan K4).
 //!
 //! Every default follows the rest of the [`Look`]: the spacing from Content density through

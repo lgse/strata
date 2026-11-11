@@ -1,6 +1,6 @@
 # Work breakdown
 
-This splits [`docs/plan.md`](../plan.md) into work packages (WPs). Each one is sized for one
+This splits [`docs/rune/plan.md`](../plan.md) into work packages (WPs). Each one is sized for one
 worktree, one issue and one PR. IDs keep the plan's names (P1, C1, K1). A letter suffix marks
 a split (C1a–C1e), and the new IDs are W (groundwork), S (spikes) and X (integration).
 
@@ -204,4 +204,4 @@ never edit it.
 | `crates/strata-kit/src/look.rs` and `tokens.rs` | W2 owns these. Additions go in their own PR (rule 4). Component slots live in `slots/<id>.rs`. |
 | `tests/golden/**`, `tests/scripts/**` | Per-component folders. Bless with a filter (`mise run bless <id>`) so a branch rewrites only its own goldens. |
 | `.github/workflows/`, `mise.toml` | W0 and W3 only, or a PR of its own. |
-| `docs/plan.md` | Change it only on purpose, in its own PR. WPs report findings in their issue. |
+| `docs/rune/plan.md` | Change it only on purpose, in its own PR. WPs report findings in their issue. |

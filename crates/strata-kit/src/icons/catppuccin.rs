@@ -6,7 +6,7 @@
 //! Lucide icons still take the element's colour. Licence: MIT (Catppuccin VSCode Icons),
 //! `crates/strata-kit/icons/README.md`.
 //!
-//! Work package: K3, `docs/work/phase-1-leaves/K3-icon-catalogs.md`.
+//! Work package: K3, `docs/rune/work/phase-1-leaves/K3-icon-catalogs.md`.
 //!
 //! # Choosing a catalog
 //!

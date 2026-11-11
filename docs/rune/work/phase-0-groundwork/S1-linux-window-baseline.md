@@ -6,7 +6,7 @@
 | Plan | §7 phase 0 ("Rune window on Hyprland, GNOME and X11"), P3, P5, the popup-surface note |
 | Depends on | — |
 | Unblocks | P3, S5 (repros) |
-| Owns | `docs/decisions/S1-linux-window.md`; any prototype stays on the spike branch |
+| Owns | `docs/rune/decisions/S1-linux-window.md`; any prototype stays on the spike branch |
 | Branch | `docs/<issue>-s1-linux-window-baseline` |
 
 ## Goal

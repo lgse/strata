@@ -25,7 +25,7 @@
 //! [U-P6-2](https://github.com/wmfeht/strata-components/blob/main/docs/decisions/S5-upstream.md#u-p6-2)
 //! (drawing `Pixels` in the element's colour, for symbolic icons).
 //!
-//! Work package: P6, `docs/work/phase-1-leaves/P6-icon-theme.md`.
+//! Work package: P6, `docs/rune/work/phase-1-leaves/P6-icon-theme.md`.
 //!
 //! # The shape
 //!

@@ -3,7 +3,7 @@
 //! The gallery page for C13 MediaPlayer: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c13-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C13-media-player.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C13-media-player.md`.
 //!
 //! The player sits beside a fake listing, on a [`FakeClock`] that plays on the page's virtual
 //! clock. Everything the host would bring is generated here and handed over by `poll` when it

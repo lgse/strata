@@ -15,7 +15,7 @@
 //!   ([`choose_action`]) and the [`Dnd`] binder that attaches them to elements.
 //! - [`matched`]: [`MatchedText`], a label that draws matched ranges with a Kit accent.
 //!
-//! Work package: W1, `docs/work/phase-0-groundwork/W1-component-contracts.md`.
+//! Work package: W1, `docs/rune/work/phase-0-groundwork/W1-component-contracts.md`.
 
 #![warn(missing_docs)]
 

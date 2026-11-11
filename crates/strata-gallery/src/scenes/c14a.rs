@@ -3,7 +3,7 @@
 //! The gallery page for C14a Pixels viewport: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c14a-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C14a-pixels-viewport.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C14a-pixels-viewport.md`.
 //!
 //! A generated photo with transparent parts (zoom it with Ctrl+wheel, a pinch, `+`, `-` and `0`;
 //! pan it by drag, the wheel and the arrows), a G-code-style thumbnail that scales down but never

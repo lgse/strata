@@ -2,7 +2,7 @@
 
 //! C3: a tile cuts its name again when the fonts move (a fallback font loading, the interface
 //! font changing), not only when its name or width does. Alone in its own test binary: it moves
-//! the process-wide fonts `rune::text::measure` reads (docs/testing.md, K6).
+//! the process-wide fonts `rune::text::measure` reads (docs/rune/testing.md, K6).
 
 use rune::{Cx, El, Env, Runtime, col};
 use strata_components::collection::element::{Collection, CollectionState};

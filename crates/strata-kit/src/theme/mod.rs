@@ -3,7 +3,7 @@
 //! Theme mapping: Strata's bundled themes, custom theme files and the Omarchy mapping onto
 //! `rune_kit::Kit` and strata-kit's extensions.
 //!
-//! Work package: K1, `docs/work/phase-1-leaves/K1-theme-mapping.md`. Strata's behaviour is
+//! Work package: K1, `docs/rune/work/phase-1-leaves/K1-theme-mapping.md`. Strata's behaviour is
 //! read at lgse/strata `upstream/main` 35ee677ab: the plan's watermark (5738aad) isn't in
 //! the clone, as for K2.
 //!

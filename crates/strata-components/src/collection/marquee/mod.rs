@@ -88,7 +88,7 @@
 //! rides the scroll offset; it moves the live rect after every input, so a move commits no
 //! view. Only showing and hiding the band, and selection changes, do.
 //!
-//! Work package: C1d, `docs/work/phase-2-composites/C1d-marquee.md`.
+//! Work package: C1d, `docs/rune/work/phase-2-composites/C1d-marquee.md`.
 
 #![warn(missing_docs)]
 

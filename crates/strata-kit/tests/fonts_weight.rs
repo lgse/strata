@@ -6,7 +6,7 @@
 //! tests in the process build text systems. Rune's `with_text` reads the fonts generation after
 //! building a thread's measurer, without a lock, so a parallel `TextSystem::new` can tag a
 //! measurer holding Inter with JetBrains Mono's generation, and the measurer then keeps Inter
-//! under JetBrains Mono's name (Rune draft R-K6-1, `docs/testing.md`). In the lib tests this
+//! under JetBrains Mono's name (Rune draft R-K6-1, `docs/rune/testing.md`). In the lib tests this
 //! failed about one run in six.
 
 mod fonts {

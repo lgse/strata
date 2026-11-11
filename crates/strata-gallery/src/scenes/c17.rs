@@ -3,7 +3,7 @@
 //! The gallery page for C17 SearchPalette: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c17-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C17-search-palette.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C17-search-palette.md`.
 //!
 //! The page draws a stand-in window: a header with a search button (`c17-search`), a focusable
 //! file list (`c17-files`, where an opened result's focus lands) and a `c17-log` line naming

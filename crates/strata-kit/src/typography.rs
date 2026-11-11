@@ -2,7 +2,7 @@
 
 //! The type ramp, scaled by text size, and the interface font.
 //!
-//! Work package: K2, `docs/work/phase-1-leaves/K2-shape-density-type.md`.
+//! Work package: K2, `docs/rune/work/phase-1-leaves/K2-shape-density-type.md`.
 //!
 //! Values are Strata's, read at `lgse/strata` `upstream/main` 35ee677ab:
 //! `src/ui/preferences/text_size.rs` (8–48 px, default 13), `desktop_scale.rs` (the desktop

@@ -194,7 +194,7 @@ fn a_content_sized_menu_reserves_the_snap_labels_width() {
         look,
     };
     // Rune's own font: a text system built here would move the fonts the crate's other tests
-    // measure with (docs/testing.md, R-K6-1).
+    // measure with (docs/rune/testing.md, R-K6-1).
     // The label's width comes from the same shared measure, so the claim holds in any font.
     let mut rt = Runtime::new(host, shrink_wrapped, (900.0, 400.0), Env::new(false, 1.0));
     rt.frame(0.0);

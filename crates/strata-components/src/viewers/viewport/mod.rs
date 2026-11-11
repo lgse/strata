@@ -3,7 +3,7 @@
 //! Zoom, pan and fit over `Pixels` (C14a): the surface under C14b's image, model, route and
 //! G-code views and C13's video, with the zoom model C12's pages reuse.
 //!
-//! Work package: C14a, `docs/work/phase-1-leaves/C14a-pixels-viewport.md`. Plan §4 C14.
+//! Work package: C14a, `docs/rune/work/phase-1-leaves/C14a-pixels-viewport.md`. Plan §4 C14.
 //!
 //! ```ignore
 //! Viewport::new(&s.image, |s: &mut App| &mut s.image)

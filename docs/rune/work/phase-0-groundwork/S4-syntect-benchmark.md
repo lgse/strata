@@ -6,7 +6,7 @@
 | Plan | §4 C10 ("Measure it against `onig` on the 50k-line fixture before settling"), decision 4 |
 | Depends on | — |
 | Unblocks | C10a |
-| Owns | `docs/decisions/S4-syntect-backend.md`, a bench fixture under `tests/fixtures/code/` |
+| Owns | `docs/rune/decisions/S4-syntect-backend.md`, a bench fixture under `tests/fixtures/code/` |
 | Branch | `docs/<issue>-s4-syntect-benchmark` |
 
 ## Goal

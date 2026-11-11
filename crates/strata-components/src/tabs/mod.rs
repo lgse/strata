@@ -5,7 +5,7 @@
 //! rests on a tab selecting it, the closed-tabs stack, and a window title that follows the
 //! active tab.
 //!
-//! Work package: C7, `docs/work/phase-1-leaves/C7-browser-tabs.md`. Behaviour follows the
+//! Work package: C7, `docs/rune/work/phase-1-leaves/C7-browser-tabs.md`. Behaviour follows the
 //! feature map, against lgse/strata `upstream/main` 35ee677ab
 //! (`src/ui/window/composition/tabs.rs`, `tabs/strip.rs`, `tabs/strip/drop.rs`, `style.css`).
 //!

@@ -6,7 +6,7 @@
 | Plan | §0, §7 phase 0, §8 (published crate on a moving base), §10 question 1 |
 | Depends on | S1, S2, S3 for repros. The name and workflow parts can start at once. |
 | Unblocks | M0. The issue link in every P-module's docs. |
-| Owns | `docs/decisions/S5-upstream.md`, `.github/workflows/release.yml`, `crates/strata-platform/README.md`, `CHANGELOG.md` |
+| Owns | `docs/rune/decisions/S5-upstream.md`, `.github/workflows/release.yml`, `crates/strata-platform/README.md`, `CHANGELOG.md` |
 | Branch | `ci/<issue>-s5-upstream-and-release` |
 
 ## Goal

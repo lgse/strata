@@ -3,7 +3,7 @@
 //! StrataDialog: the modal shell every Strata dialog builds on, with its backdrop, motion,
 //! dismissal, initial focus, and Enter and Escape (C15, `app/dialogs`).
 //!
-//! Work package: C15, `docs/work/phase-1-leaves/C15-strata-dialog.md`.
+//! Work package: C15, `docs/rune/work/phase-1-leaves/C15-strata-dialog.md`.
 //!
 //! Two builders:
 //!

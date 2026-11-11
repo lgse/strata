@@ -10,8 +10,8 @@ publish = false
 # Each work package adds its third-party dependencies in its own block below. Keep the blank
 # lines: git conflicts when two branches edit neighbouring lines. A crate appears once: one
 # already declared in any block is usable from every module, so use it as it is. The shared
-# block takes a crate two work packages would add at once (docs/testing.md).
-# strata-components never depends on strata-platform (docs/work/README.md, rule 1).
+# block takes a crate two work packages would add at once (docs/rune/testing.md).
+# strata-components never depends on strata-platform (docs/rune/work/README.md, rule 1).
 [dependencies]
 rune.workspace = true
 rune-kit.workspace = true

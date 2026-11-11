@@ -3,7 +3,7 @@
 //! The gallery page for C20c Tabbed form and settings search: its scenes, demo state, view and key
 //! and poll hooks. Scene names start with `c20c-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C20c-tabbed-form-settings-search.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C20c-tabbed-form-settings-search.md`.
 //!
 //! Two demos, one at a time:
 //!

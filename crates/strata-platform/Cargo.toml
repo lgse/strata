@@ -7,7 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
-# One feature per shim, each gating one module (docs/plan.md §3). A work package fills in only
+# One feature per shim, each gating one module (docs/rune/plan.md §3). A work package fills in only
 # its own feature's list and its own block under [dependencies]. Keep the blank line and the
 # comment between entries: git conflicts when two branches edit neighbouring lines.
 #
@@ -70,7 +70,7 @@ glib-bridge = ["dep:futures-channel", "dep:gio", "dep:glib"]
 # and foreign-parent.
 _transfer = ["dep:libc", "dep:wayland-backend", "dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr", "dep:x11rb", "x11rb/xfixes"]
 
-# Depends on `rune` only: never rune-kit, strata-kit or Strata (docs/plan.md §3). Each shim's
+# Depends on `rune` only: never rune-kit, strata-kit or Strata (docs/rune/plan.md §3). Each shim's
 # optional dependencies go in its own block below, enabled with `dep:` from its feature.
 [dependencies]
 rune.workspace = true
@@ -110,7 +110,7 @@ wayland-protocols = { workspace = true, optional = true, features = ["client", "
 wayland-protocols-wlr = { workspace = true, optional = true, features = ["client"] }
 
 # Tests only. tests/session/ is one binary: each work package's compositor and D-Bus tests run
-# in private sessions from tests/support/ (docs/testing.md). Same layout as [dependencies]: a
+# in private sessions from tests/support/ (docs/rune/testing.md). Same layout as [dependencies]: a
 # shared block, then one block per work package. Keep the blank lines.
 [dev-dependencies]
 # Shared by two or more work packages: the harness (W3) and its peer.

@@ -3,7 +3,7 @@
 //! The gallery page for W2 Look contract: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `w2-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-0-groundwork/W2-look-contract.md`.
+//! Work package: `docs/rune/work/phase-0-groundwork/W2-look-contract.md`.
 //!
 //! Three sheets, all read from `Gallery::look`: the core tokens (colour swatches by registry
 //! name, the type ramp, spacing and sizes, radii, glow, the ladders, roundness and the

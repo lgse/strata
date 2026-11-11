@@ -5,7 +5,7 @@
 | Status | Decided by the owner after review round 3 (see [Decision](#decision)). The owner first chose `onig`, N = 64, the RUSTSEC-2025-0141 ignore and WTFPL after round 1; review then found two `onig` costs (B1, B2), the options were put again ([Options put to the owner](#options-put-to-the-owner)), and the owner confirmed `onig`, choosing option (a) for B1 |
 | Work package | [S4-syntect-benchmark](../work/phase-0-groundwork/S4-syntect-benchmark.md) |
 | Consumers | C10a (highlighter), C10b (code view), C11 (Markdown code blocks) |
-| Fixtures | [`tests/fixtures/code/`](../../tests/fixtures/code/) (see its README) |
+| Fixtures | [`tests/fixtures/code/`](../../../tests/fixtures/code/) (see its README) |
 | Harness | `/home/wmfeht/dev/strata-spikes/s4-bench`, outside the repository and not merged. Evidence files below are under its `out/` |
 
 ## Decision
@@ -23,7 +23,7 @@ The owner decided:
 C10a adds these to the root `[workspace.dependencies]`:
 
 ```toml
-# Regex backend and grammar set chosen in S4 (docs/decisions/S4-syntect-backend.md).
+# Regex backend and grammar set chosen in S4 (docs/rune/decisions/S4-syntect-backend.md).
 syntect = { version = "5.3.0", default-features = false, features = ["parsing", "regex-onig"] }
 two-face = { version = "0.5.2", default-features = false, features = ["syntect-onig"] }
 ```
@@ -36,7 +36,7 @@ and this to `deny.toml`'s `[advisories] ignore`:
 
 Owner items. The owner makes these follow-up edits; this work package does not edit them:
 
-- [`docs/plan.md`](../plan.md) §4 C10:
+- [`docs/rune/plan.md`](../plan.md) §4 C10:
   - "Use the `fancy-regex` backend … Measure it against `onig`" becomes `onig`, citing this
     record.
   - "keep a parse and highlight state checkpoint every 256 lines" becomes 64.
@@ -91,7 +91,7 @@ call too: `fancy-regex` loses PowerShell, among others.
 
 | Number | Source | What it is |
 | --- | --- | --- |
-| 8 ms | [`docs/plan.md`](../plan.md) §8 ("`RUNE_COMMIT_BUDGET_MS=8` runs over scripted scrolls") and C10b ("the 50k-line scroll under `RUNE_COMMIT_BUDGET_MS=8`") | A **UI-commit** budget. Rune prints each commit (view, layout, apply) that takes longer. It does not time worker threads |
+| 8 ms | [`docs/rune/plan.md`](../plan.md) §8 ("`RUNE_COMMIT_BUDGET_MS=8` runs over scripted scrolls") and C10b ("the 50k-line scroll under `RUNE_COMMIT_BUDGET_MS=8`") | A **UI-commit** budget. Rune prints each commit (view, layout, apply) that takes longer. It does not time worker threads |
 | "one frame budget on the worker" | C10a, Tests | No number. At 60 Hz one frame is 16.7 ms |
 | 4 ms | The S4 planning stage (coordinator-approved plan), not a repository document | A stretch target, half of 8 ms |
 | 2 ms | C10a ("a one-line edit in the 5,000-line script stays under 2 ms") | Edit re-highlight |

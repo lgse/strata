@@ -3,7 +3,7 @@
 //! The gallery page for C16 ProgressDock: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c16-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C16-progress-dock.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C16-progress-dock.md`.
 //!
 //! The page draws a stand-in window: a header, a listing with a focusable cursor row, buttons
 //! that start fake operations and notices, a probe button that proves the window stays usable

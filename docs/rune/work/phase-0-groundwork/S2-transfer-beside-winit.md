@@ -6,7 +6,7 @@
 | Plan | P1, P2, §8 ("Wayland DnD inside winit … prototype P1 in phase 0") |
 | Depends on | — (use W3's harness if it has landed) |
 | Unblocks | P0, then P1 and P2 |
-| Owns | `docs/decisions/S2-transfer.md`; the prototype stays on the spike branch or becomes P0's first commit |
+| Owns | `docs/rune/decisions/S2-transfer.md`; the prototype stays on the spike branch or becomes P0's first commit |
 | Branch | `docs/<issue>-s2-transfer-beside-winit` |
 
 ## Goal

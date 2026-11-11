@@ -6,7 +6,7 @@
 | Plan | P4, §8 ("Test P4 on Hyprland, GNOME, KDE and sway in phase 0, not phase 6") |
 | Depends on | — |
 | Unblocks | P4 |
-| Owns | `docs/decisions/S3-foreign-parent.md` |
+| Owns | `docs/rune/decisions/S3-foreign-parent.md` |
 | Branch | `docs/<issue>-s3-foreign-parent-survey` |
 
 ## Goal

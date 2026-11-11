@@ -3,9 +3,9 @@
 //! ColumnsView (C2): Miller columns, a sideways strip of C1e collections, each its own virtual
 //! list and selection.
 //!
-//! Work package: C2, `docs/work/phase-3-views/C2-columns-view.md`, and its follow-up C2b (the
+//! Work package: C2, `docs/rune/work/phase-3-views/C2-columns-view.md`, and its follow-up C2b (the
 //! size badge and the width polish; no WP doc, its scope is C2b's row in
-//! `docs/work/STATUS.md`). Feature map nodes
+//! `docs/rune/work/STATUS.md`). Feature map nodes
 //! `browser/view-modes/columns` (108 bullets) and `operations/drag-and-drop/column-autoscroll`
 //! (9). Behaviour follows Strata's `src/ui/browser/columns/` at `upstream/main` 35ee677ab.
 //!

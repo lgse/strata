@@ -3,7 +3,7 @@
 //! The gallery page for C7 BrowserTabs: its scenes, demo state, view and key and poll hooks. Scene
 //! names start with `c7-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-1-leaves/C7-browser-tabs.md`.
+//! Work package: `docs/rune/work/phase-1-leaves/C7-browser-tabs.md`.
 //!
 //! The page plays Strata's part with fake folders: the strip, a stand-in view per tab, and two
 //! lines scripts read, `c7-log` (what the last intent did) and `c7-title` (the window title,

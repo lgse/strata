@@ -258,7 +258,7 @@
 //!   redraws every frame on Wayland), U-C6-7 (scripts have no input-method event), S5's popup
 //!   menus on Linux.
 //!
-//! Work package: C5, `docs/work/phase-1-leaves/C5-inline-rename.md`.
+//! Work package: C5, `docs/rune/work/phase-1-leaves/C5-inline-rename.md`.
 
 #![warn(missing_docs)]
 

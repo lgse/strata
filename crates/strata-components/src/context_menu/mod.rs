@@ -3,7 +3,7 @@
 //! Context menus (C21): where Strata's menus open, how the keyboard moves through them, and
 //! the text-field menu, on rune-kit's `Menu`.
 //!
-//! Work package: C21, `docs/work/phase-1-leaves/C21-context-menus.md`.
+//! Work package: C21, `docs/rune/work/phase-1-leaves/C21-context-menus.md`.
 //!
 //! **Rune dev 5d421fd: partly.** rune-kit's `Menu` gives pointer menus, placement inside the
 //! window (flip, slide, shrink and scroll), Up, Down, Home, End and type-select, Escape and a

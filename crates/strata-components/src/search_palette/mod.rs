@@ -3,7 +3,7 @@
 //! SearchPalette (C17): one modal palette for Ctrl+K search and the Ctrl+Shift+K folder jump
 //! (`browser/search`, `browser/navigation/folder-jump`), its modes as data.
 //!
-//! Work package: C17, `docs/work/phase-2-composites/C17-search-palette.md`. Behaviour follows
+//! Work package: C17, `docs/rune/work/phase-2-composites/C17-search-palette.md`. Behaviour follows
 //! the feature map, against lgse/strata `upstream/main` (`src/ui/search.rs`,
 //! `src/ui/search/panel.rs`, `src/ui/search/results.rs`, `src/ui/window/composition/search.rs`
 //! and `.search-*` in `src/style.css`).

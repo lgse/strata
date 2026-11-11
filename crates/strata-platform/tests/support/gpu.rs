@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 /// `STRATA_VK_ICD`, else lavapipe's ICD for this architecture, else `lvp_icd.json`, else every
 /// lavapipe ICD found; none leaves the loader's default. The same order as the gallery's
-/// goldens (`docs/testing.md`), so a machine renders on CI's driver where it has it.
+/// goldens (`docs/rune/testing.md`), so a machine renders on CI's driver where it has it.
 pub(super) fn icd() -> Option<OsString> {
     if let Some(icd) = std::env::var_os("STRATA_VK_ICD").filter(|v| !v.is_empty()) {
         return Some(icd);

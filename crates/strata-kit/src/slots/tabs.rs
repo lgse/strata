@@ -2,7 +2,7 @@
 
 //! The `tabs.*` slot tokens (for example `tabs.tab`) that BrowserTabs reads.
 //!
-//! Work package: C7, `docs/work/phase-1-leaves/C7-browser-tabs.md`.
+//! Work package: C7, `docs/rune/work/phase-1-leaves/C7-browser-tabs.md`.
 //!
 //! W2 seeded `tabs.tab.height`, the strip's band; C7 keeps its name and meaning (slot names are
 //! API) and adds the rest. Every default follows the rest of the [`Look`]: colours from `kit.c`

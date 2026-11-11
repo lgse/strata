@@ -3,7 +3,7 @@
 //! Tabbed form (C20c): the custom-action editor's notebook. A tablist over pages, each page
 //! kept mounted or rebuilt by a flag, with a "has errors" mark per page.
 //!
-//! Work package: C20c, `docs/work/phase-1-leaves/C20c-tabbed-form-settings-search.md`.
+//! Work package: C20c, `docs/rune/work/phase-1-leaves/C20c-tabbed-form-settings-search.md`.
 //! Strata: `src/ui/settings/actions/editor.rs` (a `GtkNotebook` with General, Script and
 //! Behavior) and `.settings-action-tabs` in `src/style.css`, at upstream `fb7eb0c4e`.
 //!

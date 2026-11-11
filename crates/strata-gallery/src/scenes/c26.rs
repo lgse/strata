@@ -3,7 +3,7 @@
 //! The gallery page for C26 MountPrompts: its scenes, demo state, view and key and poll hooks.
 //! Scene names start with `c26-` and end in `-light` or `-dark`.
 //!
-//! Work package: `docs/work/phase-2-composites/C26-mount-prompts.md`.
+//! Work package: `docs/rune/work/phase-2-composites/C26-mount-prompts.md`.
 //!
 //! The page plays the host: openers for each prompt, a status line saying what the last one
 //! answered (a password only by its length), and an End process that answers as the backend

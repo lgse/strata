@@ -10,7 +10,7 @@
 //! JSON lines (`copied`, `badge`, `paste`, `state`), what it offered as the peer's reads, and
 //! what a paste wrote on disk.
 //!
-//! Work package: X3, `docs/work/phase-3-views/X3-clipboard-wiring.md`.
+//! Work package: X3, `docs/rune/work/phase-3-views/X3-clipboard-wiring.md`.
 
 #[path = "../../strata-platform/tests/support/mod.rs"]
 #[expect(
@@ -755,7 +755,7 @@ mod x3 {
 
     /// Says a test ran nothing, on stderr past libtest's capture (which takes only `print!`
     /// and `eprint!`), so it shows in every run: libtest has no "skipped" result, so the test
-    /// still reports ok (docs/testing.md).
+    /// still reports ok (docs/rune/testing.md).
     fn skip(test: &str, why: &str) {
         use std::io::Write;
         // One write on the locked handle, so a parallel test's output can't split the line.
