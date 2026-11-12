@@ -158,9 +158,10 @@ comments of 2026-11-12, unless another is named.
   with its key backend (`NeverFires`). GTK answers from `src/ui/keys/conflicts.rs`, which
   knows the keys GTK's own stages and widgets take. It is one question with which
   conflicts Rune's keyboard settings report, under A6 and A18 below. Meanwhile: the Rune
-  side installs no backend; the first one it installs answers that every binding fires,
-  so its labels show every key of an entry, and the pull request that installs it says
-  which labels that changes. Source: [#2195](https://github.com/lgse/strata/pull/2195).
+  side answers that every binding fires, so its labels show every key of an entry. For the
+  shipped keys that is GTK's answer too: its check leaves out none of them in either map,
+  with type-to-search on or off. The two differ only for a key a user added, which the
+  Rune side does not read yet. Source: [#2195](https://github.com/lgse/strata/pull/2195) and [#2197](https://github.com/lgse/strata/pull/2197).
 - **A rebinding's round trip where key libraries differ.** With the `xkbcommon` backend
   the names of keys beyond those the code declares follow the user's installed library,
   and the comparison with GDK is exact only for the test image's pair of GTK and
@@ -221,7 +222,7 @@ issue [#2128](https://github.com/lgse/strata/issues/2128).
    pane header. Meanwhile: nothing happens.
 4. **Focus after Back, Forward and Up.** GTK focuses the new listing on an explicit
    navigation, and leaves focus on a header button or the sidebar for history unless it was
-   in the pane (`on_navigation_starting`, `src/ui/browser_modes/events.rs:58-66`). The Rune
+   in the pane (`on_navigation_starting`, `src/ui/browser_modes/events.rs:59-73`). The Rune
    views focus the listing whenever another folder shows. Meanwhile: the Rune views', until
    the header buttons ([B3](packages/B3.md)) and the sidebar exist to keep focus.
 5. **"Arrows scoped to content"** (`arrow_navigation_scoped`) keeps Left and Up inside the

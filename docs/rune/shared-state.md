@@ -243,18 +243,40 @@ are GTK's accelerator strings, which `settings.toml` saves: reading one and writ
   mistake in another backend cannot reach. `main` installs it first. A test binary installs
   it as it loads, from `.init_array`, because a `#[test]` has no start-up and one that
   forgot would fail only for what it happened to read.
-- **`strata-desktop` holds no backend yet.** A lookup with none installed panics, with a
-  message that says so. Until the `xkbcommon` backend lands, behind a cargo feature only
-  `strata-app` enables, nothing on the Rune side may call `Key::name`, `to_unicode`,
-  `to_lower`, `to_upper`, `from_name` or `from_char`, `Binding::parse` or
-  `Binding::accelerator`, `normalize`, `KeyPress::from_parts`, a label, or `Keymap`'s
-  reading of saved entries. That is why the tests of the moved code stayed in the GTK lane.
-- The seam is one process-wide value, and it goes when GTK does.
+- **The Rune interface installs `keys::Table`,** a backend in `strata-desktop` that needs
+  no library (`keys/table.rs`). `strata-app` installs it when the UI thread is claimed,
+  which every host and every hosted test does, and refuses the claim if another library
+  was installed first. What the table answers, and what it does not, is below.
+- A lookup with no backend installed panics, with a message that says so. That is why the
+  tests of the moved code stayed in the GTK lane: they ask GDK.
+- The seam is one process-wide value, and it goes when GTK does. `install` answers whether
+  its call was the one that installed.
+
+**What `Table` answers.** It is the first piece of the Rune side's key library, and the
+table the `xkbcommon` backend will sit behind, so that a key the code declares reads and
+writes the same whatever library a user has installed:
+
+| | The table | Not yet |
+| --- | --- | --- |
+| Names | Every declared constant, read by its own name. Three keys are written by the other X name GDK writes them by, and read by both: `dead_perispomeni` for `dead_tilde`, `Arabic_switch` for `Mode_switch`, `KP_Next` for `KP_Page_Down`. `VoidSymbol` has no name, and its name reads as no key | Any key the code does not declare has no name, where GDK names it or writes a number |
+| Characters | A printable Latin-1 character is its own key, and any other character its Unicode keysym (`0x0100_0000` plus the code point), as the X protocol defines both. The sixteen keypad keys that type a character (the digits, space, `=`, `*`, `+`, `-`, `/`) type it, so a keypad digit's text is its digit, as on GTK | No other named key types anything, such as a Cyrillic or Greek key given by its legacy keysym. So `normalize` and `KeyPress::from_signal`, which read a non-Latin key's character to find its Latin fallback, find none: an interface on the table builds its presses with `from_parts` and gives what was typed as `Typed::Character` |
+| Case | The ASCII letters | Every other key is its own lower and upper case |
+| Accelerator strings | None is read: `Binding::parse` answers `None`, so `Keymap` reports a saved entry as one it cannot read and the shipped keys apply | `Binding::accelerator` panics, because a made-up string would be saved over a user's binding. Reading and writing arrive with the `xkbcommon` backend's reader and writer |
+
+With it installed, every catalog entry matches and is labelled as on GTK: the comparison
+made for the move, run again with the table, gave the same keys and the same labels in both
+maps and all thirteen languages. `strata-desktop`'s own tests hold the table without GDK,
+and the GTK application's `ui::keys::tests::table` holds every answer in the left column to
+GDK's. That test ties the three written names to the GDK of the test image: a GTK that
+writes one of those keys by another name fails it, and the table follows the image.
 
 `install` takes a second answer that is also the interface's own: `NeverFires`, whether a
 binding in a map's entry can ever fire there, which `label` uses to leave such a binding
 out. The GTK application's answer is `ui::keys::conflicts::never_fires`, from its own key
-stages.
+stages. The Rune interface answers that every binding fires. For the shipped keys the two
+agree: GTK's check leaves out none of them, in either map, with type-to-search on or off.
+They differ only for a key a user added, which the Rune side does not read yet
+([`parity/owner.md`](parity/owner.md#b2-shared-state-out-of-the-gtk-package)).
 
 ### The settings that are read at each press: `Active`
 
