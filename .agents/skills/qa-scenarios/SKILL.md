@@ -299,7 +299,9 @@ run stays `pending` with a blocker.
    and why none of those three fits (label `exception`; `oracle` for a bug in
    Strata itself). A `rune` twin cites its packet entry instead,
    `docs/rune/upstream/rune/<number>-<name>.md`. A `deviation` twin needs the
-   owner's ruling on its issue before it is written.
+   owner's ruling on its issue before it is written. Parity findings are now
+   recorded in `docs/rune/parity/findings.md`; what a twin cites for one with
+   no issue is an open question in `docs/rune/parity/owner.md`.
 2. **Write the twin** beside the original. It holds only the modes or
    variants that differ, and starts from the same `tree`, `images`,
    `fixture_root`, `setup`, `teardown`, `prefs`, `layout`, `portal`, `env`,
