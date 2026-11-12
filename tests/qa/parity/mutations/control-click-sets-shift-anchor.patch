@@ -1,0 +1,10 @@
+diff --git a/crates/strata-app/src/icons/mod.rs b/crates/strata-app/src/icons/mod.rs
+--- a/crates/strata-app/src/icons/mod.rs
++++ b/crates/strata-app/src/icons/mod.rs
+@@ -67,5 +67,6 @@ fn collection() -> CollectionState {
+     collection.controllers.pointer = Some(Box::new(PointerIntent::new()));
+     collection.controllers.keyboard = Some(Box::new(Keyboard::default()));
+     collection.controllers.marquee = Some(Box::new(Marquee::new()));
++    collection.controllers.pointer = None;
+     collection
+ }
