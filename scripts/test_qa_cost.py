@@ -103,8 +103,13 @@ class HeaderTests(unittest.TestCase):
 
             with log.open("a") as output:
                 output.write("\ntest two/columns-ru ... FAILED <8.000s>\n")
+            # A twin runs on Rune alone, so the GTK suite has no time for it and none is asked.
+            twin = scenarios / "test_a/one-rune.jsonl"
+            header = '{"scenario":"one-rune","modes":["columns"],"targets":["rune"],"cost":{"columns":0.5}}\n'
+            twin.write_text(header + steps)
             with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(write([log, log], scenarios), 0)
+            self.assertEqual(twin.read_text(), header + steps)
             self.assertEqual(
                 one.read_text(),
                 '{"scenario":"one","modes":["columns","list"],"cost":{"columns":0.5,"list":1.0}}\n' + steps,

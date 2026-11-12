@@ -5,6 +5,7 @@ import io
 import json
 import re
 import subprocess
+import sys
 import tempfile
 import tomllib
 import unittest
@@ -15,6 +16,7 @@ import qa_mutation
 import qa_parity
 import qa_parity_check
 import qa_parity_mutation
+import qa_parity_twins
 from qa_parity import selected
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -94,14 +96,44 @@ ruling = "the owner, 2026-11-11"
 }
 
 
+# The scenarios the corpus has a Rune mutation patch for.
+PATCHES = []
+
+# A labelled pair for the corpus: escape-clears-selection cannot pass in Icons on Rune under
+# the `a11y` exception, so its twin stands in for that run there.
+TWIN = "escape-clears-selection-rune"
+LABEL = {"exception": "a11y", "ref": "lgse/strata#2201"}
+PAIR = {
+    "keyboard_navigation/escape-clears-selection": {
+        "modes": ["columns", "icons"], "parity": {"twin": TWIN, **LABEL}},
+    f"keyboard_navigation/{TWIN}": {
+        "modes": ["icons"], "targets": ["rune"],
+        "parity": {"twin": "escape-clears-selection", **LABEL, "differs": "line 2 names the tile"}},
+}
+REQUIRED = 'package = "A1"\nstatus = "required"\nhost = "offscreen"\n'
+PARALLEL = ('package = "A1"\nstatus = "parallel"\nexception = "a11y"\n'
+            f'twin = "{TWIN}/icons"\nref = "lgse/strata#2201"\n')
+
+
+@contextlib.contextmanager
+def paired(row=PARALLEL, patches=(TWIN,)):
+    """The corpus with the pair: its two headers, the entry `row` and the twin's patch."""
+
+    with unittest.mock.patch.dict(SCENARIOS, PAIR), unittest.mock.patch.object(
+            sys.modules[__name__], "PATCHES", list(patches)), edited("keyboard_navigation", REQUIRED, row):
+        yield
+
+
 @contextlib.contextmanager
 def corpus(allowances=""):
     """A directory holding SCENARIOS under `scenarios` and FOLDERS under `ledger`, with
-    slice.toml when there are allowances."""
+    slice.toml when there are allowances and a patch for each of PATCHES."""
 
     with tempfile.TemporaryDirectory() as directory:
         ledger, scenarios = Path(directory) / "ledger", Path(directory) / "scenarios"
-        ledger.mkdir()
+        (ledger / qa_parity.MUTATIONS).mkdir(parents=True)
+        for patch in PATCHES:
+            (ledger / qa_parity.MUTATIONS / f"{patch}.patch").write_text("", encoding="utf-8")
         for path, header in SCENARIOS.items():
             file = scenarios / f"{path}.jsonl"
             file.parent.mkdir(parents=True, exist_ok=True)
@@ -191,6 +223,60 @@ class SelectionTests(unittest.TestCase):
             self.assertEqual(run_main("A1", "--status", "pending"), (0, "", ""))
 
 
+class TwinTests(unittest.TestCase):
+    """A parallel run is run as a required one is, by another route on Rune."""
+
+    def test_a_parallel_run_is_its_scenario_on_gtk_and_its_twin_on_rune(self):
+        with paired():
+            ledger = load()
+            self.assertEqual(run_main("keyboard_navigation", "--on", "gtk"), (0, (
+                "arrow-keys-move-focus/columns-arrows\nescape-clears-selection/columns\n"
+                "escape-clears-selection/icons\n"), ""))
+            self.assertEqual(run_main("keyboard_navigation", "--on", "rune"), (0, (
+                "arrow-keys-move-focus/columns-arrows\nescape-clears-selection/columns\n"
+                f"{TWIN}/icons\n"), ""))
+        self.assertEqual(len(ledger["run"]), 7, "a twin's run has no entry of its own")
+        self.assertEqual(selected(ledger, "A1", "parallel"), ["escape-clears-selection/icons"])
+        self.assertEqual(selected(ledger, "A1", "required"), [])
+        # A gate has only Columns runs, and a survey only pending ones.
+        self.assertEqual(qa_parity.deciding(ledger, "g2", "rune"), ["escape-clears-selection/columns"])
+        self.assertNotIn(f"{TWIN}/icons", selected(ledger, "all", "pending"))
+
+    def test_either_name_of_a_pair_narrows_a_selection_to_it(self):
+        with paired():
+            ledger = load()
+        for scenario, gtk, rune in (
+            (TWIN, ["escape-clears-selection/icons"], [f"{TWIN}/icons"]),
+            ("escape-clears-selection", ["escape-clears-selection/columns", "escape-clears-selection/icons"],
+             ["escape-clears-selection/columns", f"{TWIN}/icons"]),
+        ):
+            with self.subTest(scenario):
+                self.assertEqual(qa_parity.deciding(ledger, "all", "gtk", scenario), gtk)
+                self.assertEqual(qa_parity.deciding(ledger, "all", "rune", scenario), rune)
+
+    def test_a_parallel_run_whose_twin_needs_the_session_host_is_refused(self):
+        with paired(row=PARALLEL.replace('status = "parallel"\n', 'status = "parallel"\nhost = "session"\n')):
+            self.assertEqual(qa_parity.needs_session(load(), "A1"), ["escape-clears-selection/icons"])
+            for target in ("gtk", "rune"):
+                status, printed, errors = run_main("A1", "--on", target)
+                self.assertEqual((status, printed), (3, ""))
+                self.assertIn("escape-clears-selection/icons", errors)
+        with paired():
+            self.assertEqual(qa_parity.needs_session(load(), "all"), [])
+
+    def test_a_twins_patch_is_named_for_the_twin_and_its_runs_guard_it(self):
+        with paired():
+            ledger = load()
+        self.assertEqual(qa_parity_mutation.guards(TWIN, ledger), [f"{TWIN}/icons"])
+        self.assertEqual(qa_parity_mutation.guards("escape-clears-selection", ledger),
+                         ["escape-clears-selection/columns"])
+        # A scenario whose every run is parallel runs nothing of its own on Rune: the patch
+        # that proves the pair is the twin's.
+        whole = {"run": [{"folder": "keys", "scenario": "moves", "run": "columns", "package": "A7",
+                          "status": "parallel", "twin": "moves-rune/columns"}]}
+        self.assertEqual(qa_parity_mutation.unguarded(["moves", "moves-rune"], whole), ["moves"])
+
+
 class CountTests(unittest.TestCase):
     def test_a_selection_is_counted_by_status_reason_host_view_and_package(self):
         status, printed, errors = run_main("all", "--counts")
@@ -198,6 +284,7 @@ class CountTests(unittest.TestCase):
         self.assertEqual(printed, """\
 == all: 7 run(s) in 3 folder(s) ==
 required      3
+parallel      0
 pending       3
   component     1
   harness       1
@@ -205,18 +292,32 @@ pending       3
 excluded      1
 host      offscreen 3, session 0
 view      columns 5, icons 1, list 1
-package    runs  required   pending  excluded
-A1            1         1         0         0
-A2            1         0         1         0
-A6            1         0         1         0
-A7            1         0         1         0
-E1            1         0         0         1
-V7            1         1         0         0
-V8            1         1         0         0
+twins     timing 0, a11y 0, rune 0, oracle 0, toolkit 0, deviation 0
+package    runs  required  parallel   pending  excluded
+A1            1         1         0         0         0
+A2            1         0         0         1         0
+A6            1         0         0         1         0
+A7            1         0         0         1         0
+E1            1         0         0         0         1
+V7            1         1         0         0         0
+V8            1         1         0         0         0
 """)
         lines = run_main("inline_renaming", "--counts")[1].splitlines()
         self.assertEqual(lines[0], "== inline_renaming: 2 run(s) in 1 folder(s) ==")
-        self.assertEqual(lines[1:3], ["required      0", "pending       2"])
+        self.assertEqual(lines[1:4], ["required      0", "parallel      0", "pending       2"])
+
+    def test_a_twin_moves_a_run_to_parallel_and_is_counted_by_its_exception_not_as_a_run(self):
+        before = run_main("all", "--counts")[1].splitlines()
+        with paired():
+            after = run_main("all", "--counts")[1].splitlines()
+        self.assertEqual(after[0], before[0], "the twin's own run is no run of the ledger")
+        self.assertEqual(after[1:4], ["required      2", "parallel      1", "  a11y          1"])
+        self.assertIn("twins     timing 0, a11y 1, rune 0, oracle 0, toolkit 0, deviation 0", after)
+        self.assertIn("A1            1         0         1         0         0", after)
+        # A twin that holds two runs of its scenario is one twin.
+        runs = [{"status": "parallel", "exception": "timing", "twin": f"moves-rune/{mode}"}
+                for mode in ("columns", "list")]
+        self.assertEqual(qa_parity._twins(runs), {"timing": 1})
 
     def test_packages_sort_by_track_and_then_by_number(self):
         ledger = {"run": [{"package": package} for package in ("V8", "A10", "E1", "A2", "H4")]}
@@ -255,7 +356,7 @@ class CheckTests(unittest.TestCase):
         for case in table["accepted"]:
             with self.subTest(case["name"]):
                 self.assertEqual(check(case), [])
-        self.assertGreaterEqual(len(table["case"]), 29)
+        self.assertGreaterEqual(len(table["case"]), 41)
         for case in table["case"]:
             with self.subTest(case["name"]):
                 found = check(case)
@@ -267,6 +368,36 @@ class CheckTests(unittest.TestCase):
                 else:
                     self.assertIn(case["refused"], found[0])
                     self.assertTrue(found[0].startswith(f"{case['file']}.toml: "), found[0])
+
+    def pair_outcome(self, pairs, case=None):
+        """What this reader makes of the table's second corpus after a case's edits."""
+
+        case = case or {}
+        texts = {"header": dict(pairs["scenarios"]), "file": dict(pairs["ledger"])}
+        for edit in case.get("edit", []):
+            which = "header" if "header" in edit else "file"
+            texts[which] = self.edit({**edit, "file": edit[which], "name": case["name"]}, texts[which])
+        facts = [qa_parity_twins.facts(*path.split("/"), text) for path, text in texts["header"].items()]
+        corpus = qa_parity_twins.assemble(facts, set(case.get("patches", pairs["patches"])), set(pairs["packet"]))
+        return qa_parity_twins.faults(texts["file"], corpus)
+
+    def test_both_readers_accept_and_refuse_the_pairs_their_shared_table_says(self):
+        table = tomllib.loads((REPOSITORY / "tests/qa/parity_cases.toml").read_text(encoding="utf-8"))
+        pairs = table["pairs"]
+        self.assertEqual(self.pair_outcome(pairs), [])
+        for case in pairs["accepted"]:
+            with self.subTest(case["name"]):
+                self.assertEqual(self.pair_outcome(pairs, case), [])
+        self.assertGreaterEqual(len(pairs["case"]), 33)
+        for case in pairs["case"]:
+            with self.subTest(case["name"]):
+                found = self.pair_outcome(pairs, case)
+                self.assertEqual(len(found), 1, found)
+                self.assertEqual(("problem" in case, "refused" in case).count(True), 1)
+                if "problem" in case:
+                    self.assertEqual(found[0], case["problem"])
+                else:
+                    self.assertIn(case["refused"], found[0])
 
     def test_the_runners_tests_read_the_same_table_and_spell_the_same_help(self):
         tests = (REPOSITORY / "tests/qa/parity_tests.rs").read_text(encoding="utf-8")
@@ -330,6 +461,22 @@ class CheckTests(unittest.TestCase):
         ):
             with self.subTest(case), edited(folder, find, put):
                 for arguments in ((folder,), (folder, "--counts"), ("all", "--status", "pending"), ("slice",)):
+                    status, printed, errors = run_main(*arguments)
+                    self.assertEqual((status, printed), (2, ""), arguments)
+                    self.assertEqual(errors.splitlines()[1:], [f"  {problem}"], arguments)
+
+    def test_a_pair_with_a_fault_selects_nothing_and_says_what_to_do(self):
+        twin = "scenarios/keyboard_navigation/escape-clears-selection-rune.jsonl"
+        for case, pair, problem in (
+            ("a twin with no patch", paired(patches=()),
+             f"{twin} has no proof that it can fail: add tests/qa/parity/mutations/{TWIN}.patch, which "
+             "breaks the behaviour in crates/strata-app, and check it with ./scripts/qa-parity.sh mutations"),
+            ("a twin whose run the ledger still calls required", paired(row=REQUIRED),
+             f"keyboard_navigation.toml: escape-clears-selection/icons is required, and {TWIN}/icons stands "
+             "in for it: a run with a twin is parallel, with the exception, the twin and the reference"),
+        ):
+            with self.subTest(case), pair:
+                for arguments in (("A1",), ("all", "--counts"), ("slice", "--on", "rune")):
                     status, printed, errors = run_main(*arguments)
                     self.assertEqual((status, printed), (2, ""), arguments)
                     self.assertEqual(errors.splitlines()[1:], [f"  {problem}"], arguments)
@@ -542,7 +689,9 @@ class RepositoryTests(unittest.TestCase):
         script = (REPOSITORY / "scripts/qa-parity.sh").read_text(encoding="utf-8")
         counted = script.index('qa_parity.py" "$selection" --counts')
         self.assertLess(counted, script.index("qa_container_prepare"))
-        self.assertIn('qa_parity.py" "$selection" --status "$status"', script)
+        self.assertIn('qa_parity.py" "$selection" "$@" "${scenario[@]}"', script)
+        for listing in ('list --on "$target"', "list --status pending", "list --status parallel"):
+            self.assertIn(listing, script)
         command = [str(REPOSITORY / "scripts/qa-parity.sh")]
         refused = subprocess.run([*command, "no_such_folder"], capture_output=True, text=True, check=False)
         self.assertEqual((refused.returncode, refused.stdout), (2, ""))

@@ -16,6 +16,10 @@
 # An edit names a `file`, and either `find` and `put` (text of the file that occurs once,
 # and what takes its place), `append` (text added at its end), `text` (the whole file, which
 # need not exist yet) or `remove = true` (the file is gone).
+#
+# This first corpus has no scenario headers, so its cases are the rules an entry answers to
+# alone: a `parallel` entry is accepted here for its fields. Whether its twin exists and
+# agrees with it is the second corpus's, `[pairs]` at the end of the file, which has headers.
 
 [[planned]]
 folder = "keys"
@@ -321,6 +325,169 @@ blocker = "A1"
 '''
 problem = "pictures.toml: looks/icons is excluded, so it has no host, reason or blocker"
 
+# A parallel run and its twin.
+
+[[case]]
+name = "a parallel run names no exception"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list is parallel without an exception'
+
+[[case]]
+name = "a parallel run names no twin"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list is parallel without a twin'
+
+[[case]]
+name = "a parallel run cites no reference"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/list"
+'''
+problem = 'keys.toml: renames/list is parallel without a ref'
+
+[[case]]
+name = "a parallel run keeps its old excuse"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+blocker = "A2"
+'''
+problem = 'keys.toml: renames/list is parallel, so it has no reason, blocker or ruling'
+
+[[case]]
+name = "a parallel run under a code the plan does not have"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "flaky"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list names the exception "flaky", which is none: a twin is allowed under timing, a11y, rune, oracle, toolkit or deviation'
+
+[[case]]
+name = "a parallel run under platform, which never carries a twin"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "platform"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list names the exception "platform", which never carries a twin: the same file runs on the session host, so its run is pending or required with that host'
+
+[[case]]
+name = "a parallel run under a pending reason"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "scope"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list names the exception "scope", which is a pending reason and no exception: the run stays pending until its blocker is gone'
+
+[[case]]
+name = "a parallel run names another run as its twin"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/columns"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list names the twin "renames-rune/columns": the twin of renames/list is renames-rune/list'
+
+[[case]]
+name = "a parallel run cites something that is no issue"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/list"
+ref = "issue 2200"
+'''
+problem = 'keys.toml: renames/list cites "issue 2200", which is no reference: it is the issue, lgse/strata#<number>'
+
+[[case]]
+name = "a parallel run under rune cites an issue, not its packet entry"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "rune"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list cites "lgse/strata#2200", which is no packet entry: a rune twin names the entry it expires with, docs/rune/upstream/rune/<number>-<name>.md'
+
+[[case]]
+name = "a required run names a twin"
+file = "keys"
+find = '''host = "offscreen"
+'''
+put = '''host = "offscreen"
+twin = "moves-rune/columns-arrows"
+'''
+problem = "keys.toml: moves/columns-arrows is required, so it has no exception, twin or ref"
+
+[[case]]
+name = "a twin's run has an entry of its own"
+file = "keys"
+append = '''
+[[run]]
+scenario = "renames-rune"
+run = "list"
+package = "A2"
+status = "required"
+host = "offscreen"
+'''
+problem = "keys.toml: renames-rune/list is a twin's run, which has no entry of its own: it is listed as the twin of the parallel run it stands in for"
+
 # What a reader cannot read.
 
 [[case]]
@@ -485,3 +652,535 @@ host = "session"
 reason = "platform"
 blocker = "the clipboard"
 '''
+
+[[accepted]]
+name = "a parallel run that names its exception, its twin and its reference"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+
+[[accepted]]
+name = "a parallel run whose twin needs the session host"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+host = "session"
+exception = "timing"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+
+[[accepted]]
+name = "a parallel run under rune that cites its packet entry"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "rune"
+twin = "renames-rune/list"
+ref = "docs/rune/upstream/rune/98-escape-after-a-dead-key.md"
+'''
+
+# The second corpus: a labelled pair. `moves` cannot pass in Columns on the Rune target under
+# the `timing` exception, so `moves-rune`, beside it, stands in for that run there, and
+# `renames` is a scenario with no twin. Here the runs are read from the headers, as each
+# reader reads them, and a case's `problem` is the one line both report for the whole
+# corpus: the ledger's entries, each header alone, and each pair.
+#
+#   scenarios  a header line for each `<folder>/<scenario>`.
+#   ledger     each folder's file. A twin's runs are not listed: each is the `twin` of the
+#              parallel run it stands in for.
+#   patches    the scenarios the Rune mutation patches are named for.
+#   packet     the entries of the Rune filing packet, docs/rune/upstream/rune.
+#   case       edits which both refuse: each `edit` names a `header` or a `file` and changes
+#              it as above. `patches` replaces the patches there are.
+#   accepted   edits both still accept.
+
+[pairs]
+patches = ["moves-rune"]
+packet = ["98-escape-after-a-dead-key.md"]
+
+[pairs.scenarios]
+"keys/moves" = '{"scenario":"moves","modes":["columns","list"],"prefs":{"type_to_search":false},"tree":"canonical","parity":{"twin":"moves-rune","exception":"timing","ref":"lgse/strata#2200"}}'
+"keys/moves-rune" = '{"scenario":"moves-rune","modes":["columns"],"targets":["rune"],"prefs":{"type_to_search":false},"tree":"canonical","parity":{"twin":"moves","exception":"timing","ref":"lgse/strata#2200","differs":"line 4 waits for the selection, where the original waits out the highlight"}}'
+"keys/renames" = '{"scenario":"renames","modes":["list"],"variants":[{"id":"us"},{"id":"ru","layout":"ru"}]}'
+
+[pairs.ledger]
+keys = '''
+[[run]]
+scenario = "moves"
+run = "columns"
+package = "A7"
+status = "parallel"
+exception = "timing"
+twin = "moves-rune/columns"
+ref = "lgse/strata#2200"
+
+[[run]]
+scenario = "moves"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "renames"
+run = "list-us"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2: list"
+
+[[run]]
+scenario = "renames"
+run = "list-ru"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2: layouts"
+'''
+
+# A header's label, read alone.
+
+[[pairs.case]]
+name = "a twin does not say what differs"
+problem = '''scenarios/keys/moves-rune.jsonl is a twin without a one-line "differs": say which steps differ from moves's and why'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = ''',"differs":"line 4 waits for the selection, where the original waits out the highlight"'''
+put = ''''''
+
+[[pairs.case]]
+name = "a twin also runs on GTK"
+problem = '''scenarios/keys/moves-rune.jsonl is a twin that also runs on GTK: its header needs "targets":["rune"]'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"targets":["rune"],'''
+put = ''''''
+
+[[pairs.case]]
+name = "a twin names another scenario as its original"
+problem = '''scenarios/keys/moves-rune.jsonl names "renames", and is the twin of "moves": a twin is its original's name with -rune, beside it'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"twin":"moves"'''
+put = '''"twin":"renames"'''
+
+[[pairs.case]]
+name = "a scenario names another scenario's twin"
+problem = '''scenarios/keys/moves.jsonl names "renames-rune" as its twin: the twin of moves is moves-rune, beside it'''
+
+[[pairs.case.edit]]
+header = "keys/moves"
+find = '''"twin":"moves-rune"'''
+put = '''"twin":"renames-rune"'''
+
+[[pairs.case]]
+name = "a scenario is named as a twin and has no label"
+problem = '''scenarios/keys/looks-rune.jsonl is named as a twin and has no "parity" label: a twin names its original, "looks", with the exception, the reference and what differs'''
+
+[[pairs.case.edit]]
+header = "keys/looks-rune"
+text = '''{"scenario":"looks-rune","modes":["columns"]}'''
+
+[[pairs.case]]
+name = "a scenario with no twin leaves a target out"
+problem = '''scenarios/keys/renames.jsonl has "targets" and is no twin: every scenario runs on both targets, and a run that cannot pass on Rune is pending, parallel with a twin, or excluded by a ruling'''
+
+[[pairs.case.edit]]
+header = "keys/renames"
+find = '''"modes":["list"],'''
+put = '''"modes":["list"],"targets":["gtk"],'''
+
+[[pairs.case]]
+name = "an original leaves a target out"
+problem = '''scenarios/keys/moves.jsonl has "targets", and only a twin does: the original keeps running on both targets, and the "parity" label is the one edit made to it'''
+
+[[pairs.case.edit]]
+header = "keys/moves"
+find = '''"modes":["columns","list"],'''
+put = '''"modes":["columns","list"],"targets":["gtk"],'''
+
+[[pairs.case]]
+name = "an original says what differs"
+problem = '''scenarios/keys/moves.jsonl has "differs", which only the twin carries: moves-rune's header says which steps differ'''
+
+[[pairs.case.edit]]
+header = "keys/moves"
+find = '''"ref":"lgse/strata#2200"'''
+put = '''"ref":"lgse/strata#2200","differs":"line 4"'''
+
+[[pairs.case]]
+name = "a twin of a twin"
+problem = '''scenarios/keys/moves-rune-rune.jsonl is a twin of a twin: "moves-rune" is itself a twin, and a twin stands in for runs of the file both targets share'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune-rune"
+text = '''{"scenario":"moves-rune-rune","modes":["columns"],"targets":["rune"],"prefs":{"type_to_search":false},"tree":"canonical","parity":{"twin":"moves-rune","exception":"timing","ref":"lgse/strata#2200","differs":"line 4 waits for the selection, where the original waits out the highlight"}}'''
+
+[[pairs.case]]
+name = "a twin under platform, which never carries one"
+problem = '''scenarios/keys/moves-rune.jsonl names the exception "platform", which never carries a twin: the same file runs on the session host, so its run is pending or required with that host'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"exception":"timing"'''
+put = '''"exception":"platform"'''
+
+[[pairs.case]]
+name = "a twin cites something that is no issue"
+problem = '''scenarios/keys/moves-rune.jsonl cites "#2200", which is no reference: it is the issue, lgse/strata#<number>'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"ref":"lgse/strata#2200"'''
+put = '''"ref":"#2200"'''
+
+[[pairs.case]]
+name = "a twin names a GTK mutation patch"
+problem = '''scenarios/keys/moves-rune.jsonl is a twin with a "mutation", which names a GTK patch: a twin's proof that it can fail is tests/qa/parity/mutations/moves-rune.patch'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"modes":["columns"],'''
+put = '''"modes":["columns"],"mutation":"keyboard-navigation",'''
+
+[[pairs.case]]
+name = "a twin is marked as a known bug"
+problem = '''scenarios/keys/moves-rune.jsonl is a twin marked known_bug: a twin passes on Rune, and a run whose twin cannot is pending'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"modes":["columns"],'''
+put = '''"modes":["columns"],"known_bug":"lgse/strata#1","known_bug_step":2,'''
+
+[[pairs.case]]
+name = "a label with a key it does not have"
+refused = "note"
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"twin":"moves",'''
+put = '''"twin":"moves","note":"x",'''
+
+[[pairs.case]]
+name = "a label with no reference"
+refused = "ref"
+
+[[pairs.case.edit]]
+header = "keys/moves"
+find = ''',"ref":"lgse/strata#2200"'''
+put = ''''''
+
+[[pairs.case]]
+name = "a target the runner does not have"
+refused = "qt"
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"targets":["rune"]'''
+put = '''"targets":["qt"]'''
+
+# The pair: the two files, and the ledger's entries.
+
+[[pairs.case]]
+name = "a parallel run whose twin's file is gone"
+problem = '''keys.toml: moves/columns is parallel, and its twin's file does not exist: tests/qa/scenarios/keys/moves-rune.jsonl. Write the twin, or the run is pending'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+remove = true
+
+[[pairs.case]]
+name = "a label that names a twin nobody wrote"
+problem = '''scenarios/keys/moves.jsonl names the twin moves-rune, and tests/qa/scenarios/keys/moves-rune.jsonl does not exist: write the twin, or take the "parity" label off'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+remove = true
+
+[[pairs.case.edit]]
+file = "keys"
+find = '''status = "parallel"
+exception = "timing"
+twin = "moves-rune/columns"
+ref = "lgse/strata#2200"
+'''
+put = '''status = "pending"
+reason = "scope"
+blocker = "A7"
+'''
+
+[[pairs.case]]
+name = "a twin whose original does not exist"
+patches = ["moves-rune", "looks-rune"]
+problem = '''scenarios/keys/looks-rune.jsonl is the twin of looks, and no scenario has that name: a twin stands beside its original'''
+
+[[pairs.case.edit]]
+header = "keys/looks-rune"
+text = '''{"scenario":"looks-rune","modes":["columns"],"targets":["rune"],"prefs":{"type_to_search":false},"tree":"canonical","parity":{"twin":"looks","exception":"timing","ref":"lgse/strata#2200","differs":"line 4 waits for the selection, where the original waits out the highlight"}}'''
+
+[[pairs.case]]
+name = "a twin in another folder than its original"
+problem = '''scenarios/pictures/moves-rune.jsonl is the twin of moves, which is in keys: a twin is a file beside its original'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+remove = true
+
+[[pairs.case.edit]]
+header = "pictures/moves-rune"
+text = '''{"scenario":"moves-rune","modes":["columns"],"targets":["rune"],"prefs":{"type_to_search":false},"tree":"canonical","parity":{"twin":"moves","exception":"timing","ref":"lgse/strata#2200","differs":"line 4 waits for the selection, where the original waits out the highlight"}}'''
+
+[[pairs.case]]
+name = "a twin whose original has no label"
+problem = '''scenarios/keys/moves.jsonl has the twin moves-rune and no "parity" label: give it the label, with the twin's exception and reference; its steps stay as they are'''
+
+[[pairs.case.edit]]
+header = "keys/moves"
+find = ''',"parity":{"twin":"moves-rune","exception":"timing","ref":"lgse/strata#2200"}'''
+put = ''''''
+
+[[pairs.case]]
+name = "the two headers name different exceptions"
+problem = '''scenarios/keys/moves-rune.jsonl is under the exception "a11y" and its original under "timing": the two headers carry one code'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"exception":"timing"'''
+put = '''"exception":"a11y"'''
+
+[[pairs.case]]
+name = "the two headers cite different references"
+problem = '''scenarios/keys/moves-rune.jsonl cites "lgse/strata#2201" and its original "lgse/strata#2200": the two headers carry one reference'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"ref":"lgse/strata#2200"'''
+put = '''"ref":"lgse/strata#2201"'''
+
+[[pairs.case]]
+name = "a twin with no run"
+problem = '''scenarios/keys/moves-rune.jsonl has no run: a twin holds the modes or variants of moves it stands in for'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"modes":["columns"]'''
+put = '''"modes":[]'''
+
+[[pairs.case]]
+name = "a twin runs in a mode its original lacks"
+problem = '''scenarios/keys/moves-rune.jsonl has the run icons, which moves lacks: a twin holds only modes and variants of its original'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"modes":["columns"]'''
+put = '''"modes":["columns","icons"]'''
+
+[[pairs.case]]
+name = "a twin starts from another fixture"
+problem = '''scenarios/keys/moves-rune.jsonl starts columns with another "tree" than moves: a twin keeps what its original starts from, and only the steps "differs" names differ'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"tree":"canonical"'''
+put = '''"tree":"deep"'''
+
+[[pairs.case]]
+name = "a twin has no patch that proves it can fail"
+patches = []
+problem = '''scenarios/keys/moves-rune.jsonl has no proof that it can fail: add tests/qa/parity/mutations/moves-rune.patch, which breaks the behaviour in crates/strata-app, and check it with ./scripts/qa-parity.sh mutations'''
+
+[[pairs.case]]
+name = "a twin stands in for a run the ledger does not call parallel"
+problem = '''keys.toml: moves/list is pending, and moves-rune/list stands in for it: a run with a twin is parallel, with the exception, the twin and the reference'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"modes":["columns"]'''
+put = '''"modes":["columns","list"]'''
+
+[[pairs.case]]
+name = "a parallel run its twin does not hold"
+problem = '''keys.toml: moves/list is parallel, and moves-rune has no run list: the twin holds every run it stands in for'''
+
+[[pairs.case.edit]]
+file = "keys"
+find = '''run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''run = "list"
+package = "A2"
+status = "parallel"
+exception = "timing"
+twin = "moves-rune/list"
+ref = "lgse/strata#2200"
+'''
+
+[[pairs.case]]
+name = "the ledger names another exception than the headers"
+problem = '''keys.toml: moves/columns is parallel under "a11y", and its header says "timing": the ledger and the two headers carry one code'''
+
+[[pairs.case.edit]]
+file = "keys"
+find = '''exception = "timing"'''
+put = '''exception = "a11y"'''
+
+[[pairs.case]]
+name = "the ledger cites another reference than the headers"
+problem = '''keys.toml: moves/columns cites "lgse/strata#2201", and its header "lgse/strata#2200": the ledger and the two headers carry one reference'''
+
+[[pairs.case.edit]]
+file = "keys"
+find = '''ref = "lgse/strata#2200"'''
+put = '''ref = "lgse/strata#2201"'''
+
+[[pairs.case]]
+name = "the ledger's reference is no issue, which is said once"
+problem = '''keys.toml: moves/columns cites "#2200", which is no reference: it is the issue, lgse/strata#<number>'''
+
+[[pairs.case.edit]]
+file = "keys"
+find = '''ref = "lgse/strata#2200"'''
+put = '''ref = "#2200"'''
+
+[[pairs.case]]
+name = "a rune twin cites an entry the packet does not have"
+problem = '''scenarios/keys/moves-rune.jsonl cites "docs/rune/upstream/rune/99-nothing.md", and docs/rune/upstream/rune has no such entry: a rune twin names the packet entry it expires with'''
+
+[[pairs.case.edit]]
+header = "keys/moves-rune"
+find = '''"exception":"timing","ref":"lgse/strata#2200"'''
+put = '''"exception":"rune","ref":"docs/rune/upstream/rune/99-nothing.md"'''
+
+[[pairs.case.edit]]
+header = "keys/moves"
+find = '''"exception":"timing","ref":"lgse/strata#2200"'''
+put = '''"exception":"rune","ref":"docs/rune/upstream/rune/99-nothing.md"'''
+
+[[pairs.case.edit]]
+file = "keys"
+find = '''exception = "timing"
+twin = "moves-rune/columns"
+ref = "lgse/strata#2200"'''
+put = '''exception = "rune"
+twin = "moves-rune/columns"
+ref = "docs/rune/upstream/rune/99-nothing.md"'''
+
+[[pairs.case]]
+name = "a twin's variant starts under another layout"
+patches = ["moves-rune", "renames-rune"]
+problem = '''scenarios/keys/renames-rune.jsonl starts list-ru with another "layout" than renames: a twin keeps what its original starts from, and only the steps "differs" names differ'''
+
+[[pairs.case.edit]]
+header = "keys/renames"
+find = '''{"id":"ru","layout":"ru"}]}'''
+put = '''{"id":"ru","layout":"ru"}],"parity":{"twin":"renames-rune","exception":"a11y","ref":"lgse/strata#2201"}}'''
+
+[[pairs.case.edit]]
+header = "keys/renames-rune"
+text = '''{"scenario":"renames-rune","modes":["list"],"targets":["rune"],"variants":[{"id":"ru"}],"parity":{"twin":"renames","exception":"a11y","ref":"lgse/strata#2201","differs":"line 6 names the row, not its cell"}}'''
+
+[[pairs.case.edit]]
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2: layouts"
+'''
+put = '''status = "parallel"
+exception = "a11y"
+twin = "renames-rune/list-ru"
+ref = "lgse/strata#2201"
+'''
+
+# What both still accept.
+
+[[pairs.accepted]]
+name = "a twin that holds one variant of its original, which is the run that differs"
+patches = ["moves-rune", "renames-rune"]
+
+[[pairs.accepted.edit]]
+header = "keys/renames"
+find = '''{"id":"ru","layout":"ru"}]}'''
+put = '''{"id":"ru","layout":"ru"}],"parity":{"twin":"renames-rune","exception":"a11y","ref":"lgse/strata#2201"}}'''
+
+[[pairs.accepted.edit]]
+header = "keys/renames-rune"
+text = '''{"scenario":"renames-rune","modes":["list"],"targets":["rune"],"variants":[{"id":"ru","layout":"ru"}],"parity":{"twin":"renames","exception":"a11y","ref":"lgse/strata#2201","differs":"line 6 names the row, not its cell"}}'''
+
+[[pairs.accepted.edit]]
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2: layouts"
+'''
+put = '''status = "parallel"
+exception = "a11y"
+twin = "renames-rune/list-ru"
+ref = "lgse/strata#2201"
+'''
+
+[[pairs.accepted]]
+name = "a twin that holds every run of its original"
+
+[[pairs.accepted.edit]]
+header = "keys/moves-rune"
+find = '''"modes":["columns"]'''
+put = '''"modes":["columns","list"]'''
+
+[[pairs.accepted.edit]]
+file = "keys"
+find = '''run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''run = "list"
+package = "A2"
+status = "parallel"
+exception = "timing"
+twin = "moves-rune/list"
+ref = "lgse/strata#2200"
+'''
+
+[[pairs.accepted]]
+name = "a rune twin that cites its packet entry"
+
+[[pairs.accepted.edit]]
+header = "keys/moves-rune"
+find = '''"exception":"timing","ref":"lgse/strata#2200"'''
+put = '''"exception":"rune","ref":"docs/rune/upstream/rune/98-escape-after-a-dead-key.md"'''
+
+[[pairs.accepted.edit]]
+header = "keys/moves"
+find = '''"exception":"timing","ref":"lgse/strata#2200"'''
+put = '''"exception":"rune","ref":"docs/rune/upstream/rune/98-escape-after-a-dead-key.md"'''
+
+[[pairs.accepted.edit]]
+file = "keys"
+find = '''exception = "timing"
+twin = "moves-rune/columns"
+ref = "lgse/strata#2200"'''
+put = '''exception = "rune"
+twin = "moves-rune/columns"
+ref = "docs/rune/upstream/rune/98-escape-after-a-dead-key.md"'''

@@ -13,6 +13,7 @@ use crate::{
     REPOSITORY,
     parity::Ledger,
     scenario::{load_scenario, scenario_files},
+    target::Target,
     variables::runs,
 };
 
@@ -69,6 +70,10 @@ impl Suite {
         for path in scenario_files() {
             let scenario =
                 load_scenario(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            // A twin runs on Rune alone, so it is no run of the GTK suite.
+            if !scenario.header.runs_on(Some(Target::Gtk)) {
+                continue;
+            }
             let name = &scenario.header.scenario;
             suite.runs.extend(
                 runs(&scenario.header)

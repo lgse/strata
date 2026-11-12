@@ -2,7 +2,8 @@
 
 //! The parity ledger's runs, `tests/qa/parity/<folder>.toml`: one file for each folder under
 //! `tests/qa/scenarios`, listing every run of the folder once with the work package that
-//! owns it. A run is `required` on both targets, `pending` with a reason and a blocker, or
+//! owns it. A run is `required` on both targets, `parallel` under an exception with a twin
+//! that stands in for it on Rune (`twins.rs`), `pending` with a reason and a blocker, or
 //! `excluded` by an owner ruling (`docs/testing.md`, "The Rune target and the parity
 //! ledger"). `./scripts/qa-parity.sh` reads the same files to pick the runs of a selection.
 //!
@@ -19,8 +20,7 @@ use serde::Deserialize;
 
 use crate::{
     REPOSITORY, allowances,
-    scenario::{load_scenario, scenario_files},
-    variables::{Run, runs},
+    twins::{Corpus, SUFFIX, exception_problem, reference_problem},
 };
 
 pub(crate) const LEDGER: &str = "tests/qa/parity";
@@ -66,8 +66,20 @@ pub(crate) enum Gate {
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Status {
     Required,
+    Parallel,
     Pending,
     Excluded,
+}
+
+impl Status {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Required => "required",
+            Self::Parallel => "parallel",
+            Self::Pending => "pending",
+            Self::Excluded => "excluded",
+        }
+    }
 }
 
 /// Where a run runs on the Rune target: the offscreen host, or a real window in a
@@ -104,6 +116,13 @@ pub(crate) struct Entry {
     pub(crate) gate: Option<Gate>,
     pub(crate) status: Status,
     pub(crate) host: Option<Host>,
+    /// The exception a parallel run stands under: a code that may carry a twin.
+    pub(crate) exception: Option<String>,
+    /// The twin's run that stands in for a parallel one on Rune: `<scenario>-rune/<run>`.
+    pub(crate) twin: Option<String>,
+    /// The exception's record: an issue, or the packet entry of a `rune` twin.
+    #[serde(rename = "ref")]
+    pub(crate) reference: Option<String>,
     pub(crate) reason: Option<Reason>,
     pub(crate) blocker: Option<String>,
     pub(crate) ruling: Option<String>,
@@ -165,11 +184,31 @@ impl Ledger {
         self.folders.values().flatten()
     }
 
-    /// Whether a parity run decides the run: it is required, or one of the slice's set.
+    /// A scenario's entries in its folder's file.
+    pub(crate) fn entries_of(&self, folder: &str, scenario: &str) -> Vec<&Entry> {
+        let entries = self.folders.get(folder).into_iter().flatten();
+        entries.filter(|entry| entry.scenario == scenario).collect()
+    }
+
+    /// Whether a parity run decides the run: it is required, parallel with a twin, or one
+    /// of the slice's set.
     pub(crate) fn decides(&self, scenario: &str, run: &str) -> bool {
+        let at_parity = |status| matches!(status, Status::Required | Status::Parallel);
         self.entries()
             .filter(|entry| entry.scenario == scenario && entry.run == run)
-            .any(|entry| entry.gate.is_some() || entry.status == Status::Required)
+            .any(|entry| entry.gate.is_some() || at_parity(entry.status))
+    }
+
+    /// Everything wrong with the ledger and the labelled pairs against a corpus: the runs
+    /// its scenario headers plan, their `parity` labels, and what a twin cites.
+    pub(crate) fn faults(&self, corpus: &Corpus) -> Vec<String> {
+        let unread = corpus.unread();
+        if !unread.is_empty() {
+            return unread;
+        }
+        let mut problems = self.problems(&corpus.planned());
+        problems.extend(corpus.problems(self));
+        problems
     }
 
     /// Everything wrong with the ledger against the runs the runner plans, one line each.
@@ -200,12 +239,6 @@ impl Ledger {
         );
         problems
     }
-}
-
-fn file_name(path: &Path) -> &str {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or_default()
 }
 
 /// Everything wrong with one folder's file against the folder's runs, which are in the
@@ -269,6 +302,11 @@ impl Entry {
     /// has it. No such run, or a gate that is not the run's.
     fn misplaced(&self, run: Option<&Planned>) -> Option<String> {
         match (run.map(|run| run.gate), self.gate) {
+            (None, _) if self.scenario.ends_with(SUFFIX) => Some(
+                "is a twin's run, which has no entry of its own: it is listed as the twin of \
+                 the parallel run it stands in for"
+                    .to_owned(),
+            ),
             (None, _) => Some("is no run of the folder".to_owned()),
             (Some(planned), listed) if planned == listed => None,
             (Some(Some(gate)), _) => Some(format!("belongs to gate {gate:?}")),
@@ -302,10 +340,52 @@ impl Entry {
     fn unexplained(&self) -> Option<String> {
         let problem = match self.status {
             Status::Required => self.required_without(),
+            Status::Parallel => return self.parallel_without(),
             Status::Pending => self.pending_without(),
             Status::Excluded => self.excluded_without(),
         };
-        problem.map(str::to_owned)
+        problem.map(str::to_owned).or_else(|| self.twinned())
+    }
+
+    /// Whether the entry names an exception, a twin or a reference, as only a parallel one
+    /// does.
+    fn twinned(&self) -> Option<String> {
+        let named = self.exception.is_some() || self.twin.is_some() || self.reference.is_some();
+        named.then(|| {
+            format!(
+                "is {}, so it has no exception, twin or ref",
+                self.status.name()
+            )
+        })
+    }
+
+    /// A parallel entry names the exception, the twin's run and the reference. It may name
+    /// the host its twin needs, as a required one does; without one it is the offscreen host.
+    fn parallel_without(&self) -> Option<String> {
+        let (Some(code), Some(twin), Some(reference)) =
+            (&self.exception, &self.twin, &self.reference)
+        else {
+            let lacks = [
+                ("an exception", self.exception.is_none()),
+                ("a twin", self.twin.is_none()),
+            ];
+            let lacks = lacks.iter().find(|(_, lacks)| *lacks);
+            let field = lacks.map_or("a ref", |(field, _)| field);
+            return Some(format!("is parallel without {field}"));
+        };
+        if self.blocked() || self.ruling.is_some() {
+            return Some("is parallel, so it has no reason, blocker or ruling".to_owned());
+        }
+        let stand_in = format!("{}{SUFFIX}/{}", self.scenario, self.run);
+        let misnamed = (*twin != stand_in).then(|| {
+            format!(
+                "names the twin {twin:?}: the twin of {}/{} is {stand_in}",
+                self.scenario, self.run
+            )
+        });
+        exception_problem(code)
+            .or(misnamed)
+            .or_else(|| reference_problem(code, reference))
     }
 
     /// Whether the entry says why its run is pending, as only a pending one does.
@@ -347,35 +427,16 @@ impl Entry {
     }
 }
 
-/// The gate of a run: G1's one run, or its folder's when it is a Columns run of the set.
-fn gate(folder: &str, scenario: &str, run: &Run) -> Option<Gate> {
-    if run.mode != COLUMNS {
+/// The gate of a run, by its mode and its label: G1's one run, or its folder's when it is
+/// a Columns run of the set.
+pub(crate) fn gate(folder: &str, scenario: &str, mode: &str, label: &str) -> Option<Gate> {
+    if mode != COLUMNS {
         return None;
     }
-    if (scenario, run.label.as_str()) == FIRST_LIGHT {
+    if (scenario, label) == FIRST_LIGHT {
         return Some(Gate::G1);
     }
     SET.iter()
         .find(|(name, _)| *name == folder)
         .map(|(_, gate)| *gate)
-}
-
-/// Every run of every scenario file, as the runner plans them.
-pub(crate) fn planned() -> Vec<Planned> {
-    let mut planned = Vec::new();
-    for path in scenario_files() {
-        let folder = path.parent().map(file_name).unwrap_or_default();
-        let scenario =
-            load_scenario(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-        let name = &scenario.header.scenario;
-        for run in runs(&scenario.header) {
-            planned.push(Planned {
-                folder: folder.to_owned(),
-                scenario: name.clone(),
-                gate: gate(folder, name, &run),
-                run: run.label,
-            });
-        }
-    }
-    planned
 }

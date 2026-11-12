@@ -20,10 +20,15 @@
 #   ./scripts/qa-parity.sh g2 --scenario shift-click-range
 #                                             only that scenario's runs of the selection
 #   ./scripts/qa-parity.sh mutations          each patch under tests/qa/parity/mutations must
-#                                             make the scenario it is named for fail on Rune
+#                                             make the scenario it is named for fail on Rune;
+#                                             <scenario>-rune.patch is a twin's
 #   ./scripts/qa-parity.sh gtk-mutations      each patch under tests/qa/mutations must make its
 #                                             scenario fail on GTK, but the ones the ledger
 #                                             names as stale, which must be stale still
+# A required run passes on both targets from one file. A parallel run is at parity by another
+# route, and is run with the required ones: its scenario must pass on GTK, and its twin,
+# <scenario>-rune/<run>, on Rune (docs/testing.md, "Twins"). --scenario takes either name.
+#
 # A run's artifacts are kept whether it passes or fails, in target/qa-artifacts (GTK) and
 # target/qa-artifacts-rune (Rune), under <scenario>/<run>; STRATA_QA_KEEP_ARTIFACTS=0 keeps
 # only a failed run's. Shares target/qa-container with qa.sh: one QA script at a time.
@@ -96,19 +101,30 @@ if [[ "$status" == pending ]]; then
 fi
 
 if [[ "$targets" != "gtk rune" || "$status" != required ]]; then whole=0; fi
-# The reader checks the whole ledger first and refuses one with a fault, as the runner's
-# tests would; then a selection it does not have, and a required run it cannot start here.
-listed="$(python3 "$repository/scripts/qa_parity.py" "$selection" --status "$status" "${scenario[@]}")" \
-  || exit 2
-runs=()
-if [[ -n "$listed" ]]; then mapfile -t runs <<< "$listed"; fi
-if ((${#runs[@]} == 0)); then
+# The reader checks the whole ledger and its twins first and refuses one with a fault, as the
+# runner's tests would; then a selection it does not have, and a run it cannot start here.
+list() { python3 "$repository/scripts/qa_parity.py" "$selection" "$@" "${scenario[@]}"; }
+gtk_runs="" rune_runs="" parallel=0 kind="$status"
+if [[ "$status" == pending ]]; then
+  rune_runs="$(list --status pending)" || exit 2
+else
+  # What must pass differs by target: a parallel run is its scenario on GTK, its twin on Rune.
+  kind="required or parallel"
+  for target in $targets; do
+    listed="$(list --on "$target")" || exit 2
+    printf -v "${target}_runs" '%s' "$listed"
+  done
+  listed="$(list --status parallel)" || exit 2
+  if [[ -n "$listed" ]]; then parallel="$(wc -l <<< "$listed")"; fi
+fi
+first="${targets%% *}_runs"
+if [[ -z "${!first}" ]]; then
   if ((${#scenario[@]})); then
     # A scenario is named to run it: a name with no run is a mistake, not an empty gate.
-    echo "The ledger has no $status run of ${scenario[1]} for $selection." >&2
+    echo "The ledger has no $kind run of ${scenario[1]} for $selection." >&2
     exit 2
   fi
-  echo "The ledger has no $status run for $selection: nothing was run."
+  echo "The ledger has no $kind run for $selection: nothing was run."
   exit 0
 fi
 
@@ -131,8 +147,8 @@ code=0
   --env "STRATA_QA_MAIN_IO=${STRATA_QA_MAIN_IO:-}" \
   --env "STRATA_UI_STALL_MS=${STRATA_UI_STALL_MS:-}" \
   "$image" bash -euc '
-    selection="$1" status="$2" targets="$3" whole="$4" notes="/workspace/$5"
-    shift 5
+    selection="$1" status="$2" targets="$3" whole="$4" notes="/workspace/$5" parallel="$6"
+    declare -A listed=([gtk]="$7" [rune]="$8")
     mkdir -p "$HOME" "$CARGO_HOME"
     # An empty cache takes the crates the image holds; a used one is left alone.
     python3 scripts/dependency_seed.py
@@ -156,19 +172,25 @@ code=0
         | tee -a "$notes"
     }
     for target in $targets; do
-      echo "== $selection on $target: $# $status run(s) =="
+      mapfile -t runs <<< "${listed[$target]}"
+      count="${#runs[@]}"
+      heading="$count $status run(s)"
+      if ((parallel)); then
+        heading="$count run(s): $((count - parallel)) required and $parallel parallel, the scenario on gtk and its twin on rune"
+      fi
+      echo "== $selection on $target: $heading =="
       output="$(mktemp)"
-      STRATA_QA_TARGET="$target" "${runner[@]}" -- --include-ignored --exact "$@" 2>&1 \
+      STRATA_QA_TARGET="$target" "${runner[@]}" -- --include-ignored --exact "${runs[@]}" 2>&1 \
         | tee "$output"
       code="${PIPESTATUS[0]}"
       passed="$(grep -Ec "^(PASS|KNOWN BUG) " "$output" || true)"
       planned="$(grep -c "^RUN " "$output" || true)"
-      echo "== $target: $passed of $# passed =="
+      echo "== $target: $passed of $count passed =="
       if [[ "$status" == pending ]]; then
         # A survey fails only when it could not run: its failures are what it is for.
         if ((planned == 0)); then failed=1; fi
         grep -E "^PASS " "$output" | sed "s/^PASS /PASSES ON RUNE, STILL PENDING: /" || true
-      elif ((code != 0 || passed != $#)); then
+      elif ((code != 0 || passed != count)); then
         failed=1
       fi
     done
@@ -192,7 +214,8 @@ code=0
       fi
     fi
     exit "$failed"
-  ' bash "$selection" "$status" "$targets" "$whole" "$notes" "${runs[@]}" || code=$?
+  ' bash "$selection" "$status" "$targets" "$whole" "$notes" "$parallel" "$gtk_runs" "$rune_runs" \
+  || code=$?
 if [[ "$selection" == slice && "$whole" == 1 ]]; then
   echo "== the Rune mutation patches =="
   python3 "$repository/scripts/qa_parity_mutation.py" rune || code=1

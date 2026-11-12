@@ -6,20 +6,25 @@ use serde::Deserialize;
 
 use crate::{
     REPOSITORY,
-    parity::{Gate, HELP, Ledger, Planned, Status, planned},
+    parity::{Gate, HELP, Ledger, Planned, Status},
     target::{RUNE_BINARY_VARIABLE, TARGET_VARIABLE, Target},
+    twin_tests::Pairs,
+    twins::Corpus,
 };
 
 /// The folder whose runs an owner ruling left out of the migration: they run on GTK only.
 const EXCLUDED: &str = "visual_baselines";
 
+/// Every run of the corpus both targets share is listed once, and every twin once more: as
+/// the `twin` of the parallel run it stands in for, with the pair's two labels in order.
 pub(crate) fn the_parity_ledger_accounts_for_every_run_of_every_scenario_folder() {
     let ledger = Ledger::load().unwrap_or_else(|error| panic!("{error}"));
-    let planned = planned();
-    let problems = ledger.problems(&planned);
+    let corpus = Corpus::load();
+    let planned = corpus.planned();
+    let problems = ledger.faults(&corpus);
     assert!(
         problems.is_empty(),
-        "tests/qa/parity:\n  {}\n{HELP}",
+        "tests/qa/parity and the labelled pairs of tests/qa:\n  {}\n{HELP}",
         problems.join("\n  ")
     );
     let gate = |gate: Gate| planned.iter().filter(|run| run.gate == Some(gate)).count();
@@ -57,12 +62,14 @@ const CASES: &str = "tests/qa/parity_cases.toml";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Cases {
+pub(crate) struct Cases {
     planned: Vec<Planned>,
     ledger: BTreeMap<String, String>,
     #[serde(rename = "case")]
     refused: Vec<Case>,
     accepted: Vec<Case>,
+    /// The table's second corpus, which has scenario headers: `twin_tests.rs`.
+    pub(crate) pairs: Pairs,
 }
 
 /// An edit to the table's ledger, and what a reader makes of the result.
@@ -83,14 +90,36 @@ struct Case {
     refused: Option<String>,
 }
 
-impl Case {
-    /// The file's text after the edit; nothing when the edit removes the file.
-    fn edited(&self, before: &str) -> Option<String> {
+/// An edit to one text of the table: a ledger file's, or a scenario header's.
+#[derive(Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Edit {
+    pub(crate) file: Option<String>,
+    pub(crate) header: Option<String>,
+    find: Option<String>,
+    put: Option<String>,
+    append: Option<String>,
+    text: Option<String>,
+    #[serde(default)]
+    remove: bool,
+}
+
+impl Edit {
+    /// Makes the edit to the text it names, among a table's headers or its ledger files.
+    pub(crate) fn apply(&self, case: &str, texts: &mut BTreeMap<String, String>) {
+        let key = self.header.as_ref().or(self.file.as_ref());
+        let key = key.unwrap_or_else(|| panic!("{case}: an edit names a header or a file"));
+        let before = texts.remove(key).unwrap_or_default();
+        texts.extend(self.edited(case, &before).map(|after| (key.clone(), after)));
+    }
+
+    /// The text after the edit; nothing when the edit removes it. `case` names the case.
+    pub(crate) fn edited(&self, case: &str, before: &str) -> Option<String> {
         let after = match (&self.text, &self.find) {
             (Some(text), _) => text.clone(),
             (None, Some(find)) => {
                 let found = before.matches(find.as_str()).count();
-                assert_eq!(found, 1, "{}: `find` occurs once in the file", self.name);
+                assert_eq!(found, 1, "{case}: `find` occurs once in the text");
                 before.replace(find.as_str(), self.put.as_deref().unwrap_or_default())
             }
             (None, None) => format!("{before}{}", self.append.as_deref().unwrap_or_default()),
@@ -99,8 +128,23 @@ impl Case {
     }
 }
 
+impl Case {
+    /// The file's text after the edit; nothing when the edit removes the file.
+    fn edited(&self, before: &str) -> Option<String> {
+        let edit = Edit {
+            find: self.find.clone(),
+            put: self.put.clone(),
+            append: self.append.clone(),
+            text: self.text.clone(),
+            remove: self.remove,
+            ..Edit::default()
+        };
+        edit.edited(&self.name, before)
+    }
+}
+
 impl Cases {
-    fn load() -> Self {
+    pub(crate) fn load() -> Self {
         let text = fs::read_to_string(Path::new(REPOSITORY).join(CASES))
             .unwrap_or_else(|error| panic!("{CASES}: {error}"));
         toml::from_str(&text).unwrap_or_else(|error| panic!("{CASES}: {error}"))

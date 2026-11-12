@@ -16,6 +16,8 @@ use crate::{
     fs_check::FsStep,
     harness, protocol,
     run::run_scenario,
+    target::Target,
+    twins,
     unit_tests::UNIT_TESTS,
     variables::{run_name, runs},
 };
@@ -71,6 +73,21 @@ pub(crate) struct Header {
     pub(crate) skip: Option<String>,
     pub(crate) cost: Option<BTreeMap<String, f64>>,
     pub(crate) quality: Option<Value>,
+    /// The other file of a labelled pair, and the exception the pair stands under.
+    pub(crate) parity: Option<twins::Label>,
+    /// The targets the scenario runs on; both, when the header has none.
+    pub(crate) targets: Option<Vec<Target>>,
+}
+
+impl Header {
+    /// Whether the scenario has runs on the target. One the environment cannot name plans
+    /// every scenario, so each launch fails with the reason.
+    pub(crate) fn runs_on(&self, target: Option<Target>) -> bool {
+        match (&self.targets, target) {
+            (Some(listed), Some(target)) => listed.contains(&target),
+            _ => true,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -165,18 +182,62 @@ pub(crate) fn scenario_name(path: &Path) -> String {
         .to_owned()
 }
 
-fn read_header(path: &Path) -> Result<Header, String> {
+/// A scenario file's first line with anything on it: its header.
+pub(crate) fn header_line(path: &Path) -> Result<String, String> {
     let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let first = text
         .lines()
         .find(|line| !line.trim().is_empty())
         .ok_or("the scenario is empty")?;
-    serde_json::from_str(first).map_err(|error| format!("line 1, the header: {error}"))
+    Ok(first.to_owned())
+}
+
+fn read_header(path: &Path) -> Result<Header, String> {
+    serde_json::from_str(&header_line(path)?)
+        .map_err(|error| format!("line 1, the header: {error}"))
 }
 
 const SCENARIO_IGNORED: &str = "QA scenarios run in the pinned container through ./scripts/qa.sh";
 
-pub(crate) fn planned_tests() -> Vec<harness::Test> {
+/// What the harness is given: the runner's own tests and every run of the target.
+pub(crate) struct Plan {
+    pub(crate) tests: Vec<harness::Test>,
+    /// The scenarios whose `targets` leave this target out. They are no runs here: not
+    /// failed, not ignored and not filtered out, so the suite's counts do not have them.
+    pub(crate) elsewhere: Vec<String>,
+}
+
+impl Plan {
+    /// Says which scenarios the target leaves out, but beside a listing or the usage.
+    pub(crate) fn announce(&self, quiet: bool) {
+        let notice = self.notice(Target::from_environment().ok());
+        if let Some(notice) = notice.filter(|_| !quiet) {
+            eprintln!("{notice}");
+        }
+    }
+
+    /// What to say of the scenarios left out, when there are any.
+    pub(crate) fn notice(&self, target: Option<Target>) -> Option<String> {
+        let target = target?.name();
+        (!self.elsewhere.is_empty()).then(|| {
+            format!(
+                "NOT ON {target}: {} scenario(s) list other targets and are no runs here: {}",
+                self.elsewhere.len(),
+                self.elsewhere.join(", ")
+            )
+        })
+    }
+}
+
+pub(crate) fn planned_tests() -> Plan {
+    let named = std::env::var_os(NAMED).is_some_and(|named| named == "1");
+    plan(&scenario_files(), Target::from_environment().ok(), named)
+}
+
+/// The tests of `files` on a target. `named` is set when scenarios were named, so a `skip`
+/// scenario still runs.
+pub(crate) fn plan(files: &[PathBuf], target: Option<Target>, named: bool) -> Plan {
+    let mut elsewhere = Vec::new();
     let mut tests: Vec<harness::Test> = UNIT_TESTS
         .iter()
         .map(|&(name, test)| harness::Test {
@@ -193,10 +254,9 @@ pub(crate) fn planned_tests() -> Vec<harness::Test> {
             }),
         })
         .collect();
-    let named = std::env::var_os(NAMED).is_some_and(|named| named == "1");
-    for path in scenario_files() {
-        let scenario = scenario_name(&path);
-        let header = match read_header(&path) {
+    for path in files {
+        let scenario = scenario_name(path);
+        let header = match read_header(path) {
             Ok(header) => header,
             Err(error) => {
                 let error = format!("{}: {error}", path.display());
@@ -213,6 +273,10 @@ pub(crate) fn planned_tests() -> Vec<harness::Test> {
                 continue;
             }
         };
+        if !header.runs_on(target) {
+            elsewhere.push(scenario);
+            continue;
+        }
         for run in runs(&header) {
             let path = path.clone();
             let label = run.label.clone();
@@ -239,7 +303,7 @@ pub(crate) fn planned_tests() -> Vec<harness::Test> {
             });
         }
     }
-    tests
+    Plan { tests, elsewhere }
 }
 
 pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
@@ -268,9 +332,7 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
             header.scenario
         ));
     }
-    if let Some(quality) = &header.quality {
-        check_quality(quality)?;
-    }
+    check_labels(&header)?;
     for mode in header.modes.iter().chain(
         header
             .variants
@@ -439,6 +501,17 @@ pub(crate) fn load_scenario(path: &Path) -> Result<Scenario, String> {
     Ok(Scenario { header, steps })
 }
 
+/// The header's `quality`, and its `parity` and `targets` read alone.
+fn check_labels(header: &Header) -> Result<(), String> {
+    if let Some(quality) = &header.quality {
+        check_quality(quality)?;
+    }
+    match twins::label_problem(header) {
+        Some(problem) => Err(format!("the scenario {problem}")),
+        None => Ok(()),
+    }
+}
+
 fn check_cost(header: &Header) -> Result<(), String> {
     let mut labels: Vec<String> = runs(header).into_iter().map(|run| run.label).collect();
     labels.sort();
@@ -508,15 +581,20 @@ pub(crate) fn check_quality(quality: &Value) -> Result<Quality, String> {
             quality.score
         ));
     }
-    // Every break Python's `str.splitlines` splits on, as the scripts read headers.
-    let breaks = [
-        '\n', '\r', '\u{b}', '\u{c}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{85}', '\u{2028}',
-        '\u{2029}',
-    ];
-    if quality.note.trim().is_empty() || quality.note.contains(breaks) {
+    if !one_line(&quality.note) {
         return Err("quality note is one non-empty line".to_owned());
     }
     Ok(quality)
+}
+
+/// Every break Python's `str.splitlines` splits on, as the scripts read headers.
+const LINE_BREAKS: [char; 10] = [
+    '\n', '\r', '\u{b}', '\u{c}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{85}', '\u{2028}', '\u{2029}',
+];
+
+/// Whether a header's text is one line with something on it.
+pub(crate) fn one_line(text: &str) -> bool {
+    !text.trim().is_empty() && !text.contains(LINE_BREAKS)
 }
 
 /// The `qa-quality` rubric's score, 0 to 100: `100 * (coverage - 1) / 4 * P / 32`

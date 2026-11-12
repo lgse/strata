@@ -6,8 +6,13 @@ counts by status and reason, and the failures of the whole GTK suite its allowan
 
 The ledger is the directory tests/qa/parity: <folder>.toml lists the runs of one folder
 under tests/qa/scenarios, and slice.toml holds the slice's allowances (docs/testing.md).
-It is checked before anything is selected from it, by scripts/qa_parity_check.py: a ledger
-the runner's tests would refuse selects nothing.
+It is checked before anything is selected from it, by scripts/qa_parity_check.py and, for
+the labelled twins, scripts/qa_parity_twins.py: a ledger the runner's tests would refuse
+selects nothing.
+
+A `parallel` run is at parity as a `required` one is, by another route: its scenario passes
+on GTK, and its twin, `<scenario>-rune/<run>`, on Rune. So the runs that must pass differ by
+target, and `--on` names the target.
 """
 
 from __future__ import annotations
@@ -20,11 +25,19 @@ from collections import Counter
 from pathlib import Path
 
 import qa_parity_check
-from qa_parity_check import HOSTS, STATUSES
+import qa_parity_twins
+from qa_parity_check import EXCEPTIONS, HOSTS, STATUSES
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 LEDGER = REPOSITORY / "tests/qa/parity"
 SCENARIOS = REPOSITORY / "tests/qa/scenarios"
+PACKET = REPOSITORY / qa_parity_check.PACKET
+# The Rune mutation patches, in the ledger's directory: each is named for a scenario.
+MUTATIONS = "mutations"
+# The statuses of a run at parity, which a selection runs: the shared file on both targets,
+# or the scenario on GTK and its twin on Rune.
+AT_PARITY = ("required", "parallel")
+TARGETS = ("gtk", "rune")
 # The one file of the directory that lists no runs: the slice's allowances.
 ALLOWANCES = "slice.toml"
 GATES = {"g1": ("G1",), "g2": ("G2",), "g3": ("G3",), "slice": ("G1", "G2", "G3")}
@@ -88,22 +101,46 @@ def chosen(ledger: dict, selection: str) -> list[dict]:
         f"tests/qa/scenarios, or a package that owns a run ({', '.join(packages(ledger))})")
 
 
+def twin_scenario(run: dict) -> str | None:
+    """The scenario of the twin that stands in for a parallel run."""
+
+    return run["twin"].split("/", 1)[0] if run["status"] == "parallel" else None
+
+
+def named(run: dict, scenario: str | None) -> bool:
+    """Whether a scenario's name picks the run: its own, or its twin's, which picks the pair."""
+
+    return scenario in (None, run["scenario"], twin_scenario(run))
+
+
 def selected(ledger: dict, selection: str, status: str, scenario: str | None = None) -> list[str]:
     """The `<scenario>/<run>` names of a selection's runs with the status, in ledger order.
 
-    With `scenario`, only that scenario's runs.
+    With `scenario`, only that scenario's runs, or the runs that twin stands in for.
     """
 
     return [name(run) for run in chosen(ledger, selection)
-            if run["status"] == status and scenario in (None, run["scenario"])]
+            if run["status"] == status and named(run, scenario)]
+
+
+def deciding(ledger: dict, selection: str, target: str, scenario: str | None = None) -> list[str]:
+    """What must pass on a target for the selection's runs at parity, in ledger order: each
+    required run, and for each parallel run its scenario on GTK and its twin on Rune."""
+
+    on_rune = target == "rune"
+    return [run["twin"] if on_rune and run["status"] == "parallel" else name(run)
+            for run in chosen(ledger, selection)
+            if run["status"] in AT_PARITY and named(run, scenario)]
 
 
 def needs_session(ledger: dict, selection: str, scenario: str | None = None) -> list[str]:
-    """The selection's required runs this command cannot start: the session host's."""
+    """The selection's runs at parity this command cannot start: the session host's. A
+    required run names its host; a parallel one names it only when its twin needs it."""
 
+    implied = {"required": None, "parallel": OFFSCREEN}
     return [name(run) for run in chosen(ledger, selection)
-            if run["status"] == "required" and run.get("host") != OFFSCREEN
-            and scenario in (None, run["scenario"])]
+            if run["status"] in AT_PARITY and named(run, scenario)
+            and run.get("host", implied[run["status"]]) != OFFSCREEN]
 
 
 def mode(run: dict) -> str:
@@ -113,7 +150,8 @@ def mode(run: dict) -> str:
 
 
 def counts(ledger: dict, selection: str) -> str:
-    """A selection's runs by status and reason, by host, by view and by package."""
+    """A selection's runs by status, reason and exception, by host and by view, its twins by
+    exception, and its runs by package."""
 
     runs = chosen(ledger, selection)
     spread = len({run["folder"] for run in runs})
@@ -124,18 +162,28 @@ def counts(ledger: dict, selection: str) -> str:
         *_by_status(runs),
         "host      " + _listed(by_host, HOSTS),
         "view      " + _listed(by_mode, MODES),
+        "twins     " + _listed(_twins(runs), EXCEPTIONS),
         *_by_package(runs),
     ])
 
 
 def _by_status(runs: list[dict]) -> list[str]:
-    """A line for each status, with the pending runs' reasons under theirs."""
+    """A line for each status, with the parallel runs' exceptions and the pending runs'
+    reasons under theirs."""
 
     by_status = Counter(run["status"] for run in runs)
-    reasons = Counter(run["reason"] for run in runs if run["status"] == "pending")
-    under = {"pending": [f"  {reason:<10}{count:>5}" for reason, count in sorted(reasons.items())]}
+    under = {status: Counter(run[field] for run in runs if run["status"] == status)
+             for status, field in (("parallel", "exception"), ("pending", "reason"))}
     return [line for status in STATUSES
-            for line in (f"{status:<10}{by_status[status]:>5}", *under.get(status, []))]
+            for line in (f"{status:<10}{by_status[status]:>5}",
+                         *(f"  {why:<10}{count:>5}" for why, count in sorted(under.get(status, {}).items())))]
+
+
+def _twins(runs: list[dict]) -> Counter:
+    """The twin files that stand in for the runs, by exception: a twin with two runs is one."""
+
+    twins = {(run["exception"], twin_scenario(run)) for run in runs if run["status"] == "parallel"}
+    return Counter(exception for exception, _ in twins)
 
 
 def _by_package(runs: list[dict]) -> list[str]:
@@ -225,17 +273,19 @@ def read(path: Path) -> dict:
         return tomllib.load(stream)
 
 
-def load(ledger: Path = LEDGER, scenarios: Path = SCENARIOS) -> dict:
+def load(ledger: Path = LEDGER, scenarios: Path = SCENARIOS, packet: Path = PACKET) -> dict:
     """Every folder's runs, each with its `folder`, in file and then ledger order; and the
     allowances, when the directory has them.
 
     The ledger is checked first against the runs the scenario files under `scenarios` plan,
-    and one with a fault is refused whole.
+    their `parity` labels, the Rune mutation patches beside the ledger and the entries of
+    the filing packet; one with a fault is refused whole.
     """
 
     files = sorted(path for path in ledger.glob("*.toml") if path.name != ALLOWANCES)
     texts = {path.stem: path.read_text(encoding="utf-8") for path in files}
-    if problems := qa_parity_check.problems(texts, qa_parity_check.planned(scenarios)):
+    corpus = qa_parity_twins.corpus(scenarios, ledger / MUTATIONS, packet)
+    if problems := qa_parity_twins.faults(texts, corpus):
         raise BadLedger(problems)
     runs = [{**run, "folder": folder} for folder, text in texts.items()
             for run in tomllib.loads(text).get("run", [])]
@@ -246,7 +296,8 @@ def load(ledger: Path = LEDGER, scenarios: Path = SCENARIOS) -> dict:
 def refuse(ledger: Path, error: BadLedger) -> int:
     """Says what is wrong with the ledger and what to do about an unlisted run; exits 2."""
 
-    print(f"{display(ledger)} is not in order, so nothing is selected from it:", file=sys.stderr)
+    print(f"{display(ledger)}, or a pair it names, is not in order, so nothing is selected from it:",
+          file=sys.stderr)
     for problem in error.problems:
         print(f"  {problem}", file=sys.stderr)
     if any(problem.endswith("is not listed") for problem in error.problems):
@@ -259,14 +310,18 @@ def display(path: Path) -> str:
 
 
 def report_selected(ledger: dict, args: argparse.Namespace) -> int:
-    """Prints a selection's runs with the status, one a line; exits 3 when a required one
-    needs a host this command cannot start."""
+    """Prints a selection's runs, one a line: with `--on`, what must pass on that target,
+    and otherwise the runs with the status. Exits 3 when a run at parity needs a host this
+    command cannot start."""
 
-    if args.status == "required" and (beyond := needs_session(ledger, args.selection, args.scenario)):
-        print(f"{len(beyond)} required run(s) of {args.selection} name the session host, which "
-              f"qa-parity.sh cannot start yet: {', '.join(beyond)}", file=sys.stderr)
+    at_parity = args.on is not None or args.status in AT_PARITY
+    if at_parity and (beyond := needs_session(ledger, args.selection, args.scenario)):
+        print(f"{len(beyond)} required or parallel run(s) of {args.selection} name the session "
+              f"host, which qa-parity.sh cannot start yet: {', '.join(beyond)}", file=sys.stderr)
         return 3
-    for run in selected(ledger, args.selection, args.status, args.scenario):
+    runs = (deciding(ledger, args.selection, args.on, args.scenario) if args.on
+            else selected(ledger, args.selection, args.status, args.scenario))
+    for run in runs:
         print(run)
     return 0
 
@@ -275,18 +330,24 @@ def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("selection", help=f"{', '.join(GATES)}, {EVERY}, a scenario folder or a package")
     parser.add_argument("--status", choices=STATUSES, default="required")
-    parser.add_argument("--scenario", help="only this scenario's runs")
+    parser.add_argument("--on", choices=TARGETS,
+                        help="instead of the runs with a status: what must pass on this target, "
+                             "the required runs and, for each parallel run, its scenario on gtk "
+                             "and its twin on rune")
+    parser.add_argument("--scenario", help="only this scenario's runs, or a twin's pair")
     parser.add_argument("--counts", action="store_true",
                         help="instead of the runs: the selection's counts by status and reason")
     parser.add_argument("--ledger", type=Path, default=LEDGER, help="the ledger's directory")
     parser.add_argument("--scenarios", type=Path, default=SCENARIOS,
                         help="the scenario folders whose runs the ledger lists")
+    parser.add_argument("--packet", type=Path, default=PACKET,
+                        help="the Rune filing packet, whose entries a rune twin cites")
     parser.add_argument("--failed-in", type=Path, metavar="LOG",
                         help="instead of a selection's runs: the flaky runs that failed in this "
                              "log of the whole GTK suite, or exit 1 if it failed any other way")
     args = parser.parse_args(arguments)
     try:
-        ledger = load(args.ledger, args.scenarios)
+        ledger = load(args.ledger, args.scenarios, args.packet)
     except BadLedger as error:
         return refuse(args.ledger, error)
     if args.failed_in:
