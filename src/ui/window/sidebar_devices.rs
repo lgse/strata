@@ -105,7 +105,8 @@ impl SidebarState {
         let usage = crate::adapters::filesystem_usage(root_path);
         let name = crate::i18n::tr("File System");
         let location = Location::local(root_path);
-        let row = sidebar_device_button(crate::assets::icons::HARD_DRIVE, &name, usage);
+        let icon = crate::ui::browser::device_icon(&name, Some(&location));
+        let row = sidebar_device_button(icon, &name, usage);
         crate::ui::accessibility::set_description(&row, Some("/"));
         self.bind_place_row(&row, location.clone(), PlaceNavigation::Validate);
         sidebar::install_open_in_tab(&row, &self.view, &location, &self.drop_feedback);
@@ -196,7 +197,8 @@ impl SidebarState {
         let usage = location
             .native_path()
             .and_then(crate::adapters::filesystem_usage);
-        let row = sidebar_device_button(crate::assets::icons::HARD_DRIVE, name, usage);
+        let icon = crate::ui::browser::device_icon(name, Some(&location));
+        let row = sidebar_device_button(icon, name, usage);
         if let Some(id) = PropertiesTarget::Mount(mount.clone()).label_id() {
             device_labels::bind_row_label(&row, &self.preference_manager, &id, name);
         }
@@ -249,7 +251,8 @@ impl SidebarState {
             .as_ref()
             .and_then(|loc| loc.native_path())
             .and_then(crate::adapters::filesystem_usage);
-        let row = sidebar_device_button(crate::assets::icons::HARD_DRIVE, &name, usage);
+        let icon = crate::ui::browser::device_icon(&name, mounted_location.as_ref());
+        let row = sidebar_device_button(icon, &name, usage);
         if let Some(id) = PropertiesTarget::Volume(volume.clone()).label_id() {
             device_labels::bind_row_label(&row, &self.preference_manager, &id, &name);
         }
@@ -362,7 +365,8 @@ impl SidebarState {
     }
 
     pub(super) fn append_release_ghost(&self, key: &device_release::ReleaseKey) {
-        let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &key.display_name);
+        let icon = crate::ui::browser::device_icon(&key.display_name, None);
+        let row = sidebar_button(icon, &key.display_name);
         self.append_sidebar_row(&device_release::pending_device_shell(&row));
     }
 
@@ -372,7 +376,8 @@ impl SidebarState {
     ) -> Option<device_release::DeviceIds> {
         let ids = device_release::ids_for_drive(&drive);
         let name = drive.name().to_string();
-        let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
+        let icon = crate::ui::browser::device_icon(&name, None);
+        let row = sidebar_button(icon, &name);
         crate::ui::accessibility::set_description(&row, Some(&name));
         if self.append_if_releasing(&row, &ids) {
             return Some(ids);
@@ -645,21 +650,26 @@ pub(super) fn sidebar_device_button(
 
     if let Some((total, free)) = usage.filter(|(total, _)| *total > 0) {
         let used = total.saturating_sub(free);
-        let fraction = (used as f64 / total as f64).clamp(0.0, 1.0);
+        let raw_fraction = (used as f64 / total as f64).clamp(0.0, 1.0);
+        let fraction = if used > 0 {
+            raw_fraction.max(0.02)
+        } else {
+            0.0
+        };
 
         let progress = gtk::ProgressBar::new();
         progress.add_css_class("sidebar-capacity-progress");
         progress.set_fraction(fraction);
-        if fraction >= 0.90 {
+        if raw_fraction >= 0.90 {
             progress.add_css_class("danger");
-        } else if fraction >= 0.80 {
+        } else if raw_fraction >= 0.80 {
             progress.add_css_class("warning");
         }
         text_box.append(&progress);
 
         let capacity_label = gtk::Label::new(Some(&format!(
             "{} free of {}",
-            crate::i18n::file_size(free),
+            crate::i18n::drive_free_size(free, total),
             crate::i18n::file_size(total),
         )));
         capacity_label.add_css_class("sidebar-device-capacity");

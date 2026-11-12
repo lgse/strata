@@ -685,18 +685,6 @@ fn unescape(field: impl AsRef<[u8]>) -> OsString {
 /// Whether `path` is hosted on a local block device (such as an internal or USB disk),
 /// and is safe for synchronous capacity queries without blocking on remote I/O or
 /// userspace FUSE network daemons.
-pub(crate) fn is_local_block_filesystem(path: &Path) -> bool {
-    #[cfg(test)]
-    if path.starts_with("/tmp") || path.starts_with(std::env::temp_dir()) {
-        return true;
-    }
-    if path == Path::new("/") {
-        return true;
-    }
-    let table = super::mount_watch::latest();
-    is_local_block_in_table(&table, path)
-}
-
 pub(crate) fn is_local_block_in_table(table: &MountTable, path: &Path) -> bool {
     if path == Path::new("/") {
         return true;
@@ -707,6 +695,10 @@ pub(crate) fn is_local_block_in_table(table: &MountTable, path: &Path) -> bool {
     table
         .source_for(path)
         .is_some_and(|source| source.starts_with("/dev"))
+}
+
+pub(crate) fn is_mounted_in_table(table: &MountTable, path: &Path) -> bool {
+    path == Path::new("/") || table.is_mount_point(path)
 }
 
 type UsageCacheEntry = (Option<(u64, u64)>, Instant);
@@ -753,7 +745,21 @@ fn raw_statvfs(path: &Path) -> Option<(u64, u64)> {
 /// measured immediately; remote/cloud/FUSE filesystems return cached usage or
 /// trigger a background probe without blocking the UI thread.
 pub(crate) fn filesystem_usage(path: &Path) -> Option<(u64, u64)> {
-    if is_local_block_filesystem(path) {
+    #[cfg(test)]
+    if path.starts_with("/tmp") || path.starts_with(std::env::temp_dir()) {
+        return raw_statvfs(path);
+    }
+    if path == Path::new("/") {
+        return raw_statvfs(path);
+    }
+    let table = super::mount_watch::latest();
+    if !is_mounted_in_table(&table, path) {
+        if let Ok(mut cache) = USAGE_CACHE.lock() {
+            cache.remove(path);
+        }
+        return None;
+    }
+    if is_local_block_in_table(&table, path) {
         return raw_statvfs(path);
     }
 

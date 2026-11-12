@@ -638,3 +638,20 @@ fn sanitize_statvfs_rejects_rclone_synthetic_placeholders() {
         None
     );
 }
+
+#[test]
+fn unmounted_subdirectories_do_not_inherit_root_block_filesystem_usage() {
+    let table = MountTable::parse(
+        b"25 1 254:0 / / rw,relatime - ext4 /dev/mapper/cryptroot rw\n\
+          88 25 0:52 / /home/user/Google\\040Drive rw,nosuid,nodev - fuse.rclone gdrive: rw\n",
+    );
+    assert!(super::is_mounted_in_table(&table, Path::new("/")));
+    assert!(!super::is_mounted_in_table(
+        &table,
+        Path::new("/home/user/Proton Drive")
+    ));
+    assert!(super::is_mounted_in_table(
+        &table,
+        Path::new("/home/user/Google Drive")
+    ));
+}

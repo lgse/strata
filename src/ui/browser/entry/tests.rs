@@ -321,3 +321,45 @@ fn aggregate_directory_summary_does_not_recurse_into_directory_symlinks() {
     assert_eq!(combined_summary.total_size, 100);
     assert!(!combined_summary.truncated());
 }
+
+#[test]
+fn device_icon_distinguishes_cloud_drives_root_and_hardware_storage() {
+    use crate::model::Location;
+    assert_eq!(
+        super::device_icon(
+            "Google Drive",
+            Some(&Location::local("/home/user/Google Drive"))
+        ),
+        icons::GOOGLE_DRIVE
+    );
+    assert_eq!(
+        super::device_icon(
+            "Proton Drive",
+            Some(&Location::local("/home/user/Proton Drive"))
+        ),
+        icons::PROTON_DRIVE
+    );
+    assert_eq!(
+        super::device_icon("FileLu", Some(&Location::local("/home/user/FileLu"))),
+        icons::FILELU
+    );
+    assert_eq!(
+        super::device_icon(
+            "Scramble Cloud",
+            Some(&Location::local("/home/user/Scramble Cloud"))
+        ),
+        icons::SCRAMBLE_CLOUD
+    );
+    assert_eq!(
+        super::device_icon("NixOS Root", Some(&Location::local("/mnt/nixos"))),
+        icons::NIXOS
+    );
+    assert_eq!(
+        super::device_icon("Arch Linux", Some(&Location::local("/mnt/arch"))),
+        icons::LINUX
+    );
+    assert_eq!(
+        super::device_icon("NVMe SSD", Some(&Location::local("/mnt/nvme"))),
+        icons::HARD_DRIVE
+    );
+}

@@ -36,7 +36,8 @@ pub(super) fn hits_item_content(surface: &gtk::Widget, x: f64, y: f64) -> bool {
     }
     let mut current = picked;
     while let Some(widget) = current {
-        if widget.is::<super::thumbnail::ThumbnailSlot>()
+        if widget.has_css_class("computer-drive-card")
+            || widget.is::<super::thumbnail::ThumbnailSlot>()
             || widget.is::<gtk::Image>()
             || widget.is::<gtk::Inscription>()
         {
@@ -63,6 +64,9 @@ pub(super) fn hits_item_content(surface: &gtk::Widget, x: f64, y: f64) -> bool {
 
 /// Unlike hover, focus, and drag, marquee must treat frame padding as gutter.
 pub(super) fn hits_icon_card_content(card: &gtk::Widget, x: f64, y: f64) -> bool {
+    if card.has_css_class("computer-drive-card") {
+        return true;
+    }
     hits_item_content(card, x, y)
         || card
             .pick(x, y, gtk::PickFlags::DEFAULT)

@@ -60,7 +60,7 @@ pub(in crate::ui) fn entry_size(entry: &FileEntry) -> String {
     {
         return format!(
             "{} free / {}",
-            crate::i18n::file_size(*free),
+            crate::i18n::drive_free_size(*free, *total),
             crate::i18n::file_size(*total)
         );
     }
@@ -116,7 +116,7 @@ fn entry_icons_item_info(entry: &FileEntry) -> Option<String> {
     {
         return Some(format!(
             "{} free of {}",
-            crate::i18n::file_size(*free),
+            crate::i18n::drive_free_size(*free, *total),
             crate::i18n::file_size(*total)
         ));
     }
@@ -136,6 +136,19 @@ fn entry_icons_item_info(entry: &FileEntry) -> Option<String> {
 }
 
 pub(super) fn set_icons_entry_details(card: &gtk::Box, entry: &FileEntry) {
+    if entry.is_computer_item() {
+        card.add_css_class("computer-drive-card");
+        if !card.has_css_class("compact-card") {
+            let (width, height) = card.size_request();
+            let target_w = width.max(176);
+            let target_h = height.max(140);
+            if width != target_w || height != target_h {
+                card.set_size_request(target_w, target_h);
+            }
+        }
+    } else {
+        card.remove_css_class("computer-drive-card");
+    }
     if let Some(progress) = icons_cell::progress_bar(card) {
         if entry.is_computer_item()
             && let (MetadataValue::Known(total), MetadataValue::Known(free)) =
@@ -143,13 +156,23 @@ pub(super) fn set_icons_entry_details(card: &gtk::Box, entry: &FileEntry) {
             && *total > 0
         {
             let used = total.saturating_sub(*free);
-            let fraction = (used as f64 / *total as f64).clamp(0.0, 1.0);
+            let raw_fraction = (used as f64 / *total as f64).clamp(0.0, 1.0);
+            let fraction = if used > 0 {
+                raw_fraction.max(0.02)
+            } else {
+                0.0
+            };
+            if card.has_css_class("compact-card") {
+                progress.set_size_request(180, -1);
+            } else {
+                progress.set_size_request(-1, -1);
+            }
             progress.set_visible(true);
             progress.set_fraction(fraction);
-            if fraction >= 0.90 {
+            if raw_fraction >= 0.90 {
                 progress.add_css_class("danger");
                 progress.remove_css_class("warning");
-            } else if fraction >= 0.80 {
+            } else if raw_fraction >= 0.80 {
                 progress.add_css_class("warning");
                 progress.remove_css_class("danger");
             } else {
@@ -157,6 +180,7 @@ pub(super) fn set_icons_entry_details(card: &gtk::Box, entry: &FileEntry) {
                 progress.remove_css_class("warning");
             }
         } else {
+            progress.set_size_request(-1, -1);
             progress.set_visible(false);
             progress.remove_css_class("danger");
             progress.remove_css_class("warning");

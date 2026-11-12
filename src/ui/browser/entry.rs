@@ -101,12 +101,69 @@ pub(in crate::ui) fn entry_icon(entry: &FileEntry) -> &'static str {
         return crate::assets::icons::FOLDER_LOCK;
     }
     if entry.is_computer_item() {
-        return crate::assets::icons::HARD_DRIVE;
+        return device_icon(&entry.display_name, Some(&entry.location));
     }
     if entry.is_directory() {
         return crate::assets::icons::FOLDER;
     }
     icon_for_name(&entry.display_name)
+}
+
+fn is_nixos_system() -> bool {
+    static IS_NIXOS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *IS_NIXOS.get_or_init(|| {
+        std::path::Path::new("/etc/NIXOS").exists() || std::path::Path::new("/nix/store").exists()
+    })
+}
+
+pub(in crate::ui) fn device_icon(
+    name: &str,
+    location: Option<&crate::model::Location>,
+) -> &'static str {
+    let lowered_name = name.to_ascii_lowercase();
+    let lowered_path = location
+        .map(crate::model::Location::display_path)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let matches_any = |needles: &[&str]| {
+        needles
+            .iter()
+            .any(|needle| lowered_name.contains(needle) || lowered_path.contains(needle))
+    };
+
+    if matches_any(&["google drive", "google-drive", "gdrive"]) {
+        return crate::assets::icons::GOOGLE_DRIVE;
+    }
+    if matches_any(&["proton drive", "proton-drive", "protondrive"]) {
+        return crate::assets::icons::PROTON_DRIVE;
+    }
+    if matches_any(&["filelu"]) {
+        return crate::assets::icons::FILELU;
+    }
+    if matches_any(&["scramble"]) {
+        return crate::assets::icons::SCRAMBLE_CLOUD;
+    }
+    if matches_any(&["nixos"]) {
+        return crate::assets::icons::NIXOS;
+    }
+    if matches_any(&["linux"]) {
+        return crate::assets::icons::LINUX;
+    }
+    let is_root = location
+        .and_then(crate::model::Location::native_path)
+        .is_some_and(|path| path == std::path::Path::new("/"))
+        || lowered_name == "file system";
+    if is_root {
+        return if is_nixos_system() {
+            crate::assets::icons::NIXOS
+        } else {
+            crate::assets::icons::LINUX
+        };
+    }
+    if matches_any(&["cloud", "rclone", "onedrive", "dropbox", "nextcloud"]) {
+        return crate::assets::icons::CLOUD;
+    }
+    crate::assets::icons::HARD_DRIVE
 }
 
 /// `query` must already be folded through `fold_for_search` by the caller.

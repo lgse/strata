@@ -6140,6 +6140,71 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   padding: 5px 7px;
 }
 
+.icons-card.computer-drive-card {
+  border-radius: 8px;
+  margin: 6px 10px;
+  padding: 8px 12px;
+  transition: background 120ms ease-out, outline-color 120ms ease-out;
+}
+
+.icons-card.computer-drive-card .icons-card-progress,
+.icons-card.computer-drive-card .icons-card-progress trough,
+.icons-card.computer-drive-card .icons-card-progress progress {
+  border-radius: 3px;
+  min-height: 7px;
+}
+
+.icons-card.computer-drive-card .icons-card-progress {
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.file-icons > child .icons-card.computer-drive-card .icons-card-icon-frame,
+.file-icons > child:hover .icons-card.computer-drive-card .icons-card-icon-frame,
+.file-icons > child:selected .icons-card.computer-drive-card .icons-card-icon-frame,
+.file-icons > child .icons-card.computer-drive-card.content-hover .icons-card-icon-frame,
+.file-icons > child:selected .icons-card.computer-drive-card.content-hover .icons-card-icon-frame,
+.keyboard-navigation .file-icons > child:selected .icons-card.computer-drive-card.content-hover .icons-card-icon-frame,
+.keyboard-navigation .file-icons > child:focus-visible .icons-card.computer-drive-card .icons-card-icon-frame {
+  background: transparent;
+  outline: none;
+}
+
+.file-icons > child .icons-card.computer-drive-card .icons-card-label,
+.file-icons > child:hover .icons-card.computer-drive-card .icons-card-label,
+.file-icons > child:selected .icons-card.computer-drive-card .icons-card-label,
+.file-icons > child:selected:hover .icons-card.computer-drive-card .icons-card-label,
+.file-icons > child .icons-card.computer-drive-card.content-hover .icons-card-label,
+.file-icons > child:selected .icons-card.computer-drive-card.content-hover .icons-card-label {
+  background: transparent;
+  color: @strata_text;
+}
+
+.file-icons > child:hover:not(:selected) .icons-card.computer-drive-card,
+.file-icons > child:not(:selected) .icons-card.computer-drive-card.content-hover {
+  background: alpha(@strata_accent, 0.12);
+  outline: 1px solid alpha(@strata_accent, 0.35);
+  outline-offset: -1px;
+}
+
+.file-icons > child:selected .icons-card.computer-drive-card {
+  background: alpha(@strata_accent, 0.22);
+  outline: 1px solid alpha(@strata_accent, 0.65);
+  outline-offset: -1px;
+}
+
+.file-icons > child:selected:hover .icons-card.computer-drive-card,
+.file-icons > child:selected .icons-card.computer-drive-card.content-hover {
+  background: alpha(@strata_accent, 0.28);
+  outline: 1px solid alpha(@strata_accent, 0.80);
+  outline-offset: -1px;
+}
+
+.keyboard-navigation .file-icons > child:focus-visible .icons-card.computer-drive-card {
+  outline: 2px solid @strata_accent;
+  outline-offset: -2px;
+}
+
 .type-group-heading {
   border-bottom: 1px solid alpha(@strata_border, 0.45);
   color: @strata_dim_text;

@@ -58,6 +58,12 @@ pub mod icons {
     pub const FOLDER_PLUS: &str = "strata-folder-plus";
     pub const GIT_BRANCH: &str = "strata-git-branch";
     pub const HARD_DRIVE: &str = "strata-hard-drive";
+    pub const NIXOS: &str = "strata-nixos";
+    pub const LINUX: &str = "strata-linux";
+    pub const GOOGLE_DRIVE: &str = "strata-google-drive";
+    pub const PROTON_DRIVE: &str = "strata-proton-drive";
+    pub const FILELU: &str = "strata-filelu";
+    pub const SCRAMBLE_CLOUD: &str = "strata-scramble-cloud";
     pub const INFO: &str = "strata-info";
     pub const GLOBE: &str = "strata-globe";
     pub const CODE_XML: &str = "strata-code-xml";

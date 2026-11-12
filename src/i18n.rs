@@ -368,6 +368,36 @@ pub(crate) fn file_size(bytes: u64) -> String {
     file_size_in(&rust_i18n::locale(), bytes)
 }
 
+/// Formats `free` bytes for a drive of `total` bytes. When `free < total` but
+/// single-decimal rounding in `total`'s unit would make `free` look equal to
+/// `total` (e.g., 5,489.8 GB free of 5.5 TB), steps down to a smaller unit so
+/// actual disk usage is never hidden by rounding.
+pub(crate) fn drive_free_size(free: u64, total: u64) -> String {
+    drive_free_size_in(&rust_i18n::locale(), free, total)
+}
+
+fn drive_free_size_in(locale: &str, free: u64, total: u64) -> String {
+    let default = file_size_in(locale, free);
+    if free >= total || default != file_size_in(locale, total) {
+        return default;
+    }
+    let (_, total_unit) = rounded_size_and_unit(total, SIZE_UNITS.len());
+    for unit in (0..total_unit).rev() {
+        let scale = 1_000_f64.powi(unit as i32);
+        let rounded = ((free as f64 / scale) * 10.0).round() / 10.0;
+        if rounded * scale < total as f64 {
+            let decimals = usize::from(rounded.fract() != 0.0);
+            return rust_i18n::t!(
+                SIZE_UNITS[unit],
+                locale = locale,
+                size = decimal_in(locale, rounded, decimals)
+            )
+            .into_owned();
+        }
+    }
+    default
+}
+
 fn file_size_in(locale: &str, bytes: u64) -> String {
     let (value, unit) = rounded_size_and_unit(bytes, SIZE_UNITS.len());
     let decimals = usize::from(value.fract() != 0.0);

@@ -193,6 +193,18 @@ fn file_sizes_use_the_language_decimal_separator_and_unit_symbols() {
     assert_eq!(transfer_rate_in("en", 1_000), "1 kB/s");
     assert_eq!(transfer_rate_in("ru", 128_500_000), "128,5 МБ/с");
     assert_eq!(transfer_rate_in("hu", 128_500_000), "128,5 MB/s");
+    assert_eq!(
+        super::drive_free_size_in("en", 5_489_790_935_040, 5_497_558_138_880),
+        "5,489.8 GB"
+    );
+    assert_eq!(
+        super::drive_free_size_in("en", 1_986_630_856_704, 2_000_000_000_000),
+        "1,986.6 GB"
+    );
+    assert_eq!(
+        super::drive_free_size_in("en", 102_262_251_520, 368_749_719_552),
+        "102.3 GB"
+    );
 }
 
 #[test]
