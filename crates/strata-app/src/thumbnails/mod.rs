@@ -11,20 +11,23 @@
 //!   interface-thread state of this module, as `RENDER_QUEUE`, `RENDER_RUNNING`,
 //!   `HEAVY_RUNNING` and `MODEL_RUNNING` are in GTK's `src/ui/thumbnail/jobs.rs`. A view
 //!   pops its store's requests while the pool has room ([`room`]) and [`submit`]s each.
-//! - **A job** looks in the shared freedesktop cache first
-//!   (`strata_fs::adapters::thumbnail_cache`), renders in `strata-preview`'s sandbox on a
-//!   miss and stores what it rendered there, then decodes the PNG to the request's step. It
-//!   runs on a blocking thread (`gio::spawn_blocking`); its result comes back on the interface
-//!   thread, in a future on GLib's default context, and the view's callback queues it with
-//!   the part's `later`, as the shell's rules for a worker thread's result say.
-//! - **Limits**, as GTK's: at most `sandbox::browser::worker_limit()` jobs at once, one of
-//!   them kept from the heavy kinds ([`Kind::heavy`]), and one STL render at a time.
+//! - **A job** reads the shared freedesktop cache first (`strata_fs::adapters::thumbnail_cache`)
+//!   and decodes a hit to the request's step; a miss waits for a render slot, renders in
+//!   `strata-preview`'s sandbox, stores what it rendered in the cache and decodes it. Both
+//!   stages run on blocking threads (`gio::spawn_blocking`); each result comes back on the
+//!   interface thread, in a future on GLib's default context, and the view's callback queues
+//!   it with the part's `later`, as the shell's rules for a worker thread's result say.
+//! - **Limits**, as GTK's: [`READERS`] cache reads at once, which never wait for a render
+//!   slot; at most `sandbox::browser::worker_limit()` renders at once, one of them kept from
+//!   the heavy kinds ([`Kind::heavy`]), and one STL render at a time; and no more than
+//!   [`QUEUED`] jobs held besides the renders running.
 
 use std::{
     cell::RefCell,
     collections::VecDeque,
-    hash::{DefaultHasher, Hash, Hasher},
-    path::PathBuf,
+    hash::{BuildHasher, Hash, Hasher, RandomState},
+    path::{Path, PathBuf},
+    sync::OnceLock,
     time::UNIX_EPOCH,
 };
 
@@ -48,11 +51,18 @@ pub(crate) fn key_of(entry: &FileEntry) -> Option<ThumbKey> {
     }
     let path = entry.location.native_path()?;
     kind::of(path)?;
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = keys().build_hasher();
     path.hash(&mut hasher);
     known(&entry.modified_unix_seconds).hash(&mut hasher);
     known(&entry.size).hash(&mut hasher);
     Some(ThumbKey::new(hasher.finish()))
+}
+
+/// The hash keys of this process: random, so no folder of names can be made to collide.
+/// Nothing keeps a thumbnail key past the process; the disk cache is keyed by path.
+fn keys() -> &'static RandomState {
+    static KEYS: OnceLock<RandomState> = OnceLock::new();
+    KEYS.get_or_init(RandomState::new)
 }
 
 fn known<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
@@ -72,15 +82,30 @@ pub(crate) struct Job {
     pub(crate) done: Box<dyn FnOnce(Outcome)>,
 }
 
-/// A job the pool holds, with what it renders.
+/// Cache reads running at once: GTK's `MAX_CACHE_READERS`.
+const READERS: usize = 4;
+/// Jobs the pool holds besides the renders running: GTK's `MAX_QUEUED_THUMBNAILS`.
+const QUEUED: usize = 64;
+
+/// A job the pool holds, with what it renders and, once the cache missed, the file's
+/// modification time the render stores under.
 struct Queued {
     job: Job,
     kind: Kind,
+    modified: Option<i64>,
+}
+
+/// What the pool starts next.
+enum Start {
+    Read(Queued),
+    Render(Queued),
 }
 
 #[derive(Default)]
 struct Pool {
-    waiting: VecDeque<Queued>,
+    reads: VecDeque<Queued>,
+    reading: usize,
+    renders: VecDeque<Queued>,
     running: usize,
     heavy: usize,
     model: bool,
@@ -91,19 +116,44 @@ thread_local! {
 }
 
 impl Pool {
-    /// The next waiting job the limits let start, as GTK's `next_render_job` picks it.
-    fn next(&mut self, limit: usize) -> Option<Queued> {
+    /// The next job the limits let start: a cache read whenever a reader is free, whatever
+    /// the renders hold, else a render.
+    fn next(&mut self, limit: usize) -> Option<Start> {
+        self.next_read()
+            .map(Start::Read)
+            .or_else(|| self.next_render(limit).map(Start::Render))
+    }
+
+    fn next_read(&mut self) -> Option<Queued> {
+        if self.reading >= READERS {
+            return None;
+        }
+        self.reads
+            .retain(|queued| !queued.job.cancellation.is_cancelled());
+        let queued = self.reads.pop_front()?;
+        self.reading += 1;
+        Some(queued)
+    }
+
+    /// A read finished; one that missed waits for a render.
+    fn read(&mut self, missed: Option<Queued>) {
+        self.reading = self.reading.saturating_sub(1);
+        self.renders.extend(missed);
+    }
+
+    /// The next waiting render the limits let start, as GTK's `next_render_job` picks it.
+    fn next_render(&mut self, limit: usize) -> Option<Queued> {
         if self.running >= limit {
             return None;
         }
-        self.waiting
+        self.renders
             .retain(|queued| !queued.job.cancellation.is_cancelled());
         let heavy_room = self.heavy < limit.saturating_sub(1).max(1);
-        let index = self.waiting.iter().position(|queued| {
+        let index = self.renders.iter().position(|queued| {
             (queued.kind != Kind::RenderedModel || !self.model)
                 && (!queued.kind.heavy() || heavy_room)
         })?;
-        let queued = self.waiting.remove(index)?;
+        let queued = self.renders.remove(index)?;
         self.count(queued.kind, true);
         Some(queued)
     }
@@ -121,12 +171,21 @@ impl Pool {
             self.model = starting;
         }
     }
+
+    /// How many more jobs the pool takes now: one for each free reader, while it holds
+    /// fewer than [`QUEUED`] besides the renders the limit lets run.
+    fn room(&self, limit: usize) -> usize {
+        let held = self.reads.len() + self.reading + self.renders.len() + self.running;
+        READERS
+            .saturating_sub(self.reading + self.reads.len())
+            .min((QUEUED + limit).saturating_sub(held))
+    }
 }
 
 /// How many more jobs the pool would take now: a view pops no more requests than this.
 pub(crate) fn room() -> usize {
     let limit = browser::worker_limit();
-    POOL.with_borrow(|pool| limit.saturating_sub(pool.running + pool.waiting.len()))
+    POOL.with_borrow(|pool| pool.room(limit))
 }
 
 /// Queues `job`, and starts what the limits allow. A file no renderer takes fails at once.
@@ -135,61 +194,108 @@ pub(crate) fn submit(job: Job) {
         (job.done)(Outcome::Failed);
         return;
     };
-    POOL.with_borrow_mut(|pool| pool.waiting.push_back(Queued { job, kind }));
+    let queued = Queued {
+        job,
+        kind,
+        modified: None,
+    };
+    POOL.with_borrow_mut(|pool| pool.reads.push_back(queued));
     start();
 }
 
 fn start() {
     let limit = browser::worker_limit();
-    while let Some(queued) = POOL.with_borrow_mut(|pool| pool.next(limit)) {
-        glib::MainContext::default().spawn_local(run(queued));
+    while let Some(next) = POOL.with_borrow_mut(|pool| pool.next(limit)) {
+        let context = glib::MainContext::default();
+        match next {
+            Start::Read(queued) => context.spawn_local(read(queued)),
+            Start::Render(queued) => context.spawn_local(render(queued)),
+        };
     }
 }
 
-async fn run(queued: Queued) {
-    let Queued { job, kind } = queued;
+/// What a cache read found.
+enum Looked {
+    /// A thumbnail, decoded, or the job's end without one.
+    Done(Outcome),
+    /// No thumbnail in the cache: the file's modification time, if it has one.
+    Missed(Option<i64>),
+}
+
+async fn read(mut queued: Queued) {
+    let path = queued.job.path.clone();
+    let edge = queued.job.edge;
+    let cancellation = queued.job.cancellation.clone();
+    let looked = gio::spawn_blocking(move || look_up(&path, edge, &cancellation))
+        .await
+        .unwrap_or(Looked::Done(Outcome::Failed));
+    match looked {
+        Looked::Done(outcome) => {
+            POOL.with_borrow_mut(|pool| pool.read(None));
+            (queued.job.done)(outcome);
+        }
+        Looked::Missed(modified) => {
+            queued.modified = modified;
+            POOL.with_borrow_mut(|pool| pool.read(Some(queued)));
+        }
+    }
+    start();
+}
+
+async fn render(queued: Queued) {
+    let Queued {
+        job,
+        kind,
+        modified,
+    } = queued;
     let Job {
         path,
         edge,
         cancellation,
         done,
     } = job;
-    let outcome = gio::spawn_blocking(move || make(&path, kind, edge, &cancellation))
-        .await
-        .unwrap_or(Outcome::Failed);
+    let outcome = gio::spawn_blocking(move || {
+        if cancellation.is_cancelled() {
+            return Outcome::Stopped;
+        }
+        let rendered = kind::render(&path, kind, &cancellation).map(|rendered| rendered.png);
+        if let (Ok(png), Some(mtime)) = (&rendered, modified) {
+            thumbnail_cache::store(&path, mtime, png);
+        }
+        made(rendered, edge)
+    })
+    .await
+    .unwrap_or(Outcome::Failed);
     POOL.with_borrow_mut(|pool| pool.count(kind, false));
     done(outcome);
     start();
 }
 
-/// The thumbnail of `path`, at most `edge` pixels on its long side: from the shared cache,
-/// or rendered in the sandbox and stored there.
-fn make(path: &std::path::Path, kind: Kind, edge: u32, cancellation: &Cancellation) -> Outcome {
+/// `path`'s thumbnail from the shared cache, at most `edge` pixels on its long side.
+fn look_up(path: &Path, edge: u32, cancellation: &Cancellation) -> Looked {
     if cancellation.is_cancelled() {
-        return Outcome::Stopped;
+        return Looked::Done(Outcome::Stopped);
     }
     let modified = std::fs::metadata(path)
         .and_then(|metadata| metadata.modified())
         .ok()
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
         .and_then(|since| i64::try_from(since.as_secs()).ok());
-    let cached = modified.and_then(|mtime| thumbnail_cache::lookup(path, mtime));
-    let png = match cached {
-        Some(png) => png,
-        None => match kind::render(path, kind, cancellation) {
-            Ok(rendered) => {
-                if let Some(mtime) = modified {
-                    thumbnail_cache::store(path, mtime, &rendered.png);
-                }
-                rendered.png
-            }
-            Err(error) => {
-                tracing::debug!(%error, "no thumbnail");
-                return Outcome::Failed;
-            }
-        },
-    };
-    decode(&png, edge)
+    match modified.and_then(|mtime| thumbnail_cache::lookup(path, mtime)) {
+        Some(png) => Looked::Done(decode(&png, edge)),
+        None => Looked::Missed(modified),
+    }
+}
+
+/// What a render gives the view: its PNG decoded, or a failure.
+fn made(rendered: Result<Vec<u8>, String>, edge: u32) -> Outcome {
+    match rendered {
+        Ok(png) => decode(&png, edge),
+        Err(error) => {
+            tracing::debug!(%error, "no thumbnail");
+            Outcome::Failed
+        }
+    }
 }
 
 /// The PNG's pixels, scaled down so the long edge is at most `edge`.
