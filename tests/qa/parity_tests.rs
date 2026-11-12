@@ -218,7 +218,7 @@ pub(crate) fn a_folder_without_a_ledger_file_or_a_file_without_a_folder_is_refus
     );
 }
 
-pub(crate) fn a_ledger_entry_that_lacks_a_field_of_its_status_or_has_anothers_is_refused() {
+pub(crate) fn a_ledger_entry_with_a_field_missing_or_a_field_of_another_status_is_refused() {
     let renames = |status: &str| problems_ending(&RENAMES.entry(status));
     for (case, status, expected) in [
         (

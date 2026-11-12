@@ -8,7 +8,7 @@ use crate::{
     },
     parity_tests::{
         a_folder_without_a_ledger_file_or_a_file_without_a_folder_is_refused,
-        a_ledger_entry_that_lacks_a_field_of_its_status_or_has_anothers_is_refused,
+        a_ledger_entry_with_a_field_missing_or_a_field_of_another_status_is_refused,
         a_ledger_entry_with_an_unknown_value_or_field_or_no_package_does_not_parse,
         a_ledger_that_misses_repeats_or_misplaces_a_run_is_refused,
         the_ledger_excludes_only_the_runs_the_owner_ruled_out,
@@ -90,7 +90,7 @@ unit_tests! {
     the_parity_ledger_accounts_for_every_run_of_every_scenario_folder,
     a_ledger_that_misses_repeats_or_misplaces_a_run_is_refused,
     a_folder_without_a_ledger_file_or_a_file_without_a_folder_is_refused,
-    a_ledger_entry_that_lacks_a_field_of_its_status_or_has_anothers_is_refused,
+    a_ledger_entry_with_a_field_missing_or_a_field_of_another_status_is_refused,
     a_ledger_entry_with_an_unknown_value_or_field_or_no_package_does_not_parse,
     the_ledger_excludes_only_the_runs_the_owner_ruled_out,
     the_ledger_allows_only_the_flaky_run_and_the_stale_patch_it_was_given,
