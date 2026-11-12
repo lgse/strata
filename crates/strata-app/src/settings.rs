@@ -1,50 +1,50 @@
 // SPDX-License-Identifier: MIT
 
-//! The saved settings: what `settings.toml` held when the process started, and the few
-//! values this interface writes back.
+//! The saved settings: what `settings.toml` held when the process started, and what this
+//! interface writes back.
 //!
-//! The GTK application's `PreferenceManager` (`src/ui/preferences.rs`) does the same over
-//! the same store, `strata_desktop::settings`, with its bindings and notices on top. A save
-//! replaces only the keys this process changed, so another Strata process's changes stay.
+//! The values are a [`Preferences`] and the bookkeeping of saving them is
+//! `strata_desktop::settings::Saving`, the same one the GTK application's
+//! `PreferenceManager` (`src/ui/preferences.rs`) wraps with its bindings and notices. So a
+//! save here writes what a save there writes: the keys this process changed since a save
+//! last succeeded, with what loading repaired, and another Strata process's other keys stay.
+//!
+//! A part reaches the settings through `shell::saved(app)`: `preferences()` to read them as
+//! they are now, and `change(…)` to change one and have it saved. `slots.rs` has the rules.
 
-use std::collections::BTreeSet;
-
-use strata_core::{
-    model::ViewPreferences,
-    storage::writer::{self, Policy},
-};
+use strata_core::model::ViewPreferences;
 use strata_desktop::settings::{
-    Preferences, SettingKey, merged_settings, read_loaded_preferences, record_changes,
-    settings_path, store_sort,
+    Commit, FinishedSave, Preferences, SaveOutcome, SaveProblem, Saving, store_sort,
 };
 
+use crate::{App, slots::Later};
+
+/// One for the process, made at start-up and owned by the window: two would lose each
+/// other's saves (`strata_desktop::settings::Saving`).
 pub(crate) struct Saved {
     preferences: Preferences,
-    /// The file was there and could not be read: it is the user's to repair, and nothing is
-    /// saved over it.
-    unreadable: bool,
-    /// What the file was last asked to hold, and the keys changed since the process started.
-    queued: toml::Table,
-    changed: BTreeSet<SettingKey>,
-}
-
-fn table(preferences: &Preferences) -> toml::Table {
-    toml::Table::try_from(preferences).unwrap_or_default()
+    saving: Saving,
+    /// The window's queue, where a finished save tells the bookkeeping its result. Without
+    /// it a save is still written, and its keys are written again with the next.
+    later: Option<Later<App>>,
 }
 
 impl Saved {
     /// Reads the file, salvaged entry by entry and brought within range, and makes its
     /// language the process's.
     pub(crate) fn load() -> Self {
-        let (mut preferences, failure, _salvaged) = read_loaded_preferences();
-        preferences.normalize_loaded();
-        rust_i18n::set_locale(preferences.language.locale());
+        let (preferences, saving) = strata_desktop::settings::load();
+        rust_i18n::set_locale(saving.startup_locale());
         Self {
-            queued: table(&preferences),
             preferences,
-            unreadable: failure.is_some(),
-            changed: BTreeSet::new(),
+            saving,
+            later: None,
         }
+    }
+
+    /// Gives the settings the window's queue, once the window has one.
+    pub(crate) fn report_to(&mut self, later: Later<App>) {
+        self.later = Some(later);
     }
 
     pub(crate) fn preferences(&self) -> &Preferences {
@@ -54,33 +54,43 @@ impl Saved {
     /// The browser's sort or hidden-files choice changed: `set_sort_preferences` in
     /// `src/ui/preferences/layout_settings.rs`.
     pub(crate) fn store_view(&mut self, view: ViewPreferences) {
-        self.preferences.show_hidden = view.show_hidden;
-        self.preferences.folders_first = view.folders_first;
-        store_sort(&mut self.preferences, view.sort_options());
-        self.save();
+        self.change(|preferences| {
+            preferences.show_hidden = view.show_hidden;
+            preferences.folders_first = view.folders_first;
+            store_sort(preferences, view.sort_options());
+        });
     }
 
-    /// Queues a save of what changed, off the interface thread.
-    fn save(&mut self) {
-        let snapshot = table(&self.preferences);
-        let before = self.changed.len();
-        record_changes(&mut self.changed, &self.queued, &snapshot);
-        let unchanged = self.changed.len() == before && snapshot == self.queued;
-        if self.unreadable || unchanged {
-            return;
-        }
-        self.queued = snapshot.clone();
-        let keys = self.changed.clone();
-        let path = settings_path();
-        let target = path.clone();
-        let saved = writer::save_locked(path.clone(), Policy::Config, move || {
-            merged_settings(&target, &snapshot, &keys)
-        });
+    /// Changes the saved settings and queues a save of what changed, off the interface
+    /// thread. A file that could not be read at start-up is the user's to repair, and
+    /// nothing is saved over it.
+    pub(crate) fn change(&mut self, change: impl FnOnce(&mut Preferences)) {
+        change(&mut self.preferences);
+        let Commit { save, problem, .. } = self.saving.commit(&self.preferences);
         // The GTK window shows "Settings can't be saved"; this interface has no notice yet.
+        if let Some(SaveProblem::Snapshot { path, error }) = problem {
+            tracing::warn!(%error, path = %path.display(), "unable to save the settings");
+        }
+        let Some(save) = save else {
+            return;
+        };
+        let later = self.later.clone();
+        // GLib dispatches the end of the save, so it only queues: the bookkeeping hears of it
+        // in the next `poll`.
         glib::MainContext::default().spawn_local(async move {
-            if let Ok(Err(error)) = saved.await {
-                tracing::warn!(%error, path = %path.display(), "unable to save the settings");
+            let finished = save.finished().await;
+            if let Some(later) = later {
+                later.then(move |app: &mut App, _| {
+                    crate::shell::saved(app).saved(finished);
+                    false
+                });
             }
         });
+    }
+
+    fn saved(&mut self, finished: FinishedSave) {
+        if let SaveOutcome::Failed { path, error } = self.saving.saved(finished) {
+            tracing::warn!(%error, path = %path.display(), "unable to save the settings");
+        }
     }
 }

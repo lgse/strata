@@ -98,7 +98,7 @@ slots::parts! {
   each slot is, what a part gives the shell there, and how it gets its state, its settings,
   its share of `Browser`'s events, its timers and the keyboard. It has the rules a part
   keeps, who owns which file, and a list of what waits on another package: window chords
-  and the header's buttons, a menu row for an area's command, saving a setting, a `Browser`
+  and the header's buttons, a menu row for an area's command, a `Browser`
   for each tab, and changing the view while the window is open. `columns/part.rs` is the worked example, and
   `shell/tests.rs` runs the shell over a made-up table with a part in every slot.
 - **A part never edits `shell.rs`, `slots.rs` or another part's module.** When a slot cannot

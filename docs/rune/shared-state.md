@@ -222,6 +222,48 @@ it. Until then it stays where `main` has it. Every range rule is already shared,
 So this package closes with the manager's getters and setters still in `src/ui`. What moved
 is its state bookkeeping and its persistence.
 
+### The Rune interface
+
+`strata-app`'s `settings::Saved` holds a `Preferences` and a `Saving`. It used to keep its
+own queued table and its own set of changed keys, which never emptied.
+
+- **A part writes** with `shell::saved(app).change(|settings| …)`, from a handler or a queued
+  update. The values change, the commit queues the save, and the end of the save is awaited
+  on GLib's context, where it only queues: the bookkeeping hears the result when GLib is
+  next pumped and the queue applied. After a change made in a handler that is the `poll`
+  that follows. After one made in a queued update, which is how the shell saves the sort and
+  the hidden-files choice, it is the next pump, whenever that comes. Nothing is lost on
+  disk; until the result is heard the keys count as unsaved, and a change made meanwhile
+  writes them again. A failed save is logged; this interface has no notice yet. The rules a
+  part keeps are in `crates/strata-app/src/slots.rs`, "Saving a setting".
+- **A part reads** `Setup::settings` once when it is built, and keeps what it shows in its
+  own state. Nothing follows a change made by another window or another process.
+- The shell saves the sort and the hidden-files choice the same way.
+- **One `Saved` for the process.** `startup::load_settings` makes it and the window owns it.
+  A second window on Rune would have to share it, which is an open question for the owner.
+
+Sharing the bookkeeping changed what the Rune interface writes, to what the GTK application
+writes:
+
+| | Before | Now, as GTK |
+| --- | --- | --- |
+| A file that does not read whole and is salvaged (one that lacks `mode` or `theme`, or holds a bad entry) | Only the keys this process changed were written | What loading filled in or dropped is saved with the first change |
+| The retired key `auto_refresh_interval` | Left in the file | Removed by each save |
+| A file that reads whole and holds a value out of range: a volume above 1, a search limit that is not one of the choices, a column width of zero | The value in range was used and the file kept the old one | The value in range is saved with the first change |
+| A key this process changed earlier | Written again by every later save, over what another process had saved since | Written until a save succeeds, then left alone |
+| A save that failed | Its keys waited for the next change | The next change tries again, and so does a change back to the same value |
+
+What still differs, with the package that will meet each:
+
+| | GTK | The Rune interface | Package |
+| --- | --- | --- | --- |
+| Start-up effects | Applies the language, reduced motion and the date format | Applies the language only | A18, lgse/strata#2150 |
+| A change another process saves | Adopts the sort and the icon size, and re-reads folder views | Follows nothing | A18, lgse/strata#2150 |
+| A sort chosen in a folder | Stored for that folder while per-folder settings are on, and as the default otherwise | Always stored as the default | A8, lgse/strata#2140, and A10, lgse/strata#2142 |
+| A file that could not be read at start-up | A notice on the first change, and nothing saved over it | Nothing saved over it, and no notice after the warning in the log | A18, lgse/strata#2150 |
+| The old global `omarchy_variant` | Moved into the per-theme map when an Omarchy theme is active (`set_active_omarchy_theme`), and the old key is then removed by each save | Neither: nothing reads the old key, and it stays in the file | A18, lgse/strata#2150 |
+| A recency sort handed to the save | `set_sort_preferences` returns early and stores nothing | `Saved::store_view` has no such guard | A3, lgse/strata#2130. Not observable today: `Browser::record_sort` returns early at the Recent root, so neither interface is ever handed one |
+
 ### Tests
 
 `src/ui/preferences/tests` and `fixtures.rs` did not move. They drive the real path, setter
