@@ -91,6 +91,9 @@ and the video backend. `deny.toml` allows it.
 - **The save queue** (`save_preferences`, `queue_settings_save`). It answers on the GLib
   context and reports to the notice windows. What it writes is `merged_settings`, which
   moved.
+  Its bookkeeping moved after the slice, to `strata_desktop::settings::Saving`; awaiting
+  the save on the GLib context and the notices stayed
+  ([shared-state.md](../shared-state.md#preferencemanager)).
 - **Conversions to GTK-side types.** `BrowserMode` and the density scales are defined in
   `src/ui/browser_modes`, a GTK module. The Rune interface has one view and reads
   `browser_mode` as text until it has more.
@@ -182,6 +185,9 @@ changed.
 
 - **A store both interfaces write through.** The Rune interface needs it with its settings
   page: the setters, the dirty-key tracking and a change notification that takes no widget.
+  The dirty-key tracking and a revision to follow moved after the slice, as
+  `strata_desktop::settings::Saving`; the setters stay in `src/ui` until a Rune package
+  needs one ([shared-state.md](../shared-state.md#preferencemanager)).
 - **Per-folder views.** `folder-views.toml` holds the sort and icon size a folder
   remembers. Its model (`folder_views.rs`) needs no GTK, but its store runs on GLib timers.
   The Rune interface applies the default sort to every folder until it moves. No scenario

@@ -5,13 +5,16 @@
 //! and merged into on a save.
 //!
 //! The GTK application's `PreferenceManager` (`src/ui/preferences.rs`) owns a [`Preferences`]
-//! and adds what needs its toolkit: the setters, change notifications, widget bindings and
-//! the notices about saving. The Rune interface holds one in `strata-app`'s `settings::Saved`,
+//! and a [`Saving`], and adds what needs its toolkit: the setters, change notifications,
+//! widget bindings and the notices about saving. The Rune interface holds one in `strata-app`'s `settings::Saved`,
 //! which saves the few values that interface changes. `docs/preferences.md` describes each
 //! setting.
 //!
 //! [`folder_views`] is the model of `folder-views.toml`, the sort and icon size a folder
 //! remembers. Finding, reading and saving that file is still `PreferenceManager`'s.
+//!
+//! [`Saving`] is the bookkeeping of a save: an interface changes its [`Preferences`], commits,
+//! and awaits the save the commit hands back.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -35,6 +38,7 @@ pub mod folder_views;
 mod keymap;
 mod list_columns;
 mod persistence;
+mod saving;
 mod stored;
 mod text_size;
 
@@ -60,6 +64,7 @@ pub use persistence::{
     RETIRED_SETTINGS, SettingKey, lock_saves, merged_settings, parse_preferences,
     read_loaded_preferences, read_state_file, record_changes, salvage_preferences, settings_path,
 };
+pub use saving::{Commit, FinishedSave, PendingSave, SaveOutcome, SaveProblem, Saving, load};
 pub use stored::{
     MAX_PREVIEW_VIDEO_START, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
     configured_hardware_acceleration, configured_video_preview_backend, normalized_font_family,
