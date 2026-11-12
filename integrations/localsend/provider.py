@@ -15,7 +15,7 @@ import time
 
 # The package names the program `localsend` or, in the upstream .deb, `localsend_app`.
 NAMES = ("localsend", "localsend_app")
-# Strata's trusted command directories; see src/trusted_command.rs.
+# Strata's trusted command directories; see crates/strata-core/src/trusted_command.rs.
 SEARCH_ROOTS = (
     "/run/wrappers/bin", "/usr/bin", "/usr/sbin", "/bin", "/sbin",
     "/run/current-system/sw/bin", "/run/current-system/profile/bin",

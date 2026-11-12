@@ -1,0 +1,45 @@
+[package]
+name = "strata-desktop"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Strata's desktop integration: portal setup, the updater, integrations and build information"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# Test-only items that other crates' tests use. Never in a release build.
+test-support = ["strata-core/test-support", "strata-fs/test-support"]
+
+[dependencies]
+strata-core.workspace = true
+strata-fs.workspace = true
+flate2.workspace = true
+gio.workspace = true
+gio-unix.workspace = true
+glib.workspace = true
+hex.workspace = true
+ring.workspace = true
+rust-i18n.workspace = true
+rustix.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_norway.workspace = true
+sha2.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+toml.workspace = true
+tracing.workspace = true
+ureq.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+strata-core = { workspace = true, features = ["test-support"] }
+strata-fs = { workspace = true, features = ["test-support"] }
+strata-test-support.workspace = true
+libc.workspace = true
+rustls.workspace = true

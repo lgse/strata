@@ -23,6 +23,8 @@ ALLOWLIST = REPOSITORY / "tests/qa/main-io-allowlist.toml"
 RUNS = Path("target/main-io")
 CONTAINER_CHECKOUT = "/workspace"
 STACK_FRAMES_SHOWN = 8
+# The application and the workspace crates under crates/.
+STRATA_SYMBOL = re.compile(r"<?strata(_\w+)?::")
 
 USER, SETTINGS, UNCLASSIFIED, TOOLKIT = "user", "settings", "unclassified", "toolkit"
 SEVERITY = (USER, SETTINGS, UNCLASSIFIED, TOOLKIT)
@@ -440,8 +442,7 @@ SYMBOLS = Symbols()
 
 def strata_frames(stack: tuple[str, ...]) -> list[str]:
     symbols = (SYMBOLS.symbol(frame) for frame in stack)
-    return [symbol for symbol in symbols
-            if symbol.startswith(("strata::", "<strata::"))][:STACK_FRAMES_SHOWN]
+    return [symbol for symbol in symbols if STRATA_SYMBOL.match(symbol)][:STACK_FRAMES_SHOWN]
 
 
 @dataclass
