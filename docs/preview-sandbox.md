@@ -35,6 +35,14 @@ under a trust root. The user's `PATH` and home directory are never consulted,
 and a required helper that cannot be found in a trusted directory still fails
 closed.
 
+bubblewrap is the one helper that does not take a privileged wrapper: the lookup
+skips a setuid or setgid `bwrap`, such as a NixOS `security.wrappers` entry in
+`/run/wrappers/bin`, and continues with the next directory. bubblewrap rejects
+the sandbox's size-limited `/tmp` in setuid mode, and builds without setuid
+support refuse to run that way at all, so such a binary could never start a
+preview sandbox. A host whose only `bwrap` is setuid reports the sandbox as
+unavailable.
+
 ### Sandbox runtime paths
 
 These variables select the runtime tree and helper paths inside the sandbox.

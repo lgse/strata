@@ -363,7 +363,7 @@ fn preview_checks(sender: &Sender<Check>) {
     match Samples::create() {
         Ok(samples) => {
             send(preview_sandbox(
-                crate::trusted_command::resolve("bwrap").is_ok(),
+                crate::trusted_command::resolve_unprivileged("bwrap").is_ok(),
                 Path::new(&sandbox::runtime::current().prlimit),
                 || render_one_shot(&samples.image),
             ));
