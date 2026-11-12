@@ -33,7 +33,7 @@ them.
 | `strata-components` | The file-manager components: collections, views, chrome, previews and controls | `rune`, `rune-kit`, `strata-kit` |
 | `strata-gallery` | One headless scene per component state, the golden tests and the integration demos | The three crates above |
 | `strata-test-peer` | The second process of the compositor tests. It lives at `crates/strata-platform/tests/support/strata-test-peer` | none |
-| `strata-app` | The Rune interface: its state and view, the queue `Browser`'s events wait in, the Columns adapter between `Browser` and the Columns component, start-up, and the offscreen and windowed hosts. Behind its `qa` feature, the QA backend that `strata-rune --qa` serves. Written here, not imported | The four crates above it but the gallery, and `strata-core`, `strata-fs`, `strata-desktop`; with `qa`, `strata-qa` too |
+| `strata-app` | The Rune interface: the shell and [its slots](#parts-of-the-rune-interface), the queue `Browser`'s events wait in, the parts registered in the slots (the Columns adapter between `Browser` and the Columns component, the context menus, the rename editor), start-up, and the offscreen and windowed hosts. Behind its `qa` feature, the QA backend that `strata-rune --qa` serves. Written here, not imported | The four crates above it but the gallery, and `strata-core`, `strata-fs`, `strata-desktop`; with `qa`, `strata-qa` too |
 | `strata-rune` | The `strata-rune` binary: `main`, and the window tests | `strata-app` |
 
 - **Rune is pinned once.** `rune` and `rune-kit` name one git rev in the root manifest. Move
@@ -60,6 +60,53 @@ them.
 `deny.toml` holds these rules beside the ones for the shared crates. The plan and the work
 packages the crates were built from are under [`docs/rune/`](rune/plan.md), and
 [`docs/rune/testing.md`](rune/testing.md) covers their goldens, scripts and compositor tests.
+
+## Parts of the Rune interface
+
+`strata-app`'s window is a shell with eight named slots: tabs, location bar, sidebar, view,
+drawer, footer, overlays and dialogs. Whatever fills one is a part: a module of `strata-app`
+that holds its own state and implements `slots::Part` for it. The shell names no part. It
+asks the registry who is in a slot, so a part is added without a change to the shell.
+
+A part is its module and two lines in `crates/strata-app/src/lib.rs`:
+
+```rust
+// A3 Sidebar
+mod sidebar;
+```
+
+```rust
+slots::parts! {
+    // A3 Sidebar
+    sidebar: sidebar::Sidebar,
+}
+```
+
+- **Each package of the parity plan has its own comment in both lists,** and adds its lines
+  under it. Two branches then never add at the same place, and git merges them without a
+  conflict. Do not move another package's line or add outside your comment. A registration
+  line takes no `///` and no `#[cfg]`.
+- **The registration line is a field of the application state:** `app.sidebar`, which the
+  part's components reach by accessor.
+- **The order of the registration lines is the order of the parts,** within a slot and
+  wherever the shell calls each of them: an overlay registered later is drawn over an
+  earlier one, and parts hear a `Browser` event in that order. That makes it the order of
+  the packages, with nothing to override it: another order is a `contract` change.
+- **A slot with no part adds nothing:** no element, no node in the accessibility tree, no
+  focus stop.
+- **The contract is the module documentation of `crates/strata-app/src/slots.rs`:** where
+  each slot is, what a part gives the shell there, and how it gets its state, its settings,
+  its share of `Browser`'s events, its timers and the keyboard. It has the rules a part
+  keeps, and a list of what waits on another package: window chords and the header's
+  buttons, saving a setting, a service other than `Browser`, a `Browser` for each tab, and
+  changing the view while the window is open. `columns/part.rs` is the worked example.
+- **A part never edits `shell.rs`, `slots.rs` or another part's module.** When a slot cannot
+  give a part what it needs, that is a `contract` change of its own, made first.
+- **No CI job builds, lints or tests the Rune side** ([Two lanes](#two-lanes)), so nothing
+  but a local run finds two branches that merged cleanly and do not fit: a second part in a
+  slot that holds one, or a part registered twice. Run `mise run test-rune slots::` before
+  pushing, and again after merging `strata-next`. A debug build refuses to start on the
+  same faults; a release build does not check.
 
 ## Two lanes
 

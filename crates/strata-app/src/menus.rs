@@ -21,14 +21,19 @@
 //! A row whose action belongs to a part this interface does not have yet is shown as the
 //! GTK menu shows it at rest and does nothing: [`Row::wired`] is `None` for it.
 
-use rune::Keybind;
+use rune::{El, Keybind};
 use strata_components::{
-    context_menu::{ContextMenuState, Item, MenuModel, MenuTarget, Section},
+    context_menu::{ContextMenu, ContextMenuState, Item, MenuModel, MenuTarget, Section},
     contract::Point,
 };
 use strata_core::{
     i18n::{count, tr},
     model::{ArchiveFormat, EntryKind, FileEntry, Location, MetadataValue},
+};
+
+use crate::{
+    App, columns,
+    slots::{Frame, Part, Place, Setup},
 };
 
 /// The one menu the window has open, and what it was opened on.
@@ -51,6 +56,27 @@ pub(crate) struct Opening {
     pub(crate) at: Point,
 }
 
+/// The menu's element, with its surfaces in the layer while it is open.
+fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+    let menu = ContextMenu::new(
+        "menu",
+        |app: &App| &app.menu.state,
+        |app: &mut App| &mut app.menu.state,
+    )
+    .name(app.menu.name())
+    .on_intent(columns::chosen)
+    .build(app, &app.look, frame.layer);
+    Some(menu)
+}
+
+impl Part for Menu {
+    const PLACE: Place<App> = Place::Overlays(build);
+
+    fn new(_: &Setup<'_>) -> Self {
+        Self::default()
+    }
+}
+
 impl Menu {
     pub(crate) fn show(&mut self, opening: Opening, model: MenuModel) {
         self.depth = opening.depth;
@@ -62,7 +88,7 @@ impl Menu {
         self.depth
     }
 
-    pub(crate) fn name(&self) -> &str {
+    fn name(&self) -> &str {
         &self.name
     }
 }

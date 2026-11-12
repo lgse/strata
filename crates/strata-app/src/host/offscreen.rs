@@ -9,11 +9,7 @@ use rune::{Env, Runtime, text::TextSystem};
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::csd::{Backend, Csd, Policy};
 
-use crate::{
-    settings::Saved,
-    shell::{self, App},
-    startup::UiThread,
-};
+use crate::{App, settings::Saved, shell, startup::UiThread};
 
 /// The QA runner's screen (`tests/qa/`: Xvfb at 1440x900): what the tests draw on.
 #[cfg(test)]

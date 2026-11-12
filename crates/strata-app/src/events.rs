@@ -1,23 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-//! `BrowserEvent`s on their way to the interface.
+//! What a `BrowserEvent` changed in the listings, read for a view's listener
+//! ([`crate::slots`]).
 //!
-//! A browser observer runs inside GLib's dispatch. The host is then in the middle of `poll` or
-//! between two frames, and Rune holds the application state either way. So an observer only
-//! queues, and the interface applies the queue in order.
-//!
-//! What an event changed is copied here, while the browser still holds exactly that: by the
-//! time the queue is applied, later events may have moved its entries on. So a change carries
-//! its rows, and the browser's cursor and selection as they stood.
+//! It is copied here, while the browser still holds exactly that: by the time the queue is
+//! applied, later events may have moved its entries on. So a change carries its rows, and the
+//! browser's cursor and selection as they stood.
 
-use std::{cell::RefCell, collections::VecDeque, ops::Range, rc::Rc};
+use std::ops::Range;
 
 use strata_components::contract::EntryId;
-use strata_core::model::{FileEntry, Location, ViewPreferences};
-use strata_fs::{
-    app::{Browser, BrowserEvent},
-    services::OperationRequestId,
-};
+use strata_core::model::{FileEntry, Location};
+use strata_fs::app::{Browser, BrowserEvent};
 
 use crate::columns::{Edit, Ids, Load, Row};
 
@@ -57,24 +51,9 @@ pub(crate) struct Landed {
     pub(crate) by_removal: bool,
 }
 
-/// How a rename the browser was asked for ended.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Answer {
-    Completed(OperationRequestId),
-    /// A later operation took its place: it may still land, and nothing waits for it.
-    Abandoned(OperationRequestId),
-    /// No request when the browser refused the name before it started an operation.
-    Failed {
-        request: Option<OperationRequestId>,
-        message: String,
-    },
-}
-
-/// What a `BrowserEvent` asks of the interface.
+/// What a `BrowserEvent` asks of a view.
 #[derive(Debug)]
 pub(crate) enum Change {
-    /// The columns or the active one changed, so the window may show another location.
-    Path,
     Reset,
     Truncated {
         len: usize,
@@ -114,81 +93,34 @@ pub(crate) enum Change {
         reveal: bool,
         landed: Option<Landed>,
     },
-    /// The browser's sort or hidden-files choice changed: the saved settings follow it.
-    View(ViewPreferences),
     /// One of the browser's operations gave an entry another location, and so another id.
     /// It comes before the listing shows it: what the view holds by the old id moves first.
     Moved {
         from: EntryId,
         to: EntryId,
     },
-    Rename(Answer),
 }
 
-#[derive(Default)]
-struct Queue {
-    changes: VecDeque<Change>,
-    heard: u64,
-    copied: u64,
+/// What one event changed, in the order a view applies it.
+pub(crate) struct Read {
+    pub(crate) changes: Vec<Change>,
+    /// How many rows of listings were copied out of the browser for them.
+    pub(crate) copied: u64,
 }
 
-impl Queue {
-    fn push(&mut self, change: Change) {
-        let repeats =
-            matches!(change, Change::Path) && matches!(self.changes.back(), Some(Change::Path));
-        if !repeats {
-            self.changes.push_back(change);
-        }
-    }
-}
-
-#[derive(Clone, Default)]
-pub(crate) struct Inbox(Rc<RefCell<Queue>>);
-
-impl Inbox {
-    pub(crate) fn observing(browser: &Rc<Browser>, ids: Ids) -> Self {
-        let inbox = Self::default();
-        let queue = inbox.0.clone();
-        let observed = Rc::downgrade(browser);
-        browser.observe(move |event| {
-            let Some(browser) = observed.upgrade() else {
-                return;
-            };
-            let mut reader = Reader {
-                browser: &browser,
-                ids: &ids,
-                copied: 0,
-                changes: Vec::new(),
-            };
-            reader.read(event);
-            let mut queue = queue.borrow_mut();
-            queue.heard += 1;
-            queue.copied += reader.copied;
-            for change in reader.changes {
-                queue.push(change);
-            }
-        });
-        let queue = inbox.0.clone();
-        browser.observe_preferences(move |view| queue.borrow_mut().push(Change::View(view)));
-        inbox
-    }
-
-    pub(crate) fn pop(&self) -> Option<Change> {
-        self.0.borrow_mut().changes.pop_front()
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.borrow().changes.is_empty()
-    }
-
-    /// How many events the browser has sent, shown or not.
-    pub(crate) fn heard(&self) -> u64 {
-        self.0.borrow().heard
-    }
-
-    /// How many rows of listings those events had copied out of the browser.
-    pub(crate) fn copied(&self) -> u64 {
-        self.0.borrow().copied
+/// Reads out of `browser` what `event` changed in the listings. Call it from a listener,
+/// inside the browser's observer.
+pub(crate) fn read(event: &BrowserEvent, browser: &Browser, ids: &Ids) -> Read {
+    let mut reader = Reader {
+        browser,
+        ids,
+        copied: 0,
+        changes: Vec::new(),
+    };
+    reader.read(event);
+    Read {
+        changes: reader.changes,
+        copied: reader.copied,
     }
 }
 
@@ -272,7 +204,6 @@ impl Reader<'_> {
             reveal,
             landed,
         });
-        self.changes.push(Change::Path);
     }
 
     fn relocated(&mut self, from_depth: usize) {
@@ -291,42 +222,27 @@ impl Reader<'_> {
             from_depth,
             columns,
         });
-        self.changes.push(Change::Path);
     }
 
     fn read(&mut self, event: &BrowserEvent) {
         let read = self.read_columns(event)
             || self.read_rows(event)
             || self.read_load(event)
-            || self.read_rename(event);
+            || self.read_moved(event);
         if !read {
             self.read_selection(event);
         }
     }
 
-    /// The events that say what a rename did. False when `event` is not one.
-    fn read_rename(&mut self, event: &BrowserEvent) -> bool {
-        let change = match event {
-            BrowserEvent::ItemRelocated { from, to, .. } => Change::Moved {
-                from: self.ids.of(from),
-                to: self.ids.of(to),
-            },
-            BrowserEvent::RenameCompleted { request_id } => {
-                Change::Rename(Answer::Completed(*request_id))
-            }
-            BrowserEvent::RenameAbandoned { request_id } => {
-                Change::Rename(Answer::Abandoned(*request_id))
-            }
-            BrowserEvent::RenameFailed {
-                request_id,
-                message,
-            } => Change::Rename(Answer::Failed {
-                request: *request_id,
-                message: message.clone(),
-            }),
-            _ => return false,
+    /// The event that gives an entry another id. False when `event` is not it.
+    fn read_moved(&mut self, event: &BrowserEvent) -> bool {
+        let BrowserEvent::ItemRelocated { from, to, .. } = event else {
+            return false;
         };
-        self.changes.push(change);
+        self.changes.push(Change::Moved {
+            from: self.ids.of(from),
+            to: self.ids.of(to),
+        });
         true
     }
 
@@ -348,10 +264,7 @@ impl Reader<'_> {
                     active: self.browser.active_depth() == Some(*depth),
                 }));
             }
-            BrowserEvent::ColumnsRelocated { from_depth } => {
-                self.relocated(*from_depth);
-                return true;
-            }
+            BrowserEvent::ColumnsRelocated { from_depth } => self.relocated(*from_depth),
             BrowserEvent::HiddenToggled { show_hidden } => {
                 let marks = (0..)
                     .map_while(|depth| self.browser.location_at(depth).map(|_| self.marks(depth)))
@@ -360,11 +273,9 @@ impl Reader<'_> {
                     show_hidden: *show_hidden,
                     marks,
                 });
-                return true;
             }
             _ => return false,
         }
-        self.changes.push(Change::Path);
         true
     }
 
@@ -468,6 +379,7 @@ impl Reader<'_> {
                 self.selection(*depth, reveal, None);
             }
             // Ignored on purpose:
+            // - The rename answers are the rename editor's (`crate::rename`).
             // - `SelectionSynced` answers a selection the adapter itself wrote.
             // - `ColumnReloading` comes before the column is emptied; `ColumnReloaded` is
             //   the one that changes what shows.

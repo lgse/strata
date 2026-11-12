@@ -13,7 +13,7 @@ use strata_components::collection::element::LABEL;
 use strata_qa::Rect;
 
 use super::tree::{Drawn, DrawnColumn, DrawnRow, NameLabel, Snapshot};
-use crate::{host::offscreen::Offscreen, shell::App};
+use crate::{App, host::offscreen::Offscreen};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
 /// this long for a frame.
