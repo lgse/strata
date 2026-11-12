@@ -38,7 +38,7 @@ use strata_fs::{
 
 use crate::{
     App, shell,
-    slots::{Frame, Listener, Part, Place, Setup},
+    slots::{Editing as Host, Frame, Listener, Part, Place, Setup},
 };
 
 /// How a rename the browser was asked for ended.
@@ -189,17 +189,19 @@ fn can_rename(entry: &FileEntry) -> bool {
         .is_some_and(|uri| uri.starts_with("trash:"))
 }
 
+/// What the shown view gives the editor: the rows it opens on and moves between.
+fn host(app: &App) -> Option<&'static Host<App>> {
+    shell::shown_view(app).map(|view| &view.editing)
+}
+
 /// Opens the editor on `entry`, a row of column `depth`. False when it has no row to open in.
 fn open(app: &mut App, depth: usize, entry: FileEntry, tx: &mut Tx) -> bool {
-    if !can_rename(&entry) {
+    let Some(view) = host(app).filter(|_| can_rename(&entry)) else {
         return false;
-    }
-    let id = app.columns.id_of(&entry.location);
+    };
+    let id = (view.id_of)(app, &entry.location);
     // An edit still open ends for this one, and keeps its name: nothing to act on.
-    let Some(_ended) = app
-        .columns
-        .begin_rename(&mut app.rename.state, (depth, id), tx)
-    else {
+    let Some(_ended) = (view.begin)(app, (depth, id), tx) else {
         return false;
     };
     // A relative path moves a local item; elsewhere a name is a name (`begin` in
@@ -214,7 +216,7 @@ fn open(app: &mut App, depth: usize, entry: FileEntry, tx: &mut Tx) -> bool {
         entry,
         naming,
     });
-    app.columns.hold_mirror(true);
+    (view.hold)(app, true);
     true
 }
 
@@ -233,7 +235,7 @@ pub(crate) fn begin_on(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
     if app.rename.pending() {
         return;
     }
-    let position = app.columns.position(depth, id);
+    let position = host(app).and_then(|view| (view.position)(app, (depth, id)));
     if let Some(entry) = position.and_then(|position| app.browser.entry_at(depth, position)) {
         open(app, depth, entry, tx);
     }
@@ -293,17 +295,20 @@ fn ask(app: &mut App, editing: Editing, typed: String) {
 /// Tab and Shift+Tab: the cursor and the editor go on to the neighbour `step` rows away,
 /// unless the entry was the last that way (`advance_rename`).
 fn advance(app: &mut App, (depth, id): (usize, EntryId), step: isize, tx: &mut Tx) {
-    let Some(next) = app.columns.neighbour(depth, id, step) else {
+    let Some(view) = host(app) else {
         return;
     };
-    app.columns.select_only((depth, next), &app.look, tx);
+    let Some(next) = (view.neighbour)(app, (depth, id), step) else {
+        return;
+    };
+    (view.select_only)(app, (depth, next), tx);
     shell::publish(app);
     // The committed row must not pull the cursor back once its rename lands.
     if let Some(asked) = &mut app.rename.asked {
         asked.advanced = true;
     }
-    app.columns.mirror_now(&app.browser);
-    let position = app.columns.position(depth, next);
+    (view.follow_now)(app);
+    let position = (view.position)(app, (depth, next));
     if let Some(entry) = position.and_then(|position| app.browser.entry_at(depth, position)) {
         open(app, depth, entry, tx);
     }
@@ -319,7 +324,9 @@ pub(crate) fn heard(app: &mut App, intent: RenameIntent, tx: &mut Tx) {
     let Some(editing) = app.rename.editing.take() else {
         return;
     };
-    app.columns.hold_mirror(false);
+    if let Some(view) = host(app) {
+        (view.hold)(app, false);
+    }
     let from = (editing.depth, editing.id);
     match intent {
         RenameIntent::Rename { name, .. } => ask(app, editing, name),
@@ -336,7 +343,10 @@ pub(crate) fn heard(app: &mut App, intent: RenameIntent, tx: &mut Tx) {
 /// One poll: the editor notices its field lost the keyboard, its row left the viewport or
 /// its entry left the listing. True when the view has to run.
 fn tick(app: &mut App, tx: &mut Tx) -> bool {
-    let polled = app.columns.tick_rename(&mut app.rename.state);
+    let Some(view) = host(app) else {
+        return false;
+    };
+    let polled = (view.tick)(app);
     for intent in polled.intents {
         heard(app, intent, tx);
     }

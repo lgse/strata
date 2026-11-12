@@ -181,7 +181,7 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
 
 /// A row of the open menu was chosen. The menu has closed, and the keyboard is back in the
 /// view.
-pub(crate) fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
+pub(super) fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { target, action } = intent;
     let depth = app.menu.depth();
     match menus::wired(&action) {

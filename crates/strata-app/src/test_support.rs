@@ -6,7 +6,9 @@
 use std::{path::Path, time::Duration};
 
 use crate::{
+    App,
     host::offscreen::Offscreen,
+    slots::Entry,
     startup::{self, UiThread},
 };
 
@@ -37,6 +39,26 @@ pub(crate) fn hosted_after(
 
 pub(crate) fn hosted(module: &str, name: &str, run: impl FnOnce(Offscreen)) {
     hosted_after(module, name, || {}, run);
+}
+
+/// As [`hosted`], on a host whose window is made of the table `parts`: a test's made-up
+/// parts in the place of the registered ones.
+pub(crate) fn hosted_over(
+    module: &str,
+    name: &str,
+    parts: fn() -> Vec<Entry<App>>,
+    run: impl FnOnce(Offscreen),
+) {
+    strata_test_support::isolated_test(
+        &format!("{module}::{name}"),
+        std::iter::empty::<(&str, &str)>(),
+        || true,
+        || {
+            let settings = startup::load_settings();
+            let ui = UiThread::claim().expect("the UI thread");
+            run(Offscreen::with_parts(parts().leak(), ui, settings));
+        },
+    );
 }
 
 pub(crate) fn folder_of(names: &[&str]) -> tempfile::TempDir {

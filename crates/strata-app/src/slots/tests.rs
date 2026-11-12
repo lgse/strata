@@ -6,6 +6,7 @@
 use std::{any::TypeId, rc::Rc};
 
 use rune::{El, Env, Runtime, el};
+use strata_components::{contract::EntryId, rename::Polled};
 use strata_core::model::ViewPreferences;
 use strata_desktop::settings::Preferences;
 use strata_fs::{
@@ -13,8 +14,12 @@ use strata_fs::{
     app::{Browser, BrowserEvent},
 };
 
-use super::{Entry, Frame, Inbox, Listener, Place, Registry, Setup, Slot, View, registry::Fault};
-use crate::columns::Ids;
+#[cfg(feature = "qa")]
+use super::Probe;
+use super::{
+    Editing, Entry, Frame, Ids, Inbox, Listener, Place, Registry, Setup, Slot, View,
+    registry::Fault,
+};
 
 /// What the made-up parts did, in order.
 type Log = Vec<String>;
@@ -85,6 +90,22 @@ fn view<P: Made>() -> Entry<Log> {
         shows: |mode| mode == P::NAME,
         focus: P::NAME,
         pointer_at: None,
+        editing: Editing {
+            id_of: |_, _| EntryId::new(0),
+            position: |_, _| None,
+            neighbour: |_, _, _| None,
+            begin: |_, _, _| None,
+            tick: |_| Polled::default(),
+            hold: |_, _| {},
+            select_only: |_, _, _| {},
+            follow_now: |_| {},
+        },
+        chosen: |_, _, _| {},
+        #[cfg(feature = "qa")]
+        probe: Probe {
+            listed: |_| true,
+            lists: |_| Vec::new(),
+        },
     }))
 }
 
@@ -220,29 +241,45 @@ fn a_window_with_no_view_registered_shows_none() {
     assert!(registry.shown().is_none());
 }
 
-/// What the parts of `entries` logged after the browser changed its hidden-files choice
-/// twice, with their listeners on the browser's observer as the shell puts them.
-fn heard_by(entries: &'static [Entry<Log>]) -> Log {
+/// The registry's listeners on a new browser's observer, as the shell puts them, with the
+/// queue they fill.
+fn observed(entries: &'static [Entry<Log>]) -> (Rc<Browser>, Inbox<Log>) {
     let registry = Registry::new(entries, "columns");
-    let (settings, ids) = (Preferences::default(), Ids::default());
+    let (settings, ids, inbox) = (Preferences::default(), Ids::default(), Inbox::new());
     let setup = Setup {
         settings: &settings,
         ids: &ids,
+        // The made-up parts are over a log, and the handle is the window's.
+        later: &Inbox::new().later(),
     };
     let browser = Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
-    let inbox = Inbox::observing(&browser, registry.listeners(&setup));
+    inbox.observe(&browser, registry.listeners(&setup));
+    (browser, inbox)
+}
+
+/// Applies everything `inbox` holds to a new log. Returns the log, and what each update said
+/// of whether the view has to run.
+fn applied(inbox: &Inbox<Log>) -> (Log, Vec<bool>) {
+    let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
+    let mut asks_for_a_view = Vec::new();
+    runtime.update(|log, tx| {
+        while let Some(update) = inbox.pop() {
+            asks_for_a_view.push(update(log, tx));
+        }
+    });
+    (runtime.state, asks_for_a_view)
+}
+
+/// What the parts of `entries` logged after the browser changed its hidden-files choice
+/// twice.
+fn heard_by(entries: &'static [Entry<Log>]) -> Log {
+    let (browser, inbox) = observed(entries);
 
     browser.toggle_hidden();
     browser.toggle_hidden();
 
     assert_eq!(inbox.heard(), 2);
-    let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
-    runtime.update(|log, tx| {
-        while let Some(update) = inbox.pop() {
-            update(log, tx);
-        }
-    });
-    runtime.state
+    applied(&inbox).0
 }
 
 #[test]
@@ -285,35 +322,21 @@ fn parts_hear_each_event_in_the_order_they_are_registered_and_a_hidden_view_hear
 }
 
 #[test]
-fn an_update_pushed_from_outside_an_event_waits_its_turn_in_the_queue() {
-    let browser = Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
-    let listeners = Registry::new(table(vec![overlay::<Menu>()]), "columns");
-    let (settings, ids) = (Preferences::default(), Ids::default());
-    let inbox = Inbox::observing(
-        &browser,
-        listeners.listeners(&Setup {
-            settings: &settings,
-            ids: &ids,
-        }),
-    );
+fn what_a_service_queues_waits_its_turn_among_the_browsers_events() {
+    let (browser, inbox) = observed(table(vec![overlay::<Menu>()]));
+    let later = inbox.later();
 
     browser.toggle_hidden();
-    inbox.push(|log: &mut Log, _| {
-        log.push("pushed".to_owned());
+    later.then(|log: &mut Log, _| {
+        log.push("the service said so".to_owned());
         false
     });
     browser.toggle_hidden();
 
-    let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
-    let mut asks_for_a_view = Vec::new();
-    runtime.update(|log, tx| {
-        while let Some(update) = inbox.pop() {
-            asks_for_a_view.push(update(log, tx));
-        }
-    });
+    let (log, asks_for_a_view) = applied(&inbox);
     assert_eq!(
-        runtime.state,
-        ["menu heard true", "pushed", "menu heard false"]
+        log,
+        ["menu heard true", "the service said so", "menu heard false"]
     );
     assert_eq!(asks_for_a_view, [true, false, true]);
     assert!(inbox.is_empty());

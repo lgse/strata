@@ -28,10 +28,12 @@ use strata_desktop::settings::Preferences;
 use strata_fs::app::Browser;
 use strata_kit::look::Look;
 
-use crate::events::{Added, Change, Marks, Moved};
+use crate::{
+    events::{Added, Change, Marks, Moved},
+    slots::Ids,
+};
 
 mod editing;
-mod ids;
 mod intents;
 mod listing;
 mod mirror;
@@ -39,8 +41,6 @@ mod part;
 mod selection;
 mod view;
 
-pub(crate) use ids::Ids;
-pub(crate) use intents::chosen;
 pub(crate) use listing::{Edit, Load, Row};
 pub(crate) use selection::Input;
 pub(crate) use view::view;

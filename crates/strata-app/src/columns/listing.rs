@@ -19,7 +19,7 @@ use strata_core::{
     model::{EntryKind as Kind, FileEntry, Location},
 };
 
-use super::ids::Ids;
+use crate::slots::Ids;
 
 /// What a row is, as assistive technology hears it: `entry_kind_name` in
 /// `src/ui/accessibility.rs`.

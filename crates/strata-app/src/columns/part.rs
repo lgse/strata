@@ -5,10 +5,14 @@
 
 use rune::Tx;
 
-use super::{Columns, Hands, VIEW, view};
+#[cfg(feature = "qa")]
+use super::Load;
+use super::{Columns, Hands, VIEW, intents, view};
+#[cfg(feature = "qa")]
+use crate::slots::Probe;
 use crate::{
     App, events,
-    slots::{Listener, Part, Place, Setup, View},
+    slots::{Editing, Listener, Part, Place, Setup, View},
 };
 
 /// The saved `browser_mode` that names this view.
@@ -20,6 +24,25 @@ impl Part for Columns {
         shows: |mode| mode == MODE,
         focus: VIEW,
         pointer_at: Some(|app, at| app.columns.pointer_at(at)),
+        editing: Editing {
+            id_of: |app, location| app.columns.id_of(location),
+            position: |app, (depth, id)| app.columns.position(depth, id),
+            neighbour: |app, (depth, id), step| app.columns.neighbour(depth, id, step),
+            begin: |app, at, tx| app.columns.begin_rename(&mut app.rename.state, at, tx),
+            tick: |app| app.columns.tick_rename(&mut app.rename.state),
+            hold: |app, editing| app.columns.hold_mirror(editing),
+            select_only: |app, at, tx| app.columns.select_only(at, &app.look, tx),
+            follow_now: |app| app.columns.mirror_now(&app.browser),
+        },
+        chosen: intents::chosen,
+        #[cfg(feature = "qa")]
+        probe: Probe {
+            listed: |app| {
+                let root = app.columns.load(0);
+                matches!(root, Some(Load::Listed | Load::Failed(_)))
+            },
+            lists: |app| app.columns.list_keys(),
+        },
     });
 
     fn new(setup: &Setup<'_>) -> Self {

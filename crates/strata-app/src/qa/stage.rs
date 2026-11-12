@@ -13,7 +13,7 @@ use strata_components::collection::element::LABEL;
 use strata_qa::Rect;
 
 use super::tree::{Drawn, DrawnColumn, DrawnRow, NameLabel, Snapshot};
-use crate::{App, host::offscreen::Offscreen};
+use crate::{App, host::offscreen::Offscreen, shell};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
 /// this long for a frame.
@@ -86,7 +86,9 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
 /// What the snapshot reads beside the accessibility tree.
 fn drawn(host: &Offscreen) -> Drawn {
     let elements = host.elements();
-    let lists = host.app().columns.list_keys();
+    let app = host.app();
+    let view = shell::shown_view(app);
+    let lists = view.map_or_else(Vec::new, |view| (view.probe.lists)(app));
     Drawn {
         columns: lists
             .iter()

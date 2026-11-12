@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! What a `BrowserEvent` changed in the listings, read for a view's listener
-//! ([`crate::slots`]).
+//! ([`crate::slots`]). It belongs to the contract, not to a view: a change here is a
+//! `contract` change.
 //!
 //! It is copied here, while the browser still holds exactly that: by the time the queue is
 //! applied, later events may have moved its entries on. So a change carries its rows, and the
@@ -13,7 +14,10 @@ use strata_components::contract::EntryId;
 use strata_core::model::{FileEntry, Location};
 use strata_fs::app::{Browser, BrowserEvent};
 
-use crate::columns::{Edit, Ids, Load, Row};
+use crate::{
+    columns::{Edit, Load, Row},
+    slots::Ids,
+};
 
 /// The browser's cursor and selection in one column.
 #[derive(Debug, Default)]

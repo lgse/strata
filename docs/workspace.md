@@ -97,9 +97,10 @@ slots::parts! {
 - **The contract is the module documentation of `crates/strata-app/src/slots.rs`:** where
   each slot is, what a part gives the shell there, and how it gets its state, its settings,
   its share of `Browser`'s events, its timers and the keyboard. It has the rules a part
-  keeps, and a list of what waits on another package: window chords and the header's
-  buttons, saving a setting, a service other than `Browser`, a `Browser` for each tab, and
-  changing the view while the window is open. `columns/part.rs` is the worked example.
+  keeps, who owns which file, and a list of what waits on another package: window chords
+  and the header's buttons, saving a setting, a `Browser` for each tab, and changing the
+  view while the window is open. `columns/part.rs` is the worked example, and
+  `shell/tests.rs` runs the shell over a made-up table with a part in every slot.
 - **A part never edits `shell.rs`, `slots.rs` or another part's module.** When a slot cannot
   give a part what it needs, that is a `contract` change of its own, made first.
 - **No CI job builds, lints or tests the Rune side** ([Two lanes](#two-lanes)), so nothing

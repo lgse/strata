@@ -23,7 +23,9 @@
 
 use rune::{El, Keybind};
 use strata_components::{
-    context_menu::{ContextMenu, ContextMenuState, Item, MenuModel, MenuTarget, Section},
+    context_menu::{
+        ContextMenu, ContextMenuState, Item, MenuIntent, MenuModel, MenuTarget, Section,
+    },
     contract::Point,
 };
 use strata_core::{
@@ -32,7 +34,7 @@ use strata_core::{
 };
 
 use crate::{
-    App, columns,
+    App, shell,
     slots::{Frame, Part, Place, Setup},
 };
 
@@ -56,6 +58,13 @@ pub(crate) struct Opening {
     pub(crate) at: Point,
 }
 
+/// A row of the open menu was chosen: the view the menu was opened in acts on it.
+fn chosen(app: &mut App, intent: MenuIntent, tx: &mut rune::Tx) {
+    if let Some(view) = shell::shown_view(app) {
+        (view.chosen)(app, intent, tx);
+    }
+}
+
 /// The menu's element, with its surfaces in the layer while it is open.
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let menu = ContextMenu::new(
@@ -64,7 +73,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         |app: &mut App| &mut app.menu.state,
     )
     .name(app.menu.name())
-    .on_intent(columns::chosen)
+    .on_intent(chosen)
     .build(app, &app.look, frame.layer);
     Some(menu)
 }

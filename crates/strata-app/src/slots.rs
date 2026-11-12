@@ -11,7 +11,7 @@
 //! | `Tabs` | Across the window, above the header | One | Its element ([`Build`]) |
 //! | `Location` | The header's flexible middle (`Header::center`) | One | Its element |
 //! | `Sidebar` | Under the header, before the view | One | Its element |
-//! | `View` | Under the header: the files | Any, and one is shown | A [`View`]: its element, the saved mode it answers to, the key that takes the keyboard back, and what it does with the pointer |
+//! | `View` | Under the header: the files | Any, and one is shown | A [`View`]: its element, the saved mode it answers to, the key that takes the keyboard back, what it does with the pointer, and what the rename editor, a context menu and the QA backend ask of the view that is shown |
 //! | `Drawer` | Around the view | One | A [`Wrap`]: it is handed the view's element and returns the split |
 //! | `Footer` | Across the window, under the view | Any, top to bottom | Its element |
 //! | `Overlays` | The window's layer, over everything placed | Any, later ones on top | Its surfaces, pushed on `Frame::layer`, and the anchor its component leaves in the tree, if any |
@@ -47,10 +47,12 @@
 //! | Its state, by accessor | A field of [`App`](crate::App), so a component takes `\|app: &App\| &app.<field>…` and `\|app: &mut App\| &mut app.<field>…`. Fields are disjoint borrows: a handler may hold two parts at once |
 //! | Its saved settings | [`Setup::settings`] in [`Part::new`], read once: the window does not yet follow a setting that changes while it is open |
 //! | Its share of `Browser`'s events | [`Part::listen`] returns a [`Listener`]. It runs inside the browser's observer, where it may only read the browser and queue: `heard.then(…)` queues an update that runs in the next `poll` with the whole `App`, in the browser's order across every part |
+//! | What another service says (a volume monitor, a thumbnailer, a session store) | [`Setup::later`], kept in the part's state. The service's callback runs inside GLib's dispatch like the browser's observer, and only queues: `later.then(…)` puts an update in the same queue, which both hosts apply after every dispatch. A queue of the part's own, read in `poll`, is not the same: `poll` waits for a frame |
 //! | To act on the browser | A handler calls `shell::publish(app)` before it asks the browser to act on its cursor, and `shell::settle(app, tx)` when it is done |
 //! | To tell the browser what the user changed in it | [`Part::publish`], called before GLib dispatches and around every applied queue; [`Part::caught_up`], called once a queue is applied |
 //! | Its own timers | [`Part::poll`], called in Rune's `poll` after the queue is applied |
 //! | The keyboard | A part focuses its own element with `Tx::focus`. A field or a menu gives the keyboard back to the shown view: `shell::view_focus(app)` is the key for a component's `focus_return` |
+//! | The view, whichever is shown | `shell::shown_view(app)`. A part never names a view's module: the rename editor asks the shown view's [`Editing`], a context menu sends a chosen row to its `chosen`, and the QA backend reads its [`Probe`] |
 //! | The window's shortcuts to wait | [`Part::holds_keyboard`], true while the part has a text field open |
 //!
 //! # Rules for a part
@@ -70,6 +72,9 @@
 //! - **Element keys are one namespace across the parts.** Start a part's keys with its name.
 //! - **Nothing outside a part's own module and its two lines is the part's to edit:** not
 //!   `shell.rs`, not this module, not another part.
+//! - **A part's place can be tested without registering it.** `test_support::hosted_over`
+//!   runs the window over a table a test makes up, as `shell/tests.rs` does with a part in
+//!   every slot.
 //! - **No CI job builds this crate.** Run `mise run test-rune slots::` before pushing and
 //!   again after merging `strata-next`: a second part in a slot for one, or a part registered
 //!   twice, shows only there and in a debug build's start.
@@ -80,11 +85,18 @@
 //! | --- | --- |
 //! | A window chord (Ctrl+T, Ctrl+L, the sidebar's key) or one of the header's five buttons | The command registry, lgse/strata#2126. A component's own keys are its own; `shell::on_key`'s table and `shell::bar` are not an area's to add to. The runs that need them stay `pending` on that package |
 //! | To save a setting | The preference store's move to `strata-desktop`, lgse/strata#2125. The shell saves the sort and the hidden-files choice and nothing else |
-//! | To queue from a service other than `Browser` (volumes, thumbnails, sessions) | A second `contract` change under lgse/strata#2124. A queue of the part's own, read in `poll`, is not the same: the windowed host applies only the shell's queue when GLib wakes it |
-//! | The rename editor, a context menu or the QA backend over another view than Columns | The same change. They call `app.columns` today |
 //! | A `Browser` and a state for each tab | lgse/strata#2131, which opens with a `contract` change. There is one `Browser`, and one state for each part, made once in `App::new` |
 //! | To change the shown view while the window is open | lgse/strata#2140, with a `contract` change: a setter, and a listener and a rebuild from the browser for a view that starts hidden |
 //! | Another order within a slot | A `contract` change. The order is the registration lines', which is the packages', and a line is not moved from under its comment |
+//!
+//! # Who owns what
+//!
+//! | File | Owner |
+//! | --- | --- |
+//! | `shell.rs`, `slots.rs` and `slots/`, the id table among them | The contract: a change is a `contract` pull request of its own |
+//! | `events.rs`, the listing reader a view's listener calls | The contract too. It reads into the Columns view's listing types (`columns::{Row, Edit, Load}`); sharing those with another view is a `contract` change that view's package opens with |
+//! | A part's module | The package that registered it |
+//! | `lib.rs` | Each package, under its own comment and nowhere else |
 //!
 //! # The Columns view, as the example
 //!
@@ -92,6 +104,8 @@
 //!
 //! - `PLACE` is `Place::View`: `build` returns `columns::view(app).build(app)`, `shows`
 //!   answers to `"columns"`, `focus` is the strip's key, and `pointer_at` feeds the mirror.
+//!   `editing`, `chosen` and `probe` are what the rename editor, the context menu and the QA
+//!   backend called on the Columns view by name before there was a view slot.
 //! - `new` reads the click counts, the mirror choice and "Type to search" from the settings,
 //!   and takes the id table.
 //! - `listen` copies the rows an event changed out of the browser ([`crate::events`]) and
@@ -105,14 +119,18 @@
 //! are the two overlays: the editor's message is registered first, so it shows under a menu.
 
 use rune::{Cx, El, Tx};
+use strata_components::{context_menu::MenuIntent, contract::EntryId, rename::Polled};
+use strata_core::model::Location;
 use strata_desktop::settings::Preferences;
 
-use crate::{App, columns::Ids};
+use crate::App;
 
+mod ids;
 mod inbox;
 mod registry;
 
-pub(crate) use inbox::{Heard, Inbox, Listener};
+pub(crate) use ids::Ids;
+pub(crate) use inbox::{Heard, Inbox, Later, Listener};
 pub(crate) use registry::{Entry, Registry};
 
 /// A place in the window. The module docs say where each is.
@@ -144,6 +162,8 @@ pub(crate) struct Setup<'a> {
     pub(crate) settings: &'a Preferences,
     /// The one table that names an entry for the components.
     pub(crate) ids: &'a Ids,
+    /// Where the callback of a service other than `Browser` queues: clone it into the state.
+    pub(crate) later: &'a Later<App>,
 }
 
 /// What a part builds its element with, for one run of the view.
@@ -169,6 +189,43 @@ pub(crate) struct View<S: 'static> {
     /// The key of the element that takes the keyboard when a field or a menu gives it back.
     pub(crate) focus: &'static str,
     pub(crate) pointer_at: Option<PointerAt<S>>,
+    pub(crate) editing: Editing<S>,
+    /// A row of the open context menu was chosen. The menu has closed.
+    pub(crate) chosen: fn(&mut S, MenuIntent, &mut Tx),
+    #[cfg(feature = "qa")]
+    pub(crate) probe: Probe<S>,
+}
+
+/// A row of the shown view: the browser's column, and the entry's id.
+pub(crate) type At = (usize, EntryId);
+
+/// What the rename editor asks of the view it edits in.
+pub(crate) struct Editing<S: 'static> {
+    /// The id the view knows the entry at a location by.
+    pub(crate) id_of: fn(&S, &Location) -> EntryId,
+    /// The browser's position of a row.
+    pub(crate) position: fn(&S, At) -> Option<usize>,
+    /// The entry so many rows after a row, as the view lists them.
+    pub(crate) neighbour: fn(&S, At, isize) -> Option<EntryId>,
+    /// Opens the editor on a row and shows the row. None when the view has no such row.
+    pub(crate) begin: fn(&mut S, At, &mut Tx) -> Option<Polled>,
+    /// One poll of the editor against the row's listing and viewport.
+    pub(crate) tick: fn(&mut S) -> Polled,
+    /// An edit is open, or none is: what follows the cursor waits while one is.
+    pub(crate) hold: fn(&S, bool),
+    /// Selects a row alone, with the cursor and the keyboard on it.
+    pub(crate) select_only: fn(&mut S, At, &mut Tx),
+    /// What follows the cursor follows it now, with no wait.
+    pub(crate) follow_now: fn(&S),
+}
+
+/// What the QA backend reads of the shown view beside the tree.
+#[cfg(feature = "qa")]
+pub(crate) struct Probe<S: 'static> {
+    /// Whether the folder the launch opened has been listed, or could not be.
+    pub(crate) listed: fn(&S) -> bool,
+    /// The key of each entry list in the tree, the first pane's first.
+    pub(crate) lists: fn(&S) -> Vec<String>,
 }
 
 /// Tells a view the pointer moved over the body, to this place in window points.
