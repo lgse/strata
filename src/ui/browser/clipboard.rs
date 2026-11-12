@@ -698,7 +698,7 @@ fn classify_file_drop(
     let (relation, is_noop) = state.classify(target, destination, sources.clone());
     let source_actions = drop
         .as_ref()
-        .map_or_else(|| target.actions(), |drop| drop.actions());
+        .map_or_else(|| target.actions(), drop_source_actions);
     let offered = offered_file_actions(target.actions(), source_actions);
     let strategy = current_cross_volume_drop_strategy();
     if commit {
@@ -713,6 +713,7 @@ fn classify_file_drop(
             event_mods = ?target.current_event_state(),
             keyboard_mods = ?drop_modifier_state(target),
             drop_actions = ?drop.as_ref().map(|drop| drop.actions()),
+            in_app_drag_actions = ?drop.as_ref().and_then(|drop| drop.drag()).map(|drag| drag.actions()),
             ?offered,
             "drop action classified"
         );
@@ -730,6 +731,19 @@ fn classify_file_drop(
 
 fn current_cross_volume_drop_strategy() -> CrossVolumeDropStrategy {
     crate::ui::preferences::PreferenceManager::shared().cross_volume_drop_strategy()
+}
+
+/// Actions the drag source offered for this drop.
+///
+/// For an in-app drag the compositor may already have narrowed the negotiated
+/// actions to the preferred action Strata reported while hovering — on Wayland a
+/// quick drag reports COPY before the volume lookup finishes, and the drop then
+/// arrives as COPY-only, turning a same-volume move into a copy (#1958, #2107).
+/// The in-app `GdkDrag` still carries the actions Strata's own source offered
+/// (including the Ctrl/Shift choice), so prefer those.
+fn drop_source_actions(drop: &gtk::gdk::Drop) -> gtk::gdk::DragAction {
+    drop.drag()
+        .map_or_else(|| drop.actions(), |drag| drag.actions())
 }
 
 /// A compositor's source-side MOVE offer must not prevent Strata's cross-volume copy.

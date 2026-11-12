@@ -510,6 +510,39 @@ fn copy_only_source_does_not_move_on_the_same_volume() {
 }
 
 #[test]
+fn in_app_drag_source_actions_preserve_move_when_compositor_narrows_drop() {
+    let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let compositor_narrowed_actions = gtk::gdk::DragAction::COPY;
+    let in_app_drag_actions = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+
+    let narrowed_offered = offered_file_actions(dest, compositor_narrowed_actions);
+    assert!(!narrowed_offered.contains(gtk::gdk::DragAction::MOVE));
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            narrowed_offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+
+    let in_app_offered = offered_file_actions(dest, in_app_drag_actions);
+    assert!(in_app_offered.contains(gtk::gdk::DragAction::MOVE));
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            in_app_offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+}
+
+#[test]
 fn cut_clipboard_locations_match_regardless_of_order() {
     let first = Location::local("/fixture/first");
     let second = Location::local("/fixture/second");
