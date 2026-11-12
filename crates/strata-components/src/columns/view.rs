@@ -232,9 +232,11 @@ impl<S: 'static> ColumnsView<S> {
 
     /// The host's additions to column `depth`'s collection: its clock, its controllers'
     /// settings (except [`PointerSettings`], which go through
-    /// [`ColumnsView::pointer_settings`]), a label or icon slot, a rename editor. The view sets
-    /// the rest after (the name and description, row height, header, marks, intents, drops and
-    /// keys), so don't set those here. The view owns the rows' content slot
+    /// [`ColumnsView::pointer_settings`]), a label or icon slot, a rename editor, and what the
+    /// column shows and is described as while it has no rows (`Collection::empty`, and
+    /// `Collection::description` over [`ColumnsLabels::list`], which the view sets first). The
+    /// view sets the rest after (the name, row height, header, marks, intents, drops and keys),
+    /// so don't set those here. The view owns the rows' content slot
     /// (`Collection::content`: the icon, the label and the size badge) and their description
     /// (`Collection::describe`: [`ColumnSources::description`], else the badge's text), so
     /// don't set those either.
@@ -412,6 +414,8 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
                 .map_or(0, |d| p.sources.version(d))
         },
     );
+    // The host's extras may describe the column otherwise (a status in place of its rows).
+    let c = c.description(sh.labels.list.clone());
     let mut c = hosted(sh, s, depth, c);
     let look = p.look;
     let column = &p.state.columns[depth.min(p.state.columns.len().saturating_sub(1))];
@@ -451,7 +455,6 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         });
     }
     c.name(title)
-        .description(sh.labels.list.clone())
         .row_height(|_: &S, l: &Look| l.row.columns)
         .keys_by_host()
         .settings(pointer)

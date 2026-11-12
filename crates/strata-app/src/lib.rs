@@ -18,6 +18,8 @@ mod handover;
 mod host;
 mod launch;
 mod listing;
+// What a listing that shows no entry says, in every view.
+mod surface;
 // The one folder a single-pane view shows: the Icons and List views'.
 mod pane;
 #[cfg(feature = "qa")]

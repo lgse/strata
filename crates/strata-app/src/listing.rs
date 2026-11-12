@@ -189,6 +189,10 @@ impl Column {
         &self.title
     }
 
+    pub(crate) fn location(&self) -> &Location {
+        &self.location
+    }
+
     pub(crate) fn load(&self) -> &Load {
         &self.load
     }
