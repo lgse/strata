@@ -95,16 +95,29 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2175).
 - Three GTK unit tests each failed once in CI's shard 1 on a pull request to `strata-next`
   and passed on a rerun of the whole workflow; a fourth failed once on a developer's host.
+  Since then: the fourth failed again on a loaded host, once in a run of 417 tests and 1 time
+  in 5 alone, on [#2195](https://github.com/lgse/strata/pull/2195); the third failed again in CI's shard 1 on [#2197](https://github.com/lgse/strata/pull/2197), with its recorded
+  message; a fifth, a `strata-fs` test with no GTK in it, failed in shard 2 of that same
+  run, its search coming back empty; and on the rerun, where those two passed, a sixth, a
+  `strata-desktop` test with no GTK in it, failed in shard 1: the update's metadata fetch
+  ended with "Interrupted system call" where a cancellation was expected. It did not fail in
+  80 runs on a host, with or without the crate's child-process tests beside it.
 - **Concerns:**
   `ui::browser::progress::tests::minimization::deletion::overlapping_fast_deletions_restore_browser_input_after_playback`,
   `ui::window::tests::keyboard_dispatch::direct_commands::shipped_keys_never_reach_the_direct_stage`,
   `ui::window::tests::keyboard_dispatch::pane_focus::default_map_tab_leaves_the_listing_in_one_press`,
   and, added in a comment,
-  `ui::window::tests::keyboard_dispatch::folder_jump::tenxer_z_ranks_history_and_opens_the_chosen_folder_once`.
+  `ui::window::tests::keyboard_dispatch::folder_jump::tenxer_z_ranks_history_and_opens_the_chosen_folder_once`;
+  and, in `strata-fs`,
+  `services::search::tests::folder_path_search_leads_with_a_folder_the_query_names_outright`
+  (`crates/strata-fs/src/services/search/tests.rs:819`); and, in `strata-desktop`,
+  `services::update_install::tests::cancel_stops_a_silent_metadata_fetch_without_waiting_for_a_timeout`
+  (`crates/strata-desktop/src/services/update_install/tests.rs:927`).
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
-  GTK test is added to this entry.
+  GTK test is added to this entry. The rule does not say what to do when the rerun fails on
+  another test, as on [#2197](https://github.com/lgse/strata/pull/2197): there the package's agent stopped and asked.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
