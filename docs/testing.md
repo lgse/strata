@@ -848,8 +848,10 @@ scenario folder, a work package, a gate of the slice, or `all`:
 ./scripts/qa-parity.sh g1                 # gate G1's required and parallel runs
 ./scripts/qa-parity.sh slice              # the slice's exit check: every gate's, then the rest, below
 ./scripts/qa-parity.sh A7 --counts        # the selection's runs by status and reason; runs nothing
+./scripts/qa-parity.sh A7 --twins         # the selection's twins, each with what a review audits; runs nothing
 ./scripts/qa-parity.sh g2 --target rune   # one target only
 ./scripts/qa-parity.sh A7 --pending       # a survey: the selection's pending runs, on Rune
+./scripts/qa-parity.sh A7 --parallel      # a survey: the selection's parallel runs from the shared file, on Rune
 ./scripts/qa-parity.sh g2 --scenario shift-click-range   # only that scenario's runs of the selection
 ./scripts/qa-parity.sh mutations          # the Rune target's mutation patches
 ./scripts/qa-parity.sh gtk-mutations      # the GTK application's, less the ledger's stale ones
@@ -861,19 +863,26 @@ twin, `<scenario>-rune/<run>`, on Rune (see "Twins"). `--scenario` takes either
 name of a pair, and each selects the pair.
 
 It exits 0 only when every one of those runs passes on every target it ran. A
-survey lists which pending runs pass and fails only when nothing ran. Artifacts
-are kept for passing runs too (`STRATA_QA_KEEP_ARTIFACTS=0` keeps a failed
-run's only). With `--target` or `--scenario`, `slice` runs its required and
-parallel runs and nothing after them; a `--scenario` that names no run of the
-selection is an error, and so is a selection the ledger does not have. A
-folder or a package is every view's runs; a gate is Columns runs only.
+survey runs the shared files on Rune alone, lists the runs that pass and fails
+only when nothing ran: `--pending` finds a pending run that is ready to be
+`required` (`PASSES ON RUNE, STILL PENDING: …`), and `--parallel` a parallel
+run whose exception has lapsed (`PASSES ON RUNE FROM THE SHARED FILE, STILL
+PARALLEL: …`). Artifacts are kept for passing runs too
+(`STRATA_QA_KEEP_ARTIFACTS=0` keeps a failed run's only). With `--target` or
+`--scenario`, `slice` runs its required and parallel runs and nothing after
+them; a `--scenario` that names no run of the selection is an error, and so is
+a selection the ledger does not have. A folder or a package is every view's
+runs; a gate is Columns runs only.
 
 `--counts` reads the ledger and starts no container. It prints the selection's
 runs by status, the parallel ones by exception and the pending ones by reason,
 then by host and by view, its twins by exception, and its runs by package,
 which is what a checkpoint report quotes. `twins` counts files: a twin that
-holds two runs is two parallel runs and one twin. It counts the whole
-selection, so it takes no `--target`, `--pending` or `--scenario`:
+holds two runs is two parallel runs and one twin. A parallel run that names no
+host is counted on `offscreen`, where its twin runs. It counts the whole
+selection, so it takes no `--target`, `--pending`, `--parallel` or
+`--scenario`, and neither does `--twins`, which names each twin ("Twins",
+below):
 
 ```text
 == selection: 25 run(s) in 1 folder(s) ==
@@ -1114,15 +1123,36 @@ label:
   the original stay `required` or `pending` from the shared file.
 - **A twin starts from what its original starts from.** For each run it
   holds, the header's `tree`, `images`, `fixture_root`, `setup`, `teardown`,
-  `prefs`, `layout` and `portal`, with the variant's over them, are its
-  original's. Only its steps differ.
-- **A twin is a full scenario**: messages on its waits, a `cost` and a
-  `quality`, and a proof that it can fail, which is
-  `tests/qa/parity/mutations/<scenario>-rune.patch`. It names no `mutation`,
-  which is a GTK patch, and carries no `known_bug`: a twin passes on Rune, and
-  a run whose twin cannot is `pending`. `scripts/qa_cost.py` times the GTK
+  `prefs`, `layout`, `portal`, `env`, `session_bus` and `input_method`, with
+  the variant's over them, are its original's. `gtk_settings` is the one key
+  of that kind left out: the Rune target reads no GTK settings, so a twin has
+  nothing to keep there. A variant's `vars` are read into the steps before
+  the steps are compared.
+- **A twin's steps differ, and keep the end state.** In each run it holds, a
+  twin has at least one step that is not its original's: if nothing differs,
+  the shared file passes on Rune and the run is `required`. A step's
+  `message` and `timeout_ms` are no part of what it does or asserts, so a step
+  that differs only there is the original's. And a twin keeps every `fs` step
+  of its original's run and every `wait` or `expect` that reads a `pref`,
+  unchanged and in the original's order: the files on disk and what
+  `settings.toml` holds are among what the plan says must match with no
+  exception. The `fs` steps that act are kept with the ones that check,
+  because a change to the files mid-run is part of the fixture.
+- **A twin is a full scenario**: messages on its waits and a proof that it
+  can fail, which is `tests/qa/parity/mutations/<scenario>-rune.patch`. It
+  names no `mutation`, which is a GTK patch, and carries no `known_bug`: a
+  twin passes on Rune, and a run whose twin cannot is `pending`. By
+  convention it has a `cost` and a `quality` as well; no check asks for
+  either, of a twin or of any scenario. `scripts/qa_cost.py` times the GTK
   suite and leaves a twin's `cost` alone; give it its original's for the runs
   it holds.
+- **`-rune` is reserved** across the corpus, for scenarios that arrive from
+  `main` too: one named so that is no twin is refused, and is renamed on
+  `main`.
+- **A merge from `main` can conflict in a labelled header.** The header is
+  one line, and `main` edits it too (a cost refresh, a quality note). Take
+  `main`'s line and add the `parity` label back; nothing else of the line is
+  `strata-next`'s.
 - **Twins outlive GTK.** When GTK is retired they lose the suffix and become
   the corpus (package E4).
 
@@ -1137,12 +1167,13 @@ written. The runner says which it left out, in one line:
 NOT ON gtk: 1 scenario(s) list other targets and are no runs here: shift-click-range-rune
 ```
 
-So a twin moves no count of `./scripts/qa.sh` or of the CI shards' inventory,
-and naming one there runs nothing (`The selection ran no QA scenario.`). Run a
-twin with `./scripts/qa-parity.sh <selection> --target rune --scenario
-<scenario>-rune`. Only a twin carries `targets`, and only `["rune"]`: a
-scenario that left a target out without a pair would be a run nobody accounts
-for, and the ledger's statuses are how a run is left out.
+So a twin moves no count of `./scripts/qa.sh` or of the CI shards' inventory.
+Naming one there fails the selection before anything runs, whatever else the
+selection names, with `error: <scenario>-rune is no run on gtk: …` and the
+command that does run it: `./scripts/qa-parity.sh <selection> --target rune
+--scenario <scenario>-rune`. Only a twin carries `targets`, and only
+`["rune"]`: a scenario that left a target out without a pair would be a run
+nobody accounts for, and the ledger's statuses are how a run is left out.
 
 **The ledger.** The original's run is `parallel`:
 
@@ -1169,6 +1200,12 @@ three times running, in the pinned image, and `qa-parity.sh` runs both from
 then on. An entry may name the `host` its twin runs on; `qa-parity.sh` refuses
 one on the `session` host as it refuses a required one.
 
+A run that is `pending` becomes `parallel` by the approval below. A run that
+is `required` today becomes `parallel` only with the owner's agreement,
+whatever the exception's code: that is the direction that loses parity, and no
+check tells it from the other. (A default of the session that orchestrated
+wave 0, for the owner to confirm: lgse/strata#2123.)
+
 A twin's scenario may carry a `skip`, or stand in for a scenario that does.
 `qa-parity.sh` does not set `STRATA_QA_NAMED`, so a skipped scenario is not
 started by it: such a pair fails the selection on the target that skipped it,
@@ -1184,10 +1221,10 @@ never does: the same file runs on the session host instead, so its run is
 | --- | --- | --- | --- | --- |
 | `timing` | The scenario asserts a duration, a mid-animation state, or a GTK timer race from the "Waits for the app's own timers" list | An issue | The form of the reference | That waiting on observable state, or the backend's settle, could not absorb it, and that the issue says so |
 | `a11y` | The backend could present the target only by guessing: GTK exposes a tree shape, a role or an element that Rune's tree lacks | An issue | The form of the reference | That the issue names the missing node, and that the backend's role map could not absorb it |
-| `rune` | Rune lacks the capability at the pinned revision, and a workaround reaches the same result by another route | The packet entry | That the entry is a file of `docs/rune/upstream/rune/` | That the entry's notes name the workaround, and that the twin and the workaround go when the pin moves past the fix: a pin bump lists the `rune` twins with `--counts` and removes each one whose entry is fixed |
+| `rune` | Rune lacks the capability at the pinned revision, and a workaround reaches the same result by another route | The packet entry | That the entry is a file of `docs/rune/upstream/rune/` | That the entry's notes name the workaround, and that the twin and the workaround go when the pin moves past the fix: "Keeping the exceptions few", below |
 | `oracle` | Strata itself has the bug, the GTK run shows it or its scenario encodes it, and Rune behaves correctly. The twin asserts the correct behaviour | An issue | The form of the reference | That the issue has the `oracle` label and says why GTK's behaviour is the bug. If `main` later fixes it, the twin is deleted |
 | `toolkit` | A GTK-only check is the point of the scenario: a pixel predicate, `gtk_settings`, a GDK detail, a coordinate tied to GTK's row heights and fonts | An issue | The form of the reference | That targeting by name instead of offset could not absorb it. Visual baselines are not twinned: they are `excluded` |
-| `deviation` | The port behaves differently on purpose, and the twin asserts the new behaviour | The issue that records the owner's ruling | The form of the reference | That the ruling is there, and is the owner's |
+| `deviation` | The port behaves differently on purpose, and the twin asserts the new behaviour | The issue that records the owner's ruling | The form of the reference | That the ruling is there, and is the owner's: the reviewer opens the issue and reads it |
 
 **Who approves a twin**, as the owner ruled on 2026-11-11. The reviewer of the
 pull request approves `timing`, `a11y` and `toolkit` twins, on agreeing that
@@ -1195,9 +1232,54 @@ steps 1 to 3 do not fit, and `oracle` twins whose bug is clear-cut. A
 `deviation` twin needs the owner, and so does an `oracle` twin whose bug is
 arguable, which is a deviation. A `rune` twin follows its packet entry.
 
-What no check holds is left to that review: that the twin keeps the original's
-intent and its end-state checks, that only the steps `differs` names differ,
-that `differs` is true, and that the exception fits the difference.
+No check reads a `deviation` twin's issue, and it is the one code the reviewer
+may not approve. Until the owner says where rulings are recorded, the reviewer
+opens the issue and confirms that the ruling is there before the twin merges.
+(A default of the session that orchestrated wave 0, for the owner to confirm:
+lgse/strata#2123.)
+
+**What no check holds** is left to that review:
+
+- that the checks a twin keeps or adds still assert the original's intent. A
+  check holds the `fs` steps and the `pref` checks; a twin may still drop
+  another wait of its original's, and `--twins` gives the number;
+- that `differs` is true, and that only the steps it names differ;
+- that the exception fits the difference, and that steps 1 to 3 were tried;
+- that the twin's patch breaks the behaviour its differing steps check, and
+  not its first wait. That the patch exists is checked, and that the twin
+  catches it is run by `./scripts/qa-parity.sh mutations` and by `slice`;
+- that an issue exists, is open and has its label, and that the pair passed
+  three times running before the entry was flipped.
+
+**Keeping the exceptions few.** An exception is a counted, referenced record,
+and two commands keep the count honest:
+
+```bash
+./scripts/qa-parity.sh all --twins       # every twin; no container
+./scripts/qa-parity.sh all --parallel    # every parallel run from the shared file, on Rune
+```
+
+```text
+== selection: 1 twin(s) for 1 parallel run(s) ==
+shift-click-range-rune  timing  lgse/strata#2200  A9
+  stands in for  shift-click-range/columns
+  differs        line 3 waits for the selection, where the original waits out the highlight
+  steps          2 the original's, 1 its own, 1 of the original's dropped
+```
+
+`--twins` is what a review of a twin and a checkpoint report read: the
+exception, the reference, the package, the runs the twin stands in for, its
+`differs`, and how its steps stand to its original's over those runs. A twin
+that drops most of its original's steps, or adds none, shows there.
+
+`--parallel` finds an exception that has lapsed. It runs the shared file of
+each parallel run on Rune, as `--pending` does for pending runs, and prints
+`PASSES ON RUNE FROM THE SHARED FILE, STILL PARALLEL: <run>` for each that
+passes. Such a run needs no twin any more: the port or the backend absorbed
+the difference, or Rune gained the capability. Its twin, its patch and its
+label are removed, and its entry goes to `required`. Run it for a package's
+own twins before the package closes, at every Rune pin bump, where `--twins`
+names the `rune` twins and their packet entries, and at each checkpoint.
 
 #### What checks the ledger
 
@@ -1219,8 +1301,11 @@ from one: it exits 2 and names the file and the run. Both refuse:
   `<scenario>-rune/<run>`, and a reference of the wrong form;
 - an entry for a twin's own run.
 
-Both then check every `parity` label and every pair, and say what to do about
-each fault. A header alone is refused for:
+Both then read every scenario file. A header with a key the runner does not
+have, or a value of another shape, is one refusal, and so is a step of a
+labelled scenario that is no JSON object; nothing else is checked until it is
+mended. Then both check every `parity` label and every pair, and say what to
+do about each fault. A header alone is refused for:
 
 - a `-rune` name without a label, and `targets` on a scenario that is no twin;
 - a twin that names another scenario than its original, and an original that
@@ -1238,20 +1323,26 @@ A pair is refused for:
 - two headers that differ in the code or the reference, and an entry that
   differs from them in either;
 - a twin with no run, with a run its original lacks, or with a run that
-  starts from another fixture, preferences or layout than its original's;
+  starts from another fixture, preferences, layout, environment or bus than
+  its original's;
+- a twin's run with no step, with its original's steps and no other, or
+  without an `fs` step or a `pref` check of its original's, in its order;
 - a run a twin stands in for that the ledger does not call `parallel`, and a
   `parallel` run its twin does not hold;
 - a `rune` twin whose packet entry does not exist;
 - a twin without its mutation patch.
 
-`tests/qa/parity_cases.toml` is the table of what both accept and refuse, in
-two corpora: the entries' own rules, and a labelled pair with its headers.
-`tests/qa/parity_tests.rs` and `tests/qa/twin_tests.rs` run it through the
-runner's readers (`tests/qa/parity.rs`, `tests/qa/twins.rs`), and
-`scripts/test_qa_parity.py` through the scripts' (`scripts/qa_parity_check.py`,
-`scripts/qa_parity_twins.py`), and a problem is the same line from both. A
-change to the schema adds its rows to that table first, so that neither reader
-can learn a field or a status the other does not know.
+Two tables hold what both accept and refuse: `tests/qa/parity_cases.toml` for
+the entries' own rules, and `tests/qa/parity_pair_cases.toml` for a labelled
+pair with its two files. `tests/qa/parity_tests.rs` and
+`tests/qa/twin_tests.rs` run them through the runner's readers
+(`tests/qa/parity.rs`, `tests/qa/twins.rs`), and `scripts/test_qa_parity.py`
+and `scripts/test_qa_parity_twins.py` through the scripts'
+(`scripts/qa_parity_check.py`, `scripts/qa_parity_twins.py`), and a problem is
+the same line from both. A
+change to the schema adds its rows to a table first, so that neither reader
+can learn a field or a status the other does not know. The scripts' tests also
+hold their list of header keys to the runner's `Header` and `Variant`.
 
 Some rules are conventions that nothing checks: that only the owner edits an
 entry, that a run marked `required` or `parallel` did pass three times, what a

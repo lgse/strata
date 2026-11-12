@@ -300,17 +300,22 @@ run stays `pending` with a blocker.
    `docs/rune/upstream/rune/<number>-<name>.md`. A `deviation` twin needs the
    owner's ruling on its issue before it is written.
 2. **Write the twin** beside the original. It holds only the modes or
-   variants that differ, starts from the same `tree`, `images`,
-   `fixture_root`, `setup`, `teardown`, `prefs`, `layout` and `portal`, and
-   keeps the original's intent and end-state checks; only the steps the
-   exception names differ. Its header:
+   variants that differ, and starts from the same `tree`, `images`,
+   `fixture_root`, `setup`, `teardown`, `prefs`, `layout`, `portal`, `env`,
+   `session_bus` and `input_method`. Only the steps the exception names
+   differ, and at least one does: a twin whose steps are its original's is
+   refused, since then the shared file passes and the run is `required` (a
+   `message` or a `timeout_ms` is no difference). It keeps the original's
+   intent and end-state checks: every `fs` step and every `wait` or `expect`
+   on a `pref` of the original's run stays, unchanged and in order, by a
+   check, and the rest by review. Its header:
 
    ```json
    {"scenario":"<scenario>-rune","modes":["columns"],"targets":["rune"],"parity":{"twin":"<scenario>","exception":"timing","ref":"lgse/strata#NNN","differs":"<one line: which steps differ and why>"}}
    ```
 
-   Give it messages on its waits, the original's `cost` for the runs it
-   holds, and a `quality`. No `mutation` and no `known_bug`.
+   Give it messages on its waits and, by convention, the original's `cost`
+   for the runs it holds and a `quality`. No `mutation` and no `known_bug`.
 3. **Label the original**, and change nothing else in it. Its steps stay:
 
    ```json
@@ -318,7 +323,8 @@ run stays `pending` with a blocker.
    ```
 
 4. **Flip the ledger entry** of each run the twin holds, in the folder's
-   file. The twin's own runs get no entry:
+   file. The twin's own runs get no entry. A run that is `required` today
+   goes `parallel` only with the owner's agreement:
 
    ```toml
    status = "parallel"
@@ -329,15 +335,25 @@ run stays `pending` with a blocker.
 
 5. **Prove the twin can fail.** Add
    `tests/qa/parity/mutations/<scenario>-rune.patch`, which breaks the
-   behaviour in `crates/strata-app`, and run `./scripts/qa-parity.sh
-   mutations`. A scenario whose every run is parallel has no patch of its
-   own: `git mv` it to the twin's name.
-6. **Check and run the pair.** `./scripts/qa-parity.sh <folder> --counts`
-   reads the ledger and every label and says what to do about a pair that
-   does not hold; `./scripts/qa-parity.sh <folder> --scenario
+   behaviour the twin's own steps check in `crates/strata-app`, and run
+   `./scripts/qa-parity.sh mutations`. A scenario whose every run is
+   parallel has no patch of its own: `git mv` it to the twin's name.
+6. **Check and run the pair.** `./scripts/qa-parity.sh <folder> --twins`
+   reads the ledger, every label and both files, says what to do about a
+   pair that does not hold, and lists each twin with how many of its steps
+   are the original's, its own, and the original's it drops: put that
+   listing in the pull request. `./scripts/qa-parity.sh <folder> --scenario
    <scenario>-rune` runs the original on GTK and the twin on Rune. A run is
    `parallel` only once both passed three times running. `./scripts/qa.sh`
-   never runs a twin, and its counts do not change.
+   never runs a twin, its counts do not change, and naming a twin to it
+   fails the selection.
+7. **Look for twins that are no longer needed.** `./scripts/qa-parity.sh
+   <folder> --parallel` runs each parallel run's shared file on Rune. One
+   that passes has an exception that lapsed: remove the twin, its patch and
+   the label, and make the entry `required`.
+
+A labelled original's header is one line that `main` edits too. When a merge
+from `main` conflicts there, take `main`'s line and add the label back.
 
 ## Flakes and races
 
@@ -432,9 +448,9 @@ traces still appear. See "Main-thread I/O audit" in `docs/testing.md`.
       issue and are listed in the guide.
 - [ ] A scenario with a `mutation` still catches it:
       `./scripts/qa-mutation.sh <scenario>`.
-- [ ] A twin, or a scenario that has one: both labels, the ledger entries and
-      the twin's patch are in order (`./scripts/qa-parity.sh <folder>
-      --counts`), and the pair passes
+- [ ] A twin, or a scenario that has one: both labels, the ledger entries,
+      the steps and the twin's patch are in order (`./scripts/qa-parity.sh
+      <folder> --twins`), and the pair passes
       (`./scripts/qa-parity.sh <folder> --scenario <scenario>-rune`).
 - [ ] Renamed or removed names are gone from `docs/`, `tests/`, and the
       skills.
