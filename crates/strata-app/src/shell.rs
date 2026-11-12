@@ -1,33 +1,34 @@
 // SPDX-License-Identifier: MIT
 
-//! The window: Strata's header over the folder it shows, and the state behind them.
+//! The window: Strata's header over the parts registered in its slots, and what the window
+//! keeps for itself.
 //!
 //! The header is the one strata-components' X1 demo draws
 //! (`crates/strata-gallery/src/scenes/x1/shell.rs`). Its actions do nothing yet; the window
-//! buttons go to the window manager. The body is the Columns view ([`crate::columns`]).
+//! buttons go to the window manager. Everything else is a part: [`crate::slots`] says where
+//! each slot is and what a part gets from the shell.
 
 use std::rc::Rc;
 
-use rune::{Cx, El, KeyEvent, Keybind, Tx, col};
-use strata_components::{
-    context_menu::ContextMenu,
-    header::{self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome},
+use rune::{Cx, El, KeyEvent, Keybind, Tx, col, row};
+use strata_components::header::{
+    self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
 };
 use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::sort_preferences;
 use strata_fs::{
     adapters::{LocalFileSource, LocalOperationProvider},
-    app::Browser,
+    app::{Browser, BrowserEvent},
 };
 use strata_kit::{icons::IconName, look::Look};
 use strata_platform::csd::{self, Csd};
 
 use crate::{
-    columns::{self, Columns, Hands, Ids},
-    events::{Change, Inbox},
-    menus::Menu,
-    rename::{self, Rename},
+    App, Built, PARTS,
+    columns::Ids,
+    rename,
     settings::Saved,
+    slots::{Frame, Heard, Inbox, Registry, Setup, Slot},
     startup::UiThread,
 };
 
@@ -60,17 +61,13 @@ impl Labels {
     }
 }
 
-pub(crate) struct App {
-    pub(crate) look: Look,
-    pub(crate) browser: Rc<Browser>,
-    pub(crate) columns: Columns,
-    /// The context menu, while one is open.
-    pub(crate) menu: Menu,
-    /// The inline rename editor, and the rename the browser has not answered.
-    pub(crate) rename: Rename,
+/// What the window keeps for itself, beside the parts' state.
+pub(crate) struct Window {
     settings: Saved,
-    events: Inbox,
-    /// The browser's active location as of the last `poll`: what the body and the title name.
+    events: Inbox<App>,
+    /// The registered parts, with the view that is shown.
+    parts: Registry<'static, App>,
+    /// The browser's active location as of the last `poll`: what the title names.
     location: Option<Location>,
     title: String,
     csd: Csd,
@@ -82,73 +79,89 @@ pub(crate) struct App {
     applied: (u64, u64),
 }
 
+/// The window's own share of an event: the columns or the active one changed, so the window
+/// may show another location. It listens after the parts.
+fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
+    let moved = matches!(
+        event,
+        BrowserEvent::Reset
+            | BrowserEvent::ColumnsTruncated { .. }
+            | BrowserEvent::ColumnAdded { .. }
+            | BrowserEvent::ColumnsRelocated { .. }
+            | BrowserEvent::FocusChanged { .. }
+            | BrowserEvent::SelectionSetChanged { .. }
+    );
+    if moved {
+        heard.then(App::retitle);
+    }
+}
+
 impl App {
     /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with
-    /// the saved sort and hidden-files choice and with every event queued for
-    /// [`apply_queued`].
+    /// the saved sort and hidden-files choice, every registered part, and every event queued
+    /// for [`apply_queued`].
     pub(crate) fn new(_ui: &UiThread, csd: Csd, settings: Saved) -> Self {
         let saved = settings.preferences();
         let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
         browser.set_operation_provider(Rc::new(LocalOperationProvider));
         let ids = Ids::default();
-        Self {
-            look: Look::fallback(true),
-            events: Inbox::observing(&browser, ids.clone()),
-            columns: Columns::new(saved, ids),
-            menu: Menu::default(),
-            rename: Rename::translated(),
+        let setup = Setup {
+            settings: saved,
+            ids: &ids,
+        };
+        debug_assert_eq!(Registry::check(PARTS), Ok(()));
+        let parts = Registry::new(PARTS, &saved.browser_mode);
+        let mut listeners = parts.listeners(&setup);
+        listeners.push(Box::new(hear));
+        let events = Inbox::observing(&browser, listeners);
+        let queue = events.clone();
+        // The browser's sort or hidden-files choice changed: the saved settings follow it.
+        browser.observe_preferences(move |view| {
+            queue.push(move |app: &mut App, _: &mut Tx| {
+                app.window.settings.store_view(view);
+                false
+            });
+        });
+        let built = Built::new(&setup);
+        let window = Window {
             settings,
-            browser,
+            events,
+            parts,
             location: None,
             title: title_for(None),
             csd,
             active: true,
             labels: Labels::translated(),
             applied: (0, 0),
-        }
+        };
+        Self::assemble(Look::fallback(true), browser, window, built)
     }
 
     pub(crate) fn open(&self, location: Location) {
         self.browser.navigate(location);
     }
 
-    fn apply(&mut self, change: Change, tx: &mut Tx) -> bool {
-        match change {
-            Change::Path => {
-                let location = self.browser.active_location();
-                if location == self.location {
-                    return false;
-                }
-                self.title = title_for(location.as_ref());
-                tx.set_title(self.title.clone());
-                self.location = location;
-            }
-            Change::View(view) => {
-                self.settings.store_view(view);
-                return false;
-            }
-            Change::Rename(answer) => rename::answered(self, answer, tx),
-            change => self.columns.apply(
-                change,
-                &mut Hands {
-                    browser: &self.browser,
-                    look: &self.look,
-                    tx,
-                },
-            ),
+    /// Names the window for the browser's active location. False when it has not changed.
+    fn retitle(&mut self, tx: &mut Tx) -> bool {
+        let location = self.browser.active_location();
+        if location == self.window.location {
+            return false;
         }
+        self.window.title = title_for(location.as_ref());
+        tx.set_title(self.window.title.clone());
+        self.window.location = location;
         true
     }
 
     fn chrome(&self) -> WindowChrome {
-        let state = self.csd.state();
-        let capabilities = self.csd.capabilities();
+        let state = self.window.csd.state();
+        let capabilities = self.window.csd.capabilities();
         WindowChrome {
             maximized: state.maximized,
             fullscreen: state.fullscreen,
             can_minimize: capabilities.minimize,
             can_maximize: capabilities.maximize,
-            active: self.active,
+            active: self.window.active,
         }
     }
 }
@@ -158,12 +171,12 @@ impl App {
 impl App {
     /// The window title this state last asked for.
     pub(crate) fn title(&self) -> &str {
-        &self.title
+        &self.window.title
     }
 
     /// Whether the browser has sent something `poll` has not applied.
     pub(crate) fn has_queued_changes(&self) -> bool {
-        !self.events.is_empty()
+        !self.window.events.is_empty()
     }
 }
 
@@ -175,12 +188,12 @@ impl App {
     }
 
     pub(crate) fn location(&self) -> Option<&Location> {
-        self.location.as_ref()
+        self.window.location.as_ref()
     }
 
     /// How many rows the browser's events have had copied out of it.
     pub(crate) fn rows_copied(&self) -> u64 {
-        self.events.copied()
+        self.window.events.copied()
     }
 }
 
@@ -193,32 +206,44 @@ fn title_for(location: Option<&Location>) -> String {
 }
 
 pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
-    &mut app.csd
+    &mut app.window.csd
+}
+
+/// The key of the element that takes the keyboard for `slot`: where a field or a menu gives
+/// it back.
+pub(crate) fn focus_key(app: &App, slot: Slot) -> Option<&'static str> {
+    app.window.parts.focus(slot)
 }
 
 fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
+    let csd = &mut app.window.csd;
     let outcome = match action {
-        WindowAction::Minimize => app.csd.minimize(tx),
-        WindowAction::ToggleMaximize => app.csd.toggle_maximized(tx),
-        WindowAction::Close => app.csd.close(tx),
+        WindowAction::Minimize => csd.minimize(tx),
+        WindowAction::ToggleMaximize => csd.toggle_maximized(tx),
+        WindowAction::Close => csd.close(tx),
     };
     tracing::debug!(?action, ?outcome, "window button");
 }
 
-fn bar(app: &App, chrome: &WindowChrome) -> El {
+/// The header, with the location slot's element in its middle.
+fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
     let look = &app.look;
-    let labels = &app.labels;
+    let labels = &app.window.labels;
     let action = |part: &str, icon: IconName, label: &str| {
         header::action(look, icon, label)
             .build(&look.kit)
             .key(format!("header-{part}"))
     };
-    Header::new("header", look)
-        .leading(action(
-            "sidebar-toggle",
-            IconName::Sidebar,
-            &labels.toggle_sidebar,
-        ))
+    let header = Header::new("header", look).leading(action(
+        "sidebar-toggle",
+        IconName::Sidebar,
+        &labels.toggle_sidebar,
+    ));
+    let header = match location {
+        Some(location) => header.center(location),
+        None => header,
+    };
+    header
         .action(action("new-tab", IconName::Plus, &labels.new_tab))
         .action(action("search", IconName::Search, &labels.search))
         .action(action("appearance", IconName::Menu, &labels.appearance))
@@ -232,69 +257,125 @@ fn bar(app: &App, chrome: &WindowChrome) -> El {
         .build()
 }
 
-/// The context menu's element, with its surfaces in `layer` while it is open.
-fn menu(app: &App, layer: &mut Vec<El>) -> El {
-    ContextMenu::new(
-        "menu",
-        |app: &App| &app.menu.state,
-        |app: &mut App| &mut app.menu.state,
-    )
-    .name(app.menu.name())
-    .on_intent(columns::chosen)
-    .build(app, &app.look, layer)
+/// What the registered parts built for one run of the view, slot by slot.
+struct Placed {
+    tabs: Option<El>,
+    location: Option<El>,
+    sidebar: Option<El>,
+    /// The shown view, inside the drawer's split when there is a drawer.
+    files: Option<El>,
+    footer: Vec<El>,
+    /// What the overlays and the dialogs leave in the tree, their surfaces being in the layer.
+    anchors: Vec<El>,
 }
 
-fn body(app: &App) -> El {
-    col()
+/// What the parts of `slot` build, in the order they are registered.
+fn built(app: &App, slot: Slot, frame: &mut Frame<'_, App>) -> Vec<El> {
+    let parts = app.window.parts.of(slot);
+    parts.filter_map(|part| (part.build)(app, frame)).collect()
+}
+
+impl Placed {
+    /// Asks every active part for its element, in the order [`Slot`] declares the slots and,
+    /// within one, in the order the parts are registered: the layer is filled in that order.
+    fn build(app: &App, frame: &mut Frame<'_, App>) -> Self {
+        let tabs = built(app, Slot::Tabs, frame).pop();
+        let location = built(app, Slot::Location, frame).pop();
+        let sidebar = built(app, Slot::Sidebar, frame).pop();
+        let mut files = built(app, Slot::View, frame).pop();
+        for drawer in app.window.parts.of(Slot::Drawer) {
+            files = files.map(|files| (drawer.wrap)(app, files, frame));
+        }
+        let footer = built(app, Slot::Footer, frame);
+        let mut anchors = built(app, Slot::Overlays, frame);
+        anchors.extend(built(app, Slot::Dialogs, frame));
+        Self {
+            tabs,
+            location,
+            sidebar,
+            files,
+            footer,
+            anchors,
+        }
+    }
+}
+
+/// Under the header: the sidebar, then the files.
+fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
+    let body = col()
         .key("body")
         .w_full()
         .grow(1.0)
         .min_h(0.0)
         .fill(app.look.kit.c.bg_base)
         .on_pointer_move_local(|app: &mut App, pointer, tx: &mut Tx| {
-            app.columns.pointer_at((pointer.window_x, pointer.window_y));
+            let parts = app.window.parts;
+            for view in parts.of(Slot::View) {
+                (view.pointer_at)(app, (pointer.window_x, pointer.window_y));
+            }
             tx.live_only();
-        })
-        .child(columns::view(app).build(app))
+        });
+    match sidebar {
+        Some(sidebar) => {
+            let beside = row().w_full().grow(1.0).min_h(0.0).child(sidebar);
+            body.child(beside.children(files))
+        }
+        None => body.children(files),
+    }
 }
 
 pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     let look = &app.look;
-    let reduced = !look.animations || cx.system_reduced_motion();
-    cx.reduced_motion(reduced);
-    let chrome = app.chrome();
-    let bar = csd::header(bar(app, &chrome), &app.csd, csd_of);
     let mut layer = Vec::new();
-    // The editor's message, over the rows and under a menu.
-    layer.extend(rename::editor().message(app, look));
-    let menu = menu(app, &mut layer);
-    let content = col().w_full().h_full().child(bar).child(body(app));
+    let frame = &mut Frame {
+        cx,
+        layer: &mut layer,
+    };
+    let reduced = !look.animations || frame.cx.system_reduced_motion();
+    frame.cx.reduced_motion(reduced);
+    let chrome = app.chrome();
+    let placed = Placed::build(app, frame);
+    let bar = csd::header(bar(app, &chrome, placed.location), &app.window.csd, csd_of);
+    let content = col()
+        .w_full()
+        .h_full()
+        .children(placed.tabs)
+        .child(bar)
+        .child(body(app, placed.sidebar, placed.files))
+        .children(placed.footer)
+        .children(placed.anchors);
     let window = csd::decorate(
-        header::frame("window-frame", content.child(menu), look, &chrome),
-        &app.csd,
+        header::frame("window-frame", content, look, &chrome),
+        &app.window.csd,
         csd_of,
     );
     rune_kit::root(window, layer).on_window_focus(|app: &mut App, focused, _: &mut Tx| {
-        app.active = focused;
+        app.window.active = focused;
     })
 }
 
-/// Rune's `poll` hook: what the browser's observers queued, then the view's own timers.
+/// Rune's `poll` hook: what the browser's observers queued, then each part's own timers.
 pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-    let settled = settle(app, tx);
-    let ticked = columns::view(app).tick(app, clock, tx);
-    rename::tick(app, tx) | ticked | settled
+    let mut ran = settle(app, tx);
+    let parts = app.window.parts;
+    for part in parts.active() {
+        ran |= (part.poll)(app, clock, tx);
+    }
+    ran
 }
 
-/// Hands the browser what the view changed. A host calls it before it lets GLib dispatch, so
+/// Hands the browser what the parts changed. A host calls it before it lets GLib dispatch, so
 /// what the browser's events say of its cursor and selection is never older than the view's.
 pub(crate) fn publish(app: &mut App) {
-    app.columns.publish(&app.browser, None);
+    let parts = app.window.parts;
+    for part in parts.active() {
+        (part.publish)(app);
+    }
 }
 
-/// Brings the two sides in step: what the view changed goes to the browser, what the
-/// browser's observers queued goes to the view, and what that left the view to say (a cursor
-/// it was waiting to place) goes to the browser. Returns whether the view has to run.
+/// Brings the two sides in step: what the parts changed goes to the browser, what the
+/// browser's observers queued goes to the parts, and what that left a part to say (a cursor
+/// the view was waiting to place) goes to the browser. Returns whether the view has to run.
 pub(crate) fn settle(app: &mut App, tx: &mut Tx) -> bool {
     publish(app);
     let changed = apply_queued(app, tx);
@@ -305,21 +386,25 @@ pub(crate) fn settle(app: &mut App, tx: &mut Tx) -> bool {
 /// Applies what the browser's observers queued while GLib dispatched, or while a handler
 /// called the browser.
 fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
-    if app.events.is_empty() {
+    let window = &mut app.window;
+    if window.events.is_empty() {
         return false;
     }
-    let (heard, copied) = (app.events.heard(), app.events.copied());
+    let (heard, copied) = (window.events.heard(), window.events.copied());
     tracing::trace!(
-        events = heard - app.applied.0,
-        rows = copied - app.applied.1,
+        events = heard - window.applied.0,
+        rows = copied - window.applied.1,
         "browser events reached the interface"
     );
-    app.applied = (heard, copied);
+    window.applied = (heard, copied);
     let mut changed = false;
-    while let Some(change) = app.events.pop() {
-        changed |= app.apply(change, tx);
+    while let Some(update) = app.window.events.pop() {
+        changed |= update(app, tx);
     }
-    app.columns.caught_up();
+    let parts = app.window.parts;
+    for part in parts.active() {
+        (part.caught_up)(app);
+    }
     changed
 }
 
@@ -345,12 +430,14 @@ const WINDOW_KEYS: [WindowKey; 7] = [
     }),
 ];
 
-/// The window's keys: what the focused element passed on. While the rename field has the
+/// The window's keys: what the focused element passed on. While a part's field has the
 /// keyboard they wait, as the GTK window's do: a key the field passes on is not a shortcut.
 pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
+    let parts = app.window.parts;
+    let waiting = parts.active().any(|part| (part.holds_keyboard)(app));
     let bound = WINDOW_KEYS
         .iter()
-        .filter(|_| !app.rename.state.has_keyboard())
+        .filter(|_| !waiting)
         .find(|(keys, _)| Keybind::new(keys).matches_tx(event, tx));
     let Some((_, act)) = bound else {
         // Nothing the view reads changed: no commit for a key that is not the window's.

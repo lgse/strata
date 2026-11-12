@@ -22,7 +22,7 @@
 
 use std::ffi::OsStr;
 
-use rune::Tx;
+use rune::{El, Tx};
 use strata_components::{
     contract::EntryId,
     rename::{By, RenameEditor, RenameIntent, RenameState},
@@ -31,15 +31,46 @@ use strata_core::{
     i18n::tr,
     model::{FileEntry, Location},
 };
-use strata_fs::services::{
-    Naming, OperationRequestId, TypedPath, name_field_error, validate_basename,
+use strata_fs::{
+    app::BrowserEvent,
+    services::{Naming, OperationRequestId, TypedPath, name_field_error, validate_basename},
 };
 
 use crate::{
-    columns,
-    events::Answer,
-    shell::{self, App},
+    App, shell,
+    slots::{Frame, Listener, Part, Setup, Slot},
 };
+
+/// How a rename the browser was asked for ended.
+#[derive(Debug, PartialEq, Eq)]
+enum Answer {
+    Completed(OperationRequestId),
+    /// A later operation took its place: it may still land, and nothing waits for it.
+    Abandoned(OperationRequestId),
+    /// No request when the browser refused the name before it started an operation.
+    Failed {
+        request: Option<OperationRequestId>,
+        message: String,
+    },
+}
+
+impl Answer {
+    /// The answer `event` is, when it is one.
+    fn of(event: &BrowserEvent) -> Option<Self> {
+        match event {
+            BrowserEvent::RenameCompleted { request_id } => Some(Self::Completed(*request_id)),
+            BrowserEvent::RenameAbandoned { request_id } => Some(Self::Abandoned(*request_id)),
+            BrowserEvent::RenameFailed {
+                request_id,
+                message,
+            } => Some(Self::Failed {
+                request: *request_id,
+                message: message.clone(),
+            }),
+            _ => None,
+        }
+    }
+}
 
 /// The entry an open edit names.
 struct Editing {
@@ -77,7 +108,7 @@ enum Wanted {
 }
 
 impl Rename {
-    pub(crate) fn translated() -> Self {
+    fn translated() -> Self {
         Self {
             state: RenameState::new(),
             editing: None,
@@ -98,17 +129,55 @@ impl Rename {
     }
 }
 
-/// The editor, as the Columns view's rename slot and the window's message layer build it.
-pub(crate) fn editor() -> RenameEditor<App> {
-    RenameEditor::new(
+/// The editor's message over the rows, and the editor's share of the window: the browser's
+/// answers, its poll, and the window's keys waiting while its field is open. The field itself
+/// is in the row, where the view puts [`editor`]'s slot.
+impl Part for Rename {
+    const SLOT: Slot = Slot::Overlays;
+
+    fn new(_: &Setup<'_>) -> Self {
+        Self::translated()
+    }
+
+    fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
+        Some(Box::new(|event, _, heard| {
+            if let Some(answer) = Answer::of(event) {
+                heard.then(move |app: &mut App, tx: &mut Tx| {
+                    answered(app, answer, tx);
+                    true
+                });
+            }
+        }))
+    }
+
+    fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+        frame.layer.extend(editor(app).message(app, &app.look));
+        None
+    }
+
+    fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
+        tick(app, tx)
+    }
+
+    fn holds_keyboard(app: &App) -> bool {
+        app.rename.state.has_keyboard()
+    }
+}
+
+/// The editor, as a view's rename slot and the window's message layer build it.
+pub(crate) fn editor(app: &App) -> RenameEditor<App> {
+    let editor = RenameEditor::new(
         |app: &App| &app.rename.state,
         |app: &mut App| &mut app.rename.state,
     )
     .validate(|app: &App, _, name| app.rename.error(name))
     .label(|app: &App, _| app.rename.label.clone())
-    // A column takes no keyboard of its own: the strip holds it for all of them.
-    .focus_return(columns::VIEW)
-    .on_intent(heard)
+    .on_intent(heard);
+    // The keyboard goes back to the view: a column takes none of its own.
+    match shell::focus_key(app, Slot::View) {
+        Some(view) => editor.focus_return(view),
+        None => editor,
+    }
 }
 
 /// `can_rename` in `src/ui/browser/file_commands.rs`: nothing in the Trash is renamed.
@@ -265,7 +334,7 @@ pub(crate) fn heard(app: &mut App, intent: RenameIntent, tx: &mut Tx) {
 
 /// One poll: the editor notices its field lost the keyboard, its row left the viewport or
 /// its entry left the listing. True when the view has to run.
-pub(crate) fn tick(app: &mut App, tx: &mut Tx) -> bool {
+fn tick(app: &mut App, tx: &mut Tx) -> bool {
     let polled = app.columns.tick_rename(&mut app.rename.state);
     for intent in polled.intents {
         heard(app, intent, tx);
@@ -316,7 +385,7 @@ fn failed(app: &mut App, asked: Asked, message: String, tx: &mut Tx) {
 }
 
 /// How the browser's rename ended.
-pub(crate) fn answered(app: &mut App, answer: Answer, tx: &mut Tx) {
+fn answered(app: &mut App, answer: Answer, tx: &mut Tx) {
     match answer {
         Answer::Completed(request) => {
             if let Some(asked) = asked_for(app, Some(request)) {
