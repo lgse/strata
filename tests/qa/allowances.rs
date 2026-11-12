@@ -151,7 +151,10 @@ impl Flaky {
         if !suite.runs.contains(&self.name()) {
             Some("is no run of the GTK suite".to_owned())
         } else if ledger.decides(&self.scenario, &self.run) {
-            Some("is required or in the slice's set, so a parity run decides it".to_owned())
+            Some(
+                "is required, parallel or in the slice's set, so a parity run decides it"
+                    .to_owned(),
+            )
         } else {
             None
         }

@@ -65,6 +65,15 @@ run = "icons-passing"
 package = "A7"
 status = "required"
 host = "offscreen"
+
+[[run]]
+scenario = "opens"
+run = "icons-paired"
+package = "A7"
+status = "parallel"
+exception = "timing"
+twin = "opens-rune/icons-paired"
+ref = "lgse/strata#2200"
 "#;
 
 fn decided() -> Ledger {
@@ -87,6 +96,7 @@ fn allowance_problems(allowances: &str) -> Vec<String> {
             "opens/columns",
             "opens/list",
             "opens/icons-passing",
+            "opens/icons-paired",
         ]
         .map(str::to_owned)
         .into(),
@@ -120,12 +130,20 @@ pub(crate) fn an_allowance_for_nothing_real_or_with_nothing_behind_it_is_refused
         (
             "the run is the slice's set's",
             flaky("moves", "columns-keys"),
-            "moves/columns-keys is required or in the slice's set, so a parity run decides it",
+            "moves/columns-keys is required, parallel or in the slice's set, so a parity run \
+             decides it",
         ),
         (
             "the run is required",
             flaky("opens", "icons-passing"),
-            "opens/icons-passing is required or in the slice's set, so a parity run decides it",
+            "opens/icons-passing is required, parallel or in the slice's set, so a parity run \
+             decides it",
+        ),
+        (
+            "the run is parallel, so its GTK side decides a pair",
+            flaky("opens", "icons-paired"),
+            "opens/icons-paired is required, parallel or in the slice's set, so a parity run \
+             decides it",
         ),
         (
             "the run exists and no document names it",

@@ -1288,10 +1288,10 @@ read them and fail as before.
 
 An allowance is not a place to park a failure. The runner's unit tests hold the
 committed list to those two entries, and refuse an entry that names no run of
-the suite or no patch a scenario names, names a run that is `required` or in
-the slice's set, gives no reason or no `issue`, or cites under `recorded` a
-document that does not name it. The two entries cite their `oracle` issues,
-lgse/strata#2162 and lgse/strata#2161. A new one
+the suite or no patch a scenario names, names a run that is `required`,
+`parallel` or in the slice's set, gives no reason or no `issue`, or cites
+under `recorded` a document that does not name it. The two entries cite their
+`oracle` issues, lgse/strata#2162 and lgse/strata#2161. A new one
 needs an owner ruling recorded in `docs/rune/slice/README.md`, and a change to
 that test.
 
