@@ -239,7 +239,7 @@ front-left view. The helper reports whether its PNG came from a mesh or an
 embedded thumbnail, and mesh results must identify the requested camera view.
 
 Input, package and geometry limits are centralized in
-`src/services/model_preview.rs`. These are compile-time constants, not Settings
+`crates/strata-preview/src/services/model_preview.rs`. These are compile-time constants, not Settings
 options or environment variables:
 
 | Constant | Limit | Applies to |
@@ -274,7 +274,7 @@ projects triangles in two passes rather than retaining a second mesh. Existing
 sandbox CPU/wall-time and 2-GiB address-space limits remain a last-resort boundary;
 address space is not a resident-memory guarantee or the total application budget.
 
-Embedded-image limits live in `src/sandbox_helper/model/embedded.rs`: at most 16
+Embedded-image limits live in `crates/strata-preview/src/sandbox_helper/model/embedded.rs`: at most 16
 candidates, 4 MiB per candidate, 16 MiB total candidate bytes read and 16 megapixels
 (16×1024×1024 pixels) total admitted to decoding. Oversized/invalid images are not
 usable; exhausting a total inspection budget fails the operation rather than

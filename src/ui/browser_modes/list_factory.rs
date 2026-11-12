@@ -253,7 +253,7 @@ impl ListRow {
         self.mode.set_label("");
         self.size.set_label("");
         self.kind.set_label("");
-        crate::util::set_modified_date(&self.modified, None, "");
+        crate::ui::modified_date::set_modified_date(&self.modified, None, "");
     }
 }
 
@@ -269,7 +269,7 @@ impl ListBinding {
     /// Detail updates must not reset labels or an active rename editor.
     fn refresh_details(&self, row: &ListRow) {
         self.request_thumbnail_and_metadata(row);
-        crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
+        crate::ui::modified_date::set_modified_date(&row.modified, Some(&self.entry), "—");
     }
 
     fn request_thumbnail_and_metadata(&self, row: &ListRow) {
@@ -327,7 +327,7 @@ pub(super) fn refresh_list_section(
         let is_hidden = entry.is_hidden;
         set_mode_mark_style(&row.widget, mark_in(marks, &entry.location));
         row.name.set_opacity(if is_hidden { 0.65 } else { 1.0 });
-        crate::util::set_modified_date(&row.modified, Some(&entry), "—");
+        crate::ui::modified_date::set_modified_date(&row.modified, Some(&entry), "—");
         row.icon.set_hidden(is_hidden);
         row.icon.set_base_opacity(1.0);
     });

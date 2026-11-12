@@ -3,10 +3,11 @@ name: Publish the pinned test image
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, strata-next]
     paths:
       - Cargo.toml
       - Cargo.lock
+      - crates/*/Cargo.toml
       - tests/container/**
       - scripts/image_inputs.py
       - scripts/image_registry.py
@@ -22,7 +23,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/strata-next'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
@@ -77,7 +78,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: target/test-image-cache
-          key: strata-test-dependencies-local-v1-${{ steps.identity.outputs.image_key }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.dockerignore') }}-${{ steps.identity.outputs.uid }}-${{ steps.identity.outputs.gid }}
+          key: strata-test-dependencies-local-v1-${{ steps.identity.outputs.image_key }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'crates/*/Cargo.toml', '.dockerignore') }}-${{ steps.identity.outputs.uid }}-${{ steps.identity.outputs.gid }}
 
       - name: Publish the build environment and its complete dependency cache
         if: steps.existing.outputs.build != 'true' || steps.existing.outputs.cache != 'true' || steps.existing.outputs.environment_cache != 'true' || steps.existing.outputs.environment_image != 'true'

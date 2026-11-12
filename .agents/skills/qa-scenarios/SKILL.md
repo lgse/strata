@@ -29,7 +29,7 @@ are part of the suite.
   drains. Input is XTEST sent from inside the process; state is read from the
   widget tree by the accessible names `src/ui/accessibility.rs` sets.
   `strata --qa --portal` runs the FileChooser portal backend instead.
-  `src/qa/protocol/` parses commands; `src/qa/targets.rs` and its
+  `crates/strata-qa/` parses commands; `src/qa/targets.rs` and its
   `targets/` submodules resolve targets; `state.rs` builds the snapshot.
 - **The reply.** `{"ok","app","changed","criticals","result","failures","error"}`.
   `app` is the state snapshot (view mode, directory, panes with selection and

@@ -301,7 +301,7 @@ pub(super) fn update_drag_focus(list: &gtk::ListView, state: &VirtualPreviewStat
 }
 
 pub(in crate::ui) fn open_web_link(uri: &str, parent: &impl IsA<gtk::Widget>) {
-    let context = crate::child_environment::launch_context(&parent.display());
+    let context = crate::ui::launch_context::for_display(&parent.display());
     if let Err(error) = gio::AppInfo::launch_default_for_uri(uri, Some(&context)) {
         super::super::modal::show_error_dialog(
             parent,

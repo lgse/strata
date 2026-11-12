@@ -404,7 +404,7 @@ fn open_with_default_app(state: &Rc<ViewState>, selection: OpenWithSelection) {
     let Some(app) = selection.default else {
         return;
     };
-    let context = crate::child_environment::launch_context(&state.overlay.display());
+    let context = crate::ui::launch_context::for_display(&state.overlay.display());
     if let Err(error) = crate::ui::open_with::launch(
         &app,
         &selection.files,
