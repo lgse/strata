@@ -24,7 +24,7 @@
 //! | Ctrl+Alt+plus, Ctrl+Alt+=, Ctrl+Alt+minus, Ctrl+Alt+0 | The size keys, from anywhere on the page |
 //! | Ctrl+T | 10xer mode on or off: plain +, = and − then step the size with the grid focused |
 //! | F5 | Refresh |
-//! | Escape | Ends a rename: the page draws a stand-in for C5's editor |
+//! | Escape | Ends a rename: C5's editor, in the tile's caption, cancels it |
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -42,6 +42,7 @@ use strata_components::icons_grid::{
     IconsGrid, IconsGridState, IconsParts, SizeKeyed, SizeKeys, SizeRequest, autoscroll_background,
     size_command,
 };
+use strata_components::rename::{Initial, RenameEditor, RenameState};
 use strata_components::scroll::{
     Autoscroll, AutoscrollPointer, AutoscrollSettings, BarMode, Shield,
 };
@@ -262,9 +263,8 @@ pub struct Demo {
     pub thumbs_on: bool,
     /// The details line shows.
     pub with_details: bool,
-    /// The entry being renamed: a stand-in editor shows in its name's place (C5's comes
-    /// later). Escape ends it.
-    pub renaming: Option<EntryId>,
+    /// The rename editor (C5's own), in the caption of the tile it renames.
+    pub rename: RenameState,
     /// The host's marks on tiles (cut, dragging, the filter's Enter target).
     pub marks: HashMap<EntryId, RowMarks>,
     /// The window's autoscroll (C24).
@@ -311,7 +311,7 @@ impl Demo {
             busy: false,
             thumbs_on: true,
             with_details: true,
-            renaming: None,
+            rename: RenameState::new(),
             marks: HashMap::new(),
         }
     }
@@ -354,13 +354,23 @@ impl Demo {
             .unwrap_or_default()
     }
 
+    /// Opens C5's editor on `id`, the stem selected and the keyboard in it, as Strata opens it.
+    pub fn begin_rename(&mut self, id: EntryId) {
+        let Some(index) = self.listing.index_of(id) else {
+            return;
+        };
+        let entry = self.listing.entry(index);
+        let (name, kind) = (entry.name.to_owned(), entry.kind);
+        let _ = self.rename.begin(SCOPE, id, &name, kind, Initial::Stem);
+    }
+
     fn heard(&mut self, intent: Intent) -> Option<Intent> {
         self.intent = match &intent {
             Intent::Clicked { id } => format!("Clicked {}", self.name_of(*id)),
             Intent::Activate { id, .. } => format!("Opened {}", self.name_of(*id)),
             Intent::BeginDrag { ids, .. } => format!("Dragging {} items", ids.len()),
             Intent::BeginRename { id } => {
-                self.renaming = Some(*id);
+                self.begin_rename(*id);
                 format!("Renaming {}", self.name_of(*id))
             }
             Intent::ContextMenu { target, .. } => match target {
@@ -559,6 +569,16 @@ fn selection(g: &mut Gallery, dark: bool) {
     d.coll.note_selection(&d.listing);
 }
 
+/// A tile renaming, as F2 and a slow second click rename: the selected cursor entry, with C5's
+/// editor in its caption, the stem selected and the keyboard in the field.
+fn renaming(g: &mut Gallery, dark: bool) {
+    let d = open(g, dark, Folder::Pictures);
+    let _ = d.coll.selection.select_only(&d.listing, 8);
+    d.coll.note_selection(&d.listing);
+    let id = d.listing.id_at(8);
+    d.begin_rename(id);
+}
+
 fn long_names(g: &mut Gallery, dark: bool) {
     open(g, dark, Folder::Long);
 }
@@ -654,6 +674,8 @@ pub const SCENES: &[Scene] = &[
     ("c3-loading-dark", |g| loading(g, true)),
     ("c3-selection-light", |g| selection(g, false)),
     ("c3-selection-dark", |g| selection(g, true)),
+    ("c3-renaming-light", |g| renaming(g, false)),
+    ("c3-renaming-dark", |g| renaming(g, true)),
     ("c3-long-names-light", |g| long_names(g, false)),
     ("c3-long-names-dark", |g| long_names(g, true)),
     ("c3-size-32-light", |g| size_32(g, false)),
@@ -719,18 +741,12 @@ pub fn collection(g: &Gallery) -> Collection<Gallery> {
         }
     })
     .rename(
-        |g: &Gallery| g.c3.renaming,
-        strata_components::collection::element::Slot::pure(|g: &Gallery, rcx| {
-            let kit = g.kit();
-            text(rcx.entry.name.to_owned())
-                .key("c3-rename")
-                .font(kit.ty.ui_compact)
-                .color(kit.c.text_base)
-                .fill(kit.c.layer_01)
-                .outline(1.0, 0.0, kit.c.border_focus)
-                .truncate()
-                .w_full()
-        }),
+        |g: &Gallery| g.c3.rename.renaming_in(SCOPE),
+        RenameEditor::new(
+            |g: &Gallery| &g.c3.rename,
+            |g: &mut Gallery| &mut g.c3.rename,
+        )
+        .slot(),
     )
     .describe(strata_components::collection::element::Describe::pure(
         |_: &Gallery, rcx| Some(kind_name(rcx.entry.kind, rcx.entry.icon).to_owned()),
@@ -857,7 +873,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     }
     match &key.key {
         Key::Function(5) => g.c3.refresh(tx),
-        Key::Escape if g.c3.renaming.is_some() => g.c3.renaming = None,
         _ if key.is_command('t') => g.c3.tenxer = !g.c3.tenxer,
         _ => return false,
     }
