@@ -42,13 +42,13 @@ fn a_result_for_a_folder_left_is_dropped_without_touching_the_store() {
     store.sync(id, &ListSource::new(Vec::new()), Viewport::new(0..0, step));
     let _ = viewer.take_requests(&mut store, 0.0);
 
-    assert!(!viewer.finish(&mut store, ticket, red(64), 0.0));
+    assert!(!viewer.finish(&mut store, (ticket, red(64)), 0.0));
     assert_eq!(store.stats().ready, 0);
 
     store.sync(id, &shown, Viewport::new(0..1, step));
     let ticket = viewer.take_requests(&mut store, 1.0)[0].ticket;
     viewer.pending.insert(ticket, Cancellation::default());
-    assert!(viewer.finish(&mut store, ticket, red(64), 1.0));
+    assert!(viewer.finish(&mut store, (ticket, red(64)), 1.0));
     assert_eq!(store.stats().ready, 1);
 }
 

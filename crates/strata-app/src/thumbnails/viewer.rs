@@ -91,7 +91,7 @@ impl Viewer {
             done: Box::new(move |outcome| {
                 later.then(move |app: &mut App, tx: &mut Tx| {
                     let (viewer, store) = parts(app);
-                    viewer.finish(store, ticket, outcome, tx.clock());
+                    viewer.finish(store, (ticket, outcome), tx.clock());
                     // The image lands in its handle: nothing the view reads changed.
                     false
                 });
@@ -104,8 +104,7 @@ impl Viewer {
     pub(crate) fn finish(
         &mut self,
         store: &mut ThumbnailStore,
-        ticket: Ticket,
-        outcome: Outcome,
+        (ticket, outcome): (Ticket, Outcome),
         now: f64,
     ) -> bool {
         if self.pending.remove(&ticket).is_none() {
