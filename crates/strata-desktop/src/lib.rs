@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Desktop integration without an interface toolkit: portal and D-Bus setup, the updater,
-//! bundled integrations, the saved settings, and what this build of the application is.
+//! bundled integrations, the saved settings and tab session, and what this build of the
+//! application is.
 
 // strata-core embeds the catalogs; this path holds none, so the macro adds none itself.
 rust_i18n::i18n!(
@@ -18,3 +19,4 @@ pub mod build_info;
 pub mod portal_setup;
 pub mod services;
 pub mod settings;
+pub mod tabs_session;

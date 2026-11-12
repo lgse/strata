@@ -21,7 +21,7 @@ the files on disk keep their format and their place.
 | Store | State | Shared part | What `src/ui` keeps |
 | --- | --- | --- | --- |
 | Per-folder views | The model moved. The file's path, reading and saving have not | `strata_desktop::settings::folder_views` | `src/ui/preferences/folder_view_settings.rs`, whole |
-| Tab sessions | Not moved | None yet | `src/ui/tabs_session.rs` |
+| Tab sessions | Moved, whole | `strata_desktop::tabs_session` | One import in `src/ui/mod.rs`. When to save and how to restore stay in `src/ui/window/composition/tabs.rs` |
 | Key catalog | Not moved | None yet | `src/ui/keys` |
 | `PreferenceManager` | Not moved | The schema, from V5b | `src/ui/preferences.rs` and the files under it |
 
@@ -98,6 +98,37 @@ The 13 tests of `folder_views/tests.rs` moved with the model. They run in
 `strata-desktop`'s test binary as `settings::folder_views::tests::…`, in the GTK lane with
 the other shared crates' tests.
 
+## Tab sessions
+
+`tabs.toml`, in the configuration directory, holds the open tabs and which one is active
+([preferences.md](../preferences.md#consumers-and-intentional-scopes)).
+
+`src/ui/tabs_session.rs` and its 8 tests moved whole to `strata_desktop::tabs_session`. It
+is the whole store: the file's stored form, `save`, `remove`, `load_restorable`, the limit
+of 32 restored tabs, and which locations may be restored (absolute paths; a URI of a known
+scheme without credentials; Trash and Recent only as their roots).
+
+Four lines changed, the visibility of what the application names: `RestoredSession`, `save`,
+`remove` and `load_restorable`. Nothing was added. The store names no GTK or GDK type and
+schedules nothing: a save hands its bytes to the shared settings writer and drops the
+receiver, so nothing runs from GLib's dispatch.
+
+What stayed decides when and what. `src/ui/window/composition/tabs.rs` persists the tabs
+when they change, removes the file while `restore_tabs` is off, and builds the GTK tabs
+from a restored session. `PreferenceManager::set_restore_tabs` removes the file when the
+setting is turned off. Neither file changed. `src/ui/mod.rs` imports the module at its old
+name, so `crate::ui::tabs_session` still resolves.
+
+An interface reads with `load_restorable()` at start-up, when `Preferences::restore_tabs` is
+on, and writes with `save(&locations, active)` and `remove()`. All three are called on the
+interface thread, and none calls back.
+
+One thing differs outside behaviour: the module's own log line, for a session that cannot
+be serialized, is logged under `strata_desktop::tabs_session`. A filter written as
+`strata::ui::tabs_session` no longer matches it, because the path inside the crate changed
+too. A failed write is logged by the settings writer, under `strata_core::storage::writer`
+as before.
+
 ## Merging from `main`
 
 Git pairs a moved file with `main`'s file by similarity, and a change on `main` then lands
@@ -119,7 +150,7 @@ What a merge reports, and what to do:
 | `CONFLICT (file location)` | `main` added a file under a directory that moved, such as `src/ui/preferences/folder_views/`. Git placed it under the new directory | Accept the placement, declare its `mod` in the moved parent, and fix its paths |
 | `CONFLICT (modify/delete)`, with `main`'s version left at the old path | Git did not pair the file | Apply `main`'s change to the moved file by hand and delete the file at the old path. Never keep it: no `mod` declares that path, so it builds and the change is silently dropped |
 | Nothing, for a new file `main` added beside a moved file | Git moves a new file only with a directory that moved whole | If it belongs to the moved store, move it beside the store and declare it there |
-| A conflict in `src/ui/preferences.rs` | `main` added a `mod` or an import beside the line a move replaced | Keep both: `main`'s line, and the import of the moved module from `strata_desktop::settings` |
+| A conflict in `src/ui/preferences.rs` or `src/ui/mod.rs` | `main` added a `mod` or an import beside the line a move replaced | Keep both: `main`'s line, and the import of the moved module from `strata_desktop` |
 
 Where each file is:
 
@@ -128,6 +159,8 @@ Where each file is:
 | `src/ui/preferences/folder_views.rs`, `folder_views/keys.rs`, `folder_views/tests.rs` | The file of the same name under `crates/strata-desktop/src/settings/` |
 | `mod folder_views;` in `src/ui/preferences.rs` | `use strata_desktop::settings::folder_views;` in the same file |
 | `src/ui/preferences/folder_view_settings.rs`, `trashed.rs` | The same file as on `main` |
+| `src/ui/tabs_session.rs`, `tabs_session/tests.rs` | The file of the same name under `crates/strata-desktop/src/` |
+| `mod tabs_session;` in `src/ui/mod.rs` | `use strata_desktop::tabs_session;` in the same file |
 
 [slice/V5b](slice/V5b-settings-store.md#merging-from-main) has the table for the settings
 schema.
