@@ -78,6 +78,8 @@ struct Host {
     /// With it, two `on_scroll` handlers and two `edge` parts, each logging its name and the
     /// offset heard.
     followers: Option<FollowerLog>,
+    /// With it, a `before_keys` hook that takes each key, or leaves each.
+    host_takes_keys: Option<bool>,
 }
 
 /// What each `on_scroll` follower heard: its name and the offset.
@@ -116,6 +118,7 @@ impl Host {
             t: 0.0,
             vanished: Vec::new(),
             followers: None,
+            host_takes_keys: None,
         }
     }
 }
@@ -295,6 +298,9 @@ fn collection(s: &Host) -> Collection<Host> {
                 .on_scroll(move |p| log.borrow_mut().push((name, p.offset[1])))
                 .edge(move |_: &Host| Some(rune::el().key(format!("edge-{name}")).size(4.0, 4.0)));
         }
+    }
+    if let Some(takes) = s.host_takes_keys {
+        c = c.before_keys(move |_: &mut Host, _, _| takes);
     }
     c.settings(7u32)
 }
@@ -2982,8 +2988,8 @@ fn a_collection_keyed_by_its_host_takes_keys_through_the_host() {
     assert!(!taken);
 }
 
-/// A host's own keys come before its list's: the hook hears each key first, by either road
-/// into the collection, and a key it takes reaches no controller.
+/// A host's own keys come before its list's: the hook hears each key first on a collection
+/// that takes its keys from a host's focus stop, and a key it takes reaches no controller.
 #[test]
 fn the_hosts_hook_hears_a_key_before_the_controllers_and_keeps_the_one_it_takes() {
     let end = KeyEvent {
@@ -3006,6 +3012,32 @@ fn the_hosts_hook_hears_a_key_before_the_controllers_and_keeps_the_one_it_takes(
             cursor,
             "hook takes: {takes}"
         );
+    }
+}
+
+/// The same on a collection that is its own focus stop: Rune hears the key taken either way,
+/// so the window's handler does not.
+#[test]
+fn the_hosts_hook_comes_before_a_focused_collections_own_keys() {
+    for (takes, cursor) in [(true, id(1)), (false, id(19))] {
+        let mut host = Host::new(20);
+        host.coll.controllers.keyboard = Some(Box::new(Keys));
+        host.host_takes_keys = Some(takes);
+        let mut rt = runtime(host);
+        rt.on_key = Some(|s: &mut Host, _: &KeyEvent, _: &mut rune::Tx| {
+            s.app_keys += 1;
+            false
+        });
+        click(&mut rt, "row-1");
+
+        press(&mut rt, Key::End);
+
+        assert_eq!(
+            rt.state.coll.selection.cursor(),
+            Some(cursor),
+            "hook takes: {takes}"
+        );
+        assert_eq!(rt.state.app_keys, 0, "hook takes: {takes}");
     }
 }
 

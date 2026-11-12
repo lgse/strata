@@ -10,12 +10,17 @@ use strata_desktop::keys::{Binding, Key, KeyPress};
 
 use super::super::{Action, Call, Outcome, Span, Stage};
 use super::routing::{at, f9, note, noted, part};
+use strata_core::model::Location;
+
 use super::{MODULE, listed, press};
 use crate::{
     App, PARTS,
     host::offscreen::Offscreen,
-    slots::Entry,
-    test_support::view::{browser_holds, hosted_over_in},
+    slots::{Entry, View},
+    test_support::{
+        PATIENCE, folder_of,
+        view::{browser_holds, field, hosted_over_in},
+    },
 };
 
 thread_local! {
@@ -66,17 +71,32 @@ fn the_views_and_a_probe() -> Vec<Entry<App>> {
     crate::parts_and(vec![part::<Probe>("probe", PROBE, |_| None)])
 }
 
-/// The saved `browser_mode` of each registered view.
-const MODES: [&str; 3] = ["columns", "icons", "list"];
+/// Declares a test of `$run` in each view, and the list of the views that have one, from
+/// one list: a view registered without a line here fails
+/// `every_registered_view_has_a_test_of_its_keys`.
+macro_rules! in_each_view {
+    ($run:ident: $($mode:literal => $test:ident,)*) => {
+        /// The saved `browser_mode` of each view the tests run in.
+        const MODES: &[&str] = &[$($mode,)*];
+
+        $(
+            #[test]
+            fn $test() {
+                $run($mode, stringify!($test));
+            }
+        )*
+    };
+}
 
 #[test]
 fn every_registered_view_has_a_test_of_its_keys() {
-    let views = PARTS.iter().filter_map(Entry::view);
-    let untested: Vec<_> = views
-        .filter(|view| !MODES.iter().any(|mode| (view.shows)(mode)))
-        .map(|view| view.focus)
-        .collect();
-    assert_eq!(untested, Vec::<&str>::new());
+    let views: Vec<_> = PARTS.iter().filter_map(Entry::view).collect();
+    let tests_of = |view: &&View<App>| MODES.iter().filter(|mode| (view.shows)(mode)).count();
+    assert_eq!(
+        views.iter().map(tests_of).collect::<Vec<_>>(),
+        vec![1; MODES.len()],
+        "each registered view answers to one of {MODES:?}, and each of those is a view"
+    );
 }
 
 /// The dispatcher's stages ahead of `item_navigation` hear a key before GTK's list does, and
@@ -140,23 +160,61 @@ fn a_command_reads_a_key_before_the_view_and_the_view_keeps_what_none_takes(
             ["ahead of the view", "after the view", "unclaimed"],
             "each stage hears a key the view leaves once"
         );
+
+        // `browser_commands` in `src/ui/window/keyboard/commands.rs`: F5 from the view.
+        let copied = host.app().rows_copied();
+        press(&mut host, Logical::Function(5), Mods::default());
+        let read_again = host.run_until(PATIENCE, |host| host.app().rows_copied() > copied);
+        assert!(read_again, "F5 in the view read nothing");
     });
 }
 
-#[test]
-fn a_command_reads_a_key_before_the_columns_and_they_keep_what_none_takes() {
-    let name = "a_command_reads_a_key_before_the_columns_and_they_keep_what_none_takes";
-    a_command_reads_a_key_before_the_view_and_the_view_keeps_what_none_takes("columns", name);
+in_each_view! {
+    a_command_reads_a_key_before_the_view_and_the_view_keeps_what_none_takes:
+    "columns" => a_command_reads_a_key_before_the_columns_and_they_keep_what_none_takes,
+    "icons" => a_command_reads_a_key_before_the_grid_and_it_keeps_what_none_takes,
+    "list" => a_command_reads_a_key_before_the_table_and_it_keeps_what_none_takes,
 }
 
-#[test]
-fn a_command_reads_a_key_before_the_grid_and_it_keeps_what_none_takes() {
-    let name = "a_command_reads_a_key_before_the_grid_and_it_keeps_what_none_takes";
-    a_command_reads_a_key_before_the_view_and_the_view_keeps_what_none_takes("icons", name);
+fn f2(press: &KeyPress) -> bool {
+    press.is(Binding::plain(Key::F2))
 }
 
+fn after_rename(_: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    note("F2, after rename");
+    Outcome::Declined
+}
+
+const AFTER_RENAME: &[Action<App>] =
+    &[Action::new("after-rename", after_rename).keys(&[at(Stage::ItemNavigation, f2)])];
+
+fn the_views_and_a_reader_of_f2() -> Vec<Entry<App>> {
+    struct Reader;
+    crate::parts_and(vec![part::<Reader>("reader", AFTER_RENAME, |_| None)])
+}
+
+/// `inline_editing` takes F2 only when `begin_rename` began one
+/// (`src/ui/window/keyboard/commands.rs:67`): in a folder with nothing to rename the key
+/// goes on down the chain.
 #[test]
-fn a_command_reads_a_key_before_the_table_and_it_keeps_what_none_takes() {
-    let name = "a_command_reads_a_key_before_the_table_and_it_keeps_what_none_takes";
-    a_command_reads_a_key_before_the_view_and_the_view_keeps_what_none_takes("list", name);
+fn f2_with_nothing_to_rename_is_not_taken() {
+    let name = "views::f2_with_nothing_to_rename_is_not_taken";
+    hosted_over_in(
+        (MODULE, name),
+        "columns",
+        the_views_and_a_reader_of_f2,
+        |mut host| {
+            let empty = folder_of(&[]);
+            host.app().open(Location::local(empty.path()));
+            let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, listed), "the folder's listing");
+            while host.turn() {}
+            noted();
+
+            press(&mut host, Logical::Function(2), Mods::default());
+
+            assert_eq!(noted(), ["F2, after rename"]);
+            assert_eq!(field(&host), None, "no editor opened");
+        },
+    );
 }

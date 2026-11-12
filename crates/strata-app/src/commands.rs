@@ -33,9 +33,11 @@ use strata_desktop::{
 use crate::{App, shell, slots::At};
 
 mod browser;
+mod heard;
 mod owners;
 mod press;
 
+use heard::{Asked, Heard, Span, Stamp, span};
 pub(crate) use owners::{Holds, Situation};
 use owners::{Reach, reach};
 
@@ -233,6 +235,8 @@ pub(crate) struct Live {
     tenxer: Cell<bool>,
     typing: Cell<bool>,
     keymap: Rc<Keymap>,
+    /// The press a view's collection last asked the early stages for ([`heard`]).
+    asked: Asked,
 }
 
 impl Live {
@@ -242,6 +246,7 @@ impl Live {
             tenxer: Cell::new(false),
             typing: Cell::new(false),
             keymap: Rc::new(Keymap::defaults()),
+            asked: Asked::default(),
         });
         live.follow(settings);
         let weak = Rc::downgrade(&live);
@@ -381,62 +386,6 @@ fn reading(
         .collect()
 }
 
-/// Where Rune let the registry hear a press.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Heard {
-    /// The shown view's collection, ahead of its controllers ([`in_view`]).
-    BeforeView,
-    /// The window's root element, which hears what the focused element and those around it
-    /// left, before Rune's own focus navigation ([`from_element`]).
-    Element,
-    /// The window, which hears a key last, or first when nothing has the keyboard
-    /// ([`on_key`]).
-    Window,
-}
-
-/// The stages one place asks. The view's own keys stand where the chain's last stage does:
-/// GTK's list hears a key the window's capture left, and the window's actions follow it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Span {
-    /// Every stage ahead of [`Stage::ItemNavigation`].
-    BeforeView,
-    /// [`Stage::ItemNavigation`] and what follows it.
-    AfterView,
-    Whole,
-}
-
-impl Span {
-    fn has(self, stage: Stage) -> bool {
-        match self {
-            Self::BeforeView => stage < Stage::ItemNavigation,
-            Self::AfterView => stage >= Stage::ItemNavigation,
-            Self::Whole => true,
-        }
-    }
-}
-
-/// What a press heard at `heard` is offered, so that it is walked once wherever it lands.
-///
-/// - The view has the keyboard: its collection's hook asks the stages ahead of the view's
-///   own keys, and the root element the rest once the view has left the key.
-/// - Another element has it: the root element asks every stage.
-/// - A part holds the keyboard ([`Holds`]): Rune calls no element's handler from a text field
-///   or from inside a modal, so the window asks, and the elements' handlers stand back.
-/// - Nothing has it: the window asks every stage.
-///
-/// An element that takes text or is a Rune modal, and whose part does not say so in
-/// [`Part::keyboard`](crate::slots::Part::keyboard), is asked nowhere.
-fn span(at: &Situation, heard: Heard) -> Option<Span> {
-    let free = at.holds().is_none();
-    match heard {
-        Heard::BeforeView => (free && at.in_view()).then_some(Span::BeforeView),
-        Heard::Element if !free => None,
-        Heard::Element if at.in_view() => Some(Span::AfterView),
-        Heard::Element => Some(Span::Whole),
-        Heard::Window => (!free || at.nowhere()).then_some(Span::Whole),
-    }
-}
-
 /// A press and the stages it is offered where it was heard.
 struct Offer<'a> {
     press: &'a KeyPress,
@@ -485,9 +434,12 @@ pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyP
 /// the registry's: Rune goes on with it, and commits nothing for this handler.
 fn hear(app: &mut App, event: &KeyEvent, heard: Heard, tx: &mut Tx) -> bool {
     let at = Situation::of(app, tx);
-    let Some(span) = span(&at, heard) else {
+    let stamp = Stamp::of(event, &at, tx);
+    let asked = &shell::live_keys(app).asked;
+    let Some(span) = span(&at, heard, asked.early_for(&stamp)) else {
         return false;
     };
+    asked.note(stamp, span);
     let press = read(app, event, &at, tx);
     let offer = Offer {
         press: &press,
@@ -501,6 +453,10 @@ fn hear(app: &mut App, event: &KeyEvent, heard: Heard, tx: &mut Tx) -> bool {
 /// component is built on, and on each column's where it has several: a command registered
 /// at a stage of the GTK chain then reads its key before the list does, as GTK's window
 /// reads it before its list, and the view's controllers keep every key no command takes.
+///
+/// A view that does not call it loses no command: the root element then asks every stage,
+/// but after the view's own keys, so a command cannot take a key that view's controller
+/// takes.
 pub(crate) fn in_view(collection: Collection<App>) -> Collection<App> {
     collection.before_keys(|app: &mut App, event, tx| hear(app, event, Heard::BeforeView, tx))
 }
