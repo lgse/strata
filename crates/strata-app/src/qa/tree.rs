@@ -63,10 +63,21 @@ pub(super) struct DrawnColumn {
     pub(super) rows: Vec<DrawnRow>,
 }
 
+/// What the shown view says of its panes (`slots::Probe`): its name in the protocol, and
+/// Rune's role of an entry list and of an entry in one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Shape {
+    pub(super) name: &'static str,
+    pub(super) list: &'static str,
+    pub(super) entry: &'static str,
+}
+
 /// What the snapshot is read from beside the accessibility tree.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Drawn {
-    /// The keys of the entry lists the Columns adapter shows, one for each column.
+    /// The shown view's shape. None when no view is shown, and then it has no lists.
+    pub(super) view: Option<Shape>,
+    /// The keys of the entry lists the view shows, one for each pane.
     pub(super) lists: Vec<String>,
     pub(super) columns: Vec<DrawnColumn>,
     pub(super) labels: Vec<NameLabel>,
@@ -172,11 +183,13 @@ impl Snapshot {
             snapshot.add(tree, None, "window".to_owned());
         }
         snapshot.focus = snapshot.keyboard_focus();
-        for column in &drawn.columns {
-            snapshot.add_hidden_column(column);
-        }
-        for list in &drawn.lists {
-            snapshot.mark_column(list);
+        if let Some(view) = &drawn.view {
+            for column in &drawn.columns {
+                snapshot.add_hidden_column(column, view);
+            }
+            for list in &drawn.lists {
+                snapshot.mark_column(list, view);
+            }
         }
         for label in &drawn.labels {
             snapshot.add_label(label);
@@ -204,7 +217,7 @@ impl Snapshot {
     }
 
     /// Presents a column the tree left out, under the window, as the tree would hold it.
-    fn add_hidden_column(&mut self, column: &DrawnColumn) {
+    fn add_hidden_column(&mut self, column: &DrawnColumn, view: &Shape) {
         let listed = |seen: &Seen| seen.key.as_deref() == Some(column.list.as_str());
         if self.nodes.is_empty() || self.nodes.iter().any(listed) {
             return;
@@ -222,7 +235,7 @@ impl Snapshot {
         );
         let list = Seen {
             key: Some(column.list.clone()),
-            ..named("list-box", column.bounds)
+            ..named(view.list, column.bounds)
         };
         let list = self.push(pane, &column.list, list);
         for row in &column.rows {
@@ -232,7 +245,7 @@ impl Snapshot {
                 "unselected"
             };
             let seen = Seen {
-                role: "list-box-option".to_owned(),
+                role: view.entry.to_owned(),
                 key: Some(row.key.clone()),
                 name: row.name.clone(),
                 states: vec![state.to_owned()],
@@ -327,14 +340,14 @@ impl Snapshot {
     /// Marks one column where the adapter put it: the list with the column's key is the entry
     /// container, the options under it are the entries, and the named group around it, which
     /// the view names by the folder, is the pane.
-    fn mark_column(&mut self, list: &str) {
-        let is_list = |seen: &Seen| seen.role == "list-box" && seen.key.as_deref() == Some(list);
+    fn mark_column(&mut self, list: &str, view: &Shape) {
+        let is_list = |seen: &Seen| seen.role == view.list && seen.key.as_deref() == Some(list);
         let Some(container) = self.nodes.iter().position(is_list) else {
             return;
         };
         self.nodes[container].mark = Some(Mark::EntryContainer);
         for index in self.below(container) {
-            if self.nodes[index].role == "list-box-option" {
+            if self.nodes[index].role == view.entry {
                 self.nodes[index].mark = Some(Mark::Entry);
             }
         }
@@ -346,7 +359,7 @@ impl Snapshot {
             seen.role == "group" && !seen.name.is_empty()
         });
         if let Some(pane) = pane {
-            self.nodes[pane].mark = Some(Mark::Pane("Columns"));
+            self.nodes[pane].mark = Some(Mark::Pane(view.name));
         }
     }
 

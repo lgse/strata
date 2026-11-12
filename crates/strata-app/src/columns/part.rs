@@ -12,7 +12,7 @@ use super::{Columns, Hands, VIEW, intents, view};
 use crate::slots::Probe;
 use crate::{
     App, events,
-    slots::{Editing, Listener, Part, Place, Setup, View},
+    slots::{Editing, Listener, Part, Place, Rows, Setup, View},
 };
 
 /// The saved `browser_mode` that names this view.
@@ -24,19 +24,24 @@ impl Part for Columns {
         shows: |mode| mode == MODE,
         focus: VIEW,
         pointer_at: Some(|app, at| app.columns.pointer_at(at)),
-        editing: Editing {
-            id_of: |app, location| app.columns.id_of(location),
+        rows: Rows {
             position: |app, (depth, id)| app.columns.position(depth, id),
             neighbour: |app, (depth, id), step| app.columns.neighbour(depth, id, step),
+            activate: intents::clicked_open,
+            select_only: |app, at, tx| app.columns.select_only(at, &app.look, tx),
+            select_all: |app, depth| app.columns.select_all(depth),
+        },
+        editing: Editing {
             begin: |app, at, tx| app.columns.begin_rename(&mut app.rename.state, at, tx),
             tick: |app| app.columns.tick_rename(&mut app.rename.state),
-            hold: |app, editing| app.columns.hold_mirror(editing),
-            select_only: |app, at, tx| app.columns.select_only(at, &app.look, tx),
-            follow_now: |app| app.columns.mirror_now(&app.browser),
+            hold: Some(|app, editing| app.columns.hold_mirror(editing)),
+            follow_now: Some(|app| app.columns.mirror_now(&app.browser)),
         },
-        chosen: intents::chosen,
         #[cfg(feature = "qa")]
         probe: Probe {
+            // `view_name` in `src/ui/accessibility.rs`.
+            name: "Columns",
+            roles: ("list-box", "list-box-option"),
             listed: |app| {
                 let root = app.columns.load(0);
                 matches!(root, Some(Load::Listed | Load::Failed(_)))

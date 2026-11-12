@@ -6,7 +6,7 @@ use std::any::TypeId;
 
 use rune::Tx;
 
-use super::{Listener, Part, Place, Setup, Slot, View};
+use super::{Listener, Part, Place, Setup, Sidebar, Slot, View};
 use crate::App;
 
 /// One registered part: its name, its place, and its hooks.
@@ -124,6 +124,14 @@ impl<'a, S> Registry<'a, S> {
     /// The view that is shown. None when no view is registered.
     pub(crate) fn shown(self) -> Option<&'a View<S>> {
         self.entries.get(self.shown?)?.view()
+    }
+
+    /// The sidebar, when one is registered.
+    pub(crate) fn sidebar(self) -> Option<&'a Sidebar<S>> {
+        self.active().find_map(|entry| match &entry.place {
+            Place::Sidebar(sidebar) => Some(sidebar),
+            _ => None,
+        })
     }
 
     /// The drawer's wrap around the files, when a drawer is registered.

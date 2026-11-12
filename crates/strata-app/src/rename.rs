@@ -38,7 +38,7 @@ use strata_fs::{
 
 use crate::{
     App, shell,
-    slots::{Editing as Host, Frame, Listener, Part, Place, Setup},
+    slots::{Frame, Listener, Part, Place, Setup, View},
 };
 
 /// How a rename the browser was asked for ended.
@@ -189,9 +189,16 @@ fn can_rename(entry: &FileEntry) -> bool {
         .is_some_and(|uri| uri.starts_with("trash:"))
 }
 
-/// What the shown view gives the editor: the rows it opens on and moves between.
-fn host(app: &App) -> Option<&'static Host<App>> {
-    shell::shown_view(app).map(|view| &view.editing)
+/// The view the editor edits in: the rows it opens on and moves between.
+fn host(app: &App) -> Option<&'static View<App>> {
+    shell::shown_view(app)
+}
+
+/// An edit is open in `view`, or none is: what follows the cursor there waits while one is.
+fn hold(app: &App, view: &View<App>, editing: bool) {
+    if let Some(hold) = view.editing.hold {
+        hold(app, editing);
+    }
 }
 
 /// Opens the editor on `entry`, a row of column `depth`. False when it has no row to open in.
@@ -199,9 +206,9 @@ fn open(app: &mut App, depth: usize, entry: FileEntry, tx: &mut Tx) -> bool {
     let Some(view) = host(app).filter(|_| can_rename(&entry)) else {
         return false;
     };
-    let id = (view.id_of)(app, &entry.location);
+    let id = shell::id_of(app, &entry.location);
     // An edit still open ends for this one, and keeps its name: nothing to act on.
-    let Some(_ended) = (view.begin)(app, (depth, id), tx) else {
+    let Some(_ended) = (view.editing.begin)(app, (depth, id), tx) else {
         return false;
     };
     // A relative path moves a local item; elsewhere a name is a name (`begin` in
@@ -216,7 +223,7 @@ fn open(app: &mut App, depth: usize, entry: FileEntry, tx: &mut Tx) -> bool {
         entry,
         naming,
     });
-    (view.hold)(app, true);
+    hold(app, view, true);
     true
 }
 
@@ -235,7 +242,7 @@ pub(crate) fn begin_on(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
     if app.rename.pending() {
         return;
     }
-    let position = host(app).and_then(|view| (view.position)(app, (depth, id)));
+    let position = host(app).and_then(|view| (view.rows.position)(app, (depth, id)));
     if let Some(entry) = position.and_then(|position| app.browser.entry_at(depth, position)) {
         open(app, depth, entry, tx);
     }
@@ -298,17 +305,19 @@ fn advance(app: &mut App, (depth, id): (usize, EntryId), step: isize, tx: &mut T
     let Some(view) = host(app) else {
         return;
     };
-    let Some(next) = (view.neighbour)(app, (depth, id), step) else {
+    let Some(next) = (view.rows.neighbour)(app, (depth, id), step) else {
         return;
     };
-    (view.select_only)(app, (depth, next), tx);
+    (view.rows.select_only)(app, (depth, next), tx);
     shell::publish(app);
     // The committed row must not pull the cursor back once its rename lands.
     if let Some(asked) = &mut app.rename.asked {
         asked.advanced = true;
     }
-    (view.follow_now)(app);
-    let position = (view.position)(app, (depth, next));
+    if let Some(follow_now) = view.editing.follow_now {
+        follow_now(app);
+    }
+    let position = (view.rows.position)(app, (depth, next));
     if let Some(entry) = position.and_then(|position| app.browser.entry_at(depth, position)) {
         open(app, depth, entry, tx);
     }
@@ -325,7 +334,7 @@ pub(crate) fn heard(app: &mut App, intent: RenameIntent, tx: &mut Tx) {
         return;
     };
     if let Some(view) = host(app) {
-        (view.hold)(app, false);
+        hold(app, view, false);
     }
     let from = (editing.depth, editing.id);
     match intent {
@@ -346,7 +355,7 @@ fn tick(app: &mut App, tx: &mut Tx) -> bool {
     let Some(view) = host(app) else {
         return false;
     };
-    let polled = (view.tick)(app);
+    let polled = (view.editing.tick)(app);
     for intent in polled.intents {
         heard(app, intent, tx);
     }

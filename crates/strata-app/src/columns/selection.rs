@@ -23,7 +23,8 @@ use strata_components::{
 };
 use strata_fs::app::Browser;
 
-use super::{Columns, listing::Load};
+use super::Columns;
+use crate::listing::Load;
 
 /// What made the view change its cursor or its selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

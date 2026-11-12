@@ -98,11 +98,12 @@ slots::parts! {
   each slot is, what a part gives the shell there, and how it gets its state, its settings,
   its share of `Browser`'s events, its timers and the keyboard. It has the rules a part
   keeps, who owns which file, and a list of what waits on another package: window chords
-  and the header's buttons, saving a setting, a `Browser` for each tab, and changing the
-  view while the window is open. `columns/part.rs` is the worked example, and
+  and the header's buttons, a menu row for an area's command, saving a setting, a `Browser`
+  for each tab, and changing the view while the window is open. `columns/part.rs` is the worked example, and
   `shell/tests.rs` runs the shell over a made-up table with a part in every slot.
 - **A part never edits `shell.rs`, `slots.rs` or another part's module.** When a slot cannot
-  give a part what it needs, that is a `contract` change of its own, made first.
+  give a part what it needs, that is a `contract` change of its own, made first. The one
+  exception is the line `slots.rs` tells the package that fills an empty slot to delete.
 - **No CI job builds, lints or tests the Rune side** ([Two lanes](#two-lanes)), so nothing
   but a local run finds two branches that merged cleanly and do not fit: a second part in a
   slot that holds one, or a part registered twice. Run `mise run test-rune slots::` before

@@ -6,7 +6,6 @@
 use std::{any::TypeId, rc::Rc};
 
 use rune::{El, Env, Runtime, el};
-use strata_components::{contract::EntryId, rename::Polled};
 use strata_core::model::ViewPreferences;
 use strata_desktop::settings::Preferences;
 use strata_fs::{
@@ -14,12 +13,10 @@ use strata_fs::{
     app::{Browser, BrowserEvent},
 };
 
-#[cfg(feature = "qa")]
-use super::Probe;
 use super::{
-    Editing, Entry, Frame, Ids, Inbox, Listener, Place, Registry, Setup, Slot, View,
-    registry::Fault,
+    Entry, Frame, Ids, Inbox, Listener, Place, Registry, Setup, Sidebar, Slot, registry::Fault,
 };
+use crate::test_support::idle_view;
 
 /// What the made-up parts did, in order.
 type Log = Vec<String>;
@@ -44,7 +41,7 @@ macro_rules! made {
 made! {
     Columns = "columns",
     Icons = "icons",
-    Sidebar = "sidebar",
+    Rail = "sidebar",
     Drawer = "drawer",
     Editor = "editor",
     Menu = "menu",
@@ -85,28 +82,15 @@ fn part<P: Made>(place: Place<Log>) -> Entry<Log> {
 
 /// A view that answers to its own name as the saved mode, and takes the keyboard there.
 fn view<P: Made>() -> Entry<Log> {
-    part::<P>(Place::View(View {
+    let shows = |mode: &str| mode == P::NAME;
+    part::<P>(Place::View(idle_view(P::NAME, nothing, shows)))
+}
+
+fn rail() -> Sidebar<Log> {
+    Sidebar {
         build: nothing,
-        shows: |mode| mode == P::NAME,
-        focus: P::NAME,
-        pointer_at: None,
-        editing: Editing {
-            id_of: |_, _| EntryId::new(0),
-            position: |_, _| None,
-            neighbour: |_, _, _| None,
-            begin: |_, _, _| None,
-            tick: |_| Polled::default(),
-            hold: |_, _| {},
-            select_only: |_, _, _| {},
-            follow_now: |_| {},
-        },
-        chosen: |_, _, _| {},
-        #[cfg(feature = "qa")]
-        probe: Probe {
-            listed: |_| true,
-            lists: |_| Vec::new(),
-        },
-    }))
+        focus: "rail",
+    }
 }
 
 fn overlay<P: Made>() -> Entry<Log> {
@@ -139,8 +123,8 @@ fn a_part_registered_twice_is_refused_and_so_is_a_second_part_in_a_slot_for_one(
         ),
         (
             vec![
-                part::<Sidebar>(Place::Sidebar(nothing)),
-                part::<Menu>(Place::Sidebar(nothing)),
+                part::<Rail>(Place::Sidebar(rail())),
+                part::<Menu>(Place::Sidebar(rail())),
             ],
             Err(Fault::Crowded(Slot::Sidebar, "sidebar", "menu")),
         ),
@@ -191,7 +175,7 @@ fn a_part_builds_its_element_in_every_slot_but_the_drawer_which_wraps_the_views(
     let places = [
         (Place::Tabs(nothing), Slot::Tabs, true),
         (Place::Location(nothing), Slot::Location, true),
-        (Place::Sidebar(nothing), Slot::Sidebar, true),
+        (Place::Sidebar(rail()), Slot::Sidebar, true),
         (view::<Columns>().place, Slot::View, true),
         (Place::Drawer(|_, files, _| files), Slot::Drawer, false),
         (Place::Footer(nothing), Slot::Footer, true),
@@ -205,6 +189,7 @@ fn a_part_builds_its_element_in_every_slot_but_the_drawer_which_wraps_the_views(
         let registry = Registry::new(table(vec![part::<Drawer>(place)]), "columns");
         assert_eq!(names(registry.of(slot)), ["drawer"], "{slot:?}");
         assert_eq!(registry.drawer().is_some(), !builds, "{slot:?}");
+        assert_eq!(registry.sidebar().is_some(), slot == Slot::Sidebar);
     }
 }
 

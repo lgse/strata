@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! The listings the Columns view reads: for each open column, a copy of what its rows show.
+//! The listings a view reads: for each of the browser's columns, a copy of what its rows show.
+//! They belong to the contract ([`crate::slots`]), with the reader that fills them
+//! ([`crate::events`]): every view shows the same rows, so no view's package owns them.
 //!
 //! `EntrySource::entry` lends names, and `Browser` keeps its entries behind a `RefCell`, so
 //! the view cannot read them in place. A column here holds one [`Row`] for each of the
@@ -8,12 +10,9 @@
 //! browser's column holds hidden entries too, which the views leave out
 //! (`entry_matches` in `src/ui/browser/entry.rs`).
 
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
-use strata_components::{
-    columns::ColumnSources,
-    contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget},
-};
+use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget};
 use strata_core::{
     i18n::tr,
     model::{EntryKind as Kind, FileEntry, Location},
@@ -77,6 +76,16 @@ fn kinds(entry: &FileEntry) -> (EntryKind, Described) {
     match entry.is_locked_folder() {
         true => (kind, described.locked()),
         false => (kind, described),
+    }
+}
+
+/// One translation for each thing a row can be described as: the language changes only on
+/// restart, and a view asks for a row's description on every build.
+pub(crate) struct Words([String; 8]);
+
+impl Words {
+    pub(crate) fn translated() -> Self {
+        Self(Described::WORDS.map(tr))
     }
 }
 
@@ -280,6 +289,27 @@ impl Column {
         self.position_of(id)
             .and_then(|position| self.rows.get(position))
     }
+
+    /// Moves with every change to what the column shows.
+    pub(crate) fn version(&self) -> u64 {
+        self.version
+    }
+
+    /// The folder is being read, or a sort or a refresh runs over its listing.
+    pub(crate) fn is_loading(&self) -> bool {
+        self.busy || self.load == Load::Loading
+    }
+
+    /// The row of the column before this one whose folder this is.
+    pub(crate) fn from(&self) -> Option<EntryId> {
+        self.from
+    }
+
+    /// What the row the view shows at `index` is, as assistive technology hears it.
+    pub(crate) fn description<'a>(&self, index: usize, words: &'a Words) -> Option<&'a str> {
+        let row = self.rows.get(self.position_at(index)?)?;
+        Some(&words.0[row.described as usize])
+    }
 }
 
 impl EntrySource for Column {
@@ -299,56 +329,6 @@ impl EntrySource for Column {
         let row = &self.rows[self.shown[index]];
         // No icon name: the view falls back to its folder and file icons.
         Entry::new(row.id, &row.name, row.kind, "")
-    }
-}
-
-/// The open columns, root first, and the words for what a row is.
-pub(crate) struct Listings {
-    pub(crate) columns: Vec<Column>,
-    /// One translation for each [`Described`], in its order: the language changes only on
-    /// restart, and the view asks for a row's description on every build.
-    described: [String; 8],
-}
-
-impl Listings {
-    pub(crate) fn translated() -> Self {
-        Self {
-            columns: Vec::new(),
-            described: Described::WORDS.map(tr),
-        }
-    }
-}
-
-impl ColumnSources for Listings {
-    fn len(&self) -> usize {
-        self.columns.len()
-    }
-
-    fn source(&self, depth: usize) -> &dyn EntrySource {
-        &self.columns[depth]
-    }
-
-    fn version(&self, depth: usize) -> u64 {
-        self.columns[depth].version
-    }
-
-    fn title(&self, depth: usize) -> &str {
-        self.columns[depth].title()
-    }
-
-    fn loading(&self, depth: usize) -> bool {
-        let column = &self.columns[depth];
-        column.busy || column.load == Load::Loading
-    }
-
-    fn open_child(&self, depth: usize) -> Option<EntryId> {
-        self.columns.get(depth + 1)?.from
-    }
-
-    fn description(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
-        let column = self.columns.get(depth)?;
-        let row = column.rows.get(column.position_at(index)?)?;
-        Some(Cow::Borrowed(&self.described[row.described as usize]))
     }
 }
 

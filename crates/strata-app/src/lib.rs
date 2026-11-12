@@ -15,6 +15,7 @@ rust_i18n::i18n!(
 mod events;
 mod host;
 mod launch;
+mod listing;
 #[cfg(feature = "qa")]
 mod qa;
 mod settings;

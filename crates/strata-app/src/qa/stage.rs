@@ -12,7 +12,7 @@ use rune::ElementInfo;
 use strata_components::collection::element::LABEL;
 use strata_qa::Rect;
 
-use super::tree::{Drawn, DrawnColumn, DrawnRow, NameLabel, Snapshot};
+use super::tree::{Drawn, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
 use crate::{App, host::offscreen::Offscreen, shell};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
@@ -87,9 +87,14 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
 fn drawn(host: &Offscreen) -> Drawn {
     let elements = host.elements();
     let app = host.app();
-    let view = shell::shown_view(app);
-    let lists = view.map_or_else(Vec::new, |view| (view.probe.lists)(app));
+    let probe = shell::shown_view(app).map(|view| &view.probe);
+    let lists = probe.map_or_else(Vec::new, |probe| (probe.lists)(app));
     Drawn {
+        view: probe.map(|probe| Shape {
+            name: probe.name,
+            list: probe.roles.0,
+            entry: probe.roles.1,
+        }),
         columns: lists
             .iter()
             .filter_map(|list| drawn_column(&elements, list))

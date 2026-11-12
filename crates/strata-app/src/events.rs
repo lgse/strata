@@ -15,7 +15,7 @@ use strata_core::model::{FileEntry, Location};
 use strata_fs::app::{Browser, BrowserEvent};
 
 use crate::{
-    columns::{Edit, Load, Row},
+    listing::{Edit, Load, Row},
     slots::Ids,
 };
 

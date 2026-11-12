@@ -9,7 +9,8 @@ use strata_components::{
 };
 use strata_core::i18n::tr;
 
-use super::{intents, listing::Load};
+use super::intents;
+use crate::listing::Load;
 use crate::{App, rename};
 
 /// The view's words, translated once: the language changes only on restart.

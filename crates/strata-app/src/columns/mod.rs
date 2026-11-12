@@ -30,22 +30,22 @@ use strata_kit::look::Look;
 
 use crate::{
     events::{Added, Change, Marks, Moved},
+    listing::{Column, Edit, Load, Row},
     slots::Ids,
 };
 
 mod editing;
 mod intents;
-mod listing;
+mod listings;
 mod mirror;
 mod part;
 mod selection;
 mod view;
 
-pub(crate) use listing::{Edit, Load, Row};
 pub(crate) use selection::Input;
 pub(crate) use view::view;
 
-use listing::{Column, Listings};
+use listings::Listings;
 use mirror::Mirror;
 
 /// The view's key: every element key of the strip starts with it.

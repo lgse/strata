@@ -11,6 +11,7 @@
 use std::rc::Rc;
 
 use rune::{Cx, El, KeyEvent, Keybind, Tx, col, row};
+use strata_components::contract::EntryId;
 use strata_components::header::{
     self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
 };
@@ -65,6 +66,8 @@ pub(crate) struct Window {
     events: Inbox<App>,
     /// The registered parts, with the view that is shown.
     parts: Registry<'static, App>,
+    /// The table that names an entry for the components: every part holds the same one.
+    ids: Ids,
     /// The browser's active location as of the last `poll`: what the title names.
     location: Option<Location>,
     title: String,
@@ -139,6 +142,7 @@ impl App {
             settings,
             events,
             parts,
+            ids,
             location: None,
             title: title_for(None),
             csd,
@@ -207,6 +211,11 @@ impl App {
     pub(crate) fn rows_copied(&self) -> u64 {
         self.window.events.copied()
     }
+
+    /// The way into the window's queue, as `Setup::later` hands it to a part.
+    pub(crate) fn later(&self) -> crate::slots::Later<Self> {
+        self.window.events.later()
+    }
 }
 
 /// The GTK window's rule (`src/ui/window/composition/tabs.rs`): the folder, then the name.
@@ -225,6 +234,21 @@ pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
 /// menu, the QA backend.
 pub(crate) fn shown_view(app: &App) -> Option<&'static View<App>> {
     app.window.parts.shown()
+}
+
+/// The id the components know the entry at `location` by.
+pub(crate) fn id_of(app: &App, location: &Location) -> EntryId {
+    app.window.ids.of(location)
+}
+
+/// The keyboard leaves the shown view at its start, as Left in the first column asks: the
+/// sidebar takes it. False when there is no sidebar, and the keyboard stays where it is.
+pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
+    let Some(sidebar) = app.window.parts.sidebar() else {
+        return false;
+    };
+    tx.focus(sidebar.focus, true);
+    true
 }
 
 /// The key of the shown view's element that takes the keyboard: where a field or a menu
@@ -372,12 +396,17 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     })
 }
 
-/// Rune's `poll` hook: what the browser's observers queued, then each part's own timers.
+/// Rune's `poll` hook: what the browser's observers queued, then each part's own timers,
+/// then whatever those queued: a part's poll may ask a service that answers at once, and
+/// nothing is left in the queue for a frame that may not come.
 pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let mut ran = settle(app, tx);
     let parts = app.window.parts;
     for part in parts.active() {
         ran |= (part.poll)(app, clock, tx);
+    }
+    if !app.window.events.is_empty() {
+        ran |= settle(app, tx);
     }
     ran
 }

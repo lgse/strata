@@ -3,7 +3,14 @@
 use serde_json::json;
 use strata_qa::{Mark, Rect};
 
-use super::{Drawn, DrawnColumn, DrawnRow, NameLabel, Snapshot};
+use super::{Drawn, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
+
+/// The Columns view's shape, as its probe states it.
+const COLUMNS: Shape = Shape {
+    name: "Columns",
+    list: "list-box",
+    entry: "list-box-option",
+};
 
 fn label(above: &[&str], text: &str, x: f64) -> NameLabel {
     NameLabel {
@@ -44,6 +51,7 @@ fn a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else() {
     ];
 
     let drawn = Drawn {
+        view: Some(COLUMNS),
         lists: vec!["columns-col-1".to_owned()],
         columns: Vec::new(),
         labels: labels.to_vec(),
@@ -100,6 +108,7 @@ fn drawn_folder() -> Drawn {
         ],
     };
     Drawn {
+        view: Some(COLUMNS),
         lists: vec![column.list.clone()],
         columns: vec![column],
         labels: Vec::new(),

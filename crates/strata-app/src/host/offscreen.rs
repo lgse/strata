@@ -110,7 +110,9 @@ impl Offscreen {
         let now = Instant::now();
         let animating = self.runtime.frame((now - self.stepped).as_secs_f64());
         self.stepped = now;
-        dispatched || queued || animating
+        // What a handler queued during the frame is work for the next turn.
+        let left = self.runtime.state.has_queued_changes();
+        dispatched || queued || animating || left
     }
 
     /// Blocks until GLib has work or Rune's next timer is due, and for `limit` at most.

@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: MIT
 
 //! The shell over a made-up table of parts, one in every slot: where each lands in the tree,
-//! who gets the keyboard back, and the order the shell calls them in.
+//! where the keyboard goes when it leaves the view and comes back, the order the shell calls
+//! the parts in, and how what a service says reaches the window.
 
 use std::cell::{Cell, RefCell};
 
 use rune::{El, Key, KeyEvent, Mods, PhysicalInput, Tx, el};
 use serde_json::Value;
-use strata_components::{contract::EntryId, rename::Polled};
 use strata_fs::app::BrowserEvent;
 
-#[cfg(feature = "qa")]
-use crate::slots::Probe;
 use crate::{
     App,
     host::offscreen::Offscreen,
-    slots::{Editing, Entry, Frame, Later, Listener, Place, Setup, View},
+    shell,
+    slots::{Entry, Frame, Listener, Place, Setup, Sidebar},
+    test_support::idle_view,
 };
 
 const MODULE: &str = "shell::tests";
@@ -25,8 +25,8 @@ thread_local! {
     static LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     /// Whether the made-up field has the keyboard.
     static TYPING: Cell<bool> = const { Cell::new(false) };
-    /// The way into the window's queue, as a part's state would keep it.
-    static LATER: RefCell<Option<Later<App>>> = const { RefCell::new(None) };
+    /// A made-up part's next poll asks a service that answers at once.
+    static ASKING: Cell<bool> = const { Cell::new(false) };
 }
 
 fn note(line: impl Into<String>) {
@@ -57,7 +57,7 @@ macro_rules! made {
 made! {
     Tabs = "tabs",
     Location = "location",
-    Sidebar = "sidebar",
+    Rail = "sidebar",
     Files = "files",
     Drawer = "drawer",
     Status = "status",
@@ -66,9 +66,11 @@ made! {
     Dialog = "dialog",
 }
 
-/// The element a made-up part leaves in the tree, keyed with its name.
+/// The element a made-up part leaves in the tree, keyed with its name. It has a size, so it
+/// can take the keyboard.
 fn placed<P: Made>(_: &App, _: &mut Frame<'_, App>) -> Option<El> {
-    Some(el().key(format!("made-{}", P::NAME)))
+    let key = format!("made-{}", P::NAME);
+    Some(el().key(key).w(40.0).h(20.0).focusable(true))
 }
 
 /// As [`placed`], with a surface in the layer.
@@ -83,10 +85,8 @@ fn wrapped<P: Made>(_: &App, files: El, _: &mut Frame<'_, App>) -> El {
     el().key(format!("made-{}", P::NAME)).child(files)
 }
 
-/// Keeps the way into the queue, and queues a line for each change of the hidden-files
-/// choice.
-fn listen<P: Made>(setup: &Setup<'_>) -> Option<Listener<App>> {
-    LATER.set(Some(setup.later.clone()));
+/// Queues a line for each change of the hidden-files choice.
+fn listen<P: Made>(_: &Setup<'_>) -> Option<Listener<App>> {
     Some(Box::new(|event, _, heard| {
         if matches!(event, BrowserEvent::HiddenToggled { .. }) {
             heard.then(|_: &mut App, _: &mut Tx| {
@@ -106,8 +106,14 @@ fn part<P: Made>(place: Place<App>) -> Entry<App> {
         listen: listen::<P>,
         publish: |_| note(format!("{} publishes", P::NAME)),
         caught_up: |_| note(format!("{} has caught up", P::NAME)),
-        poll: |_, _, _| {
+        poll: |app, _, _| {
             note(format!("{} polls", P::NAME));
+            if ASKING.take() {
+                app.later().then(|_: &mut App, _: &mut Tx| {
+                    note("the answer was applied");
+                    true
+                });
+            }
             false
         },
         holds_keyboard: |_| TYPING.get(),
@@ -115,27 +121,14 @@ fn part<P: Made>(place: Place<App>) -> Entry<App> {
 }
 
 fn files() -> Entry<App> {
-    part::<Files>(Place::View(View {
-        build: placed::<Files>,
-        shows: |_| true,
-        focus: "made-files",
-        pointer_at: None,
-        editing: Editing {
-            id_of: |_, _| EntryId::new(0),
-            position: |_, _| None,
-            neighbour: |_, _, _| None,
-            begin: |_, _, _| None,
-            tick: |_| Polled::default(),
-            hold: |_, _| {},
-            select_only: |_, _, _| {},
-            follow_now: |_| {},
-        },
-        chosen: |_, _, _| {},
-        #[cfg(feature = "qa")]
-        probe: Probe {
-            listed: |_| true,
-            lists: |_| Vec::new(),
-        },
+    let view = idle_view("made-files", placed::<Files>, |_| true);
+    part::<Files>(Place::View(view))
+}
+
+fn sidebar() -> Entry<App> {
+    part::<Rail>(Place::Sidebar(Sidebar {
+        build: placed::<Rail>,
+        focus: "made-sidebar",
     }))
 }
 
@@ -149,7 +142,7 @@ fn every_slot() -> Vec<Entry<App>> {
         part::<Hints>(Place::Footer(placed::<Hints>)),
         part::<Drawer>(Place::Drawer(wrapped::<Drawer>)),
         files(),
-        part::<Sidebar>(Place::Sidebar(placed::<Sidebar>)),
+        sidebar(),
         part::<Location>(Place::Location(placed::<Location>)),
         part::<Tabs>(Place::Tabs(placed::<Tabs>)),
     ]
@@ -159,14 +152,22 @@ fn two_parts() -> Vec<Entry<App>> {
     vec![part::<Menu>(Place::Overlays(placed::<Menu>)), files()]
 }
 
+fn a_view_and_a_sidebar() -> Vec<Entry<App>> {
+    vec![files(), sidebar()]
+}
+
 fn hosted(name: &str, parts: fn() -> Vec<Entry<App>>, run: impl FnOnce(Offscreen)) {
     crate::test_support::hosted_over(MODULE, name, parts, run);
 }
 
-/// The made-up parts' keys as the accessibility tree has them, in its order, each with the
-/// made-up keys it is inside of.
+/// The shell's own two regions, as it keys them.
+const REGIONS: [&str; 2] = ["header", "body"];
+
+/// The made-up parts' keys and the shell's regions as the accessibility tree has them, in its
+/// order, each with those of them it is inside of.
 fn made(node: &Value, inside: &[String], found: &mut Vec<String>) {
-    let key = node["key"].as_str().filter(|key| key.starts_with("made-"));
+    let ours = |key: &&str| key.starts_with("made-") || REGIONS.contains(key);
+    let key = node["key"].as_str().filter(ours);
     let mut inside = inside.to_vec();
     if let Some(key) = key {
         inside.push(key.to_owned());
@@ -185,10 +186,31 @@ fn press(host: &mut Offscreen, key: Key, mods: Mods) {
     while host.turn() {}
 }
 
+/// The key of the element that has the keyboard, as the accessibility tree says.
+fn focused(node: &Value) -> Option<String> {
+    let has = |state: &Value| state == "focused";
+    if node["states"]
+        .as_array()
+        .is_some_and(|states| states.iter().any(has))
+    {
+        return node["key"].as_str().map(str::to_owned);
+    }
+    let children = node["children"].as_array().into_iter().flatten();
+    children.filter_map(focused).next()
+}
+
+/// Runs `act` on the state as a handler would, and lets the window settle.
+fn act<T>(host: &mut Offscreen, act: impl FnOnce(&mut App, &mut Tx) -> T) -> T {
+    let mut said = None;
+    host.runtime().update(|app, tx| said = Some(act(app, tx)));
+    while host.turn() {}
+    said.expect("the update ran")
+}
+
 #[test]
-fn every_slots_part_is_in_the_tree_in_the_order_of_the_slots() {
+fn every_slots_part_is_in_the_tree_where_the_slots_table_puts_it() {
     hosted(
-        "every_slots_part_is_in_the_tree_in_the_order_of_the_slots",
+        "every_slots_part_is_in_the_tree_where_the_slots_table_puts_it",
         every_slot,
         |mut host| {
             while host.turn() {}
@@ -199,11 +221,13 @@ fn every_slots_part_is_in_the_tree_in_the_order_of_the_slots() {
                 found,
                 [
                     "made-tabs",
-                    "made-location",
-                    "made-sidebar",
+                    "header",
+                    "header > made-location",
+                    "body",
+                    "body > made-sidebar",
                     // The drawer was handed the view's element, and put it in its own.
-                    "made-drawer",
-                    "made-drawer > made-files",
+                    "body > made-drawer",
+                    "body > made-drawer > made-files",
                     "made-status",
                     "made-hints",
                     "made-menu",
@@ -218,9 +242,52 @@ fn every_slots_part_is_in_the_tree_in_the_order_of_the_slots() {
 }
 
 #[test]
-fn the_keyboard_goes_back_to_the_shown_view_and_the_windows_keys_wait_for_a_part_that_holds_it() {
+fn the_keyboard_leaves_the_view_for_the_sidebar_and_comes_back_to_the_view() {
     hosted(
-        "the_keyboard_goes_back_to_the_shown_view_and_the_windows_keys_wait_for_a_part_that_holds_it",
+        "the_keyboard_leaves_the_view_for_the_sidebar_and_comes_back_to_the_view",
+        a_view_and_a_sidebar,
+        |mut host| {
+            let back = |app: &mut App, tx: &mut Tx| {
+                let view = shell::view_focus(app).expect("a view is shown");
+                tx.focus(view, false);
+            };
+            act(&mut host, back);
+            assert_eq!(focused(&host.tree()).as_deref(), Some("made-files"));
+
+            let taken = act(&mut host, |app, tx| shell::leave_view_at_start(app, tx));
+
+            assert!(taken, "the sidebar takes the keyboard");
+            assert_eq!(focused(&host.tree()).as_deref(), Some("made-sidebar"));
+
+            act(&mut host, back);
+            assert_eq!(focused(&host.tree()).as_deref(), Some("made-files"));
+        },
+    );
+}
+
+#[test]
+fn the_keyboard_stays_in_the_view_when_no_sidebar_is_registered() {
+    hosted(
+        "the_keyboard_stays_in_the_view_when_no_sidebar_is_registered",
+        two_parts,
+        |mut host| {
+            act(&mut host, |app, tx| {
+                let view = shell::view_focus(app).expect("a view is shown");
+                tx.focus(view, false);
+            });
+
+            let taken = act(&mut host, |app, tx| shell::leave_view_at_start(app, tx));
+
+            assert!(!taken);
+            assert_eq!(focused(&host.tree()).as_deref(), Some("made-files"));
+        },
+    );
+}
+
+#[test]
+fn the_windows_keys_wait_for_a_part_that_holds_the_keyboard() {
+    hosted(
+        "the_windows_keys_wait_for_a_part_that_holds_the_keyboard",
         two_parts,
         |mut host| {
             let hidden_shown = |host: &Offscreen| host.app().browser().preferences().show_hidden;
@@ -228,7 +295,6 @@ fn the_keyboard_goes_back_to_the_shown_view_and_the_windows_keys_wait_for_a_part
                 ctrl: true,
                 ..Mods::default()
             };
-            assert_eq!(crate::shell::view_focus(host.app()), Some("made-files"));
             let before = hidden_shown(&host);
 
             TYPING.set(true);
@@ -280,6 +346,9 @@ fn the_shell_calls_the_parts_in_the_order_they_are_registered() {
     );
 }
 
+/// The offscreen host dispatches GLib itself and then applies the queue. The windowed host is
+/// not run here: it applies the same queue after every dispatch (`host::windowed::pump`), and
+/// its GLib loop reaches Rune's with `AppHandle::update_if`.
 #[test]
 fn what_a_services_callback_queues_reaches_the_window_within_one_turn() {
     hosted(
@@ -288,8 +357,9 @@ fn what_a_services_callback_queues_reaches_the_window_within_one_turn() {
         |mut host| {
             while host.turn() {}
             noted();
-            let later = LATER.take().expect("the part kept the way in");
-            // A service calls back inside GLib's dispatch, as the browser's observer is.
+            // A part keeps the handle `Setup` gave it. A service calls back inside GLib's
+            // dispatch, as the browser's observer is called.
+            let later = host.app().later();
             glib::idle_add_local_once(move || {
                 later.then(|_: &mut App, tx: &mut Tx| {
                     note("the service's update ran");
@@ -302,15 +372,34 @@ fn what_a_services_callback_queues_reaches_the_window_within_one_turn() {
             host.turn();
 
             let log = noted();
+            let ran = log.iter().position(|line| line.starts_with("the service"));
+            let caught_up = log.iter().position(|line| line == "menu has caught up");
+            assert!(ran.is_some(), "{log:?}");
+            // Its turn was in the poll's queue, before the parts were told they had caught up.
+            assert!(ran < caught_up, "{log:?}");
+            assert!(!host.app().has_queued_changes());
+        },
+    );
+}
+
+#[test]
+fn what_a_service_answers_at_once_from_a_parts_poll_is_applied_in_that_poll() {
+    hosted(
+        "what_a_service_answers_at_once_from_a_parts_poll_is_applied_in_that_poll",
+        two_parts,
+        |mut host| {
+            while host.turn() {}
+            noted();
+
+            ASKING.set(true);
+            host.turn();
+
+            let log = noted();
             assert!(
-                log.contains(&"the service's update ran".to_owned()),
+                log.contains(&"the answer was applied".to_owned()),
                 "{log:?}"
             );
             assert!(!host.app().has_queued_changes());
-            // Its turn was in the poll's queue, before the parts were told they had caught up.
-            let ran = log.iter().position(|line| line.starts_with("the service"));
-            let caught_up = log.iter().position(|line| line == "menu has caught up");
-            assert!(ran < caught_up, "{log:?}");
         },
     );
 }
