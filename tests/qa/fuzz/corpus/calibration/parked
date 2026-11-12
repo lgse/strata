@@ -1,0 +1,19 @@
+# Seeds parked against an issue, one to a line, sorted by seed: <seed> <code> <issue>.
+# A run names a parked seed and does not replay it. See docs/testing.md, "Fuzzing".
+#
+# 0x67: a Shift+click on the entry being renamed clears the selection in five GTK replays
+# of six and selects the whole name in the sixth. Its sequence is kept as the seed wrote it
+# before the alphabet stopped clicking an entry while a name is edited, cut after the click.
+0000000000000067 oracle lgse/strata#2173
+# 0xb1: after Move to Trash from a context menu on a filtered pane, the preview shows a
+# file that is neither focused nor selected in 23 GTK replays of 24, and the focused one
+# in the other. The sequence is the seed's, cut three steps after the move; it did not
+# shrink, since the rare result does not show three times out of three.
+00000000000000b1 oracle lgse/strata#2177
+# 0x19b: GTK logs a critical, gtk_selection_model_selection_changed, every time. Shrunk
+# from 40 steps to these 7 and confirmed three times out of three.
+000000000000019b oracle lgse/strata#2176
+# 0x41c: with the machine loaded four times over, a click that opens a folder's column
+# left focus on the column in one GTK replay and on its first entry in the other. Seen
+# once. The sequence is the seed's first two steps.
+000000000000041c oracle lgse/strata#2180

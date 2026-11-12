@@ -1,0 +1,8 @@
+{"scenario":"fuzz-calibration-000000000000019b","modes":["columns"]}
+{"key":"Page_Down"}
+{"key":"shift+Home"}
+{"key":"F2"}
+{"fs":{"path":"fuzz-a.txt","write":"fuzz\n"}}
+{"key":"Return"}
+{"key":"Up"}
+{"key":"Return"}

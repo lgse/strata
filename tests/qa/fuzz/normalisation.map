@@ -1,0 +1,11 @@
+# The normalisation map: the fields on which the GTK target and the Rune target may differ
+# without that being a divergence. One rule to a line, sorted by field:
+#
+#   <field> <exception code> <issue>
+#
+# A field is named as an observation names it, with [] for every element of a list:
+# app.focused, app.panes[].selected, fs, settings.show_hidden. A rule covers the field and
+# everything below it. The codes are the plan's exceptions: timing, a11y, rune, oracle,
+# toolkit, deviation, platform. A pull request adds only its own rules, and every fuzz
+# summary prints how many there are. Noise that two replays on one target show is not an
+# exception: it goes in calibration.mask. See docs/testing.md, "Fuzzing".
