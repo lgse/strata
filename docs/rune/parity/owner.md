@@ -176,6 +176,51 @@ comments of 2026-11-12, unless another is named.
   `src/ui`, and the Rune side has no conflict check. Source: the archived issues
   [#2133](https://github.com/lgse/strata/issues/2133) and [#2150](https://github.com/lgse/strata/issues/2150).
 
+### A1: Icons view and thumbnails
+
+Found in the review of [#2192](https://github.com/lgse/strata/pull/2192) and by the
+package's agent. Source: the package's agent, 2026-11-12; first written on the archived
+issue [#2128](https://github.com/lgse/strata/issues/2128).
+
+1. **Down on the last row when every row is full.** GTK moves to the last tile (GtkGridView's
+   `n_items / n_columns` test in `gtk_grid_view_move_focus_along`). Rune's `IconsGrid` treats
+   it as an edge, on purpose (`crates/strata-components/src/icons_grid/mod.rs`, "Decisions
+   and deviations", first bullet). A deviation for the owner to rule. Meanwhile: the
+   component's edge; no run pins it.
+2. **Left with no cursor.** GTK sends it to the sidebar when the pane is at its left edge
+   and the sidebar shows (`single_pane_arrow_action`, `src/ui/window/key_routing.rs:96`;
+   `at_left_edge`, `src/ui/browser_modes/focus.rs:133`). Rune's keyboard controller lands
+   on the last tile. Meanwhile: Rune's, until there is a sidebar ([A3](packages/A3.md)) to
+   go to; then the Icons part matches GTK.
+3. **Up from the first row.** GTK focuses the pane header (`focus_header_from_top`,
+   `src/ui/window/keyboard/items.rs:166-180`). Rune ignores `Edge(Up)`. No package owns the
+   pane header. Meanwhile: nothing happens.
+4. **Focus after Back, Forward and Up.** GTK focuses the new listing on an explicit
+   navigation, and leaves focus on a header button or the sidebar for history unless it was
+   in the pane (`on_navigation_starting`, `src/ui/browser_modes/events.rs:58-66`). The Rune
+   views focus the listing whenever another folder shows. Meanwhile: the Rune views', until
+   the header buttons ([B3](packages/B3.md)) and the sidebar exist to keep focus.
+5. **"Arrows scoped to content"** (`arrow_navigation_scoped`) keeps Left and Up inside the
+   content in GTK (`src/ui/window/keyboard/items.rs:151, 180`). Neither Rune view honours
+   it. Meanwhile: not honoured; it goes with items 2 and 3.
+6. **Context menus on the Icons grid** (`right-click-selects-entry/icons-*`), a `contract`
+   change either way. The menus are built privately in
+   `crates/strata-app/src/columns/intents.rs`. Option A shares those builders in a new
+   module. Option B adds one view-generic opener to `menus.rs` ([A6](packages/A6.md)'s),
+   reading the entry through the shown view's `Rows` and "Type to search" from the saved
+   settings, and deletes Columns' copy. The agent recommends B. Meanwhile: the grid opens no
+   menu, and the two runs stay `pending`.
+7. **Thumbnails, as one `contract` pull request.** `strata-rune` needs the
+   `--browser-worker` entry point the GTK binary has (`src/main.rs`,
+   `LaunchMode::BrowserWorker` calls `strata_preview::sandbox::browser::run`), or every
+   worker it spawns starts a window. It also needs a thumbnail service in `strata-app` (new
+   code: `src/ui/thumbnail/` does not move) feeding C25's `ThumbnailStore`. The
+   `browser_workers` Columns runs need Columns to ask the service for its visible rows,
+   which touches `columns/`. Drawing thumbnails in Columns rows would further need a C2
+   component API change. The agent recommends the entry point, the service and the
+   visible-rows request first, and drawing in Columns rows later. Meanwhile: nothing is
+   started beyond the Icons grid's own part.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
