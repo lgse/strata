@@ -1,0 +1,112 @@
+name: RPM packaging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/rpm/**'
+      - 'scripts/build_srpm.py'
+      - 'scripts/update_aur.py'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'build.rs'
+      - 'crates/*/Cargo.toml'
+      - 'crates/*/build.rs'
+      - 'data/licenses/**'
+      - 'data/icons/scalable/apps/**'
+      - 'data/io.github.lgse.Strata.*'
+      - 'docs/portal-file-chooser.md'
+      - 'LICENSE'
+      - 'README.md'
+      - 'THIRD_PARTY_LICENSES.md'
+      - '.github/workflows/publish-copr.yml'
+      - '.github/workflows/rpm.yml'
+  pull_request:
+    paths:
+      - 'packaging/rpm/**'
+      - 'scripts/build_srpm.py'
+      - 'scripts/update_aur.py'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'build.rs'
+      - 'crates/*/Cargo.toml'
+      - 'crates/*/build.rs'
+      - 'data/licenses/**'
+      - 'data/icons/scalable/apps/**'
+      - 'data/io.github.lgse.Strata.*'
+      - 'docs/portal-file-chooser.md'
+      - 'LICENSE'
+      - 'README.md'
+      - 'THIRD_PARTY_LICENSES.md'
+      - '.github/workflows/publish-copr.yml'
+      - '.github/workflows/rpm.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rpm:
+    name: Build and inspect the RPM package
+    runs-on: ubuntu-24.04
+    container:
+      image: registry.fedoraproject.org/fedora:latest
+    defaults:
+      run:
+        # An explicit bash shell adds pipefail, which the rpmbuild | tee step relies on.
+        shell: bash
+
+    steps:
+      - name: Install packaging tools
+        run: dnf install -y git rpm-build rpmlint cargo-rpm-macros cargo-vendor-filterer python3 'dnf-command(builddep)'
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the source RPM
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version=$(grep -m1 -oP '^version = "\K[^"]+' Cargo.toml)
+          python3 scripts/build_srpm.py --tag "v$version" --ref HEAD --outdir dist
+
+      - name: Install build dependencies
+        run: dnf builddep -y dist/*.src.rpm
+
+      - name: Build the binary RPMs
+        run: rpmbuild --rebuild --define "_topdir $PWD/rpmbuild" dist/*.src.rpm 2>&1 | tee rpmbuild.log
+
+      - name: Verify the build configuration
+        run: |
+          workspace_rustc=$(grep -E -- '--crate-name strata(_[a-z]+)* ' rpmbuild.log)
+          if ! grep -q -- '--cfg strata_updater_disabled' <<<"$workspace_rustc"; then
+            echo "The RPM build kept the in-app updater." >&2
+            exit 1
+          fi
+          if grep -q 'feature="rar"' <<<"$workspace_rustc"; then
+            echo "The RPM build enabled RAR support." >&2
+            exit 1
+          fi
+
+      - name: Check the packages with rpmlint
+        run: rpmlint dist/*.src.rpm rpmbuild/RPMS/*/*.rpm
+
+      - name: Install the package and verify its contents
+        run: |
+          dnf install -y rpmbuild/RPMS/*/strata-[0-9]*.rpm
+          strata --version
+          rpm -ql strata | grep -qx /usr/bin/strata
+          rpm -ql strata | grep -qx /usr/share/applications/io.github.lgse.Strata.desktop
+          if rpm -ql strata | grep -E '^/usr/share/(dbus-1|strata/install-source\.toml)'; then
+            echo "The package activates a D-Bus service or installs the AUR update marker." >&2
+            exit 1
+          fi
+          rpm -q --provides strata | grep -q '^bundled(crate(gtk4))'
+          if rpm -q --provides strata | grep -E '^bundled\(crate\(unrar'; then
+            echo "The package bundles UnRAR." >&2
+            exit 1
+          fi

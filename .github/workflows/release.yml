@@ -611,3 +611,13 @@ jobs:
             --head "$BRANCH" \
             --title "build(arch): update AUR packages for v$VERSION" \
             --body-file /tmp/aur-package-pr.md
+
+  copr:
+    name: Publish COPR packages
+    needs: [prepare, release]
+    if: inputs.mode != 'nightly' && vars.COPR_PUBLISH_ENABLED == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/publish-copr.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
