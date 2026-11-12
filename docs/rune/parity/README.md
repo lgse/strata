@@ -11,6 +11,13 @@
 > - The [issue map](#issue-map) at the end is this copy's own. It gives each package's
 >   issue on `lgse/strata`; the tracker is
 >   [#2160](https://github.com/lgse/strata/issues/2160).
+> - Since 2026-11-12 packages are tracked in this folder, not in GitHub issues, by the
+>   owner's instruction of that day. "Coordination" and the sentences that sent a reader to
+>   an issue for a package's state or a finding were changed for it, so this copy differs
+>   from the document there. [`STATUS.md`](STATUS.md) has each package's state,
+>   [`packages/`](packages/) a file for each, [`owner.md`](owner.md) the questions and
+>   rulings, [`findings.md`](findings.md) the findings, and [`working.md`](working.md) how
+>   a package is worked on.
 
 2026-11-11 · William
 
@@ -85,8 +92,8 @@ each area needs all three:
 ### When a run differs: the order of resort
 
 A difference is a Rune-side bug until shown otherwise. When it is shown to be a bug in
-Strata itself, file the issue and go straight to step 4. Work down this list and stop at the
-first step that fits:
+Strata itself, record the finding and go straight to step 4. Work down this list and stop at
+the first step that fits:
 
 1. **Fix the port.** Change the adapter in `strata-app` or the component, as the slice did
    for seven Columns keys.
@@ -115,7 +122,7 @@ as reason codes, and the plan promotes them to standing exceptions.
 Three things are not exceptions. `scope`, `harness` and `component` are temporary pending
 reasons and must reach zero. And noise that differs between two GTK runs of one seed is
 masked by fuzz calibration, not excused. And a Strata bug that both targets share leaves
-them in agreement: file the issue and go on.
+them in agreement: record the finding and go on.
 
 Suggested limits on twins, so exceptions stay small:
 
@@ -172,8 +179,8 @@ could observe. It adds a generator, a comparator and a shrinker to the QA runner
    target refuses, a panic, or a critical.
 5. **Shrink.** Shorter sequences are replayed until the divergence is minimal, then
    confirmed three times out of three.
-6. **Triage.** Each divergence becomes one GitHub issue with one outcome from the table
-   below.
+6. **Triage.** Each divergence becomes one finding in [`findings.md`](findings.md) with one
+   outcome from the table below.
 
 | Outcome | What happens |
 | --- | --- |
@@ -268,7 +275,7 @@ ref = "lgse/strata#NNN"
 A gap goes into the existing filing packet, `docs/rune/upstream/rune/`, to be filed later by
 the owner.
 
-1. Search the packet's 98 entries and the `rune-gap` issues first.
+1. Search the packet's 98 entries and the `rune-gap` findings first.
 2. Write the entry as the packet's files are written: the notes table with `Checked` and
    `Status` rows, the line "Paste from here.", then the title and body, with a headless
    repro where one exists.
@@ -292,7 +299,7 @@ preference:
 The workaround's module docs name the entry, and the entry's notes name the workaround. That
 pairing is how it gets removed when the pin moves past the fix.
 
-A run stays `pending` on `rune` only when no workaround is feasible. The package's issue
+A run stays `pending` on `rune` only when no workaround is feasible. The package's file
 then records what was tried, and the run does not block the rest of the package.
 
 One workaround is deferred by owner ruling: audio output. A16 takes PDF, model and silent
@@ -317,7 +324,7 @@ Agents file nothing upstream, and never vendor or patch Rune.
 - **Container runs only.** QA evidence comes from the pinned image. One QA script at a time
   per machine.
 - **Stop rather than widen.** A package that needs something outside its scope writes it up
-  on its issue and waits.
+  in its package file and waits.
 - **No GTK in the Rune binary.** `cargo tree -p strata-rune -i gtk4` finds nothing.
 - **Two lanes.** Never `--workspace`. Never move `src/ui`, `src/assets` or `src/qa`.
 - **Strings stay in the catalogs.** Labels and accessible names reach components as data
@@ -328,7 +335,8 @@ Agents file nothing upstream, and never vendor or patch Rune.
 ## Work packages
 
 There are 39 packages in five tracks, and every run has exactly one owner. Each package is
-sized for one issue, one worktree and one agent, and may land as several pull requests.
+sized for one package file, one worktree and one agent, and may land as several pull
+requests.
 
 | Track | Prefix | Purpose |
 | --- | --- | --- |
@@ -434,41 +442,57 @@ Four packages, all waiting on the session host.
 
 ## Coordination
 
-GitHub issues are the only state agents share, and `strata-next` is where finished work
-meets. No agent learns what another is doing from a document or a branch.
+The files of this folder are the only state agents share, and `strata-next` is where
+finished work meets. No agent learns what another is doing from a branch or a conversation.
 
-### Issues
+### Tracking
 
-- **One tracker issue** lists every package as a sub-issue, grouped by wave.
-- **One issue per package**, titled like `[A7] Entry management and undo`. Its body holds
-  the scope, the scenario folders, the dependencies as issue links and the done-when list.
+- **[`STATUS.md`](STATUS.md)** has one row per package, grouped by wave: its state (`not
+  started`, `in progress`, `done` or `held`), its dependencies and its pull requests.
+  **[`packages/<ID>.md`](packages/)** has the package's scope, its done-when list, its runs,
+  a dated record of its pull requests and decisions, what its dependents must know, and what
+  is open.
+- **A package's agent edits its own row and its own file,** in the package's own pull
+  requests. A note for another package goes under "Notes from other packages" in that
+  package's file, in the pull request that finds it; nothing else in another package's file
+  changes.
 - **The owner assigns.** The owner hands each package to an agent. The agent checks that
-  every dependency's issue is closed, then marks the issue with the `claimed` label and a
-  comment naming its session, branch and date.
-- **Search before filing.** Look for an open issue by label and by scenario or seed name
-  before opening a finding.
-- **Report on the issue.** Each pull request gets one comment: the runs it flipped, the
-  command, the artifact directory.
+  every dependency's row reads `done`, then claims the package: its first pull request sets
+  the row to `in progress` and names the branch in the package's file.
+- **Search before recording.** Look in [`findings.md`](findings.md) by code and by scenario
+  or seed name before adding a finding. A new one is an entry there, in the pull request
+  that meets it.
+- **Report in the package's file.** Each pull request adds one dated entry to its record:
+  the runs it flipped, the command, the artifact directory.
+- **Questions for the owner** go in [`owner.md`](owner.md), with the default in force
+  meanwhile, and so do the owner's rulings.
 - **A stalled package goes back** to the owner, who hands it on. There is no timer.
+- **The archived issues.** Until 2026-11-12 each package, the tracker and each finding was a
+  GitHub issue on `lgse/strata` ([the issue map](#issue-map)). They were closed that day,
+  finished or not. They stay as an archive that the package files and the findings link to:
+  never reopened, and no longer where work is recorded. A reference to one stays valid.
 
-| Label | Used for |
+The plan's labels live on as codes in the files above, in the ledger and in the fuzz
+driver's files:
+
+| Code | Used for |
 | --- | --- |
-| `rune-parity` | Every issue of this plan |
-| `wave:0` to `wave:4`, `track:harness`, `track:base`, `track:fuzz`, `track:area`, `track:exit` | Package issues |
-| `claimed`, `blocked` | A package's state |
-| `divergence` | A failing parity run or a shrunk fuzz sequence. The title names the area, the first differing field and the last action, so duplicates are found by search |
+| `divergence` | A failing parity run or a shrunk fuzz sequence. The entry names the area, the first differing field and the last action, so duplicates are found by search |
 | `rune-gap` | A gap bound for the filing packet. Closed when its entry and its workaround merge |
 | `exception` | A request for a twin or a normalisation rule, naming its code. `deviation` requests wait for the owner |
 | `oracle` | A bug in Strata itself, or a flaky GTK run. Documented and set aside; any fix lands on `main` |
-| `contract` | A change to a seam others build on: B1's slots, the protocol in `strata-qa`, the runner, a shared component |
+| `contract` | A change to a seam others build on: B1's slots, the protocol in `strata-qa`, the runner, a shared component. A pull request that makes one carries the label |
+
+[`working.md`](working.md) restates what a package's agent does, from claiming to hand-off.
 
 ### Branches and worktrees
 
-- **Branch** `<type>/<issue>-<package>-<slug>`, for example `feat/123-a7-entry-management`,
-  as `docs/rune/work/README.md` names them.
+- **Branch** `<type>/<issue>-<package>-<slug>`, for example `feat/2134-a7-entry-management`,
+  as `docs/rune/work/README.md` names them. The number is the package's archived issue's.
 - **One worktree per package**, such as `../strata-a7`, with its own `target/`.
 - **Pull requests target `strata-next`**, with Conventional Commit titles and the
-  repository's template. They reference the package issue.
+  repository's template. They link the package's file where the template asks for the
+  issue.
 - **Small pull requests.** One per scenario folder is a natural size. Each flips the ledger
   rows it proves.
 - **Contracts first.** A `contract` change lands as its own small pull request, and
@@ -503,7 +527,7 @@ meets. No agent learns what another is doing from a document or a branch.
 | Role | Does |
 | --- | --- |
 | Owner | Delegates each package and each merge from `main`. Rulings on deviations, filing upstream, hand checks, the checkpoints |
-| Package agent | One assigned package in one worktree. Runs the merge gate before merging, and adds the package's row to `docs/rune/work/STATUS.md` |
+| Package agent | One assigned package in one worktree. Runs the merge gate before merging, and keeps the package's row in [`STATUS.md`](STATUS.md) and its file current |
 | Reviewer | A session other than the author's reviews each pull request |
 
 ## Validation and gates
@@ -546,8 +570,9 @@ Checkpoints are where the owner looks at the numbers.
 | Exit | The six criteria below |
 
 Every checkpoint report gives the same five counts: runs by status and reason, twins by
-exception code, normalisation rules by code, open `divergence` and `oracle` issues, and
-packet entries added.
+exception code, normalisation rules by code, open `divergence` and `oracle` findings, and
+packet entries added. [`STATUS.md`](STATUS.md#checkpoints) has them as they stand, with
+the commands.
 
 ### Exit criteria
 
@@ -555,7 +580,7 @@ packet entries added.
    `rune` needs a record of the workarounds tried and an owner ruling to ship without it.
 2. The full parity set passes three times running, on both targets and both hosts.
 3. Every Rune mutation patch is caught, and the GTK suite and its patches behave as before.
-4. The fuzz soak passes with no open `divergence` issue.
+4. The fuzz soak passes with no open `divergence` finding.
 5. The hand checks on four desktops are recorded.
 6. `cargo tree` shows no `gtk4`, `gdk4`, `sourceview5` or `gdk-pixbuf`.
 
@@ -571,7 +596,7 @@ making every exception a counted, referenced record.
 | Risk | Containment |
 | --- | --- |
 | Twins and normalisation rules hide real differences | Every one carries a code and an issue. Counts are reported at each checkpoint. A twin must fail under a mutation patch |
-| A flaky or wrong oracle sends agents after GTK's faults | `oracle` issues are filed and set aside, not chased; a fix, if any, lands on `main` first. A divergence is confirmed three times out of three before it is filed |
+| A flaky or wrong oracle sends agents after GTK's faults | `oracle` findings are recorded and set aside, not chased; a fix, if any, lands on `main` first. A divergence is confirmed three times out of three before it is filed |
 | Offscreen parity is read as more than it is | `platform` runs name the session host. Hand checks gate the exit |
 | The harness reads the view, not `Browser` | F3's invariant compares the two after every fuzz step |
 | Parallel branches collide in the shell or the ledger | B1's slots and per-folder ledger files land in wave 0 |
@@ -628,7 +653,9 @@ Three remain. The first two wait on what the gaps turn out to be.
 ## Issue map
 
 This section is not part of the owner's document. It was added with H0, so that a package's
-issue can be found from the plan. A package's state is on its issue, not here.
+issue can be found from the plan. The issues are an archive since 2026-11-12: a package's
+state is in [`STATUS.md`](STATUS.md) and its file, and the findings are in
+[`findings.md`](findings.md).
 
 The tracker is [#2160](https://github.com/lgse/strata/issues/2160), and every package is its
 sub-issue. The first three `oracle` issues are
