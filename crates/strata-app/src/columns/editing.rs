@@ -107,50 +107,41 @@ impl Columns {
     }
 
     /// One of the browser's operations gave the entry `from` the id `to`: a rename gives an
-    /// entry another location. The listing shows it in a later event, and a selection may
-    /// only be told once its listing has changed, so the pair waits for [`Columns::arrived`].
-    /// A listing that changed first, as when the folder's monitor reported the rename before
-    /// the operation did, has let go of the old id already.
+    /// entry another location ([`Moving`](crate::handover::Moving)).
     pub(super) fn moved(&mut self, from: EntryId, to: EntryId) {
-        let lists = |id: EntryId| {
-            let mut columns = self.listings.columns.iter();
-            columns.any(|column| column.position_of(id).is_some())
-        };
-        if lists(from) && !lists(to) {
-            self.moving.push((from, to));
-        }
-    }
-
-    /// Column `depth`'s rows changed, and its selection has not been brought in step with
-    /// them yet. What it holds by the old id of an entry that now shows under its new one it
-    /// holds by the new one: a range keeps its anchor and its members through a rename.
-    pub(super) fn arrived(&mut self, depth: usize) {
-        let Some(column) = self.listings.columns.get(depth) else {
-            return;
-        };
-        let here = |(from, to): &(EntryId, EntryId)| {
-            column.position_of(*to).is_some() && column.position_of(*from).is_none()
-        };
-        let arrived: Vec<(EntryId, EntryId)> = self.moving.iter().copied().filter(here).collect();
-        for (from, to) in arrived {
-            self.rename_held(depth, from, to);
-        }
-        // A pair whose old id no column lists any more has nothing left to move.
         let columns = &self.listings.columns;
-        let listed = |id: EntryId| {
+        let lists = |id: EntryId| {
             columns
                 .iter()
                 .any(|column| column.position_of(id).is_some())
         };
-        self.moving.retain(|(from, _)| listed(*from));
+        self.moving.moved(from, to, lists);
     }
 
-    /// Column `depth`'s selection, and the cursor the child column follows, hold `to` where
-    /// they held `from`.
-    fn rename_held(&mut self, depth: usize, from: EntryId, to: EntryId) {
-        if let Some(state) = self.state.column_mut(depth) {
-            let _ = state.collection.selection.relocate(from, to);
+    /// Column `depth`'s rows changed, and its selection has not been brought in step with
+    /// them yet: what it holds by an old id it holds by the new one, and so does the cursor
+    /// the child column follows.
+    pub(super) fn arrived(&mut self, depth: usize) {
+        let (Some(column), Some(state)) = (
+            self.listings.columns.get(depth),
+            self.state.column_mut(depth),
+        ) else {
+            return;
+        };
+        for (from, to) in self.moving.arrived(column, &mut state.collection) {
+            self.follow_moved(from, to);
         }
+        // A pair whose old id no column lists any more has nothing left to move.
+        let columns = &self.listings.columns;
+        self.moving.forget(|id| {
+            columns
+                .iter()
+                .any(|column| column.position_of(id).is_some())
+        });
+    }
+
+    /// The cursor the child column follows holds `to` where it held `from`.
+    fn follow_moved(&mut self, from: EntryId, to: EntryId) {
         let followed = self.followed.as_mut().map(|(_, followed)| followed);
         if let Some(followed) = followed.filter(|followed| **followed == from) {
             *followed = to;
