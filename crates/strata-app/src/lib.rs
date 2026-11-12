@@ -36,6 +36,9 @@ mod menus;
 mod rename;
 // B3 Commands and key dispatch
 // A1 Icons view and thumbnails
+mod icons;
+// The one folder a single-pane view shows: the Icons view's, and the List view's.
+mod pane;
 // A2 List view
 // A3 Sidebar
 // A4 Tabs
@@ -66,6 +69,7 @@ slots::parts! {
     menu: menus::Menu,
     // B3 Commands and key dispatch
     // A1 Icons view and thumbnails
+    icons: icons::Icons,
     // A2 List view
     // A3 Sidebar
     // A4 Tabs
