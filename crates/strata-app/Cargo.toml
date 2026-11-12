@@ -34,6 +34,8 @@ strata-desktop.workspace = true
 strata-fs.workspace = true
 strata-kit.workspace = true
 strata-platform = { workspace = true, features = ["csd", "glib-loop"] }
+# The sandbox's thumbnail workers, by the owner's ruling of 2026-11-12 ("in strata-rune until E4").
+strata-preview.workspace = true
 gio.workspace = true
 glib.workspace = true
 rust-i18n.workspace = true
