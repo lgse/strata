@@ -145,7 +145,9 @@ impl ViewState {
                 .borrow()
                 .list_rename_view(depth)
                 .map(|view| view.upcast()),
-            BrowserMode::Icons => self.mode_views.borrow().icons_rename_view(depth),
+            BrowserMode::Icons | BrowserMode::Compact => {
+                self.mode_views.borrow().icons_rename_view(depth)
+            }
         }
     }
 
@@ -201,7 +203,9 @@ impl ViewState {
         };
         let found = match context.mode {
             BrowserMode::Columns => self.columns_reveal_row(context.depth, source_position),
-            BrowserMode::Icons => self.icons_reveal_row(context.depth, source_position),
+            BrowserMode::Icons | BrowserMode::Compact => {
+                self.icons_reveal_row(context.depth, source_position)
+            }
             BrowserMode::List => self.list_reveal_row(context, source_position),
         };
         match found {

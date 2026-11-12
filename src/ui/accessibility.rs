@@ -274,6 +274,7 @@ pub(super) fn describe_pane(pane: &impl IsA<gtk::Accessible>, directory: &str, m
                 BrowserMode::Columns => "Columns",
                 BrowserMode::Icons => "Icons",
                 BrowserMode::List => "List",
+                BrowserMode::Compact => "Compact",
             })),
             checked: naming.checked,
             pressed: naming.pressed,
@@ -376,6 +377,7 @@ pub(super) fn view_name(mode: BrowserMode) -> String {
         BrowserMode::Columns => "Columns view",
         BrowserMode::Icons => "Icons view",
         BrowserMode::List => "List view",
+        BrowserMode::Compact => "Compact view",
     })
 }
 

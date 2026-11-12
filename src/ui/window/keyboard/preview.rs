@@ -326,6 +326,7 @@ fn passes_through_preview(press: &KeyPress) -> bool {
         VIEW_COLUMNS,
         VIEW_ICONS,
         VIEW_LIST,
+        VIEW_COMPACT,
         TEXT_LARGER,
         TEXT_SMALLER,
         TEXT_RESET,

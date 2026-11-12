@@ -39,6 +39,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         frame_density: "custom".into(),
         frame_density_custom_px: 6,
         group_by_type: true,
+        compact_full_names: true,
         columns_file_clicks: 1,
         columns_folder_clicks: 2,
         icons_file_clicks: 1,

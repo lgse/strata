@@ -39,7 +39,7 @@ fn caption_editor(widget: &gtk::Widget) -> Option<gtk::Widget> {
     deprecated,
     reason = "GTK4 exposes CSS box insets only through StyleContext"
 )]
-fn label_insets(label: &gtk::Inscription) -> (i32, i32) {
+pub(super) fn label_insets(label: &gtk::Inscription) -> (i32, i32) {
     let style = label.style_context();
     let padding = style.padding();
     let border = style.border();

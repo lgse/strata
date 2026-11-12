@@ -132,6 +132,7 @@ fn assert_theme_colors_beside_user_css(themes: &ThemeManager, windows: &[gtk::Wi
 }
 
 fn assert_saved_browsing(manager: &PreferenceManager) {
+    assert!(manager.compact_full_names());
     assert!(!crate::ui::motion::animations_enabled());
     assert_eq!(
         (
@@ -148,7 +149,13 @@ fn assert_saved_browsing(manager: &PreferenceManager) {
         ),
         "(mode, density, frame density, group by type)"
     );
-    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+    // Compact reads the Icons click settings.
+    for mode in [
+        BrowserMode::Columns,
+        BrowserMode::Icons,
+        BrowserMode::List,
+        BrowserMode::Compact,
+    ] {
         let activation = manager.click_activation(mode);
         assert_eq!(activation.files, ClickCount::One);
         assert_eq!(

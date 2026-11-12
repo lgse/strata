@@ -240,7 +240,7 @@ impl PreviewState {
                 .is_some_and(|browser| {
                     matches!(
                         browser.view_mode(),
-                        BrowserMode::Columns | BrowserMode::Icons
+                        BrowserMode::Columns | BrowserMode::Icons | BrowserMode::Compact
                     )
                 })
     }

@@ -34,7 +34,7 @@ impl Dispatcher {
         browser: &Rc<Browser>,
         press: &KeyPress,
     ) -> bool {
-        if self.view.view_mode() != BrowserMode::Icons || !self.view.item_view_has_focus() {
+        if !self.view.view_mode().is_grid() || !self.view.item_view_has_focus() {
             return false;
         }
         if self.tenxer_open_focused_in_new(browser, press) {
@@ -158,7 +158,7 @@ impl Dispatcher {
         browser: &Rc<Browser>,
         press: &KeyPress,
     ) -> bool {
-        if self.view.view_mode() == BrowserMode::Icons || !self.view.item_view_has_focus() {
+        if self.view.view_mode().is_grid() || !self.view.item_view_has_focus() {
             return false;
         }
         self.tenxer_open_focused_in_new(browser, press)

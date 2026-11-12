@@ -438,6 +438,7 @@ fn navigation_title(mode: BrowserMode) -> &'static str {
         BrowserMode::Columns => "Columns navigation",
         BrowserMode::Icons => "Icons navigation",
         BrowserMode::List => "List navigation",
+        BrowserMode::Compact => "Compact navigation",
     }
 }
 
@@ -497,6 +498,23 @@ const LIST_NAVIGATION: &[Shortcut] = &[
         "Move between file rows",
     ),
     row(One(LEFT.alternate(0).shown()), "Focus the visible sidebar"),
+    row(One(BACKSPACE.shown()), "Go to the parent folder"),
+];
+
+const COMPACT_NAVIGATION: &[Shortcut] = &[
+    row(
+        Any(shown![UP.alternate(0), DOWN.alternate(0)]),
+        "Move within a column",
+    ),
+    row(
+        Any(shown![LEFT.alternate(0), RIGHT.alternate(0)]),
+        "Move to the previous / next column",
+    ),
+    within(
+        "%{keys} at left edge",
+        One(LEFT.alternate(0).shown()),
+        "Focus the visible sidebar",
+    ),
     row(One(BACKSPACE.shown()), "Go to the parent folder"),
 ];
 
@@ -586,6 +604,7 @@ fn default_navigation(mode: BrowserMode) -> Vec<Shortcut> {
         BrowserMode::Columns => (COLUMNS_NAVIGATION, &[]),
         BrowserMode::Icons => (ICONS_NAVIGATION, &[BACK_BUTTON_HISTORY]),
         BrowserMode::List => (LIST_NAVIGATION, &[BACK_BUTTON_HISTORY]),
+        BrowserMode::Compact => (COMPACT_NAVIGATION, &[BACK_BUTTON_HISTORY]),
     };
     [own, DEFAULT_NAVIGATION, back_button, DEFAULT_GO_TO].concat()
 }
@@ -649,6 +668,31 @@ const TENXER_ICONS_NAVIGATION: &[Shortcut] = &[
     row(One(THUMBNAILS_RESET.shown()), "Reset thumbnail size"),
 ];
 
+const TENXER_COMPACT_NAVIGATION: &[Shortcut] = &[
+    row(
+        Any(shown![
+            DOWN.alternate(1),
+            UP.alternate(1),
+            UP.alternate(0),
+            DOWN.alternate(0)
+        ]),
+        "Move within a column",
+    ),
+    row(
+        Any(shown![
+            LEFT.alternate(1),
+            RIGHT.alternate(1),
+            LEFT.alternate(0),
+            RIGHT.alternate(0)
+        ]),
+        "Move to the previous / next column",
+    ),
+    row(
+        Any(shown![BACKSPACE, PARENT_FOLDER]),
+        "Go to the parent folder",
+    ),
+];
+
 /// Navigation every 10xer view shares, after its own.
 const TENXER_NAVIGATION: &[Shortcut] = &[
     row(
@@ -686,6 +730,7 @@ fn tenxer_navigation(mode: BrowserMode, chooser: bool) -> Vec<Shortcut> {
     let mut shortcuts = match mode {
         BrowserMode::Columns | BrowserMode::List => TENXER_LINE_NAVIGATION,
         BrowserMode::Icons => TENXER_ICONS_NAVIGATION,
+        BrowserMode::Compact => TENXER_COMPACT_NAVIGATION,
     }
     .to_vec();
     // The chooser refuses i, and its own section describes Enter and o.
@@ -803,8 +848,8 @@ fn tenxer_preview(mode: BrowserMode, chooser: bool) -> Vec<Shortcut> {
         Any(shown![TENXER_MEDIA_PREVIOUS, TENXER_MEDIA_NEXT]),
         "Previous / next file of the same type while the preview shows audio or video",
     ));
-    // Icons have no key that moves into the preview.
-    if mode != BrowserMode::Icons {
+    // Icons and Compact have no key that moves into the preview.
+    if !mode.is_grid() {
         shortcuts.extend_from_slice(TENXER_PREVIEW_OWNED);
         if !chooser {
             shortcuts.push(within(
@@ -1260,7 +1305,7 @@ const DEFAULT_TOOLS: &[Shortcut] = &[
     row(One(TERMINAL.shown()), "Open a terminal"),
     row(One(REFRESH.shown()), "Refresh"),
     row(One(HIDDEN_FILES.shown()), "Show or hide hidden files"),
-    row(VIEW_MODES, "Switch to Columns, Icons, or List"),
+    row(VIEW_MODES, "Switch to Columns, Icons, List, or Compact"),
     row(TEXT_SIZE, "Increase / decrease / reset text size"),
     row(One(SIDEBAR.shown()), "Show or hide the sidebar"),
     row(
@@ -1286,7 +1331,7 @@ const SELECT_TAB: Shortcut = row(
 )
 .mentioning(Mention::Held(TAB_NUMBERS.modifiers()));
 
-const VIEW_MODES: Keys = Any(shown![VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST]);
+const VIEW_MODES: Keys = Any(shown![VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST, VIEW_COMPACT]);
 
 const TEXT_SIZE: Keys = Any(shown![TEXT_LARGER.alternate(0), TEXT_SMALLER, TEXT_RESET]);
 
@@ -1334,8 +1379,8 @@ const TENXER_FIND: &[Shortcut] = &[
 fn dismiss_search_hits(mode: BrowserMode) -> Shortcut {
     within(
         "%{keys} after a search",
-        // Icons h and ← move between result icons instead.
-        if mode == BrowserMode::Icons {
+        // Icons and Compact h and ← move between results instead.
+        if mode.is_grid() {
             One(ESCAPE.shown())
         } else {
             Any(shown![ESCAPE, LEFT.alternate(1), LEFT.alternate(0)])
@@ -1450,7 +1495,7 @@ const TENXER_VIEW: &[Shortcut] = &[
         Chord(shown![SORT_BY, SORT_BY_FOLDERS_FIRST]),
         "Folders first",
     ),
-    row(VIEW_MODES, "Switch to Columns, Icons, or List"),
+    row(VIEW_MODES, "Switch to Columns, Icons, List, or Compact"),
     row(TEXT_SIZE, "Increase / decrease / reset text size"),
 ];
 
@@ -1624,12 +1669,22 @@ fn shortcut_commands(shortcut: &Shortcut) -> Vec<keys::Command> {
 /// The one title [`command_sections`] gives the navigation sections.
 const NAVIGATION: &str = "Navigation";
 
-const NAVIGATION_TITLES: [&str; 3] = ["Columns navigation", "Icons navigation", "List navigation"];
+const NAVIGATION_TITLES: [&str; 4] = [
+    "Columns navigation",
+    "Icons navigation",
+    "List navigation",
+    "Compact navigation",
+];
 
 /// One map's sections in every scope it has.
 fn scoped_sections(tenxer: bool) -> Vec<Vec<ReferenceSection>> {
     let mut scopes = Vec::new();
-    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+    for mode in [
+        BrowserMode::Columns,
+        BrowserMode::Icons,
+        BrowserMode::List,
+        BrowserMode::Compact,
+    ] {
         if tenxer {
             scopes.extend(tenxer_scopes(mode));
         } else {

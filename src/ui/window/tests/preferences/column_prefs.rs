@@ -56,6 +56,7 @@ fn columns_size_visibility_loads_and_updates_across_windows_and_rebuilds() {
                         BrowserMode::List => "list-row",
                         BrowserMode::Icons => "icons-card",
                         BrowserMode::Columns => "file-row",
+                        BrowserMode::Compact => "compact-card",
                     };
                     wait_until(|| !column_loading(open, 0));
                     wait_until(|| metadata_visible(open, row_class, mode != BrowserMode::Columns));
@@ -197,6 +198,7 @@ fn folder_item_counts_fill_visible_rows_in_each_view() {
                     BrowserMode::Columns => "file-row",
                     BrowserMode::List => "list-row",
                     BrowserMode::Icons => "icons-card",
+                    BrowserMode::Compact => "compact-card",
                 };
                 for (name, count) in [("empty", 0), ("one", 1), ("several", 4)] {
                     let expected = if count == 0 {

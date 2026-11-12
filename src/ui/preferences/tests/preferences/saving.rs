@@ -414,3 +414,23 @@ fn assert_notice(notice: &SaveNoticeText, title: &str, detail_start: &str) {
         "{notice:?}"
     );
 }
+
+#[test]
+fn each_view_mode_is_saved_and_restored_at_startup() {
+    gtk_test(
+        "ui::preferences::tests::preferences::saving::each_view_mode_is_saved_and_restored_at_startup",
+        || {
+            seed_saved_preferences_for_test();
+            for mode in [
+                BrowserMode::Compact,
+                BrowserMode::Icons,
+                BrowserMode::Columns,
+                BrowserMode::List,
+            ] {
+                PreferenceManager::load().set_browser_mode(mode);
+                crate::storage::writer::settle();
+                assert_eq!(PreferenceManager::load().browser_mode(), mode);
+            }
+        },
+    );
+}

@@ -67,6 +67,10 @@ pub(super) struct ThumbnailSizeMenu {
 }
 
 impl ThumbnailSizeMenu {
+    pub(super) fn set_visible(&self, visible: bool) {
+        self.menu.set_visible(visible);
+    }
+
     fn new(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Self {
         let popover = gtk::Popover::new();
         popover.set_has_arrow(false);

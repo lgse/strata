@@ -26,6 +26,7 @@ use crate::{
 };
 
 mod collection;
+mod compact;
 mod presentation;
 mod renamed;
 use collection::{
@@ -40,6 +41,9 @@ pub(super) type SearchSelectionHandlers = Rc<RefCell<Vec<SearchSelectionChanged>
 #[derive(Clone)]
 pub(super) enum SearchPresentation {
     Rows,
+    Compact {
+        thumbnail_size: Rc<Cell<i32>>,
+    },
     Icons {
         thumbnail_size: Rc<Cell<i32>>,
         max_columns: u32,
@@ -228,7 +232,7 @@ impl InlineSearch {
         let bounds = widget.compute_bounds(&state.collection.view)?;
         let x = match &state.collection.kind {
             ResultKind::Rows => bounds.center().x(),
-            ResultKind::Icons { .. } => bounds.x() + bounds.width(),
+            ResultKind::Icons { .. } | ResultKind::Compact { .. } => bounds.x() + bounds.width(),
         };
         Some((
             state.context_menu_trigger.borrow().as_ref()?.clone(),

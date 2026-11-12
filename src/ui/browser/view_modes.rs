@@ -16,11 +16,9 @@ impl BrowserView {
             .borrow()
             .widget()
             .connect_visible_child_name_notify(move |stack| {
-                let mode = match stack.visible_child_name().as_deref() {
-                    Some("icons") => BrowserMode::Icons,
-                    Some("list") => BrowserMode::List,
-                    _ => BrowserMode::Columns,
-                };
+                let mode = BrowserMode::from_page_name(
+                    stack.visible_child_name().as_deref().unwrap_or_default(),
+                );
                 if let Some(state) = state.upgrade() {
                     state.enter_mode(mode);
                 }
@@ -45,7 +43,7 @@ impl BrowserView {
         self.state.enter_mode(mode);
         let filter = match previous {
             BrowserMode::Columns => self.state.capture_active_column_filter(),
-            BrowserMode::Icons | BrowserMode::List => {
+            BrowserMode::Icons | BrowserMode::List | BrowserMode::Compact => {
                 self.state.mode_views.borrow().capture_active_filter()
             }
         };
@@ -63,7 +61,7 @@ impl BrowserView {
             // The columns view is already hidden, so an exit animation here
             // would never be seen.
             BrowserMode::Columns => self.state.truncate_for_replacement(0),
-            BrowserMode::Icons | BrowserMode::List => self
+            BrowserMode::Icons | BrowserMode::List | BrowserMode::Compact => self
                 .state
                 .mode_views
                 .borrow_mut()

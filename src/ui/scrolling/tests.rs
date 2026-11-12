@@ -79,3 +79,53 @@ fn middle_click_autoscroll_skips_rows_and_anchors_on_background() {
         },
     );
 }
+
+#[test]
+fn a_sideways_grid_pages_by_whole_columns_and_scrolls_sideways() {
+    crate::test_support::gtk_test(
+        "ui::scrolling::tests::a_sideways_grid_pages_by_whole_columns_and_scrolls_sideways",
+        || {
+            let names: Vec<String> = (0..200).map(|index| format!("{index}")).collect();
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+            let model = gtk::StringList::new(&names);
+            let factory = gtk::SignalListItemFactory::new();
+            factory.connect_setup(|_, object| {
+                let item = object.downcast_ref::<gtk::ListItem>().expect("list item");
+                let label = gtk::Label::new(Some("Item"));
+                label.set_size_request(80, 40);
+                item.set_child(Some(&label));
+            });
+            let grid = gtk::GridView::new(Some(gtk::NoSelection::new(Some(model))), Some(factory));
+            grid.set_orientation(gtk::Orientation::Horizontal);
+            grid.set_max_columns(4);
+            let scroll = gtk::ScrolledWindow::builder()
+                .child(&grid)
+                .vscrollbar_policy(gtk::PolicyType::Never)
+                .build();
+            let window = gtk::Window::new();
+            window.set_child(Some(&scroll));
+            window.set_default_size(400, 200);
+            window.present();
+            wait_for_allocation(grid.upcast_ref());
+            let view = grid.upcast_ref::<gtk::Widget>();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while grid_cell_pitch(view).is_none() || scroll.hadjustment().upper() <= 400.0 {
+                assert!(std::time::Instant::now() < deadline, "grid never filled");
+                glib::MainContext::default().iteration(false);
+            }
+
+            let page = page(view, &scroll);
+            let (column_width, _) = grid_cell_pitch(view).expect("cell size");
+            let columns = rows_per_page(scroll.hadjustment().page_size(), column_width);
+            assert_eq!(
+                page.items,
+                columns * 4,
+                "a page is whole columns of four rows"
+            );
+            reveal_selection(view, &scroll, 1, &page);
+            assert_eq!(scroll.hadjustment().value(), page.distance);
+            assert_eq!(scroll.vadjustment().value(), 0.0);
+            window.close();
+        },
+    );
+}

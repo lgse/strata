@@ -2,7 +2,12 @@
 
 use super::*;
 
-const ALL_MODES: [BrowserMode; 3] = [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons];
+const ALL_MODES: [BrowserMode; 4] = [
+    BrowserMode::Columns,
+    BrowserMode::List,
+    BrowserMode::Icons,
+    BrowserMode::Compact,
+];
 
 /// The hit the selection holds, the cursor while focus is outside the results.
 fn selected_hit(fixture: &KeyboardFixture) -> Option<String> {

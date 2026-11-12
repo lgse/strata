@@ -8,6 +8,7 @@ pub(super) fn browser_mode_from_stored(value: &str) -> super::super::browser_mod
     match value {
         "icons" | "grid" => super::super::browser_modes::BrowserMode::Icons,
         "list" | "explorer" => super::super::browser_modes::BrowserMode::List,
+        "compact" => super::super::browser_modes::BrowserMode::Compact,
         _ => super::super::browser_modes::BrowserMode::Columns,
     }
 }
@@ -17,6 +18,7 @@ pub(super) fn stored_browser_mode(mode: super::super::browser_modes::BrowserMode
         super::super::browser_modes::BrowserMode::Columns => "columns",
         super::super::browser_modes::BrowserMode::Icons => "icons",
         super::super::browser_modes::BrowserMode::List => "list",
+        super::super::browser_modes::BrowserMode::Compact => "compact",
     }
 }
 

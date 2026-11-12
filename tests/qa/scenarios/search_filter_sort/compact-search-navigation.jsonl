@@ -1,0 +1,15 @@
+{"scenario":"compact-search-navigation","modes":["list"],"layout":"us","tree":{"reports":{"report-a.txt":"a","report-b.txt":"b","report-c.txt":"c"},"readme.md":"root"},"quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Compact recursive search routes arrow focus and returns to its query; type-to-search-finds-nested covers the other views"},"cost":{"list":0.7}}
+{"key":"ctrl+4"}
+{"wait":{"view_mode":"Compact"},"message":"Ctrl+4 to switch to Compact view"}
+{"wait":{"entries":{"contains":["reports","readme.md"]}},"message":"Compact view to list the initial folder"}
+{"type":"report-"}
+{"wait":{"matches":["report-a.txt","report-b.txt","report-c.txt"]},"message":"Compact search to find the three nested reports"}
+{"key":"Down"}
+{"wait":{"focused":"report-a.txt"},"message":"Down to focus the first Compact search result"}
+{"key":"Down"}
+{"wait":{"focused":"report-b.txt"},"message":"Down to move to the next Compact search result"}
+{"key":"ctrl+f"}
+{"wait":{"field":{"text":"report-"}},"message":"returning to the filter to preserve its query"}
+{"key":"Escape"}
+{"wait":{"entries":["reports","readme.md"]},"message":"Escape to restore the Compact directory listing"}
+{"wait":{"view_mode":"Compact"},"message":"clearing search to retain Compact view"}

@@ -274,7 +274,9 @@ impl ViewState {
             BrowserMode::Columns => (0..)
                 .map_while(|depth| self.browser.location_at(depth))
                 .last(),
-            BrowserMode::Icons | BrowserMode::List => self.browser.active_location(),
+            BrowserMode::Icons | BrowserMode::List | BrowserMode::Compact => {
+                self.browser.active_location()
+            }
         }
     }
 

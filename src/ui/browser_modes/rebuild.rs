@@ -8,7 +8,9 @@ use gtk::prelude::*;
 
 use super::{
     BrowserMode, ClickActivation, ModeViews,
-    icons_pane::{IconsOptions, build_icons_pane, configure_icons_density},
+    icons_pane::{
+        IconsLayout, IconsOptions, build_icons_pane, compact_icon_size, configure_icons_density,
+    },
     list_pane::build_list_pane,
     pane::{
         ModeClickOptions, Pane, PaneBuild, apply_snapshot, clear_box, deactivate_pane_models,
@@ -34,7 +36,9 @@ impl ModeViews {
         self.sync_type_grouping();
         match mode {
             BrowserMode::Columns => {}
-            BrowserMode::Icons | BrowserMode::List => self.prepare_pane(mode),
+            BrowserMode::Icons | BrowserMode::List | BrowserMode::Compact => {
+                self.prepare_pane(mode)
+            }
         }
     }
 
@@ -56,6 +60,7 @@ impl ModeViews {
             BrowserMode::Columns => {}
             BrowserMode::Icons => self.rebuild_icons(),
             BrowserMode::List => self.rebuild_list(),
+            BrowserMode::Compact => self.rebuild_compact(),
         }
     }
 
@@ -64,6 +69,7 @@ impl ModeViews {
             BrowserMode::Columns => {}
             BrowserMode::Icons => self.clear_icons(),
             BrowserMode::List => self.clear_list(),
+            BrowserMode::Compact => self.clear_compact(),
         }
     }
 
@@ -83,6 +89,10 @@ impl ModeViews {
                 .list_pane
                 .as_ref()
                 .filter(|pane| self.list_pane_is_current(pane, depth, snapshot)),
+            BrowserMode::Compact => self
+                .compact_pane
+                .as_ref()
+                .filter(|pane| pane.shows(depth, &snapshot.location)),
         }
     }
 
@@ -114,22 +124,16 @@ impl ModeViews {
     }
 
     pub fn show_mode(&self, mode: BrowserMode) {
-        self.stack.set_visible_child_name(match mode {
-            BrowserMode::Columns => "columns",
-            BrowserMode::Icons => "icons",
-            BrowserMode::List => "list",
-        });
+        self.stack.set_visible_child_name(mode.page_name());
     }
 
     pub fn clear_inactive_mode(&mut self, mode: BrowserMode) {
         if self.mode == mode {
             return;
         }
-        match mode {
-            BrowserMode::Columns => {}
-            BrowserMode::Icons => self.icons_panes.iter().for_each(deactivate_pane_models),
-            BrowserMode::List => self.list_pane.iter().for_each(deactivate_pane_models),
-        }
+        self.mode_panes(mode)
+            .into_iter()
+            .for_each(deactivate_pane_models);
     }
 
     pub(super) fn clear_icons(&mut self) {
@@ -148,6 +152,15 @@ impl ModeViews {
         }
         clear_box(&self.list_root);
         self.list_pane = None;
+    }
+
+    pub(super) fn clear_compact(&mut self) {
+        self.pane_navigation.borrow_mut().cancel();
+        if let Some(pane) = self.compact_pane.as_ref() {
+            detach_pane_models(pane);
+        }
+        clear_box(&self.compact_root);
+        self.compact_pane = None;
     }
 
     fn pane_build(
@@ -197,6 +210,7 @@ impl ModeViews {
                 thumbnail_size: self.icons_thumbnail_size.clone(),
                 group_by_type: false,
                 density: self.density,
+                layout: IconsLayout::Grid,
             },
         );
         install_pane_surface(&pane, &self.browser, &snapshot.location.display_name());
@@ -206,6 +220,37 @@ impl ModeViews {
         apply_snapshot(&pane, &snapshot, &self.browser);
         self.pane_navigation.borrow_mut().prepare(&pane, &snapshot);
         self.icons_panes.push(pane);
+    }
+
+    pub(super) fn rebuild_compact(&mut self) {
+        let Some(depth) = self.browser.active_depth() else {
+            self.clear_compact();
+            return;
+        };
+        let Some(snapshot) = self.browser.column_snapshot(depth) else {
+            return;
+        };
+        self.clear_compact();
+        let inputs = self.pane_build(
+            depth,
+            snapshot.location.display_name(),
+            &self.icons_click_activation,
+        );
+        let mut pane = build_icons_pane(
+            &inputs,
+            IconsOptions {
+                thumbnail_size: Rc::new(Cell::new(compact_icon_size(self.density))),
+                group_by_type: false,
+                density: self.density,
+                layout: IconsLayout::Compact,
+            },
+        );
+        install_pane_surface(&pane, &self.browser, &snapshot.location.display_name());
+        pane.folder_context_trigger = self.install_context_menu(&pane);
+        self.compact_root.append(&pane.shell);
+        apply_snapshot(&pane, &snapshot, &self.browser);
+        self.pane_navigation.borrow_mut().prepare(&pane, &snapshot);
+        self.compact_pane = Some(pane);
     }
 
     pub(super) fn rebuild_list(&mut self) {

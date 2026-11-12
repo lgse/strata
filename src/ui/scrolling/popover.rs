@@ -113,7 +113,11 @@ fn apply_adjustment_scroll(adjustment: &gtk::Adjustment, delta: f64, unit: gtk::
     );
 }
 
-fn scroll_delta_for_unit(delta: f64, page_size: f64, unit: gtk::gdk::ScrollUnit) -> f64 {
+pub(in crate::ui) fn scroll_delta_for_unit(
+    delta: f64,
+    page_size: f64,
+    unit: gtk::gdk::ScrollUnit,
+) -> f64 {
     delta
         * match unit {
             gtk::gdk::ScrollUnit::Wheel => page_size.powf(2.0 / 3.0),

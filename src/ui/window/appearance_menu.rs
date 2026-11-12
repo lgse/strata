@@ -113,6 +113,7 @@ struct ModeOption {
 /// Rows that only apply to some view modes, shown or enabled as the mode changes.
 struct ListingOptions {
     group_by_type: gtk::Button,
+    compact_full_names: gtk::Button,
     column_sizes: gtk::Button,
     customize_columns: gtk::Button,
 }
@@ -146,6 +147,7 @@ pub(in crate::ui) fn build_appearance_menu(
 
     shell.append_separator();
     shell.content.append(&listing.group_by_type);
+    shell.content.append(&listing.compact_full_names);
     shell.content.append(&listing.customize_columns);
     shell.content.append(&listing.column_sizes);
     shell
@@ -154,7 +156,7 @@ pub(in crate::ui) fn build_appearance_menu(
     shell.finish(&button_icon)
 }
 
-fn mode_options(current_mode: BrowserMode) -> [ModeOption; 3] {
+fn mode_options(current_mode: BrowserMode) -> [ModeOption; 4] {
     [
         (
             crate::assets::icons::COLUMNS,
@@ -163,6 +165,11 @@ fn mode_options(current_mode: BrowserMode) -> [ModeOption; 3] {
         ),
         (crate::assets::icons::ICONS, "Icons", BrowserMode::Icons),
         (crate::assets::icons::LIST, "List", BrowserMode::List),
+        (
+            crate::assets::icons::COMPACT,
+            "view_mode.compact",
+            BrowserMode::Compact,
+        ),
     ]
     .map(|(icon, label, mode)| {
         let option = appearance_option(OptionSpec {
@@ -188,9 +195,39 @@ fn listing_options(
 ) -> ListingOptions {
     ListingOptions {
         group_by_type: group_by_type_option(preferences, popover, current_mode),
+        compact_full_names: compact_full_names_option(preferences, popover, current_mode),
         column_sizes: column_sizes_option(preferences, popover, current_mode),
         customize_columns: customize_columns_option(view, popover, current_mode),
     }
+}
+
+fn compact_full_names_option(
+    preferences: &Rc<PreferenceManager>,
+    popover: &glib::WeakRef<gtk::Popover>,
+    current_mode: BrowserMode,
+) -> gtk::Button {
+    let option = appearance_option(OptionSpec {
+        icon: crate::assets::icons::COMPACT,
+        label: "Show full names in Compact view",
+        checked: preferences.compact_full_names(),
+        sensitive: true,
+        role: gtk::AccessibleRole::MenuItemCheckbox,
+    });
+    option
+        .button
+        .set_visible(current_mode == BrowserMode::Compact);
+    preferences.bind_preference(
+        &option.check,
+        PreferenceManager::compact_full_names,
+        |widget, enabled| widget.set_visible(enabled),
+    );
+    let preferences = preferences.clone();
+    let popover = popover.clone();
+    option.button.connect_clicked(move |_| {
+        preferences.set_compact_full_names(!preferences.compact_full_names());
+        popdown(&popover);
+    });
+    option.button
 }
 
 fn group_by_type_option(
@@ -318,6 +355,7 @@ fn follow_view_mode(
         .map(|option| (option.mode, option.check.clone()))
         .collect();
     let group_by_type = listing.group_by_type.clone();
+    let compact_full_names = listing.compact_full_names.clone();
     let column_sizes = listing.column_sizes.clone();
     let customize_columns = listing.customize_columns.clone();
     let button_icon = button_icon.clone();
@@ -326,6 +364,7 @@ fn follow_view_mode(
             check.set_visible(mode == *checked_mode);
         }
         group_by_type.set_sensitive(mode.supports_type_grouping());
+        compact_full_names.set_visible(mode == BrowserMode::Compact);
         column_sizes.set_visible(mode == BrowserMode::Columns);
         customize_columns.set_visible(mode == BrowserMode::List);
         crate::assets::set_primary_icon(&button_icon, browser_mode_icon(mode));
@@ -528,6 +567,7 @@ fn browser_mode_icon(mode: BrowserMode) -> &'static str {
         BrowserMode::Columns => crate::assets::icons::COLUMNS,
         BrowserMode::Icons => crate::assets::icons::ICONS,
         BrowserMode::List => crate::assets::icons::LIST,
+        BrowserMode::Compact => crate::assets::icons::COMPACT,
     }
 }
 

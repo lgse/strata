@@ -39,6 +39,7 @@ impl Default for Preferences {
             frame_density: default_frame_density(),
             frame_density_custom_px: default_density_custom_px(),
             group_by_type: false,
+            compact_full_names: false,
             columns_file_clicks: default_file_clicks(),
             columns_folder_clicks: default_folder_clicks(),
             icons_file_clicks: default_file_clicks(),

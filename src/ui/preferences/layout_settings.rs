@@ -5,6 +5,15 @@
 use super::*;
 
 impl PreferenceManager {
+    pub fn compact_full_names(&self) -> bool {
+        self.preferences.borrow().compact_full_names
+    }
+
+    pub fn set_compact_full_names(&self, enabled: bool) {
+        self.preferences.borrow_mut().compact_full_names = enabled;
+        self.save_preferences();
+    }
+
     pub fn columns_show_sizes(&self) -> bool {
         self.preferences.borrow().columns_show_sizes
     }

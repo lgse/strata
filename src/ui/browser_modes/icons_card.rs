@@ -75,6 +75,13 @@ impl IconsCard {
         }
     }
 
+    pub(super) fn fit_name(&self) {
+        icons_cell::fit_compact_name(
+            &self.label,
+            self.label.text().as_deref().unwrap_or_default(),
+        );
+    }
+
     pub(super) fn highlight(&self, state: Option<&ViewState>, filter_query: &str) {
         browser::find::highlight_listing_name(
             self.label.upcast_ref(),

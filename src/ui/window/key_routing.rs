@@ -13,7 +13,8 @@ use crate::ui::{
         KeyPress,
         bindings::{
             BACKSPACE, DOWN, END_KEY, ENTER, FILTER_SLASH, FOCUS_NEXT, HOME_KEY, LEFT,
-            PAGE_DOWN_KEY, PAGE_UP_KEY, RIGHT, SPACE, UP, VIEW_COLUMNS, VIEW_ICONS, VIEW_LIST,
+            PAGE_DOWN_KEY, PAGE_UP_KEY, RIGHT, SPACE, UP, VIEW_COLUMNS, VIEW_COMPACT, VIEW_ICONS,
+            VIEW_LIST,
         },
     },
     preferences::PreferenceManager,
@@ -169,6 +170,7 @@ pub(in crate::ui) fn browser_mode_for_digit(press: &KeyPress) -> Option<BrowserM
         (VIEW_COLUMNS, BrowserMode::Columns),
         (VIEW_ICONS, BrowserMode::Icons),
         (VIEW_LIST, BrowserMode::List),
+        (VIEW_COMPACT, BrowserMode::Compact),
     ]
     .into_iter()
     .find(|(view, _)| press.is(*view))

@@ -318,7 +318,10 @@ pub(super) fn reveal_selection(
     page: &Page,
 ) {
     if view.is::<gtk::GridView>() {
-        advance(&scroll.vadjustment(), f64::from(direction) * page.distance);
+        advance(
+            &scroll_axis(view, scroll),
+            f64::from(direction) * page.distance,
+        );
         return;
     }
     if scroll.child().is_some_and(|child| &child == view)
@@ -328,6 +331,21 @@ pub(super) fn reveal_selection(
         return;
     }
     advance(&scroll.vadjustment(), f64::from(direction) * page.distance);
+}
+
+/// The adjustment `view` scrolls along; a horizontal grid, like Compact's, scrolls
+/// sideways.
+fn scroll_axis(view: &gtk::Widget, scroll: &gtk::ScrolledWindow) -> gtk::Adjustment {
+    if scrolls_sideways(view) {
+        scroll.hadjustment()
+    } else {
+        scroll.vadjustment()
+    }
+}
+
+fn scrolls_sideways(view: &gtk::Widget) -> bool {
+    view.downcast_ref::<gtk::GridView>()
+        .is_some_and(|grid| grid.orientation() == gtk::Orientation::Horizontal)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -349,7 +367,7 @@ pub(super) fn reveal_cursor(
     let grid = view.is::<gtk::GridView>();
     if motion == CursorMotion::Page && grid {
         advance(
-            &scroll.vadjustment(),
+            &scroll_axis(view, scroll),
             f64::from(direction) * page(view, scroll).distance,
         );
         return;
@@ -382,7 +400,7 @@ pub(super) fn reveal_jump(view: &gtk::Widget, scroll: &gtk::ScrolledWindow, dire
         scroll_to_item(view, position);
         return;
     }
-    advance(&scroll.vadjustment(), f64::from(direction) * f64::MAX);
+    advance(&scroll_axis(view, scroll), f64::from(direction) * f64::MAX);
 }
 
 fn selected_position(view: &gtk::Widget) -> Option<u32> {
@@ -409,17 +427,17 @@ fn scroll_to_item(view: &gtk::Widget, position: u32) {
 /// How far one `Page Up` or `Page Down` should move `view`, derived from the items
 /// it currently shows.
 pub(super) fn page(view: &gtk::Widget, scroll: &gtk::ScrolledWindow) -> Page {
-    let page_size = scroll.vadjustment().page_size();
-    let Some((item_height, columns)) = item_geometry(view) else {
+    let page_size = scroll_axis(view, scroll).page_size();
+    let Some((item_extent, per_line)) = item_geometry(view) else {
         return Page {
             items: 1,
             distance: page_size,
         };
     };
-    let rows = rows_per_page(page_size, item_height);
+    let lines = rows_per_page(page_size, item_extent);
     Page {
-        items: rows * columns,
-        distance: rows as f64 * item_height,
+        items: lines * per_line,
+        distance: lines as f64 * item_extent,
     }
 }
 
@@ -432,14 +450,20 @@ fn item_geometry(view: &gtk::Widget) -> Option<(f64, usize)> {
 
 /// Grid columns follow the live allocation, so opening the preview pane or
 /// dragging the thumbnail slider changes the page immediately. Cell size comes
-/// from the card's size request / measure, not recycled allocated bounds.
+/// from the card's size request / measure, not recycled allocated bounds. A
+/// sideways grid lines its cells up in columns, so the axes swap.
 fn grid_geometry(view: &gtk::Widget) -> Option<(f64, usize)> {
     let (col_pitch, row_pitch) = grid_cell_pitch(view)?;
-    let width = f64::from(view.width().max(0));
     let (min_columns, max_columns) = view
         .downcast_ref::<gtk::GridView>()
         .map(|grid| (grid.min_columns(), grid.max_columns()))
         .unwrap_or((1, 20));
+    if scrolls_sideways(view) {
+        let height = f64::from(view.height().max(0));
+        let rows = grid_page_columns(height, row_pitch, min_columns, max_columns);
+        return Some((col_pitch, rows));
+    }
+    let width = f64::from(view.width().max(0));
     let columns = grid_page_columns(width, col_pitch, min_columns, max_columns);
     Some((row_pitch, columns))
 }

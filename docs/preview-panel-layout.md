@@ -18,7 +18,7 @@ preview split (gtk::Paned)
 └─ end:   preview slot (gtk::Box) › revealer › preview pane
 ```
 
-The browser views are a stack of Columns, Icons, and List. Only the start child
+The browser views are a stack of Columns, Icons, List, and Compact. Only the start child
 resizes when the window changes size, so the preview keeps its width and the
 file views absorb the difference. The file chooser builds the same split and
 shares the drawer code in `src/ui/preview.rs` and `src/ui/preview/layout.rs`.

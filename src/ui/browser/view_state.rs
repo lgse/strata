@@ -96,7 +96,7 @@ impl ViewState {
         self.mode.set(mode);
         let scope = match mode {
             BrowserMode::Columns => VisibleDepths::All,
-            BrowserMode::Icons | BrowserMode::List => VisibleDepths::Active,
+            BrowserMode::Icons | BrowserMode::List | BrowserMode::Compact => VisibleDepths::Active,
         };
         self.browser.set_freshness(FreshnessInput {
             scope,

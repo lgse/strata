@@ -26,7 +26,7 @@ a different translation in one context. Those context keys are prefixed with the
 use and their English value is the plain word: `completion.complete`,
 `chooser.filter`, `permissions.group`, `archive.format`, `properties.pinned`,
 `release_channel.preview`, `build_kind.nightly`, `pasted_image.name`,
-`dropped_text.name`, and `action_icon.*`.
+`dropped_text.name`, `view_mode.compact`, and `action_icon.*`.
 `settings_keywords.<target id>` keys hold space-separated search synonyms for a
 Settings search target; their English value is the English alias list. All catalogs
 are build inputs: `build.rs` embeds them as static tables served by the

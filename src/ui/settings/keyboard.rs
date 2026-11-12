@@ -1234,6 +1234,7 @@ const NAMES: &[(Command, &str)] = &[
     (VIEW_COLUMNS, "Switch to Columns"),
     (VIEW_ICONS, "Switch to Icons"),
     (VIEW_LIST, "Switch to List"),
+    (VIEW_COMPACT, "Switch to Compact"),
     (TEXT_LARGER, "Increase text size"),
     (TEXT_SMALLER, "Decrease text size"),
     (TEXT_RESET, "Reset text size"),

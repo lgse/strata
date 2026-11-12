@@ -50,6 +50,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_frame_density(FrameDensity::Airy),
                 |m| m.set_frame_density(FrameDensity::Compact),
                 |m| m.set_group_by_type(false),
+                |m| m.set_compact_full_names(false),
                 |m| {
                     m.set_click_activation(
                         BrowserMode::Columns,

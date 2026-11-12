@@ -24,6 +24,7 @@ fn digit(mode: BrowserMode) -> Key {
         BrowserMode::Columns => Key::_1,
         BrowserMode::Icons => Key::_2,
         BrowserMode::List => Key::_3,
+        BrowserMode::Compact => Key::_4,
     }
 }
 
@@ -32,6 +33,7 @@ fn mode_label(mode: BrowserMode) -> &'static str {
         BrowserMode::Columns => "Columns",
         BrowserMode::Icons => "Icons",
         BrowserMode::List => "List",
+        BrowserMode::Compact => "Compact",
     }
 }
 
@@ -185,20 +187,27 @@ fn switching_view_mode_keeps_focus_on_the_filter() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::filter_focus::view_switch::switching_view_mode_keeps_focus_on_the_filter",
         || {
-            use BrowserMode::{Columns, Icons, List};
+            use BrowserMode::{Columns, Compact, Icons, List};
             let mut cases = Vec::new();
             for (from, to) in [
                 (Columns, List),
                 (List, Icons),
                 (Icons, Columns),
                 (Columns, Icons),
+                (Icons, Compact),
+                (Compact, List),
             ] {
                 for start in [Start::Entry, Start::Result] {
                     cases.push((from, to, start, Route::Keys));
                 }
             }
             // The menu takes focus from the field, so only results can keep it.
-            for (from, to) in [(List, Icons), (Icons, List), (Columns, List)] {
+            for (from, to) in [
+                (List, Icons),
+                (Icons, List),
+                (Columns, List),
+                (List, Compact),
+            ] {
                 cases.push((from, to, Start::Result, Route::Menu));
             }
             cases.push((List, Icons, Start::Listing, Route::Keys));

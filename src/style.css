@@ -6083,6 +6083,35 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   padding: 5px 7px;
 }
 
+.compact-pane {
+  background: @strata_bg;
+}
+
+.mode-compact .file-icons > child {
+  margin: 0 2px;
+  padding: 0;
+}
+
+/* GTK's base theme spaces `gridview > child box` for its own icon grid. */
+.mode-compact .compact-card {
+  border-spacing: 6px;
+  margin: 0;
+  padding: 1px 2px;
+}
+
+.mode-compact .compact-card .icons-card-icon-frame {
+  border-radius: 4px;
+  padding: 2px;
+}
+
+.mode-compact .compact-card .icons-card-label {
+  padding: 1px 6px;
+}
+
+.mode-compact.density-airy .compact-card {
+  padding: 3px 4px;
+}
+
 .type-group-heading {
   border-bottom: 1px solid alpha(@strata_border, 0.45);
   color: @strata_dim_text;

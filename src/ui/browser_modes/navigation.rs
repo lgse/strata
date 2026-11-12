@@ -11,9 +11,11 @@ const HISTORY_LIMIT: usize = 128;
 #[derive(Clone, Copy)]
 struct Viewport {
     mode: BrowserMode,
+    /// The axis the view scrolls along, and the one across it; Compact scrolls sideways.
     vertical: f64,
     horizontal: f64,
-    /// A grid of another width wraps into other rows, so its offsets do not carry over.
+    /// A grid of another extent across its scrolling wraps into other lines, so its
+    /// offsets do not carry over.
     page_width: f64,
 }
 
@@ -29,8 +31,7 @@ impl Viewport {
     }
 
     fn same_view(&self, mode: BrowserMode, page_width: f64) -> bool {
-        self.mode == mode
-            && (mode != BrowserMode::Icons || (page_width - self.page_width).abs() < 1.0)
+        self.mode == mode && (!mode.is_grid() || (page_width - self.page_width).abs() < 1.0)
     }
 }
 
@@ -514,8 +515,9 @@ fn restore_reloaded_selection(pane: &Pane, browser: &Browser) -> Option<usize> {
     focused
 }
 
-/// Icons scroll the grid's own window both ways; List scrolls rows vertically inside
-/// a window that scrolls its columns horizontally.
+/// The scrolling axis first. Icons scroll the grid's own window both ways, and Compact
+/// the same window sideways; List scrolls rows vertically inside a window that scrolls
+/// its columns horizontally.
 fn adjustments(pane: &Pane, mode: BrowserMode) -> Option<(gtk::Adjustment, gtk::Adjustment)> {
     let vertical = pane
         .section
@@ -526,6 +528,7 @@ fn adjustments(pane: &Pane, mode: BrowserMode) -> Option<(gtk::Adjustment, gtk::
     match mode {
         BrowserMode::Columns => None,
         BrowserMode::Icons => Some((vertical.vadjustment(), vertical.hadjustment())),
+        BrowserMode::Compact => Some((vertical.hadjustment(), vertical.vadjustment())),
         BrowserMode::List => {
             let horizontal = vertical
                 .parent()?

@@ -89,7 +89,12 @@ fn each_mode_names_its_reference_and_counts_the_selection(
     view: &BrowserView,
     footer: &ShortcutFooter,
 ) {
-    for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns] {
+    for mode in [
+        BrowserMode::Icons,
+        BrowserMode::List,
+        BrowserMode::Compact,
+        BrowserMode::Columns,
+    ] {
         view.set_view_mode(mode);
         assert_eq!(
             navigation_heading(footer).text(),
@@ -97,6 +102,7 @@ fn each_mode_names_its_reference_and_counts_the_selection(
                 BrowserMode::Columns => "COLUMNS NAVIGATION",
                 BrowserMode::Icons => "ICONS NAVIGATION",
                 BrowserMode::List => "LIST NAVIGATION",
+                BrowserMode::Compact => "COMPACT NAVIGATION",
             }
         );
         assert!(footer.widget().is_visible());

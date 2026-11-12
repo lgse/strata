@@ -29,9 +29,8 @@ impl ModeViews {
 
     pub(in crate::ui) fn clear_filter(&self, depth: usize) {
         for pane in self
-            .icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
+            .all_panes()
+            .into_iter()
             .filter(|pane| pane.depth == depth)
         {
             if let Some(field) = pane.filter_entry.as_ref() {
@@ -128,17 +127,15 @@ impl ModeViews {
     }
 
     pub(in crate::ui) fn pane_searches(&self) -> Vec<InlineSearch> {
-        self.icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
+        self.all_panes()
+            .into_iter()
             .map(|pane| pane.search.clone())
             .collect()
     }
 
     pub(in crate::ui) fn hidden_filter_entries(&self) -> Vec<gtk::Entry> {
-        self.icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
+        self.all_panes()
+            .into_iter()
             .filter(|pane| {
                 pane.filter_button
                     .as_ref()

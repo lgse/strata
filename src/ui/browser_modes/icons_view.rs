@@ -15,8 +15,7 @@ use super::{
     context_menu::install_section_context_menu,
     drag_drop::{DragStart, FolderPeek, ItemDragDrop},
     icons_card::{CardLook, IconsCard},
-    icons_card_icon_slot,
-    icons_pane::{IconsContext, configure_icons_view_density},
+    icons_pane::{IconsContext, IconsLayout, configure_compact_view, configure_icons_view_density},
     metadata::metadata_fill_position,
     pane::{
         BoundItems, CollectionActivation, PaneSection, bound_edit, bound_item_visitor,
@@ -65,6 +64,7 @@ pub(super) fn build_icons_view(
         filter_query: context.filter_query.clone(),
         enter_target: context.enter_target.clone(),
         bound_items: bound_items.clone(),
+        layout: context.layout,
     }
     .build();
     let view = icons_grid(context, &selection, factory, positions);
@@ -108,7 +108,10 @@ fn icons_grid(
     view.set_single_click_activate(false);
     view.set_tab_behavior(gtk::ListTabBehavior::Item);
     install_tab_landing(view.upcast_ref(), context.state.clone());
-    configure_icons_view_density(&view, context.density.get());
+    match context.layout {
+        IconsLayout::Grid => configure_icons_view_density(&view, context.density.get()),
+        IconsLayout::Compact => configure_compact_view(&view),
+    }
     crate::ui::accessibility::describe_entry_container(
         &view,
         &pane_directory_name(&context.browser, context.depth),
@@ -140,6 +143,7 @@ struct IconsCardFactory {
     filter_query: Rc<RefCell<String>>,
     enter_target: Option<EnterTarget>,
     bound_items: BoundItems,
+    layout: IconsLayout,
 }
 
 /// The entry a card binds to, looked up once per bind.
@@ -166,21 +170,36 @@ impl IconsCardFactory {
         let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let thumbnail_size = icons_card_icon_slot(self.thumbnail_size.get());
-        let card = icons_cell::new_card(thumbnail_size);
+        let slot = self.icon_slot();
+        let card = match self.layout {
+            IconsLayout::Grid => icons_cell::new_card(slot),
+            IconsLayout::Compact => icons_cell::new_compact_card(slot),
+        };
         let Some((_, rename_label)) = icons_cell::parts(&card) else {
             return;
         };
         install_icons_content_hover(&card);
         self.install_interactions(item, &card, &rename_label);
         item.set_child(Some(&card));
-        if let Some(parent) = card.parent() {
+        if let Some(parent) = card.parent()
+            && self.layout == IconsLayout::Grid
+        {
             parent.set_halign(gtk::Align::Center);
             parent.set_valign(gtk::Align::Start);
         }
         let field = icons_cell::ensure_rename_field(&card).expect("card editor");
+        if self.layout == IconsLayout::Compact {
+            gtk::prelude::EntryExt::set_alignment(&field, 0.0);
+        }
         let edit = EditWidgets::new(&field, &rename_label);
         register_bound_mode_item(&self.bound_items, item, &card, &rename_label, edit);
+    }
+
+    fn icon_slot(&self) -> i32 {
+        match self.layout {
+            IconsLayout::Grid => super::icons_card_icon_slot(self.thumbnail_size.get()),
+            IconsLayout::Compact => self.thumbnail_size.get(),
+        }
     }
 
     fn install_interactions(
@@ -255,12 +274,15 @@ impl IconsCardFactory {
             browser: self.browser.upgrade(),
             state: self.state.as_ref().and_then(Weak::upgrade),
             source_position,
-            thumbnail_size: icons_card_icon_slot(self.thumbnail_size.get()),
+            thumbnail_size: self.icon_slot(),
         };
         let entry = binding.browser.as_ref().and_then(|browser| {
             source_position.and_then(|position| browser.entry_at(self.depth, position))
         });
-        icons_cell::set_slot(&card, binding.thumbnail_size);
+        match self.layout {
+            IconsLayout::Grid => icons_cell::set_slot(&card, binding.thumbnail_size),
+            IconsLayout::Compact => icons_cell::set_compact_slot(&card, binding.thumbnail_size),
+        }
         if let Some(entry) = entry {
             self.bind_entry(item, &card, &entry, &binding);
         }
@@ -289,6 +311,9 @@ impl IconsCardFactory {
                 },
             );
             parts.highlight(binding.state.as_deref(), &self.filter_query.borrow());
+            if self.layout == IconsLayout::Compact {
+                parts.fit_name();
+            }
         }
         if let Some(edit) = &edit {
             edit.display.set_visible(!edit.is_editing());

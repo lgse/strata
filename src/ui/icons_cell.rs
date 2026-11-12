@@ -16,6 +16,9 @@ const ICONS_CARD_PAD_Y: i32 = 4;
 pub(super) const ICONS_CARD_ICON_PADDING: i32 = 6;
 const ICONS_CARD_CAPTION_GAP: i32 = 4;
 const ICONS_CARD_DETAILS_LINE_PX: i32 = 14;
+const COMPACT_CARD_GAP: i32 = 6;
+const COMPACT_MIN_NAME_CHARS: u32 = 6;
+const COMPACT_MAX_NAME_CHARS: u32 = 32;
 
 pub(super) fn new_card(slot: i32) -> gtk::Box {
     let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -63,6 +66,115 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     name_tooltip::install(&card);
     set_slot(&card, slot);
     card
+}
+
+/// A Compact cell: the same parts as an Icons card, laid out as one line with the
+/// name beside a small icon, so the Icons bookkeeping applies unchanged.
+pub(super) fn new_compact_card(slot: i32) -> gtk::Box {
+    let card = gtk::Box::new(gtk::Orientation::Horizontal, COMPACT_CARD_GAP);
+    card.add_css_class("icons-card");
+    card.add_css_class("compact-card");
+    card.set_overflow(gtk::Overflow::Hidden);
+    card.set_halign(gtk::Align::Fill);
+    card.set_valign(gtk::Align::Center);
+
+    let icon = super::thumbnail::ThumbnailSlot::new(slot);
+    icon.set_content_inset(0);
+    icon.add_css_class("icons-card-icon");
+    icon.set_halign(gtk::Align::Center);
+    icon.set_valign(gtk::Align::Center);
+    let icon_frame = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    icon_frame.add_css_class("icons-card-icon-frame");
+    icon_frame.set_valign(gtk::Align::Center);
+    icon_frame.append(&icon);
+
+    let label = gtk::Inscription::new(None);
+    label.add_css_class("icons-card-label");
+    label.add_css_class("alternate-rename-label");
+    label.set_min_chars(1);
+    label.set_nat_chars(COMPACT_MIN_NAME_CHARS);
+    label.set_min_lines(1);
+    label.set_nat_lines(1);
+    label.set_xalign(0.0);
+    label.set_yalign(0.5);
+    label.set_wrap_mode(gtk::pango::WrapMode::Char);
+    label.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
+    crate::ui::preferences::PreferenceManager::shared().bind_preference(
+        &label,
+        |manager| {
+            (
+                manager.compact_full_names(),
+                manager.text_size(),
+                manager.interface_font(),
+            )
+        },
+        |widget, (full_names, _, _)| {
+            if let Some(label) = widget.downcast_ref::<gtk::Inscription>() {
+                fit_compact_name_with_preference(
+                    label,
+                    label.text().as_deref().unwrap_or_default(),
+                    full_names,
+                );
+            }
+        },
+    );
+    // A new folder can bind rows before their mapped font is available.
+    label.connect_map(|label| {
+        fit_compact_name(label, label.text().as_deref().unwrap_or_default());
+    });
+
+    let details = gtk::Label::new(None);
+    details.add_css_class("icons-card-details");
+    details.set_visible(false);
+
+    let labels = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    labels.add_css_class("icons-card-caption");
+    labels.set_hexpand(true);
+    labels.set_valign(gtk::Align::Center);
+    labels.append(&label);
+    labels.append(&details);
+
+    card.append(&icon_frame);
+    card.append(&labels);
+    set_compact_slot(&card, slot);
+    card
+}
+
+pub(super) fn set_compact_slot(card: &gtk::Box, slot: i32) {
+    if let Some((icon, _)) = parts(card) {
+        icon.set_slot(slot);
+    }
+}
+
+/// A Compact column is as wide as its longest name, with an optional cap.
+pub(super) fn fit_compact_name(label: &gtk::Inscription, name: &str) {
+    let full_names = crate::ui::preferences::PreferenceManager::shared().compact_full_names();
+    fit_compact_name_with_preference(label, name, full_names);
+}
+
+fn fit_compact_name_with_preference(label: &gtk::Inscription, name: &str, full_names: bool) {
+    let chars = i32::try_from(name.chars().count()).unwrap_or(i32::MAX);
+    let width = if full_names {
+        let text = label.create_pango_layout(Some(name));
+        text.set_attributes(label.attributes().as_ref());
+        text.pixel_size()
+            .0
+            .saturating_add(layout::label_insets(label).0)
+            .saturating_add(1)
+    } else {
+        -1
+    };
+    if label.width_request() != width {
+        label.set_width_request(width);
+    }
+    let chars = if full_names {
+        COMPACT_MIN_NAME_CHARS
+    } else {
+        chars.clamp(COMPACT_MIN_NAME_CHARS as i32, COMPACT_MAX_NAME_CHARS as i32) as u32
+    };
+    if label.nat_chars() != chars {
+        label.set_nat_chars(chars);
+    }
 }
 
 pub(super) fn parts(

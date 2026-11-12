@@ -130,7 +130,7 @@ impl Dispatcher {
         {
             return Some(result);
         }
-        let icons = self.view.view_mode() == crate::ui::browser_modes::BrowserMode::Icons;
+        let icons = self.view.view_mode().is_grid();
         let claimed = if icons {
             self.tenxer_icons(browser, press)
         } else {

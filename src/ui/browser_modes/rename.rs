@@ -135,9 +135,9 @@ impl ModeViews {
     }
 
     pub(in crate::ui) fn icons_rename_view(&self, depth: usize) -> Option<gtk::Widget> {
-        self.icons_panes
-            .iter()
-            .find(|pane| self.mode == BrowserMode::Icons && pane.depth == depth)
+        self.visible_panes()
+            .into_iter()
+            .find(|pane| self.mode.is_grid() && pane.depth == depth)
             .map(Pane::focus_view)
     }
 
@@ -146,7 +146,10 @@ impl ModeViews {
         depth: usize,
         source_position: usize,
     ) -> Option<(gtk::Widget, u32, Option<gtk::Widget>)> {
-        let pane = self.icons_panes.iter().find(|pane| pane.depth == depth)?;
+        let pane = self
+            .visible_panes()
+            .into_iter()
+            .find(|pane| self.mode.is_grid() && pane.depth == depth)?;
         pane.item_sections().iter().find_map(|section| {
             let (position, row) = rename_row_in(pane, section, source_position)?;
             Some((section.view.clone(), position, row))

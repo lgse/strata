@@ -146,7 +146,8 @@ impl PreferenceManager {
                 preferences.columns_file_clicks,
                 preferences.columns_folder_clicks,
             ),
-            BrowserMode::Icons => (
+            // Compact shares the Icons click settings.
+            BrowserMode::Icons | BrowserMode::Compact => (
                 preferences.icons_file_clicks,
                 preferences.icons_folder_clicks,
             ),
@@ -174,7 +175,7 @@ impl PreferenceManager {
                 preferences.columns_file_clicks = files;
                 preferences.columns_folder_clicks = folders;
             }
-            BrowserMode::Icons => {
+            BrowserMode::Icons | BrowserMode::Compact => {
                 preferences.icons_file_clicks = files;
                 preferences.icons_folder_clicks = folders;
             }

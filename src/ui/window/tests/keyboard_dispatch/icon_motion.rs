@@ -604,3 +604,62 @@ fn icons_left_wraps_row_starts_and_leaves_only_the_first_tile() {
         },
     );
 }
+
+#[test]
+fn compact_arrows_follow_columns_and_left_leaves_from_the_first_column() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::icon_motion::compact_arrows_follow_columns_and_left_leaves_from_the_first_column",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(false);
+            let browser = fixture.view.browser();
+            for index in 0..40 {
+                std::fs::write(
+                    fixture
+                        ._directory
+                        .path()
+                        .join(format!("tile-{index:02}.txt")),
+                    b"t",
+                )
+                .expect("tile");
+            }
+            fixture.view.refresh();
+            wait_loaded(&browser, 0);
+            fixture.view.set_view_mode(BrowserMode::Compact);
+            wait_loaded(&browser, 0);
+            for scoped in [true, false] {
+                preferences.set_arrow_navigation_scoped(scoped);
+                focus_files(&fixture);
+                wait_until(|| {
+                    fixture.press(Key::Home, NONE);
+                    gtk::prelude::GtkWindowExt::focus(&fixture.window)
+                        .is_some_and(|cell| cell.width() > 0)
+                });
+                fixture.press(Key::Down, NONE);
+                assert_eq!(focused_index(&browser), 1, "Down moves within the column");
+                fixture.press(Key::Right, NONE);
+                let next_column = focused_index(&browser);
+                assert!(
+                    next_column > 2,
+                    "Right moved to {next_column}, not the next column"
+                );
+                fixture.press(Key::Up, NONE);
+                assert_eq!(focused_index(&browser), next_column - 1);
+                fixture.press(Key::Left, NONE);
+                assert_eq!(
+                    (focused_index(&browser), sidebar_has_focus(&fixture)),
+                    (0, false),
+                    "scoped {scoped}: Left returns to the same row of the first column"
+                );
+                fixture.press(Key::Down, NONE);
+                fixture.press(Key::Left, NONE);
+                assert_eq!(
+                    sidebar_has_focus(&fixture),
+                    !scoped,
+                    "scoped {scoped}: Left anywhere in the first column enters the sidebar"
+                );
+            }
+        },
+    );
+}

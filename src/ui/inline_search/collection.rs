@@ -41,6 +41,7 @@ struct CollectionInteractions {
 pub(super) enum ResultKind {
     Rows,
     Icons { thumbnail_size: Rc<Cell<i32>> },
+    Compact { thumbnail_size: Rc<Cell<i32>> },
 }
 
 #[derive(Default)]
@@ -410,7 +411,9 @@ impl ResultCollection {
     }
 
     pub(super) fn set_max_columns(&self, max_columns: u32) {
-        if let Some(grid) = self.view.downcast_ref::<gtk::GridView>() {
+        if matches!(&self.kind, ResultKind::Icons { .. })
+            && let Some(grid) = self.view.downcast_ref::<gtk::GridView>()
+        {
             grid.set_max_columns(max_columns);
         }
     }
@@ -559,6 +562,9 @@ pub(super) fn build_collection(
     let activate = behavior.activate.clone();
     let (kind, max_columns) = match presentation {
         SearchPresentation::Rows => (ResultKind::Rows, None),
+        SearchPresentation::Compact { thumbnail_size } => {
+            (ResultKind::Compact { thumbnail_size }, Some(20))
+        }
         SearchPresentation::Icons {
             thumbnail_size,
             max_columns,
@@ -741,6 +747,9 @@ pub(super) fn build_collection(
             grid.add_css_class("file-icons");
             grid.set_min_columns(1);
             grid.set_max_columns(max_columns);
+            if matches!(&kind, ResultKind::Compact { .. }) {
+                crate::ui::browser_modes::configure_compact_view(&grid);
+            }
             grid.set_enable_rubberband(false);
             grid.set_single_click_activate(false);
             grid.set_tab_behavior(gtk::ListTabBehavior::Item);
@@ -759,10 +768,11 @@ pub(super) fn build_collection(
     };
     view.add_css_class("search-results");
     crate::ui::accessibility::set_label(&view, &crate::i18n::tr(SEARCH_RESULTS_LABEL));
-    if let ResultKind::Icons { thumbnail_size } = &kind {
+    if let ResultKind::Icons { thumbnail_size } | ResultKind::Compact { thumbnail_size } = &kind {
         let last_size = Cell::new(thumbnail_size.get());
         let thumbnail_size = thumbnail_size.clone();
         let bound = bound.clone();
+        let compact = matches!(&kind, ResultKind::Compact { .. });
         view.add_tick_callback(move |_, _| {
             let size = thumbnail_size.get();
             if last_size.replace(size) != size {
@@ -771,7 +781,11 @@ pub(super) fn build_collection(
                         return false;
                     };
                     if let Some(card) = widget.downcast_ref::<gtk::Box>() {
-                        crate::ui::icons_cell::set_slot(card, size);
+                        if compact {
+                            crate::ui::icons_cell::set_compact_slot(card, size);
+                        } else {
+                            crate::ui::icons_cell::set_slot(card, size);
+                        }
                     }
                     bound.item.upgrade().is_some()
                 });
@@ -800,6 +814,9 @@ pub(super) fn build_collection(
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
+    if matches!(&kind, ResultKind::Compact { .. }) {
+        super::compact::configure(&view, &scroll, bound.clone());
+    }
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
     (

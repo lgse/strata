@@ -72,17 +72,28 @@ impl ResultWidgets {
                 }
             }
             ResultKind::Icons { thumbnail_size } => {
-                let card = icons_cell::new_card(thumbnail_size.get());
-                let (icon, name) = icons_cell::parts(&card).expect("icon card parts");
-                let origin = icons_cell::details_label(&card).expect("icon card details");
-                let field = icons_cell::ensure_rename_field(&card).expect("icon card editor");
-                Self {
-                    widget: card,
-                    icon,
-                    edit: EditWidgets::new(&field, &name),
-                    labels: Labels::Icons { name, origin },
-                }
+                Self::card(icons_cell::new_card(thumbnail_size.get()))
             }
+            ResultKind::Compact { thumbnail_size } => {
+                Self::card(icons_cell::new_compact_card(thumbnail_size.get()))
+            }
+        }
+    }
+
+    fn card(card: gtk::Box) -> Self {
+        let (icon, name) = icons_cell::parts(&card).expect("icon card parts");
+        let origin = icons_cell::details_label(&card).expect("icon card details");
+        let field = icons_cell::ensure_rename_field(&card).expect("icon card editor");
+        if card.has_css_class("compact-card") {
+            origin.set_single_line_mode(true);
+            origin.set_max_width_chars(32);
+            origin.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        }
+        Self {
+            widget: card,
+            icon,
+            edit: EditWidgets::new(&field, &name),
+            labels: Labels::Icons { name, origin },
         }
     }
 
@@ -109,7 +120,9 @@ impl ResultWidgets {
         self.edit.field.set_visible(self.edit.is_editing());
         let size = match kind {
             ResultKind::Rows => 17,
-            ResultKind::Icons { thumbnail_size } => thumbnail_size.get(),
+            ResultKind::Icons { thumbnail_size } | ResultKind::Compact { thumbnail_size } => {
+                thumbnail_size.get()
+            }
         };
         let path = relative_result_path(root, &result.path);
         match &self.labels {
@@ -121,15 +134,24 @@ impl ResultWidgets {
                 crate::ui::accessibility::set_description(&self.widget, Some(&path));
             }
             Labels::Icons { name, origin } => {
-                icons_cell::set_slot(&self.widget, size);
+                let compact = matches!(kind, ResultKind::Compact { .. });
+                if compact {
+                    icons_cell::set_compact_slot(&self.widget, size);
+                } else {
+                    icons_cell::set_slot(&self.widget, size);
+                }
                 name.set_text(Some(&result.name));
                 crate::ui::accessibility::set_description(name, Some(&result.name));
                 origin.add_css_class("file-search-path");
                 origin.set_text(&path);
                 origin.set_visible(recursive);
+                accessibility::set_description(&self.widget, Some(&path));
             }
         }
         highlights.apply(&self.rename_label(), &result.path);
+        if let (ResultKind::Compact { .. }, Labels::Icons { name, .. }) = (kind, &self.labels) {
+            icons_cell::fit_compact_name(name, &result.name);
+        }
         if result.is_directory {
             thumbnail::show_customized_icon(
                 &self.icon,

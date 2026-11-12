@@ -28,7 +28,7 @@ fn plain_single_pane_arrows_move_focus_not_directories() {
         action(BrowserMode::Icons, Key::Left, NONE, false, true),
         Some(SinglePaneArrow::Native)
     );
-    for mode in [BrowserMode::Icons, BrowserMode::List] {
+    for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Compact] {
         assert_eq!(
             action(mode, Key::Left, NONE, true, true),
             Some(SinglePaneArrow::Sidebar)
@@ -48,6 +48,13 @@ fn plain_single_pane_arrows_move_focus_not_directories() {
         action(BrowserMode::List, Key::Right, NONE, true, true),
         Some(SinglePaneArrow::Stay)
     );
+    // Compact columns have neighbours sideways, unlike List rows.
+    for key in [Key::Left, Key::Right] {
+        assert_eq!(
+            action(BrowserMode::Compact, key, NONE, false, true),
+            Some(SinglePaneArrow::Native)
+        );
+    }
     assert_eq!(
         action(BrowserMode::List, Key::Left, NONE, true, false),
         Some(SinglePaneArrow::Stay)
@@ -190,10 +197,11 @@ fn control_digits_select_each_browser_presentation() {
         (Key::_2, BrowserMode::Icons),
         (Key::_3, BrowserMode::List),
         (Key::KP_3, BrowserMode::List),
+        (Key::_4, BrowserMode::Compact),
     ] {
         assert_eq!(browser_mode_for_digit(&press(key, CONTROL)), Some(mode));
     }
-    assert_eq!(browser_mode_for_digit(&press(Key::_4, CONTROL)), None);
+    assert_eq!(browser_mode_for_digit(&press(Key::_5, CONTROL)), None);
     assert_eq!(browser_mode_for_digit(&press(Key::a, CONTROL)), None);
     assert_eq!(browser_mode_for_digit(&press(Key::_1, NONE)), None);
 }

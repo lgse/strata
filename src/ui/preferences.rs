@@ -189,6 +189,8 @@ pub(in crate::ui) struct Preferences {
     frame_density_custom_px: u8,
     #[serde(default)]
     group_by_type: bool,
+    #[serde(default)]
+    compact_full_names: bool,
     #[serde(default = "default_file_clicks", rename = "list_file_clicks")]
     columns_file_clicks: u8,
     #[serde(default = "default_folder_clicks", rename = "list_folder_clicks")]

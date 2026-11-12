@@ -44,6 +44,7 @@ catalog! {
         VIEW_COLUMNS: Command "view_columns" = Binding::ctrl(Key::_1);
         VIEW_ICONS: Command "view_icons" = Binding::ctrl(Key::_2);
         VIEW_LIST: Command "view_list" = Binding::ctrl(Key::_3);
+        VIEW_COMPACT: Command "view_compact" = Binding::ctrl(Key::_4);
         /// US keyboards type **+** with Shift+=, so Ctrl+= also enlarges.
         TEXT_LARGER: Command "text_larger" =>
             [Binding::ctrl(Key::plus), Binding::ctrl(Key::equal)];

@@ -2,7 +2,12 @@
 
 use super::*;
 
-const MODES: [BrowserMode; 3] = [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons];
+const MODES: [BrowserMode; 4] = [
+    BrowserMode::Columns,
+    BrowserMode::List,
+    BrowserMode::Icons,
+    BrowserMode::Compact,
+];
 
 fn settles(condition: impl Fn() -> bool) -> bool {
     let deadline = Instant::now() + Duration::from_secs(2);
@@ -185,7 +190,9 @@ fn default_map_tab_leaves_the_listing_in_one_press() {
                             focused.is::<gtk::Button>()
                                 && focused.has_css_class("list-heading-button")
                         }),
-                        BrowserMode::Icons => fixture.view.header_actions_have_focus(),
+                        BrowserMode::Icons | BrowserMode::Compact => {
+                            fixture.view.header_actions_have_focus()
+                        }
                         BrowserMode::Columns
                             if mapped_with_class(
                                 fixture.window.upcast_ref(),

@@ -75,6 +75,7 @@ pub(crate) use filter::filter_controls;
 use focus::{collection_keeps_cursor, focus_bound_cursor, focus_collection_item};
 pub(super) use icons_controls::disable_scale_long_press_zoom;
 use icons_pane::{DEFAULT_ICONS_THUMBNAIL_SIZE, configure_icons_density};
+pub(in crate::ui) use icons_pane::{configure_compact_view, wheel_scrolls_sideways};
 use list_columns::{ListColumnLayout, apply_columns_layout, register_list_column_cell};
 use list_pane::{assemble_list_row, list_row_parts};
 use metadata::{entry_mode, entry_type, metadata_fill_position, set_label_if_changed};
@@ -106,12 +107,19 @@ pub enum BrowserMode {
     Columns,
     Icons,
     List,
+    /// Small icons with names beside them, flowing down columns that scroll sideways.
+    Compact,
 }
 
 impl BrowserMode {
     /// File-type headings are List-only. Icons clustering is wired but gated off.
     pub fn supports_type_grouping(self) -> bool {
         matches!(self, Self::List)
+    }
+
+    /// Items have neighbours on both axes, so arrows move spatially in a grid.
+    pub fn is_grid(self) -> bool {
+        matches!(self, Self::Icons | Self::Compact)
     }
 }
 
@@ -150,7 +158,7 @@ impl ClickActivation {
             files: ClickCount::Two,
             folders: match mode {
                 BrowserMode::Columns => ClickCount::One,
-                BrowserMode::Icons | BrowserMode::List => ClickCount::Two,
+                BrowserMode::Icons | BrowserMode::List | BrowserMode::Compact => ClickCount::Two,
             },
         }
     }
@@ -166,8 +174,10 @@ pub struct ModeViews {
     stack: gtk::Stack,
     icons_root: gtk::Box,
     list_root: gtk::Box,
+    compact_root: gtk::Box,
     icons_panes: Vec<Pane>,
     list_pane: Option<Pane>,
+    compact_pane: Option<Pane>,
     pane_navigation: RefCell<navigation::PaneNavigation>,
     browser: Rc<Browser>,
     single_click_previews: Rc<Cell<bool>>,
@@ -235,21 +245,72 @@ fn list_root() -> (gtk::Box, gtk::ScrolledWindow) {
     (list_root, list_scroll)
 }
 
-fn mode_stack(
-    columns: &gtk::ScrolledWindow,
-    icons_scroll: &gtk::ScrolledWindow,
-    list_scroll: &gtk::ScrolledWindow,
-) -> gtk::Stack {
+/// The box the Compact pane goes in; its grid scrolls sideways on its own.
+fn compact_root() -> (gtk::Box, gtk::ScrolledWindow) {
+    let compact_root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    compact_root.add_css_class("mode-icons");
+    compact_root.add_css_class("mode-compact");
+    compact_root.set_hexpand(true);
+    compact_root.set_vexpand(true);
+    let compact_scroll = gtk::ScrolledWindow::builder()
+        .child(&compact_root)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Never)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    compact_scroll.add_css_class("mode-scroll");
+    (compact_root, compact_scroll)
+}
+
+struct ModeScrolls<'a> {
+    columns: &'a gtk::ScrolledWindow,
+    icons: &'a gtk::ScrolledWindow,
+    list: &'a gtk::ScrolledWindow,
+    compact: &'a gtk::ScrolledWindow,
+}
+
+fn mode_stack(scrolls: ModeScrolls) -> gtk::Stack {
     let stack = gtk::Stack::builder()
         .transition_type(gtk::StackTransitionType::None)
         .hexpand(true)
         .vexpand(true)
         .build();
-    stack.add_named(columns, Some("columns"));
-    stack.add_named(icons_scroll, Some("icons"));
-    stack.add_named(list_scroll, Some("list"));
-    stack.set_visible_child_name("columns");
+    for mode in [
+        BrowserMode::Columns,
+        BrowserMode::Icons,
+        BrowserMode::List,
+        BrowserMode::Compact,
+    ] {
+        let page = match mode {
+            BrowserMode::Columns => scrolls.columns,
+            BrowserMode::Icons => scrolls.icons,
+            BrowserMode::List => scrolls.list,
+            BrowserMode::Compact => scrolls.compact,
+        };
+        stack.add_named(page, Some(mode.page_name()));
+    }
+    stack.set_visible_child_name(BrowserMode::Columns.page_name());
     stack
+}
+
+impl BrowserMode {
+    /// The `gtk::Stack` page that shows this mode.
+    pub(super) fn page_name(self) -> &'static str {
+        match self {
+            Self::Columns => "columns",
+            Self::Icons => "icons",
+            Self::List => "list",
+            Self::Compact => "compact",
+        }
+    }
+
+    pub(super) fn from_page_name(name: &str) -> Self {
+        [Self::Icons, Self::List, Self::Compact]
+            .into_iter()
+            .find(|mode| mode.page_name() == name)
+            .unwrap_or(Self::Columns)
+    }
 }
 
 impl ModeViews {
@@ -260,12 +321,20 @@ impl ModeViews {
     ) -> Self {
         let (icons_root, icons_scroll) = icons_root();
         let (list_root, list_scroll) = list_root();
+        let (compact_root, compact_scroll) = compact_root();
         Self {
-            stack: mode_stack(columns, &icons_scroll, &list_scroll),
+            stack: mode_stack(ModeScrolls {
+                columns,
+                icons: &icons_scroll,
+                list: &list_scroll,
+                compact: &compact_scroll,
+            }),
             icons_root,
             list_root,
+            compact_root,
             icons_panes: Vec::new(),
             list_pane: None,
+            compact_pane: None,
             pane_navigation: RefCell::new(navigation::PaneNavigation::default()),
             browser,
             single_click_previews: Rc::new(Cell::new(true)),
@@ -321,10 +390,15 @@ impl ModeViews {
     }
 
     fn single_pane(&self) -> Option<&Pane> {
-        match self.mode {
-            BrowserMode::Columns => None,
-            BrowserMode::Icons => self.icons_panes.first(),
-            BrowserMode::List => self.list_pane.as_ref(),
+        self.mode_panes(self.mode).into_iter().next()
+    }
+
+    fn mode_panes(&self, mode: BrowserMode) -> Vec<&Pane> {
+        match mode {
+            BrowserMode::Columns => Vec::new(),
+            BrowserMode::Icons => self.icons_panes.iter().collect(),
+            BrowserMode::List => self.list_pane.iter().collect(),
+            BrowserMode::Compact => self.compact_pane.iter().collect(),
         }
     }
 
@@ -347,7 +421,10 @@ impl ModeViews {
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
         match mode {
             BrowserMode::Columns => {}
-            BrowserMode::Icons => self.icons_click_activation.set(activation),
+            // Compact shares the Icons click settings.
+            BrowserMode::Icons | BrowserMode::Compact => {
+                self.icons_click_activation.set(activation)
+            }
             BrowserMode::List => self.list_click_activation.set(activation),
         }
     }
@@ -370,14 +447,14 @@ impl ModeViews {
 
     pub fn set_clipboard_marks(&self, marks: &ClipboardMarks) {
         self.clipboard_marks.replace(marks.clone());
-        for pane in self.icons_panes.iter().chain(self.list_pane.iter()) {
+        for pane in self.all_panes() {
             refresh_mark_pane(pane, &self.browser, marks);
         }
     }
 
     pub fn set_density(&mut self, density: BrowserDensity) {
         self.density = density;
-        for pane in &self.icons_panes {
+        for pane in self.icons_panes.iter().chain(self.compact_pane.iter()) {
             configure_icons_density(pane, density);
         }
         let class = match density {
@@ -385,7 +462,7 @@ impl ModeViews {
             BrowserDensity::Airy => "density-airy",
             BrowserDensity::Custom(_) => "density-custom",
         };
-        for root in [&self.icons_root, &self.list_root] {
+        for root in [&self.icons_root, &self.list_root, &self.compact_root] {
             root.remove_css_class("density-compact");
             root.remove_css_class("density-airy");
             root.remove_css_class("density-custom");
@@ -406,17 +483,14 @@ impl ModeViews {
     }
 
     fn visible_panes(&self) -> Vec<&Pane> {
-        match self.mode {
-            BrowserMode::Columns => Vec::new(),
-            BrowserMode::Icons => self.icons_panes.iter().collect(),
-            BrowserMode::List => self.list_pane.iter().collect(),
-        }
+        self.mode_panes(self.mode)
     }
 
     fn all_panes(&self) -> Vec<&Pane> {
         self.icons_panes
             .iter()
             .chain(self.list_pane.as_ref())
+            .chain(self.compact_pane.as_ref())
             .collect()
     }
 
@@ -432,20 +506,10 @@ impl ModeViews {
     }
 
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
-        match self.mode {
-            BrowserMode::Columns => Vec::new(),
-            BrowserMode::Icons => self
-                .icons_panes
-                .iter()
-                .find(|pane| pane.depth == depth)
-                .into_iter()
-                .collect(),
-            BrowserMode::List => self
-                .list_pane
-                .as_ref()
-                .filter(|pane| pane.depth == depth)
-                .into_iter()
-                .collect(),
-        }
+        self.visible_panes()
+            .into_iter()
+            .filter(|pane| pane.depth == depth)
+            .take(1)
+            .collect()
     }
 }

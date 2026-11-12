@@ -87,18 +87,17 @@ impl ModeViews {
         if position == 0 {
             return true;
         }
-        if self.mode != BrowserMode::Icons {
-            return false;
-        }
-        let mut first_row = false;
-        (section.visit)(&mut |position, widget| {
-            if position == 0
-                && let Some(first) = widget.compute_bounds(&section.view)
-            {
-                first_row = (first.y() - bounds.y()).abs() < 1.0;
-            }
-        });
-        first_row
+        self.mode == BrowserMode::Icons && shares_first_line(section, &bounds, FirstLine::Row)
+    }
+
+    /// Whether the focused item is where Left leaves the items: the first one, or in
+    /// Compact anywhere in the first column, which Left cannot move out of.
+    fn focused_item_at_left_edge(&self, section: &PaneSection, focused: &gtk::Widget) -> bool {
+        focused_section_item(section, focused).is_some_and(|(position, bounds)| {
+            position == 0
+                || (self.mode == BrowserMode::Compact
+                    && shares_first_line(section, &bounds, FirstLine::Column))
+        })
     }
 
     pub fn move_header_focus(&self, direction: gtk::DirectionType) -> bool {
@@ -129,19 +128,19 @@ impl ModeViews {
     }
 
     /// In Icons only a section's first item is the edge, so Left at any other row
-    /// start wraps to the previous row.
+    /// start wraps to the previous row. In Compact the whole first column is.
     pub fn at_left_edge(&self) -> bool {
-        if self.mode != BrowserMode::Icons {
+        if !self.mode.is_grid() {
             return true;
         }
         let Some(focused) = self.stack.root().and_then(|root| root.focus()) else {
             return true;
         };
-        self.icons_panes
-            .iter()
+        self.visible_panes()
+            .into_iter()
             .flat_map(Pane::item_sections)
-            .find_map(|section| focused_section_item(&section, &focused))
-            .is_none_or(|(position, _)| position == 0)
+            .find(|section| focused_section_item(section, &focused).is_some())
+            .is_none_or(|section| self.focused_item_at_left_edge(&section, &focused))
     }
 
     /// Whether the listing of `depth` holds focus, rather than its filter session.
@@ -164,17 +163,14 @@ impl ModeViews {
 
     pub fn item_view_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
-        self.icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
-            .any(|pane| {
-                pane.search.has_item_focus(focused.as_ref())
-                    || focused.as_ref() == Some(pane.stack.upcast_ref())
-                    || pane
-                        .all_sections()
-                        .iter()
-                        .any(|section| widget_has_focus(&section.view, focused.as_ref()))
-            })
+        self.all_panes().into_iter().any(|pane| {
+            pane.search.has_item_focus(focused.as_ref())
+                || focused.as_ref() == Some(pane.stack.upcast_ref())
+                || pane
+                    .all_sections()
+                    .iter()
+                    .any(|section| widget_has_focus(&section.view, focused.as_ref()))
+        })
     }
 
     pub fn focused_position(&self) -> Option<(usize, usize)> {
@@ -219,7 +215,7 @@ impl ModeViews {
         if self.mode == BrowserMode::List {
             return true;
         }
-        focused_section_item(&section, &focused).is_some_and(|(position, _)| position == 0)
+        self.focused_item_at_left_edge(&section, &focused)
     }
 
     /// Filter results count as outside: they belong to the filter session, which a
@@ -450,6 +446,28 @@ pub(super) fn reload_focus_fell_back(pane: &Pane) -> bool {
     focused.root().is_none()
         || focused == *pane.stack.upcast_ref::<gtk::Widget>()
         || pane.stack.is_ancestor(&focused)
+}
+
+#[derive(Clone, Copy)]
+enum FirstLine {
+    Row,
+    Column,
+}
+
+/// Whether an item lines up with the section's first item on its row or column.
+fn shares_first_line(section: &PaneSection, bounds: &gtk::graphene::Rect, line: FirstLine) -> bool {
+    let mut shares = false;
+    (section.visit)(&mut |position, widget| {
+        if position == 0
+            && let Some(first) = widget.compute_bounds(&section.view)
+        {
+            shares = match line {
+                FirstLine::Row => (first.y() - bounds.y()).abs() < 1.0,
+                FirstLine::Column => (first.x() - bounds.x()).abs() < 1.0,
+            };
+        }
+    });
+    shares
 }
 
 pub(super) fn focused_section_item(

@@ -1,4 +1,4 @@
-{"scenario":"appearance-options-expose-chosen","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"icons","vars":{"id":"icons"}},{"id":"hidden","vars":{"id":"hidden"}}],"cost":{"columns-icons":0.7,"columns-hidden":0.6},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Appearance menu checked states after Ctrl+2/Ctrl+H; only Hidden files check state and its Ctrl+H label are unique"}}
+{"scenario":"appearance-options-expose-chosen","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"icons","vars":{"id":"icons"}},{"id":"hidden","vars":{"id":"hidden"}},{"id":"compact","vars":{"id":"compact"}}],"cost":{"columns-icons":0.7,"columns-hidden":0.6,"columns-compact":1.2},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"Appearance checked states and Compact full-name choice survive a restart; only GUI route for the new option"}}
 {"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open","variants":["icons"]}
 {"expect":{"state":{"target":{"role":"radio menu item","name":"Icons"},"checked":false}},"message":"before ctrl+2: 'Icons' should not be checked","variants":["icons"]}
 {"expect":{"state":{"target":{"role":"radio menu item","name":"Columns"},"checked":true}},"message":"before ctrl+2: 'Columns' should be checked","variants":["icons"]}
@@ -18,3 +18,15 @@
 {"wait":{"entries":{"contains":[".hidden.txt"]}},"message":"hidden files to show","variants":["hidden"]}
 {"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"radio menu item","name":"Columns"}},"message":"the appearance menu to open","variants":["hidden"]}
 {"expect":{"state":{"target":{"role":"check menu item","name":"Hidden files"},"checked":true}},"message":"after ctrl+h: 'Hidden files' should be checked","variants":["hidden"]}
+{"key":"ctrl+4","variants":["compact"]}
+{"wait":{"view_mode":"Compact"},"message":"Ctrl+4 to switch to Compact view","variants":["compact"]}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"check menu item","name":"Show full names in Compact view"}},"message":"the Compact full-name option to appear","variants":["compact"]}
+{"expect":{"state":{"target":{"role":"check menu item","name":"Show full names in Compact view"},"checked":false}},"message":"full Compact names should start disabled","variants":["compact"]}
+{"click":{"role":"check menu item","name":"Show full names in Compact view"},"variants":["compact"]}
+{"wait":{"pref":{"key":"compact_full_names","value":true}},"message":"the full-name choice to be saved","variants":["compact"]}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"check menu item","name":"Show full names in Compact view"}},"message":"the Compact full-name option to reopen","variants":["compact"]}
+{"expect":{"state":{"target":{"role":"check menu item","name":"Show full names in Compact view"},"checked":true}},"message":"full Compact names should be checked","variants":["compact"]}
+{"restart":true,"variants":["compact"]}
+{"wait":{"view_mode":"Compact"},"message":"Compact view to restore after restart","variants":["compact"]}
+{"open_menu":{"role":"toggle button","name":"Appearance"},"until":{"present":{"role":"check menu item","name":"Show full names in Compact view"}},"message":"the Compact full-name option after restart","variants":["compact"]}
+{"expect":{"state":{"target":{"role":"check menu item","name":"Show full names in Compact view"},"checked":true}},"message":"full Compact names should stay checked after restart","variants":["compact"]}
