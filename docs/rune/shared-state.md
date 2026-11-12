@@ -23,7 +23,7 @@ the files on disk keep their format and their place.
 | Per-folder views | The model moved. The file's path, reading and saving have not | `strata_desktop::settings::folder_views` | `src/ui/preferences/folder_view_settings.rs`, whole |
 | Tab sessions | Moved, whole | `strata_desktop::tabs_session` | One import in `src/ui/mod.rs`. When to save and how to restore stay in `src/ui/window/composition/tabs.rs` |
 | Key catalog | Not moved | None yet | `src/ui/keys` |
-| `PreferenceManager` | Not moved | The schema, from V5b | `src/ui/preferences.rs` and the files under it |
+| `PreferenceManager` | The save bookkeeping moved. The manager, its getters and setters, its bindings and its notices have not | The schema, from V5b, and `strata_desktop::settings::Saving` | `src/ui/preferences.rs` and the files under it, with `persistence.rs` as the wrapper around `Saving` |
 
 Until a row says a store moved, its code stays where `main` has it, and a change to it is
 made as on `main`.
@@ -157,6 +157,75 @@ difference reaches the user:
 
 The line numbers are as of the move.
 
+## `PreferenceManager`
+
+Three things make up the manager: the values (`Preferences`, shared since V5b), the
+bookkeeping of saving them, and what GTK does around a change. The bookkeeping moved.
+
+### What moved: `strata_desktop::settings::Saving`
+
+`settings/saving.rs` is a new file. It owns no values and no `RefCell`: an interface holds
+its `Preferences` however it holds state, changes them, and commits.
+
+| | |
+| --- | --- |
+| `load() -> (Preferences, Saving)` | Reads the file, salvaged and brought within range, and starts the bookkeeping. What loading repaired is saved with the first change |
+| `Saving::commit(&mut self, &Preferences) -> Commit` | Finds a change by comparing with the values of the commit before, and queues a save of the keys changed since a save last succeeded. The commit says whether anything changed, hands back the pending save, and names a problem: the file was unreadable at start-up, or the values could not be put in the file's form |
+| `PendingSave::finished().await`, `Saving::saved(FinishedSave) -> SaveOutcome` | The interface awaits the save where it awaits things and tells the bookkeeping how it went: saved, failed, or superseded by a later save. A writer that went away is a cancelled write |
+| `record_adopted`, `rebase` | Values another process saved and this one adopted are not saved again; a repair made at start-up is not a change |
+| `revision`, `setting_unsaved`, `unsaved`, `load_failure`, the start-up locale and renderer | What an interface reads |
+
+Nothing in it schedules or calls back, so `strata_desktop::settings` still uses no GLib main
+context. Its bodies are the manager's, moved as text: `load`, `save_preferences`,
+`queue_settings_save`, `settings_saved`, and the bookkeeping inside
+`normalize_loaded_theme_selection` and `adopt_defaults`.
+
+Two things it keeps exactly as GTK had them, because changing either changes what is written:
+
+- A commit that changes nothing still queues a save while one is owed. That is the retry
+  after a failed write, and it also means a save queued while another is on its way.
+- A pending save that is dropped and never reported loses nothing on disk, but its keys stay
+  marked and are written again with every later save. `Commit` is `#[must_use]`.
+
+### What stayed in `src/ui`
+
+- **`PreferenceManager`, with every getter and setter.** `preferences: RefCell<Preferences>`
+  is as on `main`, and seven bookkeeping fields became one, `saving: RefCell<Saving>`. No
+  setter file changed.
+- **`persistence.rs`, the wrapper.** `save_preferences` records the change for the bindings,
+  commits, spawns the await of the save on GLib's context, publishes to the bindings, and
+  tells the notices, in the order it always did.
+- **`bindings.rs` and `save_notice.rs`, whole.** `PreferenceChanges` keeps its own snapshot
+  and revision: its notify loop re-runs on that revision and folder views bump it. The
+  bookkeeping has its own baseline and revision, for an interface without
+  `PreferenceChanges`; in GTK both see the same values at the same calls, and
+  `save_preferences` asserts in debug builds that they agree.
+- **The process-wide effects of loading:** reduced motion, the date format and the locale
+  are applied by `PreferenceManager::load`, from what the shared `load` returned.
+- **`shared()`, `existing()` and the thread-local.** The bookkeeping is not a singleton.
+
+### The rule for a setter's body
+
+A getter or setter that only reads or assigns a field has nothing to share: the field of
+`Preferences` is the API. A body that validates or computes moves when a Rune package first
+needs it, onto `Preferences` or a free function in `strata_desktop::settings`, as
+`store_sort` did, in that package's own `contract` pull request, with the GTK setter calling
+it. Until then it stays where `main` has it. Every range rule is already shared, in
+`Preferences::normalize_loaded` and the normalizers beside it.
+
+So this package closes with the manager's getters and setters still in `src/ui`. What moved
+is its state bookkeeping and its persistence.
+
+### Tests
+
+`src/ui/preferences/tests` and `fixtures.rs` did not move. They drive the real path, setter
+to commit to writer, through the manager, and are the saved-preferences coverage
+[preferences.md](../preferences.md) describes. `settings/saving/tests.rs` adds seven tests of
+what only the bookkeeping promises, each in a process of its own and with no GLib context:
+only changed keys are written, an unreadable file is never saved over, a failed save is
+tried again, only the latest save counts, a save nobody reports is written again, adopted
+values are not saved back, and a start-up repair is no change.
+
 ## Merging from `main`
 
 Git pairs a moved file with `main`'s file by similarity, and a change on `main` then lands
@@ -190,6 +259,9 @@ Where each file is:
 | `src/ui/preferences/folder_view_settings.rs`, `trashed.rs` | The same file as on `main` |
 | `src/ui/tabs_session.rs`, `tabs_session/tests.rs` | The file of the same name under `crates/strata-desktop/src/` |
 | `mod tabs_session;` in `src/ui/mod.rs` | `use strata_desktop::tabs_session;` in the same file |
+| A getter or setter of `PreferenceManager`, a binding, a notice, a test or the fixture | The same file as on `main`: none of them moved or changed |
+| `PreferenceManager`'s fields and `load` in `src/ui/preferences.rs`; `src/ui/preferences/persistence.rs`; the bookkeeping in `adopt_defaults` (`folder_view_settings.rs`) and in `normalize_loaded_theme_selection` | Rewritten around `Saving`. A change from `main` conflicts there and is applied by hand: to `crates/strata-desktop/src/settings/saving.rs` when it changes what is recorded or saved, to the wrapper when it changes what GTK does around it |
+| A new process-wide effect of loading | `PreferenceManager::load` in `src/ui/preferences.rs`, after the shared `load` |
 
 [slice/V5b](slice/V5b-settings-store.md#merging-from-main) has the table for the settings
 schema.
