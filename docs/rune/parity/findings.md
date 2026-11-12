@@ -150,3 +150,20 @@ The four fuzz issues name their sequence files with the alphabet's version
 (`fuzz-calibration-v1-0000000000000067.jsonl` and the like); in [#2181](https://github.com/lgse/strata/pull/2181) as it stands the files
 are `tests/qa/fuzz/corpus/calibration/fuzz-calibration-<seed>.jsonl`, with no version. Use
 the names [#2181](https://github.com/lgse/strata/pull/2181) merges with.
+
+### #2193: a GTK test whose name string is stale passes without running
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2193), filed on 2026-11-12, before findings moved to
+  this file.
+- `strata_test_support::isolated_test`, which `gtk_test` wraps, runs a GTK test in a child
+  process started with `--exact <name>`, a string the test writes by hand, and asserts only
+  that the child exits successfully. With a stale name the child matches no test, exits 0,
+  and the test is reported as passed.
+- **Concerns:** every test that calls `gtk_test`, `gtk_test_with_env` or `isolated_test`,
+  and `crates/strata-test-support/src/lib.rs`. Found by [B2](packages/B2.md) while building
+  [#2195](https://github.com/lgse/strata/pull/2195): three tests of a file that had moved passed without running, and the file
+  was moved back. Two scans of the name strings, the author's and the reviewer's, found none
+  stale then.
+- **State:** open, not taken up. Until the harness checks that the child ran its test, a
+  move or rename of a test file, module or function takes the name strings with it; in a
+  log the only sign is a GTK test printed once and not twice. A fix lands on `main`.

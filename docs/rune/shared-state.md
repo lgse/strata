@@ -222,6 +222,13 @@ one in `xkbcommon-keysyms.h`. While the GTK application exists, its test
 `ui::keys::tests::constants` holds every constant to GDK's key of the same name. The list
 is a macro so that the test, and a backend, can walk it.
 
+So while GTK exists a constant must be a name GDK reads, and the test fails for one that
+is not. A named key the Rune interface delivers and GDK does not name is not added
+quietly: on GTK a binding to it would be saved as a number, which is not read back, so
+the two interfaces would save it differently. The package that needs the key says so in
+its file and in [`parity/owner.md`](parity/owner.md); if the constant is then added, the
+test lists it as a name GDK does not read, with the reason. The list is empty today.
+
 ### The key library is the interface's: `Backend`
 
 Six questions have no answer without a key library: a key's name, the key of a name, the
@@ -466,6 +473,7 @@ Where each file is:
 | `src/ui/keys/alias.rs` | The same file as on `main`, less the rewrite. A change from `main` to `FALLBACK`, `Context`'s fields, `Aliasing`, `Alias`, `structural` or `rewrite` conflicts there, against lines that are gone, and is applied by hand to `crates/strata-desktop/src/keys/alias.rs`. `Context::of` and `Context::of_controller` are the free functions `context_of` and `context_of_controller` |
 | `src/ui/keys/capture.rs`, `composition.rs`, `conflicts.rs` and every test under `src/ui/keys/` | The same file as on `main` |
 | A new item in a moved key file | It merges clean. `pub(crate)` builds in `strata-desktop` and fails where the application names the item: make it `pub`, and re-export it from `src/ui/keys/mod.rs` |
+| A new `#[cfg(test)]` item in a moved key file, such as a test's helper or a listing | It merges clean and compiles in `strata-desktop`, where the application's tests cannot see it: they are another crate's, and `cfg(test)` is on only for the crate under test. Make it `#[cfg(any(test, feature = "test-support"))]` and `pub`, as the move did for every such item, and re-export it from `src/ui/keys/mod.rs` under `#[cfg(test)]`. A new name that `src/ui/keys/command/tests.rs` takes from `super::` is added to the test-only `mod command` in `src/ui/keys/mod.rs` |
 | A call of GDK or GTK in a moved key file, or of `PreferenceManager` | It merges clean and does not build. A question about a key goes through `Key`'s methods, to the backend; a live setting through `Active`. A new question is a new method of the trait, answered in `src/ui/keys/gdk_backend.rs` |
 | `Key::…` for a key the catalog did not name before | It merges clean and does not build: add the constant to `crates/strata-desktop/src/keys/key_constants.rs` |
 | `gdk::Key` or `gdk::ModifierType` in a new binding, a new `.ignoring(…)` or a new `KeyPress::from_signal`, anywhere in `src/ui` | It merges clean and does not build. Name `ui::keys::Key` and `ui::keys::Modifiers`; convert with `keys::gdk_key` and `keys::gdk_modifiers` where the value goes to GTK, such as a test's emission of `key-pressed` |

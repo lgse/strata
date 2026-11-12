@@ -15,12 +15,17 @@ use std::sync::OnceLock;
 
 use super::{Binding, Command, Key, Map, Modifiers};
 
-/// The answers of one key library. Every method is a pure function of its arguments.
+/// The answers of one key library. No method keeps state between calls, but a library may
+/// need its toolkit: GTK's two accelerator calls want GTK initialized and its main thread.
+/// So callers stay on the interface thread. The trait is `Sync` only because the installed
+/// backend is one value for the process.
 pub trait Backend: Sync {
     /// The name of `key`, as `gdk_keyval_name` gives it: what a saved keymap holds and what a
     /// label falls back to. `None` for a value that is not a key.
     fn key_name(&self, key: Key) -> Option<String>;
-    /// The key `name` stands for.
+    /// The key `name` stands for. The GDK backend answers `None` for the name `VoidSymbol`:
+    /// GDK gives that key for a name it does not know, and gdk4 reads it as no key. Another
+    /// backend answers the same.
     fn key_from_name(&self, name: &str) -> Option<Key>;
     /// The character `key` types, if it types one.
     fn key_to_unicode(&self, key: Key) -> Option<char>;
