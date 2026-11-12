@@ -40,7 +40,7 @@ run = "icons"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 2, whose command is B3's"
+blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 2, whose command is B3's; then A5: the location bar, at Ctrl+L and `field` on lines 7 and 8, whose chord is B3's"
 
 [[run]]
 scenario = "control-click-toggles"
