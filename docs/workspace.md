@@ -10,7 +10,7 @@ crates live under `crates/` too. [The Rune side](#the-rune-side) describes them.
 | `strata-core` | Model, localization, storage, I/O error text, logging, trusted commands, the UI-thread guard, file-activity tracking | `gio`, `glib` |
 | `strata-preview` | Sandbox launcher, the preview helper it runs, document parsers, preview types | `strata-core` |
 | `strata-fs` | Listing, file operations, trash, volumes, search, jobs, actions, the browser's state (`app`) | `strata-core`, `strata-preview` |
-| `strata-desktop` | Portal and D-Bus setup, the updater, integrations, build information, the saved settings and the per-folder views' model (`settings`) | `strata-core`, `strata-preview`, `strata-fs` |
+| `strata-desktop` | Portal and D-Bus setup, the updater, integrations, build information, the saved settings and the per-folder views' model (`settings`), the tab session (`tabs_session`) | `strata-core`, `strata-preview`, `strata-fs` |
 | `strata-qa` | The `--qa` protocol (steps, targets, predicates and their parsers) and the engine that runs a session through its `Backend` trait. The application's `qa` feature uses it, and `strata-app`'s | none |
 | `strata-test-support` | Test helpers that need no toolkit. A dev-dependency | none |
 | `strata` (root) | The GTK interface, assets, GTK's QA backend, diagnostics | all of the above |
@@ -205,6 +205,12 @@ A module logs under its crate's name, for example `strata_preview::sandbox::brow
 path, such as `strata::sandbox::browser=debug`, keeps working: the logger repeats each
 `strata::module` directive for the crates in `EXTRACTED_CRATES` in
 `crates/strata-core/src/logging.rs`. Add a new crate to that list.
+
+A module that left `src/ui` is the exception, because its path inside the crate changed
+too: `strata::ui::preferences` became `strata_desktop::settings`, and
+`strata::ui::tabs_session` became `strata_desktop::tabs_session`. A filter on the old path
+no longer selects it, and neither does one on a parent, such as `RUST_LOG=strata::ui=debug`.
+Name the new target.
 
 ## Build facts
 

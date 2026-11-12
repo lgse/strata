@@ -192,7 +192,7 @@ The proposal listed work the split had to include. Two items are not done, and o
   owner ruling against the rule above on moving `src/ui`. `PreferenceManager` itself, the
   per-folder views, the key catalog and tab sessions follow by a second ruling, one store
   at a time; [shared-state.md](shared-state.md) says which have moved. The per-folder
-  views' model has. The rest is still in the root package.
+  views' model and tab sessions have. The rest is still in the root package.
 - **The GLib main loop.** Done. `strata-fs` schedules on the default `MainContext`, and
   `strata-platform`'s `glib_loop` runs it on Rune's loop
   ([slice/V5](slice/V5-shell-and-loop.md)).

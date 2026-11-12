@@ -43,4 +43,4 @@ translations and log targets.
   `with_column_entries` hands them out only inside a closure. V6 copies display fields or
   adds an accessor.
 - **The key catalog and tab sessions** are still under `src/ui`. The slice does not need
-  them.
+  them. Tab sessions moved after the slice ([shared-state.md](../shared-state.md)).

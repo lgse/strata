@@ -40,7 +40,7 @@ struct StoredSession {
     tabs: Vec<StoredTab>,
 }
 
-pub(crate) struct RestoredSession {
+pub struct RestoredSession {
     pub tabs: Vec<Location>,
     pub active: usize,
 }
@@ -49,7 +49,7 @@ pub(crate) fn session_path() -> PathBuf {
     crate::storage::config_directory().join(SESSION_FILE_NAME)
 }
 
-pub(crate) fn save(tabs: &[Location], active: usize) {
+pub fn save(tabs: &[Location], active: usize) {
     match session_contents(tabs, active) {
         Ok(contents) => drop(writer::save(
             session_path(),
@@ -61,7 +61,7 @@ pub(crate) fn save(tabs: &[Location], active: usize) {
     }
 }
 
-pub(crate) fn remove() {
+pub fn remove() {
     drop(writer::save(
         session_path(),
         None,
@@ -70,7 +70,7 @@ pub(crate) fn remove() {
     ));
 }
 
-pub(crate) fn load_restorable() -> Option<RestoredSession> {
+pub fn load_restorable() -> Option<RestoredSession> {
     load_from(&session_path())
 }
 
