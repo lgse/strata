@@ -22,15 +22,15 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | [H1](packages/H1.md) | Whole-corpus ledger | done | None | [#2165](https://github.com/lgse/strata/pull/2165), [#2166](https://github.com/lgse/strata/pull/2166) |
 | [H2](packages/H2.md) | Exception conventions in the runner | done | H1 | [#2171](https://github.com/lgse/strata/pull/2171) |
 | [B1](packages/B1.md) | Shell seams | done | None | [#2167](https://github.com/lgse/strata/pull/2167), [#2169](https://github.com/lgse/strata/pull/2169) |
-| [B2](packages/B2.md) | Shared state out of the GTK package | in progress | None | [#2168](https://github.com/lgse/strata/pull/2168), [#2170](https://github.com/lgse/strata/pull/2170), [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178), [#2188](https://github.com/lgse/strata/pull/2188), [#2195](https://github.com/lgse/strata/pull/2195); [#2197](https://github.com/lgse/strata/pull/2197) (open) |
-| [B3](packages/B3.md) | Commands and key dispatch | held | B1; B2's key catalog | None |
+| [B2](packages/B2.md) | Shared state out of the GTK package | in progress | None | [#2168](https://github.com/lgse/strata/pull/2168), [#2170](https://github.com/lgse/strata/pull/2170), [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178), [#2188](https://github.com/lgse/strata/pull/2188), [#2195](https://github.com/lgse/strata/pull/2195), [#2197](https://github.com/lgse/strata/pull/2197) |
+| [B3](packages/B3.md) | Commands and key dispatch | in progress | B1; B2's key catalog | [#2200](https://github.com/lgse/strata/pull/2200) (open) |
 | [F1](packages/F1.md) | Fuzz driver and GTK calibration | in progress | None | [#2181](https://github.com/lgse/strata/pull/2181) (open) |
 
 ### Wave 1: first fan-out
 
 | ID | Package | State | Depends on | Pull requests |
 | --- | --- | --- | --- | --- |
-| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196); [#2192](https://github.com/lgse/strata/pull/2192) (open) |
+| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192); [#2199](https://github.com/lgse/strata/pull/2199) (open) |
 | [A2](packages/A2.md) | List view | not started | B1 | None |
 | [A3](packages/A3.md) | Sidebar | not started | B1 | None |
 | [A4](packages/A4.md) | Tabs | not started | B1, B2 | None |

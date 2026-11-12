@@ -11,27 +11,8 @@ session's notes, the item says so.
 
 ## Open
 
-### Tracking and findings
+### The plan's copy
 
-- **What a reference to a new finding looks like.** Every record behind an exception names
-  its reference, and the readers accept two forms only. `tests/qa/twins.rs` (lines 70 to 99)
-  and `scripts/qa_parity_check.py` (lines 239 to 263) take a packet entry,
-  `docs/rune/upstream/rune/<number>-<name>.md`, for a `rune` twin and `lgse/strata#<number>`
-  for every other code. The fuzz driver's normalisation map, calibration mask and `parked`
-  lists, in [#2181](https://github.com/lgse/strata/pull/2181), take `lgse/strata#<number>` only. Each checks the form alone (and, for a
-  packet entry, that the file exists), never what the issue says. So everything that cites a
-  finding with no issue waits on this: every twin under `timing`, `a11y`, `toolkit`,
-  `oracle` or `deviation`, every normalisation rule or mask line, and every newly parked
-  fuzz seed. That reaches F2, F4 and any area package that meets a `timing`, `a11y` or
-  `oracle` difference. `docs/testing.md`, "Twins", also asks a `deviation` twin for "the
-  issue that records the owner's ruling". The two answers:
-  1. A new finding still gets a GitHub issue, as its reference, and
-     [`findings.md`](findings.md) holds its state.
-  2. A `contract` change to the readers, so that they accept an anchor in `findings.md` (or
-     `owner.md`, for a ruling).
-
-  Meanwhile: nothing cites a finding recorded only in `findings.md`; a pull request that
-  needs to says so and waits. Source: recorded by the orchestrating session on 2026-11-12.
 - **The plan's copy and the owner's document.** From the pull request that moved tracking
   here, the copy in [`README.md`](README.md) differs from the owner's document in
   "Coordination" and in the sentences that sent a reader to an issue for a package's state;
@@ -83,8 +64,8 @@ are in force meanwhile. Source: the archived issue
   [#2123](https://github.com/lgse/strata/issues/2123).
 - **The reviewer opens a `deviation` twin's record** and confirms the owner's ruling is
   there before the twin merges, since no check reads it. A default of the orchestrating
-  session, in "Twins", in force. Source: [#2123](https://github.com/lgse/strata/issues/2123). Where that record is now is the reference
-  question above.
+  session, in "Twins", in force. Source: [#2123](https://github.com/lgse/strata/issues/2123). The record is the twin's reference issue,
+  filed as the ruling on finding references says.
 - **The ten decisions H2 made beyond the plan's text**: a twin's run has no ledger entry;
   `targets` only on a twin and only `["rune"]`; a Rune mutation patch for every twin; no
   `mutation` or `known_bug` on a twin; an optional `host` on a `parallel` entry; the form of
@@ -228,31 +209,6 @@ issue [#2128](https://github.com/lgse/strata/issues/2128).
 5. **"Arrows scoped to content"** (`arrow_navigation_scoped`) keeps Left and Up inside the
    content in GTK (`src/ui/window/keyboard/items.rs:152, 180`). Neither Rune view honours
    it. Meanwhile: not honoured; it goes with items 2 and 3.
-6. **How the Rune binary gets thumbnail workers, which today means `gdk-pixbuf`.** The
-   worker pool in `strata-preview` re-runs the current executable as `--browser-worker`
-   (`sandbox/browser.rs`), and the GTK binary answers it in `src/main.rs`
-   (`LaunchMode::BrowserWorker`, which calls
-   `strata_preview::sandbox::browser::run(sandbox_helper::browser_render)`). `strata-preview`
-   depends on `gdk-pixbuf`, `poppler`, `cairo` and `pango`, and `strata-app` does not depend
-   on it today. So the same entry point in `strata-rune` would bring `gdk-pixbuf` into the
-   Rune binary, which the plan's exit criterion 6 bans. The three answers:
-   1. **Accept `strata-preview` in `strata-rune` until [E4](packages/E4.md),** which then
-      owns removing it. Cheapest now: the entry point is a few lines. But exit criterion 6
-      would fail until E4 replaces the image path.
-   2. **A separate worker binary**, which `strata-rune`'s pool runs instead of itself. That
-      keeps `strata-rune`'s tree clean. It costs a second binary to build, ship and point
-      the pool at (the pool's `/app/strata` path and the sandbox's command line), and the
-      packaging that goes with it.
-   3. **A client crate split from `strata-preview`, free of gdk:** the pool, the wire
-      protocol and the thumbnail request in one crate; the renderers (`browser_render` and
-      what it decodes with) in another that only the worker links. The design stays right
-      at exit, at the cost of a refactor of a shared crate both binaries use, as a
-      `contract` change of its own.
-
-   What waits on it: the thumbnail service, which `strata-app` would need anyway, and A1's
-   `browser_workers` and `thumbnail_worker_settings` runs. Meanwhile: no thumbnail service is
-   started, and those runs stay `pending`. Source: the orchestrating session, on the review
-   of A1's proposal, 2026-11-12.
 
 ### Packages added later
 
@@ -312,6 +268,21 @@ Rulings of the owner on the parity work, oldest first.
   Two parts of that section are the orchestrating session's reading of "as a general rule",
   for the owner to confirm: that the exit checks (E2's soak and exit criterion 3) stay as
   written, and that a patch a package writes is still proven once.
+- **2026-11-12: a new finding still gets a GitHub issue, as its reference.** The owner said
+  "Keep filing GitHub issues", choosing: "A new finding still gets a GitHub issue purely as
+  its reference (it can be closed at once); findings.md holds the state" (recorded by the
+  orchestrating session, 2026-11-12). So a new `oracle`, `divergence`, `exception` or
+  `rune-gap` finding gets an issue on `lgse/strata`, which the ledger, twins and the fuzz
+  driver's files cite as `lgse/strata#<number>` (a `rune` twin still cites its packet
+  entry), and [`findings.md`](findings.md) holds its state. Package tracking stays in
+  Markdown; no package issue comes back.
+- **2026-11-12: the thumbnail worker is in `strata-rune` until E4.** The owner said "In
+  strata-rune until E4" (recorded by the orchestrating session, 2026-11-12), choosing among
+  three answers: `strata-rune` gets the `--browser-worker` entry point now, as the GTK
+  binary has it, which brings `gdk-pixbuf` into the Rune binary through `strata-preview`.
+  [E4](packages/E4.md) owns removing it, and exit criterion 6 is knowingly not met until
+  then. The other two answers were a separate worker binary and a client crate split from
+  `strata-preview`.
 
 ## Housekeeping
 

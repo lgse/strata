@@ -8,10 +8,19 @@ in Rune bound for the filing packet (`rune-gap`), requests for a twin or a norma
 
 ## Recording a finding
 
-Until 2026-11-12 each finding was a GitHub issue. From now on a new finding is an entry in
-this file, added in the pull request that meets it, in the form of the entries below: its
-code, two lines on what was seen, the run, seed or test it concerns, and its state. Search
-this file by code and by scenario or seed name before adding one. A finding met mid-run may
+Until 2026-11-12 each finding was a GitHub issue that also held its state. By the owner's
+ruling of 2026-11-12 ([`owner.md`](owner.md#ruled)), a new finding is two things:
+
+- **A reference issue on `lgse/strata`**, which is what the ledger, twins and the fuzz
+  driver's files cite. It carries the code's label and `rune-parity`, and a short statement
+  in the form of the archived issues, and it is closed at once with a line pointing at this
+  file. It is a reference, not a tracker: nothing more is recorded on it.
+- **An entry in this file**, added in the pull request that meets the finding, in the form
+  of the entries below: its code, two lines on what was seen, the run, seed or test it
+  concerns, and its state.
+
+Search before filing: this file first, by code and by scenario or seed name, then the issues
+by label and by scenario or seed name. A finding met mid-run may
 land as its own small docs-only pull request that merges quickly, so other packages see it
 before the package's own pull request does. When a finding is fixed or set aside for good,
 its entry says where, and stays.
@@ -25,12 +34,8 @@ normalisation map, calibration mask and `parked` lists each cite the record behi
 their readers accept only two forms: an issue, `lgse/strata#<number>`, or, for a `rune`
 twin, its packet entry, `docs/rune/upstream/rune/<number>-<name>.md`
 (`tests/qa/twins.rs` and `scripts/qa_parity_check.py` today, and `tests/qa/fuzz/rules.rs`
-once F1's pull request [#2181](https://github.com/lgse/strata/pull/2181) merges). References to the archived issues below stay valid and
-need no change. What a reference to a finding recorded only in this file looks like is a
-question for the owner, the first in [`owner.md`](owner.md#tracking-and-findings): a GitHub
-issue for each new finding as its reference, or a `contract` change to the readers to accept
-an anchor here. Until it is ruled, a change that needs to cite a new finding says so in its
-pull request and in its package's file, and waits.
+once F1's pull request [#2181](https://github.com/lgse/strata/pull/2181) merges). A new finding's reference issue is that issue.
+References to the archived issues below stay valid and need no change.
 
 ## Findings
 

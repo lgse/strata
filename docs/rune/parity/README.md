@@ -195,8 +195,8 @@ could observe. It adds a generator, a comparator and a shrinker to the QA runner
 | Rune gap | An upstream packet entry, a workaround, and a `rune` rule that expires with it |
 | Noise | The calibration mask grows, only when two GTK runs of the seed differ |
 
-A parked seed, a rule and a mask line cite an issue today; what they cite for a finding
-recorded only in [`findings.md`](findings.md) is open ([`owner.md`](owner.md#tracking-and-findings)).
+A parked seed, a rule and a mask line cite the finding's reference issue; its state is in
+[`findings.md`](findings.md).
 
 Four conventions keep the fuzzer honest:
 
@@ -465,9 +465,10 @@ work meets. Work in flight is seen in the open pull requests that target `strata
 - **The owner assigns.** The owner hands each package to an agent, and that assignment is
   the claim. The agent checks that every dependency's file reads `done`; its first pull
   request sets the package's state to `in progress`.
-- **Search before recording.** Look in [`findings.md`](findings.md) by code and by scenario
-  or seed name before adding a finding. A new one is an entry there, in the pull request
-  that meets it.
+- **Findings.** Search [`findings.md`](findings.md), then the issues, by code and by
+  scenario or seed name before adding one. A new finding gets a GitHub issue purely as its
+  reference, closed at once, and an entry in `findings.md`, which holds its state, in the
+  pull request that meets it ([`findings.md`](findings.md#recording-a-finding)).
 - **Report in the package's file.** Each pull request adds one dated entry to its record:
   its number, what it delivered and the runs it flipped. The commands and the evidence are
   on the pull request.
@@ -629,6 +630,10 @@ the commands.
 4. The fuzz soak passes with no open `divergence` finding.
 5. The hand checks on four desktops are recorded.
 6. `cargo tree` shows no `gtk4`, `gdk4`, `sourceview5` or `gdk-pixbuf`.
+
+The thumbnail worker is the ruled exception to criterion 6 until E4: by the owner's ruling
+of 2026-11-12 it brings `gdk-pixbuf` into `strata-rune`, and E4 removes it
+([`owner.md`](owner.md#ruled)).
 
 Three oracle defects are open today and should be the first `oracle` issues: `cut.patch` no
 longer applies, `new-folder-with-selection-groups/columns` fails more often than not alone,
