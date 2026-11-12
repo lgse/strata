@@ -53,6 +53,10 @@ pub(crate) struct Single {
     described: String,
     /// `ENTRY_CONTAINER_DESCRIPTION` there: what the list of entries is.
     entries: String,
+    /// What an empty folder's pane says, and what one being read is described as
+    /// (`LOADING_SURFACE_DESCRIPTION`).
+    empty: String,
+    loading: String,
 }
 
 fn clicks(count: u8) -> ClickCount {
@@ -87,6 +91,8 @@ impl Single {
             words: Words::translated(),
             described,
             entries: tr("Files"),
+            empty: tr("This directory is empty"),
+            loading: tr("Loading"),
         }
     }
 }
@@ -119,16 +125,39 @@ pub(crate) fn title<V: SinglePane>(app: &App) -> String {
         .to_owned()
 }
 
-/// What the view shows in place of entries when its folder could not be read: the browser's
-/// message.
-fn failure<V: SinglePane>(app: &App) -> Option<El> {
-    let Load::Failed(message) = pane::<V>(app).listing()?.load() else {
+/// What the view says in place of entries while it shows none, as GTK's status page does:
+/// the browser's message for a folder that could not be read, the empty page's for an empty
+/// one, and nothing while the folder is read (`DirectorySurface::sync` in
+/// `src/ui/loading_skeleton/surface.rs`; the loading skeleton itself is not drawn).
+fn status<V: SinglePane>(app: &App) -> Option<(&str, bool)> {
+    let single = V::single(app);
+    let listing = single.pane.listing()?;
+    if listing.len() > 0 {
         return None;
-    };
+    }
+    match listing.load() {
+        Load::Failed(message) => Some((message, true)),
+        _ if listing.is_loading() => Some((&single.loading, false)),
+        _ => Some((&single.empty, true)),
+    }
+}
+
+/// What the entry list is described as: what it is, or, while it shows no entry, what the
+/// GTK pane surface that holds the keyboard then is described as (`describe_pane_surface` in
+/// `src/ui/accessibility.rs`).
+fn described<V: SinglePane>(app: &App) -> String {
+    match status::<V>(app) {
+        Some((status, _)) => status.to_owned(),
+        None => V::single(app).entries.clone(),
+    }
+}
+
+fn shown_status<V: SinglePane>(app: &App) -> Option<El> {
+    let (message, _) = status::<V>(app).filter(|(_, shown)| *shown)?;
     let look = &app.look;
     Some(
         col().w_full().px(look.space.lg).py(look.space.lg).child(
-            text(message.clone())
+            text(message.to_owned())
                 .font(look.kit.ty.ui)
                 .color(look.kit.c.text_muted),
         ),
@@ -152,7 +181,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
         |app: &App| pane::<V>(app).version(),
     )
     .name(title::<V>(app))
-    .description(single.entries.clone())
+    .description(described::<V>(app))
     .settings(single.keys.clone())
     .settings(PointerSettings::default().modes(single.clicks))
     .describe(Describe::pure(|app: &App, row| {
@@ -163,7 +192,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
             .description(row.index, &single.words)?;
         Some(description.to_owned())
     }))
-    .empty(failure::<V>)
+    .empty(shown_status::<V>)
     .on_intent(heard::<V>)
     .on_cursor(|app: &mut App, _, tx| moved(app, tx))
     .on_selection(moved);
