@@ -20,7 +20,6 @@ pub(crate) struct Shrunk {
     pub(crate) steps: Vec<String>,
     /// The divergence as the shortest sequence shows it.
     pub(crate) divergence: Divergence,
-    /// How many times the oracle was asked.
     pub(crate) asked: usize,
     /// How many of `CONFIRMATIONS` replays of the shortest sequence diverged the same way.
     pub(crate) confirmed: usize,

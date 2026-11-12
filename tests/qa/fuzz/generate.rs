@@ -19,7 +19,6 @@ pub(crate) fn name(area: &str, seed: u64) -> String {
     format!("{PREFIX}-{area}-{seed:016x}")
 }
 
-/// The seed a sequence name ends with.
 pub(crate) fn seed_of(name: &str) -> Option<u64> {
     let digits = name.rsplit('-').next()?;
     (digits.len() == 16)

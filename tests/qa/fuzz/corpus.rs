@@ -34,7 +34,6 @@ pub(crate) fn directory(area: &str) -> PathBuf {
     Path::new(REPOSITORY).join(DATA).join("corpus").join(area)
 }
 
-/// The areas that keep a corpus, in name order.
 pub(crate) fn areas() -> Vec<String> {
     let mut areas: Vec<String> = fs::read_dir(Path::new(REPOSITORY).join(DATA).join("corpus"))
         .into_iter()
@@ -47,7 +46,6 @@ pub(crate) fn areas() -> Vec<String> {
     areas
 }
 
-/// The area's sequence files, in name order.
 pub(crate) fn files(area: &str) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = fs::read_dir(directory(area))
         .into_iter()

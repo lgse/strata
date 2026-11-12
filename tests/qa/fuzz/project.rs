@@ -115,7 +115,6 @@ pub(crate) fn outside(app: &Value, tree: &Value) -> bool {
         })
 }
 
-/// One field two observations disagree on.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Difference {
     pub(crate) field: String,

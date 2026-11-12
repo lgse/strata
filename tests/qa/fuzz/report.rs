@@ -259,7 +259,6 @@ impl Run {
         }
     }
 
-    /// Adds a sequence's replays, steps and first differing fields to the totals.
     fn count(&mut self, examined: &Examined) {
         self.sequences += 1;
         self.areas.insert(examined.area.clone());
@@ -403,7 +402,6 @@ pub(crate) struct Evidence<'a> {
 }
 
 impl Evidence<'_> {
-    /// Whether some replay lost the target or logged a GLib warning.
     fn has_finding(&self) -> bool {
         self.replays
             .iter()
