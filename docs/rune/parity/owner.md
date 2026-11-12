@@ -161,7 +161,7 @@ comments of 2026-11-12, unless another is named.
   side answers that every binding fires, so its labels show every key of an entry. For the
   shipped keys that is GTK's answer too: its check leaves out none of them in either map,
   with type-to-search on or off. The two differ only for a key a user added, which the
-  Rune side does not read yet. Source: [#2195](https://github.com/lgse/strata/pull/2195) and B0_PR.
+  Rune side does not read yet. Source: [#2195](https://github.com/lgse/strata/pull/2195) and [#2197](https://github.com/lgse/strata/pull/2197).
 - **A rebinding's round trip where key libraries differ.** With the `xkbcommon` backend
   the names of keys beyond those the code declares follow the user's installed library,
   and the comparison with GDK is exact only for the test image's pair of GTK and
