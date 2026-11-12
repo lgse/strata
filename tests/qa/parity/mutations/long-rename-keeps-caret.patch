@@ -1,13 +1,13 @@
-diff --git a/crates/strata-components/src/icons_grid/tile.rs b/crates/strata-components/src/icons_grid/tile.rs
-index c1f70fa40..26efc6d9a 100644
---- a/crates/strata-components/src/icons_grid/tile.rs
-+++ b/crates/strata-components/src/icons_grid/tile.rs
-@@ -274,7 +274,7 @@ pub(super) fn content_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Cont
-                 // width of its own would be laid out with none, and Rune gives the keyboard to
-                 // no field it cannot show.
-                 let label = if rcx.state.renaming {
--                    col().w(inner).h(m.caption_height()).child(label.w_full())
-+                    col().w(inner).h(m.caption_height()).items_center().child(label)
-                 } else {
-                     label
-                 };
+diff --git a/crates/strata-app/src/icons/view.rs b/crates/strata-app/src/icons/view.rs
+index 8446af58f..ae65b3888 100644
+--- a/crates/strata-app/src/icons/view.rs
++++ b/crates/strata-app/src/icons/view.rs
+@@ -94,7 +94,7 @@ fn collection(app: &App) -> Collection<App> {
+     .on_selection(intents::moved);
+     // The editor answers in this grid only while its edit names it.
+     collection.rename(
+-        |app: &App| app.rename.state.renaming_in(VIEW),
++        |app: &App| app.rename.state.renaming_in("columns"),
+         rename::editor(app).slot(),
+     )
+ }
