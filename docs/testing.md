@@ -1091,7 +1091,9 @@ differs") is worked from the top, and the first step that fits is taken:
 
 The pull request that adds a twin says why steps 1 to 3 do not fit. When the
 difference is a bug in Strata itself, file the `oracle` issue and go straight
-to step 4.
+to step 4. Parity findings are now recorded in `docs/rune/parity/findings.md`;
+what a twin cites for one with no issue is an open question in
+`docs/rune/parity/owner.md`.
 
 **The two files.** The twin is a new file beside the original,
 `tests/qa/scenarios/<folder>/<scenario>-rune.jsonl`. A name that ends in

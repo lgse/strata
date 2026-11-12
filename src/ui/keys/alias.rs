@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! Escape, Enter, Tab and the arrows are structural commands: a press of one
-//! of their other bindings is read as the canonical key before any handler
-//! sees it, so every surface that matches the command follows it. See
-//! `docs/keyboard-shortcuts.md`.
+//! The GTK half of the aliases of structural commands: what owns typing where a
+//! press lands, and GTK's own effect for an alias nothing claimed. The rewrite
+//! itself is `strata_desktop::keys::rewrite`. See `docs/keyboard-shortcuts.md`.
 
 use gtk::{
     gdk::{Key, ModifierType as Modifiers},
@@ -11,113 +10,33 @@ use gtk::{
     prelude::*,
 };
 
-use super::{
-    Binding, Command, KeyPress, Map, Match, bindings,
-    command::{active_keymap, registry},
-};
+pub(super) use strata_desktop::keys::FALLBACK;
 
-/// Escape always matches `escape`, even where a table leaves it out.
-pub(super) const FALLBACK: Command = bindings::ESCAPE;
+use super::{Context, Map, gdk_key, gdk_modifiers, rewrite};
 
-/// What owns typing where a press lands.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Context {
-    /// A focused text field or popover, or type-to-search, reads plain
-    /// printable keys as its own. In 10xer a read-only text view, such as a
-    /// text preview, types nothing; the default map keeps treating it as a
-    /// field.
-    pub(crate) typing: bool,
-}
-
-impl Context {
-    pub(crate) fn of(focused: Option<&gtk::Widget>, type_to_search: bool) -> Self {
-        let tenxer = Map::active() == Map::Tenxer;
-        let owns_typing = |widget: &gtk::Widget| {
-            (if tenxer {
-                crate::ui::focus_navigation::accepts_typing(widget)
-            } else {
-                crate::ui::focus_navigation::editable(widget)
-            }) || crate::ui::focus_navigation::in_popover(widget)
-        };
-        Self {
-            typing: type_to_search || focused.is_some_and(owns_typing),
-        }
-    }
-
-    pub(super) fn of_controller(controller: &impl IsA<gtk::EventController>) -> Self {
-        let focused = controller
-            .widget()
-            .and_then(|widget| widget.root())
-            .and_then(|root| root.focus());
-        let type_to_search = crate::ui::preferences::PreferenceManager::existing()
-            .is_some_and(|preferences| preferences.type_to_search_active());
-        Self::of(focused.as_ref(), type_to_search)
-    }
-
-    fn aliasing(self) -> Aliasing {
-        if self.typing {
-            Aliasing::Untyped
+/// What owns typing where a press lands, from the focused widget.
+pub(super) fn context_of(focused: Option<&gtk::Widget>, type_to_search: bool) -> Context {
+    let tenxer = Map::active() == Map::Tenxer;
+    let owns_typing = |widget: &gtk::Widget| {
+        (if tenxer {
+            crate::ui::focus_navigation::accepts_typing(widget)
         } else {
-            Aliasing::All
-        }
+            crate::ui::focus_navigation::editable(widget)
+        }) || crate::ui::focus_navigation::in_popover(widget)
+    };
+    Context {
+        typing: type_to_search || focused.is_some_and(owns_typing),
     }
 }
 
-/// Which alternates a press's context lets through. `Off` is a press that
-/// did not come through `on_press`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Aliasing {
-    Off,
-    Untyped,
-    All,
-}
-
-impl Aliasing {
-    pub(super) fn allows(self, typed: bool) -> bool {
-        match self {
-            Self::Off => false,
-            Self::Untyped => !typed,
-            Self::All => true,
-        }
-    }
-}
-
-/// The key a rewritten press came from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Alias {
-    pub(super) key: Key,
-    pub(super) modifiers: Modifiers,
-    /// A plain printable alternate, such as **j** for ↓.
-    pub(super) typed: bool,
-}
-
-fn structural() -> impl Iterator<Item = (Command, Binding)> {
-    registry().filter_map(|command| command.canonical().map(|canonical| (command, canonical)))
-}
-
-/// Reads `press` as the canonical key of the structural command whose
-/// alternate it matches exactly in the active map, where `context` lets that
-/// alternate through. A canonical key, with any modifiers, is never rewritten.
-pub(crate) fn rewrite(press: KeyPress, context: Context) -> KeyPress {
-    let aliasing = context.aliasing();
-    let press = KeyPress { aliasing, ..press };
-    if press.is_modifier() || press.aliased() {
-        return press;
-    }
-    if structural().any(|(_, canonical)| canonical.key() == press.key) {
-        return press;
-    }
-    let keymap = active_keymap();
-    let map = Map::active();
-    for (command, canonical) in structural() {
-        let alternate = keymap.bindings(map, command).iter().find(|binding| {
-            **binding != canonical && aliasing.allows(binding.is_typed()) && binding.matches(&press)
-        });
-        if let Some(alternate) = alternate {
-            return press.read_as(canonical, alternate.is_typed());
-        }
-    }
-    press
+pub(super) fn context_of_controller(controller: &impl IsA<gtk::EventController>) -> Context {
+    let focused = controller
+        .widget()
+        .and_then(|widget| widget.root())
+        .and_then(|root| root.focus());
+    let type_to_search = crate::ui::preferences::PreferenceManager::existing()
+        .is_some_and(|preferences| preferences.type_to_search_active());
+    context_of(focused.as_ref(), type_to_search)
 }
 
 /// GTK's own bindings see an alias as the key pressed, so an alias that
@@ -134,15 +53,16 @@ pub(crate) fn install_native(window: &impl IsA<gtk::Window>) -> gtk::EventContro
         }
         let press = rewrite(
             super::read(controller, keyval, keycode, state),
-            Context::of_controller(controller),
+            context_of_controller(controller),
         );
-        let handled = press.alias.is_some_and(|alias| !alias.typed)
-            && window_ref
+        let handled = press.unclaimed_alias().is_some_and(|(key, modifiers)| {
+            window_ref
                 .upgrade()
                 .and_then(|window| gtk::prelude::RootExt::focus(&window))
                 .is_some_and(|focused| {
-                    activate_native(&focused, press.key, press.shortcut_modifiers)
-                });
+                    activate_native(&focused, gdk_key(key), gdk_modifiers(modifiers))
+                })
+        });
         if handled {
             glib::Propagation::Stop
         } else {

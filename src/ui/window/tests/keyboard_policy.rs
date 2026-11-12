@@ -2,13 +2,13 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use gtk::{
-    gdk::{Key, ModifierType},
-    prelude::*,
-};
+use gtk::prelude::*;
 
 use super::*;
-use crate::ui::{keys::KeyPress, preferences::PreferenceManager};
+use crate::ui::{
+    keys::{Key, KeyPress, Modifiers as ModifierType},
+    preferences::PreferenceManager,
+};
 
 const NONE: ModifierType = ModifierType::empty();
 const CONTROL: ModifierType = ModifierType::CONTROL_MASK;
@@ -362,7 +362,14 @@ fn dispatch(window: &gtk::ApplicationWindow, key: Key, modifiers: ModifierType) 
         })
         .find(|keys| keys.propagation_phase() == gtk::PropagationPhase::Capture)
         .expect("key dispatcher")
-        .emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+        .emit_by_name::<bool>(
+            "key-pressed",
+            &[
+                &crate::ui::keys::gdk_key(key),
+                &0u32,
+                &crate::ui::keys::gdk_modifiers(modifiers),
+            ],
+        )
 }
 
 fn assert_window_actions(

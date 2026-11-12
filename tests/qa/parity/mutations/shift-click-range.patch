@@ -1,13 +1,13 @@
-diff --git a/crates/strata-app/src/columns/selection.rs b/crates/strata-app/src/columns/selection.rs
-index 2926e5764..bf240a134 100644
---- a/crates/strata-app/src/columns/selection.rs
-+++ b/crates/strata-app/src/columns/selection.rs
-@@ -73,7 +73,7 @@ impl Columns {
-         // A folder still loading may not list an entry the browser already holds.
-         let loading = *column.load() == Load::Loading;
-         let listed = |id: &EntryId| loading || column.index_of(*id).is_some();
--        let cursor = marks.cursor.filter(listed);
-+        let cursor = marks.cursor.filter(listed).filter(|_| false);
-         let selected: Vec<EntryId> = marks.selected.iter().copied().filter(listed).collect();
-         let provisional = marks.provisional && cursor.is_some_and(|id| selected == [id]);
-         let selection = &mut state.collection.selection;
+diff --git a/crates/strata-app/src/handover.rs b/crates/strata-app/src/handover.rs
+index 1bef9028e..fd550a7a0 100644
+--- a/crates/strata-app/src/handover.rs
++++ b/crates/strata-app/src/handover.rs
+@@ -69,7 +69,7 @@ pub(crate) fn adopt(column: &Column, collection: &mut CollectionState, marks: &M
+     // A folder still loading may not list an entry the browser already holds.
+     let loading = *column.load() == Load::Loading;
+     let listed = |id: &EntryId| loading || column.index_of(*id).is_some();
+-    let cursor = marks.cursor.filter(listed);
++    let cursor = marks.cursor.filter(listed).filter(|_| false);
+     let selected: Vec<EntryId> = marks.selected.iter().copied().filter(listed).collect();
+     let provisional = marks.provisional && cursor.is_some_and(|id| selected == [id]);
+     let selection = &mut collection.selection;

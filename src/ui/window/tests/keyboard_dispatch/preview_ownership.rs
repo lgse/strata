@@ -134,7 +134,14 @@ fn emit_on_focused(fixture: &KeyboardFixture, key: Key, modifiers: ModifierType)
             .item(index)
             .and_downcast::<gtk::EventControllerKey>()
     }) {
-        if keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]) {
+        if keys.emit_by_name::<bool>(
+            "key-pressed",
+            &[
+                &crate::ui::keys::gdk_key(key),
+                &0u32,
+                &crate::ui::keys::gdk_modifiers(modifiers),
+            ],
+        ) {
             return;
         }
     }

@@ -131,7 +131,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                     m.set_bindings(
                         Map::Default,
                         bindings::RENAME,
-                        vec![Binding::ctrl(gtk::gdk::Key::e)],
+                        vec![Binding::ctrl(crate::ui::keys::Key::e)],
                     )
                 },
                 |m| m.reset_binding(Map::Tenxer, bindings::SIDEBAR_FOCUS),

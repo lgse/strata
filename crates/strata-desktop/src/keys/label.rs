@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::gdk::{Key, ModifierType as Modifiers};
-
-use super::{Binding, Command, Map, command::Alternate};
+use super::{Binding, Command, Key, Map, Modifiers, active::active, command::Alternate};
 
 /// A key a label shows: a command, which shows its bindings in the active
 /// map, one alternate of a command, or a fixed binding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Shown {
+pub enum Shown {
     Command(Command),
     Alternate(Alternate),
     Binding(Binding),
@@ -15,7 +13,7 @@ pub(crate) enum Shown {
 
 impl Shown {
     /// Every alternate in `map` that can fire, primary first.
-    pub(crate) fn bindings(self, map: Map) -> Vec<Binding> {
+    pub fn bindings(self, map: Map) -> Vec<Binding> {
         match self {
             Self::Command(command) => firing(command, map, command.bindings_in(map)),
             Self::Alternate(alternate) => {
@@ -34,7 +32,7 @@ impl Shown {
     }
 
     /// The binding a menu shows, from the active map.
-    pub(crate) fn primary(self) -> Option<Binding> {
+    pub fn primary(self) -> Option<Binding> {
         self.primary_in(Map::active())
     }
 
@@ -47,25 +45,25 @@ impl Shown {
 /// press reaches, and a plain printable key a user added to the default map
 /// while type-to-search types it.
 fn firing(command: Command, map: Map, bindings: Vec<Binding>) -> Vec<Binding> {
-    let typing = map == Map::Default
-        && crate::ui::preferences::PreferenceManager::existing()
-            .is_some_and(|preferences| preferences.type_to_search_active());
+    let typing =
+        map == Map::Default && active().is_some_and(|settings| settings.type_to_search_active());
     bindings
         .into_iter()
-        .filter(|binding| !super::conflicts::never_fires(map, command, *binding, typing))
+        .filter(|binding| !super::backend::never_fires(map, command, *binding, typing))
         .collect()
 }
 
 /// The [`Shown`] keys of catalog constants, commands and fixed bindings alike,
 /// for [`Keys::Any`] and [`Keys::Chord`].
+#[macro_export]
 macro_rules! shown {
     ($($key:expr),* $(,)?) => { &const { [$($key.shown()),*] } };
 }
-pub(crate) use shown;
+pub use shown;
 
 /// What a shortcut row or hint shows. Never free text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Keys {
+pub enum Keys {
     /// One key, with every alternate a command has: **Ctrl+C**.
     One(Shown),
     /// Alternatives: **F2 / Ctrl+R**.
@@ -82,19 +80,19 @@ pub(crate) enum Keys {
 
 impl Keys {
     /// Whether the keys resolve to the same bindings in both maps.
-    pub(crate) fn same_in_both_maps(&self) -> bool {
+    pub fn same_in_both_maps(&self) -> bool {
         self.resolved(Map::Default) == self.resolved(Map::Tenxer)
     }
 
     /// Whether the active map binds what the label needs: any alternative, and
     /// every step of a chord. An unbound row is left out rather than shown blank.
-    pub(crate) fn is_bound(&self) -> bool {
+    pub fn is_bound(&self) -> bool {
         !label_in_map("en", self, Map::active()).is_empty()
     }
 
     /// The commands the keys show, in order, chord triggers and digit
     /// prefixes included.
-    pub(crate) fn commands(&self) -> Vec<Command> {
+    pub fn commands(&self) -> Vec<Command> {
         match self {
             Self::One(shown) => shown.command().into_iter().collect(),
             Self::Any(shown) | Self::Chord(shown) => {
@@ -137,7 +135,7 @@ impl Keys {
 /// Digit-row keys 1 to `last`, and 0 when `zero`, with shared modifiers or
 /// after a chord prefix, and its second key `then` when the digits follow two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Digits {
+pub struct Digits {
     prefix: Option<Shown>,
     then: Option<Shown>,
     modifiers: Modifiers,
@@ -147,7 +145,7 @@ pub(crate) struct Digits {
 }
 
 impl Digits {
-    pub(crate) const fn new(modifiers: Modifiers, last: u8, zero: bool) -> Self {
+    pub const fn new(modifiers: Modifiers, last: u8, zero: bool) -> Self {
         Self {
             prefix: None,
             then: None,
@@ -160,7 +158,7 @@ impl Digits {
 
     /// A chord's digit step. It also accepts Shift, which AZERTY needs to type
     /// digits and which no chord step uses.
-    pub(crate) const fn after(prefix: Shown, last: u8, zero: bool) -> Self {
+    pub const fn after(prefix: Shown, last: u8, zero: bool) -> Self {
         Self {
             prefix: Some(prefix),
             then: None,
@@ -172,34 +170,34 @@ impl Digits {
     }
 
     /// The digit step of a two-key chord, such as **; . 1**.
-    pub(crate) const fn after_chord(prefix: Shown, then: Shown, last: u8, zero: bool) -> Self {
+    pub const fn after_chord(prefix: Shown, then: Shown, last: u8, zero: bool) -> Self {
         Self {
             then: Some(then),
             ..Self::after(prefix, last, zero)
         }
     }
 
-    #[cfg(test)]
-    pub(crate) const fn prefix(self) -> Option<Shown> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub const fn prefix(self) -> Option<Shown> {
         self.prefix
     }
 
-    #[cfg(test)]
-    pub(crate) const fn then(self) -> Option<Shown> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub const fn then(self) -> Option<Shown> {
         self.then
     }
 
-    pub(crate) const fn modifiers(self) -> Modifiers {
+    pub const fn modifiers(self) -> Modifiers {
         self.modifiers
     }
 
-    pub(crate) const fn ignored(self) -> Modifiers {
+    pub const fn ignored(self) -> Modifiers {
         self.ignored
     }
 
     /// The digits alone, as a panel or badge lists them while the prefix or
     /// modifiers are held. Handlers match the full range.
-    pub(crate) const fn step(self) -> Self {
+    pub const fn step(self) -> Self {
         Self {
             prefix: None,
             then: None,
@@ -208,7 +206,7 @@ impl Digits {
         }
     }
 
-    pub(crate) fn contains(self, digit: u8) -> bool {
+    pub fn contains(self, digit: u8) -> bool {
         (1..=self.last).contains(&digit) || (digit == 0 && self.zero)
     }
 }
@@ -216,36 +214,36 @@ impl Digits {
 /// The plain letters **a** to **z** after a chord prefix. Each letter names a
 /// slot rather than binding an action, so the range never rebinds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Letters {
+pub struct Letters {
     prefix: Option<Shown>,
 }
 
 impl Letters {
-    pub(crate) const fn after(prefix: Shown) -> Self {
+    pub const fn after(prefix: Shown) -> Self {
         Self {
             prefix: Some(prefix),
         }
     }
 
-    #[cfg(test)]
-    pub(crate) const fn prefix(self) -> Option<Shown> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub const fn prefix(self) -> Option<Shown> {
         self.prefix
     }
 
     /// The letters alone, as a panel lists them while the prefix is pending.
-    pub(crate) const fn step(self) -> Self {
+    pub const fn step(self) -> Self {
         Self { prefix: None }
     }
 }
 
-pub(crate) fn label(keys: &Keys) -> String {
+pub fn label(keys: &Keys) -> String {
     label_in(&rust_i18n::locale(), keys)
 }
 
 /// Searchable text: the label in the interface language and in English, so
 /// either spelling finds a shortcut, with shared modifiers also written out
 /// so that **Ctrl+0** finds **Ctrl++ / − / 0**.
-pub(crate) fn search_text(keys: &Keys) -> String {
+pub fn search_text(keys: &Keys) -> String {
     let local = rust_i18n::locale();
     let map = Map::active();
     let mut texts = Vec::new();
@@ -290,17 +288,17 @@ fn expanded(shown: &[Shown], map: Map) -> Vec<Binding> {
 }
 
 /// Held modifiers alone, such as **Ctrl+Shift** in "hold Ctrl+Shift for numbers".
-pub(crate) fn modifiers_label(modifiers: Modifiers) -> String {
+pub fn modifiers_label(modifiers: Modifiers) -> String {
     modifiers_label_in(&rust_i18n::locale(), modifiers)
 }
 
-pub(crate) fn modifiers_label_in(locale: &str, modifiers: Modifiers) -> String {
+pub fn modifiers_label_in(locale: &str, modifiers: Modifiers) -> String {
     modifier_names(locale, modifiers).join("+")
 }
 
 /// One digit of `digits`, for a hint that names a single member: **g 3**,
 /// **Ctrl+Shift+3**, or **3** from [`Digits::step`].
-pub(crate) fn digit_label(digits: Digits, digit: u8) -> String {
+pub fn digit_label(digits: Digits, digit: u8) -> String {
     debug_assert!(digits.contains(digit), "{digit} is outside {digits:?}");
     let locale = rust_i18n::locale();
     let digit = digit.to_string();
@@ -312,13 +310,13 @@ pub(crate) fn digit_label(digits: Digits, digit: u8) -> String {
     }
 }
 
-pub(crate) fn label_in(locale: &str, keys: &Keys) -> String {
+pub fn label_in(locale: &str, keys: &Keys) -> String {
     label_in_map(locale, keys, Map::active())
 }
 
 /// Empty when nothing it shows is bound in `map`, as for a chord with an
 /// unbound step.
-pub(crate) fn label_in_map(locale: &str, keys: &Keys, map: Map) -> String {
+pub fn label_in_map(locale: &str, keys: &Keys, map: Map) -> String {
     match keys {
         Keys::One(shown) => alternatives(locale, &shown.bindings(map)),
         Keys::Any(shown) => alternatives(locale, &expanded(shown, map)),
@@ -482,7 +480,7 @@ fn key_name(locale: &str, key: Key) -> String {
                 .or_else(|| dead_key_mark(key))
                 .filter(|character| !character.is_control() && !character.is_whitespace())
                 .map(|character| character.to_string())
-                .or_else(|| key.name().map(Into::into))
+                .or_else(|| key.name())
                 .unwrap_or_default();
         }
     };

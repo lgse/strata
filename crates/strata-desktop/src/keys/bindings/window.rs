@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::gdk::{Key, ModifierType as Modifiers};
-
-use crate::ui::keys::{Binding, Command, Digits};
+use crate::keys::{Binding, Command, Digits, Key, Modifiers};
 
 catalog! {
     listed {

@@ -2,11 +2,8 @@
 
 use std::rc::Rc;
 
-use gtk::{
-    gdk::{Key, ModifierType as Modifiers},
-    glib::Propagation,
-    prelude::*,
-};
+use crate::ui::keys::{Key, Modifiers};
+use gtk::{glib::Propagation, prelude::*};
 
 use super::{Dispatcher, KeyEvent, KeyResult};
 use crate::{

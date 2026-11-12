@@ -67,7 +67,7 @@ fn failure(app: &App) -> Option<El> {
 
 fn source(app: &App) -> (&dyn EntrySource, &CollectionState) {
     let pane = &app.icons.pane;
-    (pane.source(), &pane.collection)
+    (pane.source(), pane.collection())
 }
 
 /// The collection under the grid: what the host sets on it, before the grid adds its own.
@@ -105,7 +105,7 @@ pub(super) fn grid() -> IconsGrid<App> {
         collection,
         |app: &App| IconsParts {
             source: app.icons.pane.source(),
-            collection: &app.icons.pane.collection,
+            collection: app.icons.pane.collection(),
             grid: &app.icons.grid,
             size: app.icons.size,
             listing: app.icons.pane.version(),

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::gdk::{Key, ModifierType as Modifiers};
-
-use crate::ui::keys::{Binding, Command, Matcher, SHORTCUT_MODIFIERS};
+use crate::keys::{Binding, Command, Key, Matcher, Modifiers, SHORTCUT_MODIFIERS};
 
 catalog! {
     listed {
@@ -88,10 +86,10 @@ catalog! {
 }
 
 /// Escape with any modifiers, as dialogs and inline edits accept it.
-pub(crate) const ESCAPE_ANY: Matcher = ESCAPE.ignoring(SHORTCUT_MODIFIERS);
+pub const ESCAPE_ANY: Matcher = ESCAPE.ignoring(SHORTCUT_MODIFIERS);
 /// Escape with or without Shift, as the listing, prompts and popovers accept it.
-pub(crate) const ESCAPE_ANY_SHIFT: Matcher = ESCAPE.ignoring(Modifiers::SHIFT_MASK);
+pub const ESCAPE_ANY_SHIFT: Matcher = ESCAPE.ignoring(Modifiers::SHIFT_MASK);
 /// Enter with any modifiers, as confirmation dialogs accept it.
-pub(crate) const ENTER_ANY: Matcher = ENTER.ignoring(SHORTCUT_MODIFIERS);
+pub const ENTER_ANY: Matcher = ENTER.ignoring(SHORTCUT_MODIFIERS);
 /// Enter with or without Shift, as the listing, prompts and popovers accept it.
-pub(crate) const ENTER_ANY_SHIFT: Matcher = ENTER.ignoring(Modifiers::SHIFT_MASK);
+pub const ENTER_ANY_SHIFT: Matcher = ENTER.ignoring(Modifiers::SHIFT_MASK);

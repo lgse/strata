@@ -78,7 +78,14 @@ fn modal_key(fixture: &KeyboardFixture, key: Key) -> bool {
         .filter_map(|index| controllers.item(index))
         .find_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
         .expect("dialog key controller");
-    keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &ModifierType::empty()])
+    keys.emit_by_name::<bool>(
+        "key-pressed",
+        &[
+            &crate::ui::keys::gdk_key(key),
+            &0u32,
+            &crate::ui::keys::gdk_modifiers(ModifierType::empty()),
+        ],
+    )
 }
 
 fn confirm_button(fixture: &KeyboardFixture) -> Option<gtk::Widget> {

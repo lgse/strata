@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::{
-    gdk::{Key, ModifierType as Modifiers},
-    prelude::*,
-};
+use gtk::prelude::*;
 
 use super::{
     super::{
-        Binding, Command, Event, KeyPress, Keymap, Map,
+        Binding, Command, Event, Key, KeyPress, Keymap, Map, Modifiers,
         bindings::{
             DOWN, ENTER, ENTER_ANY, ENTER_ANY_SHIFT, ESCAPE, ESCAPE_ANY, ESCAPE_ANY_SHIFT,
             FOCUS_NEXT, LEFT, RIGHT, UP,
         },
         install_native_aliases, normalize, use_keymap,
     },
-    Context, rewrite,
+    Context, context_of, rewrite,
 };
 
 const NONE: Modifiers = Modifiers::empty();
@@ -24,7 +21,7 @@ fn press(key: Key, modifiers: Modifiers) -> KeyPress {
 }
 
 fn listing() -> Context {
-    Context::of(None, false)
+    context_of(None, false)
 }
 
 #[test]
@@ -54,17 +51,17 @@ fn alias_rewrites_typed_keys_only_outside_text_and_popovers() {
             let option = gtk::Button::with_label("Option");
             popover.set_child(Some(&option));
             for owner in [text.upcast_ref::<gtk::Widget>(), option.upcast_ref()] {
-                let typing = Context::of(Some(owner), false);
+                let typing = context_of(Some(owner), false);
                 assert!(rewrite(ctrl_m, typing).is(ENTER), "{owner:?}");
                 let typed = rewrite(e, typing);
                 assert!(!typed.is(ENTER) && !typed.aliased(), "{owner:?}");
             }
             let field = gtk::TextView::new();
-            assert!(!rewrite(e, Context::of(Some(field.upcast_ref()), false)).aliased());
+            assert!(!rewrite(e, context_of(Some(field.upcast_ref()), false)).aliased());
             let document = gtk::TextView::builder().editable(false).build();
-            assert!(!rewrite(e, Context::of(Some(document.upcast_ref()), false)).aliased());
+            assert!(!rewrite(e, context_of(Some(document.upcast_ref()), false)).aliased());
 
-            let type_to_search = Context::of(None, true);
+            let type_to_search = context_of(None, true);
             assert!(rewrite(ctrl_m, type_to_search).is(ENTER));
             assert!(!rewrite(e, type_to_search).is(ENTER));
 
@@ -81,10 +78,10 @@ fn alias_rewrites_typed_keys_only_outside_text_and_popovers() {
                     let plain = press(letter, NONE);
                     assert!(rewrite(plain, listing()).is(arrow), "{letter:?} {tenxer}");
                     assert!(!rewrite(plain, type_to_search).is(arrow));
-                    assert!(!rewrite(plain, Context::of(Some(text.upcast_ref()), false)).is(arrow));
+                    assert!(!rewrite(plain, context_of(Some(text.upcast_ref()), false)).is(arrow));
                     // Only 10xer reads a read-only text view as a document.
                     assert_eq!(
-                        rewrite(plain, Context::of(Some(document.upcast_ref()), false)).is(arrow),
+                        rewrite(plain, context_of(Some(document.upcast_ref()), false)).is(arrow),
                         tenxer,
                         "{letter:?}"
                     );
@@ -175,7 +172,7 @@ fn modifier_tolerant_matchers() {
             ),
     );
     let text = gtk::Text::new();
-    for context in [listing(), Context::of(Some(text.upcast_ref()), false)] {
+    for context in [listing(), context_of(Some(text.upcast_ref()), false)] {
         for (key, matcher) in [
             (Key::bracketleft, ESCAPE_ANY),
             (Key::bracketleft, ESCAPE_ANY_SHIFT),
@@ -252,7 +249,14 @@ fn unclaimed_aliases_get_the_canonical_keys_gtk_effect() {
             window.present();
             let focus = || gtk::prelude::RootExt::focus(&window);
             let press = |key: Key, modifiers: Modifiers| {
-                native.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+                native.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[
+                        &crate::ui::keys::gdk_key(key),
+                        &0u32,
+                        &crate::ui::keys::gdk_modifiers(modifiers),
+                    ],
+                )
             };
             let first = list.row_at_index(0).expect("first row");
             let second = list.row_at_index(1).expect("second row");

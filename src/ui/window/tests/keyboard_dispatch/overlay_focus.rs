@@ -119,7 +119,16 @@ fn window_key_claimed(window: &gtk::ApplicationWindow, key: Key, modifiers: Modi
                 .item(index)
                 .and_downcast::<gtk::EventControllerKey>()
         })
-        .any(|keys| keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]))
+        .any(|keys| {
+            keys.emit_by_name::<bool>(
+                "key-pressed",
+                &[
+                    &crate::ui::keys::gdk_key(key),
+                    &0u32,
+                    &crate::ui::keys::gdk_modifiers(modifiers),
+                ],
+            )
+        })
 }
 
 fn press_escape_on(layer: &gtk::Widget) {
@@ -133,7 +142,11 @@ fn press_escape_on(layer: &gtk::Widget) {
         .any(|keys| {
             keys.emit_by_name::<bool>(
                 "key-pressed",
-                &[&Key::Escape, &0u32, &ModifierType::empty()],
+                &[
+                    &crate::ui::keys::gdk_key(Key::Escape),
+                    &0u32,
+                    &crate::ui::keys::gdk_modifiers(ModifierType::empty()),
+                ],
             )
         });
     assert!(handled, "the overlay handles Escape");

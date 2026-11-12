@@ -111,8 +111,16 @@ pub(super) fn press_phase(
         .filter(|keys| keys.propagation_phase() == phase)
         .collect();
     assert!(!keys.is_empty(), "{phase:?} key controller");
-    keys.iter()
-        .any(|keys| keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]))
+    keys.iter().any(|keys| {
+        keys.emit_by_name::<bool>(
+            "key-pressed",
+            &[
+                &crate::ui::keys::gdk_key(key),
+                &0u32,
+                &crate::ui::keys::gdk_modifiers(modifiers),
+            ],
+        )
+    })
 }
 
 pub(super) fn settings_layer(

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::gdk::Key;
-
-use crate::ui::keys::Binding;
+use crate::keys::{Binding, Key};
 
 catalog! {
     listed {

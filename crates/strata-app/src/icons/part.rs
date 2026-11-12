@@ -106,7 +106,7 @@ fn begin_rename(app: &mut App, (depth, id): At, tx: &mut Tx) -> Option<Polled> {
         .rename
         .state
         .begin(VIEW, id, entry.name, entry.kind, Initial::Stem);
-    pane.collection.reveal(VIEW, listing, index, tx);
+    pane.collection().reveal(VIEW, listing, index, tx);
     Some(polled)
 }
 
@@ -115,7 +115,7 @@ fn begin_rename(app: &mut App, (depth, id): At, tx: &mut Tx) -> Option<Polled> {
 fn tick_rename(app: &mut App) -> Polled {
     let pane = &app.icons.pane;
     match pane.listing() {
-        Some(listing) => app.rename.state.tick(VIEW, listing, &pane.collection),
+        Some(listing) => app.rename.state.tick(VIEW, listing, pane.collection()),
         None => app.rename.state.cancel(By::Listing),
     }
 }

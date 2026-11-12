@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::gdk::{Key, ModifierType as Modifiers};
+use crate::ui::keys::{Key, Modifiers};
 
 use super::super::{Binding, Digits, Keys, Shown, digit_label, label_in, shown};
 
