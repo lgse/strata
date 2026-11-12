@@ -19,8 +19,9 @@
 //! - the 10xer hints;
 //! - each row's icon.
 //!
-//! A row whose action belongs to a part this interface does not have yet is shown as the
-//! GTK menu shows it at rest and does nothing: [`Row::wired`] is `None` for it.
+//! A row runs the command registered under the row's id ([`crate::commands`]). A row whose
+//! command belongs to a part this interface does not have yet is shown as the GTK menu shows
+//! it at rest and does nothing: `commands::has` is false for its id.
 
 use rune::{El, Keybind, Tx};
 use strata_components::{
@@ -35,7 +36,9 @@ use strata_core::{
 };
 
 use crate::{
-    App, rename, shell,
+    App,
+    commands::{self, On},
+    rename, shell,
     slots::{Frame, Part, Place, Setup},
 };
 
@@ -142,33 +145,17 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
 }
 
 /// A row of the open menu was chosen. The menu has closed, and the keyboard is back in the
-/// view. What a row does is decided here, once for every view: the view the menu was opened
-/// in gives only what differs from view to view ([`Rows`](crate::slots::Rows)).
+/// view. The row runs the command registered under its id (`commands::run`), on the row's
+/// entry or on the column's folder: what the command does is decided once, where a key and
+/// a button ask for it too. A row no part has a command for does nothing.
 fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { target, action } = intent;
-    let Some(rows) = shell::shown_view(app).map(|view| &view.rows) else {
-        return;
-    };
     let depth = app.menu.depth();
-    let row = target.entry().map(|id| (depth, id));
-    match (wired(&action), row) {
-        // `open_context_entry` in `src/ui/browser/context_menu/item_menu.rs`.
-        (Some(Wired::Open), Some(row)) => (rows.activate)(app, row),
-        // `rename_context_entry` in `src/ui/browser/context_menu/focus.rs`: the entry is
-        // selected alone, and then renamed as F2 renames it.
-        (Some(Wired::Rename), Some((depth, id))) => {
-            (rows.select_only)(app, (depth, id), tx);
-            shell::publish(app);
-            rename::begin_on(app, depth, id, tx);
-        }
-        (Some(Wired::SelectAll), _) => (rows.select_all)(app, depth),
-        (Some(Wired::Refresh), _) => app.browser.retry_column(depth),
-        (Some(Wired::ToggleHidden), _) => app.browser.toggle_hidden(),
-        // A row for an entry, chosen in a menu that has none.
-        (Some(Wired::Open | Wired::Rename), None) => {}
-        (None, _) => tracing::debug!(%action, "a menu row for a part this interface has not"),
-    }
-    shell::settle(app, tx);
+    let on = match target.entry() {
+        Some(id) => On::Row((depth, id)),
+        None => On::Column(depth),
+    };
+    commands::run(app, &action, on, tx);
 }
 
 /// The menu's element, with its surfaces in the layer while it is open.
@@ -215,18 +202,6 @@ impl Menu {
     }
 }
 
-/// What a chosen row does here.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Wired {
-    /// Open the entry as a click on it does.
-    Open,
-    /// Start the inline rename: V9 opens the editor.
-    Rename,
-    SelectAll,
-    Refresh,
-    ToggleHidden,
-}
-
 /// One row of a menu: its id, its label in the catalogs, and the chords its hint shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Row {
@@ -236,7 +211,6 @@ pub(crate) struct Row {
     hint: &'static [&'static str],
     /// The hint is a plain key, which "Type to search" takes: hidden while that is on.
     typed: bool,
-    pub(crate) wired: Option<Wired>,
 }
 
 const fn row(id: &'static str, label: &'static str) -> Row {
@@ -245,7 +219,6 @@ const fn row(id: &'static str, label: &'static str) -> Row {
         label,
         hint: &[],
         typed: false,
-        wired: None,
     }
 }
 
@@ -257,11 +230,6 @@ impl Row {
 
     const fn typed(mut self) -> Self {
         self.typed = true;
-        self
-    }
-
-    const fn does(mut self, wired: Wired) -> Self {
-        self.wired = Some(wired);
         self
     }
 
@@ -288,7 +256,7 @@ impl Row {
 pub(crate) const NEW_FOLDER: Row = row("new-folder", "New Folder").hint(&["ctrl+shift+n"]);
 pub(crate) const NEW_FILE: Row = row("new-file", "New File");
 pub(crate) const GROUP: Row = row("group", "New Folder with Selection");
-pub(crate) const OPEN: Row = row("open", "Open").hint(&["enter"]).does(Wired::Open);
+pub(crate) const OPEN: Row = row("open", "Open").hint(&["enter"]);
 pub(crate) const OPEN_WITH: Row = row("open-with", "Open With…");
 pub(crate) const PREVIEW: Row = row("preview", "Quick preview").hint(&["space"]);
 pub(crate) const RUN: Row = row("run", "Run");
@@ -301,9 +269,7 @@ pub(crate) const EXTRACT_TO: Row = row("extract-to", "Extract to…");
 pub(crate) const CUT: Row = row("cut", "Cut").hint(&["ctrl+x"]);
 pub(crate) const COPY: Row = row("copy", "Copy").hint(&["ctrl+c"]);
 pub(crate) const DUPLICATE: Row = row("duplicate", "Duplicate").hint(&["ctrl+d"]);
-pub(crate) const RENAME: Row = row("rename", "Rename")
-    .hint(&["f2", "ctrl+r"])
-    .does(Wired::Rename);
+pub(crate) const RENAME: Row = row("rename", "Rename").hint(&["f2", "ctrl+r"]);
 pub(crate) const MOVE_TO: Row = row("move-to", "Move to…");
 pub(crate) const COPY_TO: Row = row("copy-to", "Copy to…");
 pub(crate) const COMPRESS: Row = row("compress", "Compress…");
@@ -319,19 +285,14 @@ pub(crate) const FOLDER_PROPERTIES: Row = row("properties", "Properties");
 pub(crate) const TRASH: Row = row("trash", "Move to Trash").hint(&["delete"]);
 pub(crate) const DELETE: Row = row("delete", "Permanently delete").hint(&["shift+delete"]);
 pub(crate) const PASTE: Row = row("paste", "Paste").hint(&["ctrl+v"]);
-pub(crate) const SELECT_ALL: Row = row("select-all", "Select All")
-    .hint(&["ctrl+a"])
-    .does(Wired::SelectAll);
-pub(crate) const REFRESH: Row = row("refresh", "Refresh").hint(&["f5"]).does(Wired::Refresh);
-pub(crate) const SHOW_HIDDEN: Row = row("hidden", "Show Hidden Files")
-    .hint(&["ctrl+h"])
-    .does(Wired::ToggleHidden);
-pub(crate) const HIDE_HIDDEN: Row = row("hidden", "Hide Hidden Files")
-    .hint(&["ctrl+h"])
-    .does(Wired::ToggleHidden);
+pub(crate) const SELECT_ALL: Row = row("select-all", "Select All").hint(&["ctrl+a"]);
+pub(crate) const REFRESH: Row = row("refresh", "Refresh").hint(&["f5"]);
+pub(crate) const SHOW_HIDDEN: Row = row("hidden", "Show Hidden Files").hint(&["ctrl+h"]);
+pub(crate) const HIDE_HIDDEN: Row = row("hidden", "Hide Hidden Files").hint(&["ctrl+h"]);
 
-/// Every row either menu can show: what a chosen id is looked up in. The two hidden-files
-/// rows share an id, as the two Properties rows do.
+/// Every row either menu can show, for the tests of their words and of which have a
+/// command. The two hidden-files rows share an id, as the two Properties rows do.
+#[cfg(test)]
 const ROWS: &[Row] = &[
     NEW_FOLDER,
     NEW_FILE,
@@ -369,11 +330,6 @@ const ROWS: &[Row] = &[
     HIDE_HIDDEN,
     FOLDER_PROPERTIES,
 ];
-
-/// What the row with `id` does here, if anything.
-fn wired(id: &str) -> Option<Wired> {
-    ROWS.iter().find(|row| row.id == id)?.wired
-}
 
 /// What an entry's menu is built from.
 pub(crate) struct EntryTarget<'a> {

@@ -9,7 +9,7 @@ use rune::{Env, Runtime, text::TextSystem};
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::csd::{Backend, Csd, Policy};
 
-use crate::{App, settings::Saved, shell, slots::Entry, startup::UiThread};
+use crate::{App, commands, settings::Saved, shell, slots::Entry, startup::UiThread};
 
 /// The QA runner's screen (`tests/qa/`: Xvfb at 1440x900): what the tests draw on.
 #[cfg(test)]
@@ -50,7 +50,7 @@ impl Offscreen {
             TextSystem::new(FONTS, FAMILIES),
         );
         runtime.poll = Some(shell::poll);
-        runtime.on_key = Some(shell::on_key);
+        runtime.on_key = Some(commands::on_key);
         Self {
             runtime,
             context: glib::MainContext::default(),

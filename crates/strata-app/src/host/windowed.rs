@@ -19,7 +19,7 @@ use strata_platform::{
 };
 
 use crate::{
-    App,
+    App, commands,
     settings::Saved,
     shell,
     startup::{APPLICATION_ID, UiThread},
@@ -62,7 +62,7 @@ pub(crate) fn run(ui: UiThread, settings: Saved, location: Location) -> Result<(
     let frame = Policy::Auto.frame();
     let app = rune::App::new(AppSpec {
         poll: Some(poll),
-        on_key: Some(shell::on_key),
+        on_key: Some(commands::on_key),
         fonts: FONTS,
         families: FAMILIES,
         ..AppSpec::new("Strata", SIZE, unused, shell::view)
