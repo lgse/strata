@@ -279,6 +279,18 @@ fn right_click_at(host: &mut Offscreen, (x, y): (f32, f32)) -> Option<String> {
     menus.first().map(|menu| text(menu, "name"))
 }
 
+/// A double click on the entry named `name`, as a pointer opens it.
+pub(crate) fn double_click(host: &mut Offscreen, shape: Shape, name: &str) {
+    let (x, y) = middle_of(host, shape, name);
+    let runtime = host.runtime();
+    runtime.pointer_move(x, y);
+    for _ in 0..2 {
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+    }
+    idle(host);
+}
+
 /// A right-click on the entry named `name`, and the name of the menu it opens.
 pub(crate) fn right_click(host: &mut Offscreen, shape: Shape, name: &str) -> Option<String> {
     let at = middle_of(host, shape, name);

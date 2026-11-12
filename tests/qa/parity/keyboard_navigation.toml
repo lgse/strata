@@ -137,7 +137,7 @@ run = "list"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A2: the first row takes the keyboard cursor on a first visit to a folder (`src/ui/browser_modes/first_visit.rs`), at the wait on line 6. Then A5: the location bar, at Ctrl+L on line 12, whose chord is B3's. Then A15: Quick Preview, at `preview` on line 23"
+blocker = "A5: the location bar, at Ctrl+L on line 12, whose chord is B3\'s; every step before it passes since the first row takes the cursor on a first visit. Then A15: Quick Preview, at `preview` on line 23"
 
 [[run]]
 scenario = "return-restores-nested-scroll"

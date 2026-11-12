@@ -28,6 +28,7 @@ use strata_components::{
         keyboard::{KeySettings, Keyboard},
         marquee::Marquee,
         pointer::{ClickCount, ClickModes, PointerIntent, PointerSettings},
+        selection::AnchorRule,
     },
     contract::{Direction, EntryId, EntrySource},
     rename::{By, Initial, Polled},
@@ -58,6 +59,10 @@ pub(crate) struct Single {
     entries: String,
     /// What the pane says while it shows no entry.
     surface: Surface,
+    /// Another folder shows and nothing has put a cursor in it yet: once its first rows are
+    /// in, the first one takes the cursor, as a GTK list view focuses its first row when it
+    /// takes the keyboard with none.
+    first_visit: bool,
 }
 
 fn clicks(count: u8) -> ClickCount {
@@ -93,6 +98,7 @@ impl Single {
             described,
             entries: tr("Files"),
             surface: Surface::translated(),
+            first_visit: false,
         }
     }
 }
@@ -211,8 +217,33 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El) -> El {
 /// outlasts GTK's grace period. True when the view has to run.
 pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let single = V::single_mut(app);
+    let placed = first_visit(single);
     let Single { pane, surface, .. } = single;
-    surface.watch(std::iter::once(pane.listing()), clock, tx)
+    surface.watch(std::iter::once(pane.listing()), clock, tx) | placed
+}
+
+/// A folder another view or a pointer opened shows with no cursor, where the browser placed
+/// none: GTK's list view, taking the keyboard, focuses its first row then, with nothing
+/// selected. Once the first rows are in, the first row shown takes the cursor. A cursor the
+/// browser or the user placed first stays. True when it placed one.
+fn first_visit(single: &mut Single) -> bool {
+    if !single.first_visit {
+        return false;
+    }
+    let (source, collection) = single.pane.parts_mut();
+    if collection.selection.cursor().is_some() {
+        single.first_visit = false;
+        return false;
+    }
+    if source.len() == 0 {
+        return false;
+    }
+    let _ = collection
+        .selection
+        .move_cursor(source, 0, AnchorRule::Move);
+    collection.note_selection(source);
+    single.first_visit = false;
+    true
 }
 
 /// What reads the view's share of each event out of the browser.
@@ -223,8 +254,10 @@ pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> 
         heard.copied(read.copied);
         for change in read.changes {
             heard.then(move |app: &mut App, tx: &mut Tx| {
-                if V::single_mut(app).pane.apply(change, tx) == Applied::Entered {
+                let single = V::single_mut(app);
+                if single.pane.apply(change, tx) == Applied::Entered {
                     // The GTK window gives a new listing the keyboard.
+                    single.first_visit = true;
                     tx.focus(V::KEY, false);
                 }
                 true
