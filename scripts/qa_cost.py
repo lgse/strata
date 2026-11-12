@@ -101,12 +101,14 @@ def rewrite(path: Path, cost: dict[str, float]) -> bool:
 
 
 def planned(scenarios: Path = SCENARIOS) -> dict[Path, list[str]]:
-    """Each scenario file's run labels, as `tests/qa.rs` names them."""
+    """Each scenario file's run labels, as `tests/qa.rs` names them on the GTK target, which
+    `qa.sh` times. A twin lists Rune alone: it is not timed, and keeps the cost it has."""
 
     found = {}
     for path in sorted(scenarios.glob("*/*.jsonl")):
         header = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
-        found[path] = run_labels(header)
+        if "gtk" in (header.get("targets") or ["gtk"]):
+            found[path] = run_labels(header)
     return found
 
 

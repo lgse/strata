@@ -16,6 +16,11 @@
 # An edit names a `file`, and either `find` and `put` (text of the file that occurs once,
 # and what takes its place), `append` (text added at its end), `text` (the whole file, which
 # need not exist yet) or `remove = true` (the file is gone).
+#
+# This first corpus has no scenario headers, so its cases are the rules an entry answers to
+# alone: a `parallel` entry is accepted here for its fields. Whether its twin exists and
+# agrees with it is the second table's, tests/qa/parity_pair_cases.toml, which has the
+# scenario files.
 
 [[planned]]
 folder = "keys"
@@ -321,6 +326,169 @@ blocker = "A1"
 '''
 problem = "pictures.toml: looks/icons is excluded, so it has no host, reason or blocker"
 
+# A parallel run and its twin.
+
+[[case]]
+name = "a parallel run names no exception"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list is parallel without an exception'
+
+[[case]]
+name = "a parallel run names no twin"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list is parallel without a twin'
+
+[[case]]
+name = "a parallel run cites no reference"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/list"
+'''
+problem = 'keys.toml: renames/list is parallel without a ref'
+
+[[case]]
+name = "a parallel run keeps its old excuse"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+blocker = "A2"
+'''
+problem = 'keys.toml: renames/list is parallel, so it has no reason, blocker or ruling'
+
+[[case]]
+name = "a parallel run under a code the plan does not have"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "flaky"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list names the exception "flaky", which is none: a twin is allowed under timing, a11y, rune, oracle, toolkit or deviation'
+
+[[case]]
+name = "a parallel run under platform, which never carries a twin"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "platform"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list names the exception "platform", which never carries a twin: the same file runs on the session host, so its run is pending or required with that host'
+
+[[case]]
+name = "a parallel run under a pending reason"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "scope"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list names the exception "scope", which is a pending reason and no exception: the run stays pending until its blocker is gone'
+
+[[case]]
+name = "a parallel run names another run as its twin"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/columns"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list names the twin "renames-rune/columns": the twin of renames/list is renames-rune/list'
+
+[[case]]
+name = "a parallel run cites something that is no issue"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/list"
+ref = "issue 2200"
+'''
+problem = 'keys.toml: renames/list cites "issue 2200", which is no reference: it is the issue, lgse/strata#<number>'
+
+[[case]]
+name = "a parallel run under rune cites an issue, not its packet entry"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "rune"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+problem = 'keys.toml: renames/list cites "lgse/strata#2200", which is no packet entry: a rune twin names the entry it expires with, docs/rune/upstream/rune/<number>-<name>.md'
+
+[[case]]
+name = "a required run names a twin"
+file = "keys"
+find = '''host = "offscreen"
+'''
+put = '''host = "offscreen"
+twin = "moves-rune/columns-arrows"
+'''
+problem = "keys.toml: moves/columns-arrows is required, so it has no exception, twin or ref"
+
+[[case]]
+name = "a twin's run has an entry of its own"
+file = "keys"
+append = '''
+[[run]]
+scenario = "renames-rune"
+run = "list"
+package = "A2"
+status = "required"
+host = "offscreen"
+'''
+problem = "keys.toml: renames-rune/list is a twin's run, which has no entry of its own: it is listed as the twin of the parallel run it stands in for"
+
 # What a reader cannot read.
 
 [[case]]
@@ -484,4 +652,44 @@ status = "pending"
 host = "session"
 reason = "platform"
 blocker = "the clipboard"
+'''
+
+[[accepted]]
+name = "a parallel run that names its exception, its twin and its reference"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "timing"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+
+[[accepted]]
+name = "a parallel run whose twin needs the session host"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+host = "session"
+exception = "timing"
+twin = "renames-rune/list"
+ref = "lgse/strata#2200"
+'''
+
+[[accepted]]
+name = "a parallel run under rune that cites its packet entry"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''status = "parallel"
+exception = "rune"
+twin = "renames-rune/list"
+ref = "docs/rune/upstream/rune/98-escape-after-a-dead-key.md"
 '''

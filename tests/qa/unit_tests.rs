@@ -44,6 +44,11 @@ use crate::{
         remove_and_rename_act_only_inside_the_run_directories,
         waiting_for_exit_wakes_on_the_exit_and_gives_up_at_the_timeout,
     },
+    twin_tests::{
+        a_named_scenario_that_is_no_run_on_the_target_fails_the_selection,
+        a_twin_is_planned_on_rune_alone_and_leaves_the_gtk_suite_as_it_was,
+        the_pair_checks_accept_and_refuse_what_the_shared_table_says,
+    },
 };
 
 /// This target has its own harness, so `#[test]` and `#[cfg(test)]` code never runs;
@@ -87,6 +92,9 @@ unit_tests! {
     the_parity_ledger_accounts_for_every_run_of_every_scenario_folder,
     the_ledger_reader_accepts_and_refuses_what_the_shared_table_says,
     the_ledger_excludes_only_the_runs_the_owner_ruled_out,
+    the_pair_checks_accept_and_refuse_what_the_shared_table_says,
+    a_twin_is_planned_on_rune_alone_and_leaves_the_gtk_suite_as_it_was,
+    a_named_scenario_that_is_no_run_on_the_target_fails_the_selection,
     the_ledger_allows_only_the_flaky_run_and_the_stale_patch_it_was_given,
     an_allowance_for_nothing_real_or_with_nothing_behind_it_is_refused,
     an_allowance_with_a_missing_or_an_unknown_field_does_not_parse,

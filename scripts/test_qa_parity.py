@@ -19,7 +19,8 @@ from qa_parity import selected
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
-# A corpus of three folders: each scenario's header, as tests/qa/scenarios holds them.
+# A corpus of three folders: each scenario's header, as tests/qa/scenarios holds them, and
+# under `steps` its step lines when they are not the one every other file has.
 # `keyboard_navigation` and `inline_renaming` are of the slice's set, so their Columns runs
 # have a gate.
 SCENARIOS = {
@@ -94,19 +95,25 @@ ruling = "the owner, 2026-11-11"
 }
 
 
+# The scenarios the corpus has a Rune mutation patch for.
+PATCHES = []
+
 @contextlib.contextmanager
 def corpus(allowances=""):
     """A directory holding SCENARIOS under `scenarios` and FOLDERS under `ledger`, with
-    slice.toml when there are allowances."""
+    slice.toml when there are allowances and a patch for each of PATCHES."""
 
     with tempfile.TemporaryDirectory() as directory:
         ledger, scenarios = Path(directory) / "ledger", Path(directory) / "scenarios"
-        ledger.mkdir()
+        (ledger / qa_parity.MUTATIONS).mkdir(parents=True)
+        for patch in PATCHES:
+            (ledger / qa_parity.MUTATIONS / f"{patch}.patch").write_text("", encoding="utf-8")
         for path, header in SCENARIOS.items():
             file = scenarios / f"{path}.jsonl"
             file.parent.mkdir(parents=True, exist_ok=True)
             header = {"scenario": file.stem, **header}
-            file.write_text(f'{json.dumps(header)}\n{{"key":"Escape"}}\n', encoding="utf-8")
+            steps = header.pop("steps", ['{"key":"Escape"}'])
+            file.write_text("\n".join([json.dumps(header), *steps]) + "\n", encoding="utf-8")
         for folder, text in FOLDERS.items():
             (ledger / f"{folder}.toml").write_text(text, encoding="utf-8")
         if allowances:
@@ -134,6 +141,20 @@ def edited(folder, find, put):
 
     assert FOLDERS[folder].count(find) == 1, find
     return unittest.mock.patch.dict(FOLDERS, {folder: FOLDERS[folder].replace(find, put)})
+
+
+def edit(test, case, files):
+    """A table's texts after a case's edit: `find` and `put`, `append`, `text` or `remove`."""
+
+    files = dict(files)
+    before = files.pop(case["file"], "")
+    if case.get("remove"):
+        return files
+    if "find" in case:
+        test.assertEqual(before.count(case["find"]), 1, case["name"])
+    after = before.replace(case["find"], case.get("put", "")) if "find" in case else before + case.get("append", "")
+    files[case["file"]] = case.get("text", after)
+    return files
 
 
 class SelectionTests(unittest.TestCase):
@@ -198,6 +219,7 @@ class CountTests(unittest.TestCase):
         self.assertEqual(printed, """\
 == all: 7 run(s) in 3 folder(s) ==
 required      3
+parallel      0
 pending       3
   component     1
   harness       1
@@ -205,18 +227,19 @@ pending       3
 excluded      1
 host      offscreen 3, session 0
 view      columns 5, icons 1, list 1
-package    runs  required   pending  excluded
-A1            1         1         0         0
-A2            1         0         1         0
-A6            1         0         1         0
-A7            1         0         1         0
-E1            1         0         0         1
-V7            1         1         0         0
-V8            1         1         0         0
+twins     timing 0, a11y 0, rune 0, oracle 0, toolkit 0, deviation 0
+package    runs  required  parallel   pending  excluded
+A1            1         1         0         0         0
+A2            1         0         0         1         0
+A6            1         0         0         1         0
+A7            1         0         0         1         0
+E1            1         0         0         0         1
+V7            1         1         0         0         0
+V8            1         1         0         0         0
 """)
         lines = run_main("inline_renaming", "--counts")[1].splitlines()
         self.assertEqual(lines[0], "== inline_renaming: 2 run(s) in 1 folder(s) ==")
-        self.assertEqual(lines[1:3], ["required      0", "pending       2"])
+        self.assertEqual(lines[1:4], ["required      0", "parallel      0", "pending       2"])
 
     def test_packages_sort_by_track_and_then_by_number(self):
         ledger = {"run": [{"package": package} for package in ("V8", "A10", "E1", "A2", "H4")]}
@@ -237,25 +260,14 @@ class ScenarioFilterTests(unittest.TestCase):
 class CheckTests(unittest.TestCase):
     """The reader every selection goes through refuses what the runner's own does."""
 
-    def edit(self, case, files):
-        files = dict(files)
-        before = files.pop(case["file"], "")
-        if case.get("remove"):
-            return files
-        if "find" in case:
-            self.assertEqual(before.count(case["find"]), 1, case["name"])
-        after = before.replace(case["find"], case.get("put", "")) if "find" in case else before + case.get("append", "")
-        files[case["file"]] = case.get("text", after)
-        return files
-
     def test_both_readers_accept_and_refuse_what_their_shared_table_says(self):
         table = tomllib.loads((REPOSITORY / "tests/qa/parity_cases.toml").read_text(encoding="utf-8"))
-        check = lambda case: qa_parity_check.problems(self.edit(case, table["ledger"]), table["planned"])
+        check = lambda case: qa_parity_check.problems(edit(self, case, table["ledger"]), table["planned"])
         self.assertEqual(qa_parity_check.problems(table["ledger"], table["planned"]), [])
         for case in table["accepted"]:
             with self.subTest(case["name"]):
                 self.assertEqual(check(case), [])
-        self.assertGreaterEqual(len(table["case"]), 29)
+        self.assertGreaterEqual(len(table["case"]), 41)
         for case in table["case"]:
             with self.subTest(case["name"]):
                 found = check(case)
@@ -540,9 +552,18 @@ class RepositoryTests(unittest.TestCase):
 
     def test_the_script_takes_any_selection_and_counts_without_the_image(self):
         script = (REPOSITORY / "scripts/qa-parity.sh").read_text(encoding="utf-8")
-        counted = script.index('qa_parity.py" "$selection" --counts')
+        counted = script.index('qa_parity.py" "$selection" "$report"')
         self.assertLess(counted, script.index("qa_container_prepare"))
-        self.assertIn('qa_parity.py" "$selection" --status "$status"', script)
+        self.assertIn('qa_parity.py" "$selection" "$@" "${scenario[@]}"', script)
+        for listing in ('list --on "$target"', 'list --status "$status"', "list --status parallel"):
+            self.assertIn(listing, script)
+        # Both surveys run on Rune alone and say which runs pass there from the shared file.
+        self.assertIn("--pending|--parallel)", script)
+        for found in ("PASSES ON RUNE, STILL PENDING: ", "PASSES ON RUNE FROM THE SHARED FILE, STILL PARALLEL: "):
+            self.assertIn(found, script)
+        listed = subprocess.run([str(REPOSITORY / "scripts/qa-parity.sh"), "all", "--twins"],
+                                capture_output=True, text=True, check=True)
+        self.assertEqual(listed.stdout, qa_parity.twin_listing(qa_parity.load(), "all") + "\n")
         command = [str(REPOSITORY / "scripts/qa-parity.sh")]
         refused = subprocess.run([*command, "no_such_folder"], capture_output=True, text=True, check=False)
         self.assertEqual((refused.returncode, refused.stdout), (2, ""))
@@ -550,11 +571,12 @@ class RepositoryTests(unittest.TestCase):
         counts = subprocess.run([*command, "slice", "--counts"], capture_output=True, text=True, check=True)
         self.assertEqual(counts.stdout, qa_parity.counts(qa_parity.load(), "slice") + "\n")
         # The counts are the whole selection's: an option that narrows a run is refused.
-        for narrowed in (["--scenario", "shift-click-range"], ["--pending"], ["--target", "rune"]):
-            for arguments in (["slice", "--counts", *narrowed], ["slice", *narrowed, "--counts"]):
+        for narrowed in (["--scenario", "shift-click-range"], ["--pending"], ["--parallel"], ["--target", "rune"]):
+            for arguments in (["slice", "--counts", *narrowed], ["slice", *narrowed, "--counts"],
+                              ["slice", "--twins", *narrowed]):
                 refused = subprocess.run([*command, *arguments], capture_output=True, text=True, check=False)
                 self.assertEqual((refused.returncode, refused.stdout), (2, ""), arguments)
-                self.assertIn("--counts", refused.stderr)
+                self.assertIn(arguments[1] if arguments[1] in ("--counts", "--twins") else "--counts", refused.stderr)
 
     def test_the_script_names_the_runners_variables_and_artifact_folders(self):
         script = (REPOSITORY / "scripts/qa-parity.sh").read_text(encoding="utf-8")

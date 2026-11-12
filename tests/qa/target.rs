@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{BINARY, fixture::Layout};
@@ -18,7 +19,9 @@ pub(crate) const TARGET_VARIABLE: &str = "STRATA_QA_TARGET";
 /// of its own package, so the runner is told where this one is; `./scripts/qa-parity.sh` does.
 pub(crate) const RUNE_BINARY_VARIABLE: &str = "STRATA_QA_RUNE_BINARY";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A scenario header's `targets` lists them by these names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum Target {
     Gtk,
     Rune,
@@ -30,6 +33,13 @@ impl Target {
             None | Some("" | "gtk") => Ok(Self::Gtk),
             Some("rune") => Ok(Self::Rune),
             Some(other) => Err(format!("{TARGET_VARIABLE} is gtk or rune, not {other:?}")),
+        }
+    }
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Gtk => "gtk",
+            Self::Rune => "rune",
         }
     }
 
