@@ -922,7 +922,7 @@ every required run of the ledger on both targets.
 
 `mutations` proves the Rune target's runs can fail, as `scripts/qa-mutation.sh`
 does for the GTK application. Each patch under `tests/qa/parity/mutations/`
-breaks one behaviour of `crates/strata-app` and is named for the scenario that
+breaks one behaviour of the Rune side and is named for the scenario that
 must catch it, `<scenario>.patch`. For each, the scenario's runs on the Rune
 target must pass unpatched, and with the patch applied at least one must fail a
 step and none fail to run. Those runs are the scenario's required runs; a
