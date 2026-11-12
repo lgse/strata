@@ -150,8 +150,8 @@ The root package re-exports every moved module at its old path. `crate::model`,
 there. `src/services/mod.rs` and `src/util/mod.rs` are small facades that combine the
 crates' modules with what stayed behind. `src/ui/preferences.rs` does the same for the
 saved settings: the schema, its defaults and the reading of the file are
-`strata_desktop::settings`, and `PreferenceManager` wraps them
-([rune/slice/V5b](rune/slice/V5b-settings-store.md)). The state both interfaces keep is
+`strata_desktop::settings`, with the bookkeeping of a save, and `PreferenceManager` wraps
+them ([rune/slice/V5b](rune/slice/V5b-settings-store.md)). The state both interfaces keep is
 moving there store by store; [rune/shared-state.md](rune/shared-state.md) lists what has
 moved.
 

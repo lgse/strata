@@ -382,7 +382,7 @@ impl PreferenceManager {
     /// Another Strata process, such as the portal chooser, can change the
     /// defaults that folder values are stored relative to.
     fn adopt_defaults_saved_elsewhere(&self) {
-        if self.load_failure.is_some() {
+        if self.saving.borrow().load_failure().is_some() {
             return;
         }
         let saved = writer::reread(settings_path(), parse_preferences);
@@ -423,23 +423,16 @@ impl PreferenceManager {
             preferences.natural_sort = saved.natural_sort;
             preferences.case_sensitive_sort = saved.case_sensitive_sort;
             preferences.icons_thumbnail_size = size;
-            if let Ok(current) = toml::Table::try_from(&*preferences) {
-                let mut last = self.last_queued.borrow_mut();
-                let mut dirty = self.dirty_keys.borrow_mut();
-                for key in [
+            self.saving.borrow_mut().record_adopted(
+                &preferences,
+                &[
                     "sort_key",
                     "sort_direction",
                     "natural_sort",
                     "case_sensitive_sort",
                     "icons_thumbnail_size",
-                ] {
-                    match current.get(key) {
-                        Some(value) => last.insert(key.to_owned(), value.clone()),
-                        None => last.remove(key),
-                    };
-                    dirty.remove(&(key.to_owned(), None));
-                }
-            }
+                ],
+            );
         }
         if self.changes.record(&self.preferences.borrow()) {
             self.changes.notify(self);
