@@ -197,7 +197,7 @@ impl PreferenceManager {
     }
 
     pub fn language_restart_required(&self) -> bool {
-        self.language().locale() != self.startup_locale
+        self.language().locale() != self.saving.borrow().startup_locale()
     }
 
     pub fn interface_renderer(&self) -> InterfaceRenderer {
@@ -210,7 +210,7 @@ impl PreferenceManager {
     }
 
     pub fn interface_renderer_restart_required(&self) -> bool {
-        self.interface_renderer() != self.startup_interface_renderer
+        self.interface_renderer() != self.saving.borrow().startup_interface_renderer()
     }
 
     pub fn text_size(&self) -> TextSize {

@@ -256,7 +256,7 @@ fn symlinked_settings_save_through_to_the_target() {
             crate::storage::writer::settle();
 
             assert!(
-                !manager.persistence_dirty.get(),
+                !manager.saving.borrow().unsaved(),
                 "the save through the link must not stay pending"
             );
             assert!(

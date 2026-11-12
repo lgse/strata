@@ -3,8 +3,6 @@
 // The tests and fixtures under this module import through it.
 use std::{
     cell::{Cell, RefCell},
-    collections::BTreeSet,
-    io,
     path::{Component, Path, PathBuf},
     rc::Rc,
     time::Duration,
@@ -25,27 +23,24 @@ pub(crate) use strata_desktop::settings::{
     FileIconColors, InterfaceRenderer, OmarchyVariant, UnitSystem, sanitize_list_column_order,
     sanitize_list_hidden_columns,
 };
+use strata_desktop::settings::{FinishedSave, PendingSave, SaveOutcome, SaveProblem, Saving};
 use strata_desktop::settings::{
-    KeymapOverrides, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, RETIRED_SETTINGS,
-    SettingKey, configured_hardware_acceleration, configured_video_preview_backend, lock_saves,
-    merged_settings, normalized_font_family, normalized_search_limit, normalized_video_start,
-    normalized_volume, parse_preferences, read_loaded_preferences, read_state_file, record_changes,
-    settings_path, sort_preferences, store_sort,
+    KeymapOverrides, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE,
+    configured_hardware_acceleration, configured_video_preview_backend, lock_saves,
+    normalized_font_family, normalized_search_limit, normalized_video_start, normalized_volume,
+    parse_preferences, read_state_file, settings_path, sort_preferences, store_sort,
 };
 pub(in crate::ui) use strata_desktop::settings::{
     MAX_PREVIEW_VIDEO_START, Preferences, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
 };
 #[cfg(test)]
-use strata_desktop::settings::{default_sidebar_order, salvage_preferences};
+use strata_desktop::settings::{RETIRED_SETTINGS, default_sidebar_order, salvage_preferences};
 
 use crate::{
     model::{FolderColorValue, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
     services::{Channel, CrossVolumeDropStrategy, SearchLimits},
-    storage::{
-        file_stamp,
-        writer::{self, Policy},
-    },
+    storage::file_stamp,
 };
 
 use super::browser_modes::DensityScale;
@@ -90,18 +85,10 @@ pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {
 
 pub struct PreferenceManager {
     preferences: RefCell<Preferences>,
-    startup_interface_renderer: InterfaceRenderer,
-    startup_locale: &'static str,
     changes: bindings::PreferenceChanges,
-    persistence_dirty: Cell<bool>,
-    saves_requested: Cell<u64>,
-    /// The settings as of the last load or queued save, to see what a save changes.
-    last_queued: RefCell<toml::Table>,
-    /// Changed or repaired since a save last succeeded; a save writes only these.
-    dirty_keys: RefCell<BTreeSet<SettingKey>>,
+    /// What a save writes and whether one is owed; shared with the Rune interface.
+    saving: RefCell<Saving>,
     this: std::rc::Weak<Self>,
-    /// Why saving is off for this session: the file existed but could not be read.
-    load_failure: Option<io::Error>,
     save_notices: save_notice::SaveNotices,
     folder_views: std::cell::OnceCell<folder_view_settings::FolderViewStore>,
     folder_sorts_revision: Cell<u64>,
@@ -130,33 +117,14 @@ impl PreferenceManager {
     }
 
     fn load() -> Rc<Self> {
-        writer::note(&settings_path(), file_stamp(&settings_path()));
-        let (mut preferences, load_failure, salvaged) = read_loaded_preferences();
-        let parsed = preferences.clone();
-        preferences.normalize_loaded();
+        let (preferences, saving) = strata_desktop::settings::load();
         super::motion::set_reduce_motion(preferences.reduce_motion);
         crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
-        let saved_base = toml::Table::try_from(&preferences).unwrap_or_default();
-        let mut repaired: BTreeSet<SettingKey> =
-            salvaged.into_iter().map(|key| (key, None)).collect();
-        record_changes(
-            &mut repaired,
-            &toml::Table::try_from(&parsed).unwrap_or_default(),
-            &saved_base,
-        );
-
-        let startup_locale = preferences.language.locale();
-        rust_i18n::set_locale(startup_locale);
+        rust_i18n::set_locale(saving.startup_locale());
         let manager = Rc::new_cyclic(|this| Self {
-            startup_locale,
-            startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
-            persistence_dirty: Cell::new(false),
-            saves_requested: Cell::new(0),
-            last_queued: RefCell::new(saved_base),
-            dirty_keys: RefCell::new(repaired),
+            saving: RefCell::new(saving),
             this: this.clone(),
-            load_failure,
             save_notices: save_notice::SaveNotices::default(),
             folder_views: std::cell::OnceCell::new(),
             folder_sorts_revision: Cell::new(0),
@@ -195,11 +163,7 @@ impl PreferenceManager {
         } else if !settings_path().is_file() && omarchy_available {
             preferences.mode = "omarchy".to_owned();
         }
-        if let Ok(normalized) = toml::Table::try_from(&*preferences) {
-            let mut last = self.last_queued.borrow_mut();
-            record_changes(&mut self.dirty_keys.borrow_mut(), &last, &normalized);
-            *last = normalized;
-        }
+        self.saving.borrow_mut().rebase(&preferences);
         self.changes.reset_baseline(&preferences);
     }
 
