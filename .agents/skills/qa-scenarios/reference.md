@@ -21,6 +21,7 @@ Every timeout defaults to 15 000 ms and every poll runs about every 50 ms.
 - [Predicates](#predicates)
 - [Protocol, replies, and the snapshot](#protocol-replies-and-the-snapshot)
 - [Artifacts](#artifacts)
+- [Fuzz sequences](#fuzz-sequences)
 
 ## Header
 
@@ -582,3 +583,74 @@ A failed run, or every run with `STRATA_QA_KEEP_ARTIFACTS=1`, writes
 | `input.log` | Every synthetic event, as above. |
 | `fixture.txt` | The fixture listing with sizes and link targets. |
 | `<name>.png`, `<name>.actual.png`, ... | `screenshot` and `baseline` captures. |
+
+## Fuzz sequences
+
+`./scripts/qa-fuzz.sh` generates sequences of steps from a seed, replays them
+and compares what was observed after each step. "Fuzzing" in
+`docs/testing.md` has the method, the commands and the calibration; this is
+the catalogue. The parsers are in `tests/qa/fuzz/`: `alphabet.rs`,
+`sequence.rs`, `rules.rs`, `corpus.rs` and `options.rs`.
+
+### Files
+
+| Path | Holds |
+| --- | --- |
+| `tests/qa/fuzz/alphabets/<area>.toml` | An area's alphabet: the actions a seed picks from. |
+| `tests/qa/fuzz/corpus/<area>/fuzz-<area>-<seed>.jsonl` | A kept sequence, a scenario file; the seed is sixteen hex digits. |
+| `tests/qa/fuzz/corpus/<area>/parked` | Seeds parked against an issue: `<seed> <code> <issue>`, sorted by seed. |
+| `tests/qa/fuzz/normalisation.map` | Fields the two targets may differ on: `<field> <exception code> <issue>`, sorted by field. |
+| `tests/qa/fuzz/calibration.mask` | Fields two replays on one target differ on: `<field> <cause> <issue>`, sorted by field. |
+| `target/qa-fuzz/<area>/<sequence>/` | A sequence's artifacts. |
+
+### Alphabet keys
+
+Unknown keys are rejected.
+
+| Key | Required | Meaning and validation |
+| --- | --- | --- |
+| `area` | yes | Equals the file stem. Lowercase words of `a-z0-9` joined by `-`. |
+| `version` | yes | At least 1. Raise it with every change that makes a seed write another sequence. |
+| `about` | yes | One non-empty line. |
+| `header` | yes | A JSON object in a string: the scenario header without `scenario`. One mode, no variants, and none of `session_bus`, `portal`, `input_method`, `fixture_root`, `layout`, `teardown`, `images`, `mutation`, `known_bug`, `skip`, `parity`, `targets`. |
+| `[[action]]` `name` | yes | Unique; lowercase words joined by `-`. |
+| `[[action]]` `weight` | yes | At least 1: the action's share of the sum of the weights. |
+| `[[action]]` `steps` | yes | One or more steps, each one line of JSON as a scenario file has it. |
+| `[[action]]` `choose.<name>` | no | A non-empty list of strings: what `<name>` in the steps stands for. Every name must be used by a step, and a step may hold no `<name>` without a list. |
+
+### Steps a sequence may hold
+
+A sequence goes through the scenario loader, then these rules:
+
+- Exactly one command: a process step other than `holds`, `query`, `expect`,
+  `during` and `note`, or an `fs` action (not an `fs` check). `wait` and
+  `settle` are allowed: they wait on what the application shows.
+- No `if`, `unless`, `as`, `modes` or `variants`. `when`, `message` and
+  `timeout_ms` are allowed.
+- No runner step other than `fs`.
+
+### Observation fields
+
+A map or mask entry, a `--perturb` field and a reported divergence all name
+fields the same way:
+
+| Field | Holds |
+| --- | --- |
+| `result` | `ok`, `skipped` (the `when` did not hold), `refused` (the target or the runner answered with an error), `failed` (a check in the step did not hold), `crashed`, `closed` (the window was closed) or `left` (the application went outside the fixture). The last three end the replay. |
+| `criticals` | The GLib warnings and criticals logged since the last observation, addresses removed. |
+| `app.<key>` | One of the ten snapshot keys. `app.panes[1].selected` is a field; `app.panes[].selected` names it in every pane. `app.field.caret`, `.text`, `.selection`, `.name`, `.focused`. |
+| `fs.<path>` | A fixture path: `dir <mode>`, `file <mode> <size> <digest>` or `link <target>`. `fs` is the whole tree. |
+| `settings.<key>` | A key of `settings.toml`, nested tables by dots. `settings` is the whole file. |
+
+Codes: the map takes `timing`, `a11y`, `rune`, `oracle`, `toolkit`,
+`deviation`, `platform`; the mask takes `unsettled`, `clock`, `environment`;
+`parked` takes the map's codes and `divergence`. An issue is written
+`lgse/strata#<number>`.
+
+### A perturbation
+
+`--perturb '{"after":STEP,"while":{FIELD:VALUE,…},"field":FIELD,"value":VALUE}'`:
+after the step `after` (compared without its `when`), when the observation
+before it held every `while` field, the last replay's observation gets `value`
+at `field`. `while` may be left out. A perturbed run proves the comparator and
+the shrinker and is evidence of nothing else.
