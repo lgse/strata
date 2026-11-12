@@ -1,0 +1,67 @@
+# The parity ledger of tests/qa/scenarios/file_providers: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "overlapping-providers-source-priority"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "provider-background-clicked-folder"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "provider-disconnect-never-replays"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "provider-menu-replaces-context"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "provider-method-error-withdraws"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "provider-nested-menu-refresh"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "provider-partial-activation-whole-selection"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "provider-updates-open-menu"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"

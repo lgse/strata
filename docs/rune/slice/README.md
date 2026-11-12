@@ -30,7 +30,7 @@ The slice is approved, as of 2026-11-11.
 
 The command exits 0 only when all four hold:
 
-1. Every run marked `required` in `tests/qa/parity/slice.toml` passes on both targets.
+1. Every run of the parity set marked `required` in the ledger passes on both targets.
 2. Every other run in the parity set is marked `pending` with a reason code and a pointer
    to its blocker. No run is unlisted.
 3. Each Rune mutation patch makes its named scenario fail on the Rune target.
@@ -40,6 +40,12 @@ The command exits 0 only when all four hold:
 "As before" has two named exceptions, because the GTK suite was not whole before the
 slice. The ledger holds them as [allowances](#what-the-exit-command-lets-stand), each an
 owner ruling, and the command says each time it uses one.
+
+The slice kept its ledger in one file, `tests/qa/parity/slice.toml`. Since package H1 of
+the parity plan the ledger is the directory: one file for each scenario folder, listing
+every run of the corpus, and `slice.toml` for the allowances alone. The parity set is the
+entries with a `gate`, and `./scripts/qa-parity.sh slice` selects by it as before
+(`docs/testing.md`, "The Rune target and the parity ledger").
 
 ## Gates
 
@@ -250,8 +256,8 @@ are the specification; neither target gets its own copy.
 - **The Rune host is offscreen and runs in real time.** The `--qa` process owns a Rune
   `Runtime`, steps `frame(dt)` with wall-clock time, injects input at Rune's input layer
   and reads `accessibility_json`. It needs no display server.
-- **Every run is accounted for.** `tests/qa/parity/slice.toml` lists each run of each file
-  in the set as `required` or `pending`. A test fails if a run is missing from it.
+- **Every run is accounted for.** The parity ledger lists each run of each file in the set
+  as `required` or `pending`. A test fails if a run is missing from it.
 - **The Rune harness must be able to fail.** Each gate area gets one mutation patch against
   the Rune tree, checked the way `scripts/qa-mutation.sh` checks GTK's.
 

@@ -1,0 +1,123 @@
+# The parity ledger of tests/qa/scenarios/view_switching: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "appearance-menu-switches-view-list"
+run = "columns"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "appearance-menu-switches-view"
+run = "columns"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "column-autofit-stays-inside"
+run = "columns"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "leaving-columns-names-the-shown-folder"
+run = "columns"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "list-column-drag-applies-on-release"
+run = "list"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "list-column-resize-tracks-pointer"
+run = "columns"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "returning-to-columns-follows-selection"
+run = "columns-empty-in-list"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "returning-to-columns-follows-selection"
+run = "columns-other-folder-in-icons"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "returning-to-columns-follows-selection"
+run = "columns-unmirrored-empty-in-list"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "returning-to-columns-follows-selection"
+run = "columns-unmirrored-other-folder-in-icons"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "shortcut-round-trip-keeps-selection"
+run = "columns-us"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "shortcut-round-trip-keeps-selection"
+run = "columns-fr"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "switching-keeps-directory-and-sort"
+run = "columns"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "switching-keeps-pane-filter"
+run = "columns-input"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "switching-keeps-pane-filter"
+run = "columns-result"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"

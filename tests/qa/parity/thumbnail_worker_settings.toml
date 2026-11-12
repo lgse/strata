@@ -1,0 +1,11 @@
+# The parity ledger of tests/qa/scenarios/thumbnail_worker_settings: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "thumbnail-workers-spin-button-persists"
+run = "columns"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"

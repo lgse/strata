@@ -1,0 +1,35 @@
+# The parity ledger of tests/qa/scenarios/preview_media_layout: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "camera-formats-preview-sandbox"
+run = "columns-heic"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "camera-formats-preview-sandbox"
+run = "columns-avif"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "camera-formats-preview-sandbox"
+run = "columns-mov"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "camera-formats-preview-sandbox"
+run = "columns-mp4"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"

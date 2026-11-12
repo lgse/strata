@@ -1,0 +1,363 @@
+# The parity ledger of tests/qa/scenarios/entry_management: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "clicking-inside-keeps-new-entry"
+run = "columns-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "clicking-inside-keeps-new-entry"
+run = "columns-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "delete-file-symlink-sizes-link"
+run = "list-name-sort"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "delete-file-symlink-sizes-link"
+run = "list-size-sort"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "delete-to-trash"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "delete-without-trash-focuses-cancel"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "delete-without-trash-focuses-cancel"
+run = "list"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-file-collision-dialog"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-folder-collision-dialog"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-folder-with-selection-groups"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-folder-with-selection-groups"
+run = "icons"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-folder-with-selection-groups"
+run = "list"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "columns-file-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "icons-file-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "list-file-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "columns-file-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "icons-file-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "list-file-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "columns-folder-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "icons-folder-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "list-folder-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "columns-folder-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "icons-folder-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "list-folder-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "columns-multiple-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "icons-multiple-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "list-multiple-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "columns-multiple-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "icons-multiple-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-from-entry-menu"
+run = "list-multiple-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-in-empty-directory"
+run = "columns-file"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "new-items-in-empty-directory"
+run = "columns-folder"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "permanent-delete-symlinked-parent"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "permanent-delete-symlinked-parent"
+run = "list"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "rename-from-context-menu"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "rename-shortcuts-leave-location"
+run = "columns-F2"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "rename-shortcuts-leave-location"
+run = "columns-ctrl-r"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "tenxer-d-without-trash-confirms"
+run = "list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-footer-rename-refuses-conflicts"
+run = "columns"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-footer-rename-refuses-conflicts"
+run = "icons"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-footer-rename-refuses-conflicts"
+run = "list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "trashing-open-folder-opens-next"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "undo-created-folder-trashes"
+run = "columns-default-name"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "undo-created-folder-trashes"
+run = "columns-typed-name"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "undo-restores-completed-move"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"

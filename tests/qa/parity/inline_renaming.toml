@@ -1,0 +1,375 @@
+# The parity ledger of tests/qa/scenarios/inline_renaming: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "escape-preserves-name-remaining"
+run = "columns-existing-folder"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "escape-preserves-name-remaining"
+run = "columns-new-file"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 16, the wait for the new item's editor"
+
+[[run]]
+scenario = "escape-preserves-name-remaining"
+run = "columns-new-folder"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app creates no item: Ctrl+Shift+N (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 22, the wait for the new item's editor"
+
+[[run]]
+scenario = "escape-preserves-name"
+run = "columns"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "input-method-composes-over-selection"
+run = "columns-selected-stem"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "platform"
+blocker = "An input method: fcitx5-chewing on a session bus, which the pinned image lacks. The scenario's own `skip` keeps the runner from starting it on either target. On Rune it also needs a host that takes input-method events: the offscreen host has `Runtime::ime` and no daemon to drive it"
+
+[[run]]
+scenario = "input-method-composes-over-selection"
+run = "columns-caret-at-end"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "platform"
+blocker = "An input method: fcitx5-chewing on a session bus, which the pinned image lacks. The scenario's own `skip` keeps the runner from starting it on either target. On Rune it also needs a host that takes input-method events: the offscreen host has `Runtime::ime` and no daemon to drive it"
+
+[[run]]
+scenario = "invalid-names-retain-original"
+run = "columns-enter"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "invalid-names-retain-original"
+run = "columns-click"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "long-rename-keeps-caret"
+run = "columns"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "long-rename-keeps-caret"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "long-rename-keeps-caret"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "new-item-clears-hiding-filter"
+run = "columns-file"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "C18: the filter bar, at Ctrl+F on line 4. Then New File, which strata-app does not create"
+
+[[run]]
+scenario = "new-item-clears-hiding-filter"
+run = "icons-file"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "new-item-clears-hiding-filter"
+run = "list-file"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "new-item-clears-hiding-filter"
+run = "columns-folder"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "C18: the filter bar, at Ctrl+F on line 4. Then New Folder, which strata-app does not create"
+
+[[run]]
+scenario = "new-item-clears-hiding-filter"
+run = "icons-folder"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "new-item-clears-hiding-filter"
+run = "list-folder"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "new-item-first-free-number"
+run = "columns"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 15, the wait for the new item's editor"
+
+[[run]]
+scenario = "new-item-named-with-path"
+run = "columns-nested-file"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor"
+
+[[run]]
+scenario = "new-item-named-with-path"
+run = "list-nested-file"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "new-item-named-with-path"
+run = "columns-file-to-folder"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor"
+
+[[run]]
+scenario = "new-item-named-with-path"
+run = "columns-nested-folder"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app creates no item: Ctrl+Shift+N (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor"
+
+[[run]]
+scenario = "new-item-named-with-path"
+run = "columns-own-name"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor"
+
+[[run]]
+scenario = "new-item-named-with-path"
+run = "columns-refused"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app creates no item: the context menu's New File row (the slice leaves New Folder and New File out, with `Browser::name_new_item`; the menu rows are shown and inert by decision 19). Stops at line 10, the wait for the new item's editor. Then the `Unable to rename item` dialog (C15)"
+
+[[run]]
+scenario = "rename-and-undo-restores"
+run = "columns-file"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 28. Every step before it passes: the rename lands, and the renamed entry is selected and focused"
+
+[[run]]
+scenario = "rename-and-undo-restores"
+run = "columns-folder"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 29. Every step before it passes: the rename lands, and the renamed entry is selected and focused"
+
+[[run]]
+scenario = "rename-commits-on-click-away"
+run = "columns"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "rename-commits-on-enter"
+run = "columns"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "rename-moves-into-path"
+run = "columns-file"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 26. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
+
+[[run]]
+scenario = "rename-moves-into-path"
+run = "list-file"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "rename-moves-into-path"
+run = "columns-open-folder"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 26. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
+
+[[run]]
+scenario = "rename-moves-into-path"
+run = "columns-existing-folder"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 26. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
+
+[[run]]
+scenario = "rename-moves-into-path"
+run = "columns-parent"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 26. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
+
+[[run]]
+scenario = "rename-moves-into-path"
+run = "columns-back-into-folder"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "scope"
+blocker = "strata-app wires no undo (the slice leaves it out; `Browser`'s undo engine has no work package of its own): Ctrl+Z at line 19. Every step before it passes: `../documents/renamed.txt` renames the item in its own folder, where it stays selected"
+
+[[run]]
+scenario = "rename-moves-into-path"
+run = "columns-file-as-folder"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "tab-renames-past-open-folder"
+run = "columns-mirrored"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "tab-renames-past-open-folder"
+run = "columns-unmirrored"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "tone-mark-escape-before-rename"
+run = "columns"
+package = "A7"
+gate = "G3"
+status = "pending"
+reason = "rune"
+blocker = "Rune's window host delivers the Escape that breaks off a dead-key sequence as a key press, so it ends the rename; GTK's input method takes it and ends only the tone mark (docs/rune/upstream/rune/98-escape-after-a-dead-key.md, drafted). Stops at line 18. The layout step itself passes: AltGr+1 then `a` types ā"
+
+[[run]]
+scenario = "valid-name-commits-remaining"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "window-accelerators-leave-rename"
+run = "columns-f5"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "window-accelerators-leave-rename"
+run = "icons-f5"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "window-accelerators-leave-rename"
+run = "list-f5"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "window-accelerators-leave-rename"
+run = "columns-ctrl-backslash"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "window-accelerators-leave-rename"
+run = "columns-ctrl-k"
+package = "V9"
+gate = "G3"
+status = "required"
+host = "offscreen"

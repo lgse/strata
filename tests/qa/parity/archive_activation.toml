@@ -1,0 +1,43 @@
+# The parity ledger of tests/qa/scenarios/archive_activation: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "archive-activation-extracts-subfolder"
+run = "list"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "archive-double-click-extracts-subfolder"
+run = "columns-zip-double-click"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "archive-double-click-extracts-subfolder"
+run = "columns-targz-double-click"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "single-root-archive-extracts-verbatim"
+run = "columns-keyboard"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "single-root-archive-extracts-verbatim"
+run = "columns-double-click"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"

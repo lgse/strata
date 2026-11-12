@@ -1,0 +1,27 @@
+# The parity ledger of tests/qa/scenarios/drag_animation: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "delete-animation-keeps-survivors"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "delete-animation-keeps-survivors"
+run = "icons"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "delete-animation-keeps-survivors"
+run = "list"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
