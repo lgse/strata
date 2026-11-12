@@ -34,6 +34,7 @@ use strata_components::{
 };
 use strata_core::i18n::tr;
 
+use self::status::Surface;
 use crate::{
     App, events,
     listing::{Column, Load, Words},
@@ -55,6 +56,8 @@ pub(crate) struct Single {
     described: String,
     /// `ENTRY_CONTAINER_DESCRIPTION` there: what the list of entries is.
     entries: String,
+    /// What the pane says while it shows no entry.
+    surface: Surface,
 }
 
 fn clicks(count: u8) -> ClickCount {
@@ -89,6 +92,7 @@ impl Single {
             words: Words::translated(),
             described,
             entries: tr("Files"),
+            surface: Surface::translated(),
         }
     }
 }
@@ -121,16 +125,29 @@ pub(crate) fn title<V: SinglePane>(app: &App) -> String {
         .to_owned()
 }
 
-/// What the view shows in place of entries when its folder could not be read: the browser's
-/// message.
-fn failure<V: SinglePane>(app: &App) -> Option<El> {
-    let Load::Failed(message) = pane::<V>(app).listing()?.load() else {
-        return None;
-    };
+/// What the view says in place of entries while it shows none ([`status`]), and whether it
+/// draws it.
+fn status<V: SinglePane>(app: &App) -> Option<(&str, bool)> {
+    let single = V::single(app);
+    single.surface.status(single.pane.listing()?)
+}
+
+/// What the entry list is described as: what it is, or, while it shows no entry, what the
+/// GTK pane surface that holds the keyboard then is described as (`describe_pane_surface` in
+/// `src/ui/accessibility.rs`).
+fn described<V: SinglePane>(app: &App) -> String {
+    match status::<V>(app) {
+        Some((status, _)) => status.to_owned(),
+        None => V::single(app).entries.clone(),
+    }
+}
+
+fn shown_status<V: SinglePane>(app: &App) -> Option<El> {
+    let (message, _) = status::<V>(app).filter(|(_, shown)| *shown)?;
     let look = &app.look;
     Some(
         col().w_full().px(look.space.lg).py(look.space.lg).child(
-            text(message.clone())
+            text(message.to_owned())
                 .font(look.kit.ty.ui)
                 .color(look.kit.c.text_muted),
         ),
@@ -154,7 +171,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
         |app: &App| pane::<V>(app).version(),
     )
     .name(title::<V>(app))
-    .description(single.entries.clone())
+    .description(described::<V>(app))
     .settings(single.keys.clone())
     .settings(PointerSettings::default().modes(single.clicks))
     .describe(Describe::pure(|app: &App, row| {
@@ -165,7 +182,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
             .description(row.index, &single.words)?;
         Some(description.to_owned())
     }))
-    .empty(failure::<V>)
+    .empty(shown_status::<V>)
     .on_intent(heard::<V>)
     .on_cursor(|app: &mut App, _, tx| moved(app, tx))
     .on_selection(moved);
@@ -188,6 +205,14 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El) -> El {
         .grow(1.0)
         .min_h(0.0)
         .child(component)
+}
+
+/// One poll of what the view says while it shows no entry: a read is announced once it
+/// outlasts GTK's grace period. True when the view has to run.
+pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let single = V::single_mut(app);
+    let Single { pane, surface, .. } = single;
+    surface.watch(pane.listing(), clock, tx)
 }
 
 /// What reads the view's share of each event out of the browser.
@@ -339,6 +364,8 @@ pub(crate) fn lists<V: SinglePane>(app: &App) -> Vec<String> {
         None => Vec::new(),
     }
 }
+
+mod status;
 
 #[cfg(test)]
 mod tests;

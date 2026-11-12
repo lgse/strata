@@ -27,8 +27,9 @@
       "name": "Renaming beach.jpg"
     },
     {
-      "key": "c3-rename",
-      "name": "beach.jpg"
+      "key": "rename-field",
+      "value": "beach.jpg",
+      "focused": true
     }
   ]
 }

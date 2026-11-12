@@ -108,7 +108,7 @@ run = "icons-file"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4. Then A2: the background context menu in the single-pane views, B3's opener wired by A2, at the right-click on line 9. Then A7: New File, which names a new item (slice decisions 23 to 25)"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
@@ -133,7 +133,7 @@ run = "icons-folder"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4. Then A2: the background context menu in the single-pane views, B3's opener wired by A2, at the right-click on line 9. Then A7: New Folder, which names a new item (slice decisions 23 to 25)"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
