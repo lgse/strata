@@ -1,13 +1,12 @@
-diff --git a/crates/strata-app/src/icons/intents.rs b/crates/strata-app/src/icons/intents.rs
---- a/crates/strata-app/src/icons/intents.rs
-+++ b/crates/strata-app/src/icons/intents.rs
-@@ -38,7 +38,8 @@ pub(super) fn heard(app: &mut App, intent: Intent, tx: &mut Tx) {
+diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
+index e9deea9e4..83d3ba098 100644
+--- a/crates/strata-app/src/single/mod.rs
++++ b/crates/strata-app/src/single/mod.rs
+@@ -239,6 +239,7 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
          return;
      };
      match intent {
--        Intent::Activate { id, how } => app.open_in_place(depth, id, how),
 +        Intent::Activate { how: Activation::Key, .. } => {}
-+        Intent::Activate { id, how } => app.open_in_place(depth, id, how),
+         Intent::Activate { id, how } => open_in_place::<V>(app, depth, id, how),
          // A slow second click on the name.
          Intent::BeginRename { id } => rename::begin_on(app, depth, id, tx),
-         // A press with any button outside the field commits an open rename in the GTK view.

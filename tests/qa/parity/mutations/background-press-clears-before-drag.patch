@@ -1,10 +1,12 @@
-diff --git a/crates/strata-app/src/icons/mod.rs b/crates/strata-app/src/icons/mod.rs
---- a/crates/strata-app/src/icons/mod.rs
-+++ b/crates/strata-app/src/icons/mod.rs
-@@ -67,5 +67,6 @@ fn collection() -> CollectionState {
+diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
+index e9deea9e4..34f0dea18 100644
+--- a/crates/strata-app/src/single/mod.rs
++++ b/crates/strata-app/src/single/mod.rs
+@@ -68,6 +68,7 @@ fn controlled() -> CollectionState {
      collection.controllers.pointer = Some(Box::new(PointerIntent::new()));
      collection.controllers.keyboard = Some(Box::new(Keyboard::default()));
      collection.controllers.marquee = Some(Box::new(Marquee::new()));
 +    collection.controllers.marquee = None;
      collection
  }
+ 
