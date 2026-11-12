@@ -41,6 +41,7 @@ impl Part for Icons {
         build: view::build,
         shows,
         focus: VIEW,
+        supports_type_grouping: false,
         pointer_at: None,
         rows: single::rows::<Self>(),
         editing: single::editing::<Self>(),

@@ -23,6 +23,7 @@ impl Part for Columns {
         build: |app, _| Some(view(app).build(app)),
         shows: |mode| mode == MODE,
         focus: VIEW,
+        supports_type_grouping: false,
         pointer_at: Some(|app, at| app.columns.pointer_at(at)),
         rows: Rows {
             position: |app, (depth, id)| app.columns.position(depth, id),

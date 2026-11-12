@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: MIT
+
+//! A row's file type, as the List view groups rows by it: `entry_type`'s description in
+//! strata-fs, which GTK's grouped List orders and heads its groups by
+//! (`entry_model_value` and `type_group_header_factory` in `src/ui`). A row keeps a small key
+//! into one table of the descriptions met, not a string of its own; the table holds one name
+//! for each type the desktop's MIME database describes, and no more.
+
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
+use strata_core::model::FileEntry;
+use strata_fs::services::entry_type;
+
+/// A file type's description, by its key in the table.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct TypeGroup(u32);
+
+#[derive(Default)]
+struct Names {
+    names: Vec<Rc<str>>,
+    keys: HashMap<Rc<str>, u32>,
+}
+
+thread_local! {
+    static NAMES: RefCell<Names> = RefCell::new(Names::default());
+}
+
+impl TypeGroup {
+    /// The type of `entry`, as GTK's grouped List reads it.
+    pub(crate) fn of(entry: &FileEntry) -> Self {
+        let kind = entry_type(entry);
+        let description = kind.description();
+        NAMES.with_borrow_mut(|table| {
+            if let Some(key) = table.keys.get(description) {
+                return Self(*key);
+            }
+            let key = u32::try_from(table.names.len()).unwrap_or(u32::MAX);
+            let name: Rc<str> = Rc::from(description);
+            table.names.push(name.clone());
+            table.keys.insert(name, key);
+            Self(key)
+        })
+    }
+
+    /// The type's description, untranslated: what strata-fs orders groups by
+    /// (`compare_type_groups`) and the catalogs translate.
+    pub(crate) fn description(self) -> Rc<str> {
+        NAMES.with_borrow(|table| {
+            table
+                .names
+                .get(self.0 as usize)
+                .cloned()
+                .unwrap_or_else(|| Rc::from(""))
+        })
+    }
+
+    /// The key as a group's, for the collection's group headers.
+    pub(crate) fn key(self) -> u64 {
+        u64::from(self.0)
+    }
+}

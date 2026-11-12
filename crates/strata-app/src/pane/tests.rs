@@ -4,7 +4,7 @@
 //! and List views rebuild their pane. The handover itself is the Columns view's tests'.
 
 use strata_components::{collection::element::CollectionState, contract::EntrySource};
-use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
+use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue, ViewPreferences};
 
 use super::{Applied, Pane};
 use crate::{
@@ -44,6 +44,8 @@ struct Fixture {
     pane: Pane,
     ids: Ids,
     tx: rune::Tx,
+    /// What the browser groups every folder under, or nothing: none of these tests groups.
+    grouping: Option<ViewPreferences>,
 }
 
 impl Fixture {
@@ -52,11 +54,13 @@ impl Fixture {
             pane: Pane::new("pane", CollectionState::new()),
             ids: Ids::default(),
             tx: rune::Tx::default(),
+            grouping: None,
         }
     }
 
     fn apply(&mut self, change: Change) -> Applied {
-        self.pane.apply(change, &mut self.tx)
+        let grouping = self.grouping;
+        self.pane.apply(change, &|_| grouping, &mut self.tx)
     }
 
     /// The browser opens column `depth`, active or not, and lists one entry in it.
@@ -189,4 +193,64 @@ fn a_reset_shows_nothing_until_the_new_root_opens() {
     assert_eq!(fixture.apply(Change::Reset), Applied::Entered);
     assert_eq!(fixture.shows(), None);
     assert_eq!(fixture.pane.source().len(), 0);
+}
+
+fn file(folder: &Location, name: &str) -> FileEntry {
+    FileEntry {
+        kind: EntryKind::File,
+        ..entry(folder, name)
+    }
+}
+
+/// While the browser groups the folder, the pane shows it in file-type groups, gives the
+/// collection their headers, and steps between neighbours in the order shown; once it no
+/// longer does, the browser's order and no groups.
+#[test]
+fn a_grouped_folder_shows_and_steps_in_its_groups_and_an_ungrouped_one_does_not() {
+    let mut fixture = Fixture::new();
+    fixture.grouping = Some(ViewPreferences::default());
+    let folder = location(0);
+    fixture.apply(Change::Added(Added {
+        depth: 0,
+        location: folder.clone(),
+        show_hidden: false,
+        active: true,
+    }));
+    let names = ["b.txt", "a.png", "c.txt"];
+    let rows = names
+        .iter()
+        .map(|name| Row::of(&file(&folder, name), &fixture.ids))
+        .collect();
+    fixture.apply(Change::Rows {
+        depth: 0,
+        edit: Edit::Replace(rows),
+        marks: Some(Marks::default()),
+    });
+    let id = |name: &str| {
+        fixture
+            .ids
+            .of(&folder.child(std::ffi::OsStr::new(name)).expect("a child"))
+    };
+    let (b, a, c) = (id("b.txt"), id("a.png"), id("c.txt"));
+
+    assert_eq!(fixture.pane.collection().groups().groups().len(), 2);
+    assert_eq!(
+        fixture.pane.neighbour(0, b, 1),
+        Some(c),
+        "b.txt and c.txt are one group"
+    );
+    assert_eq!(
+        fixture.pane.position(0, a),
+        Some(1),
+        "positions stay the browser's"
+    );
+
+    fixture.grouping = None;
+    fixture.apply(Change::Busy {
+        depth: 0,
+        busy: false,
+    });
+
+    assert!(fixture.pane.collection().groups().is_empty());
+    assert_eq!(fixture.pane.neighbour(0, b, 1), Some(a));
 }

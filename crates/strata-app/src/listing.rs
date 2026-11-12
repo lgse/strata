@@ -15,10 +15,15 @@ use std::collections::HashMap;
 use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget};
 use strata_core::{
     i18n::tr,
-    model::{EntryKind as Kind, FileEntry, Location},
+    model::{EntryKind as Kind, FileEntry, Location, ViewPreferences},
 };
+use strata_fs::app::compare_type_groups;
 
 use crate::slots::Ids;
+
+mod type_group;
+
+pub(crate) use type_group::TypeGroup;
 
 /// What a row is, as assistive technology hears it: `entry_kind_name` in
 /// `src/ui/accessibility.rs`.
@@ -97,6 +102,8 @@ pub(crate) struct Row {
     kind: EntryKind,
     described: Described,
     hidden: bool,
+    /// Its file type, as the List view groups by it.
+    group: TypeGroup,
 }
 
 impl Row {
@@ -108,6 +115,7 @@ impl Row {
             kind,
             described,
             hidden: entry.is_hidden,
+            group: TypeGroup::of(entry),
         }
     }
 
@@ -144,8 +152,13 @@ pub(crate) struct Column {
     title: String,
     /// The browser's entries, each at the browser's position.
     rows: Vec<Row>,
-    /// The positions the view shows, in order: a view index is an index into this.
+    /// The positions the view shows, in order: a view index is an index into this. In the
+    /// browser's order, or in file-type groups while [`Column::grouping`] says so.
     shown: Vec<usize>,
+    /// While the rows are grouped, the view index of each position the view shows
+    /// (`usize::MAX` for one it does not). Empty otherwise, when `shown` is in the browser's
+    /// order and a binary search finds an index.
+    back: Vec<usize>,
     positions: HashMap<EntryId, usize>,
     show_hidden: bool,
     version: u64,
@@ -154,6 +167,9 @@ pub(crate) struct Column {
     busy: bool,
     /// The row of the column before this one whose folder this is.
     from: Option<EntryId>,
+    /// The browser's preferences for this folder when it groups its rows by file type
+    /// (`Browser::shows_type_groups`), and nothing when it does not.
+    grouping: Option<ViewPreferences>,
 }
 
 impl Column {
@@ -164,12 +180,14 @@ impl Column {
             location,
             rows: Vec::new(),
             shown: Vec::new(),
+            back: Vec::new(),
             positions: HashMap::new(),
             show_hidden,
             version: 0,
             load: Load::Loading,
             busy: false,
             from,
+            grouping: None,
         }
     }
 
@@ -186,6 +204,23 @@ impl Column {
 
     pub(crate) fn location(&self) -> &Location {
         &self.location
+    }
+
+    /// Whether the browser groups this folder's rows by file type, and under which
+    /// preferences: what a view that groups orders them by.
+    pub(crate) fn grouping(&self) -> Option<ViewPreferences> {
+        self.grouping
+    }
+
+    /// The browser now groups this folder's rows under `grouping`, or does not. True when the
+    /// order the view shows changed.
+    pub(crate) fn set_grouping(&mut self, grouping: Option<ViewPreferences>) -> bool {
+        if self.grouping == grouping {
+            return false;
+        }
+        self.grouping = grouping;
+        self.index();
+        true
     }
 
     pub(crate) fn load(&self) -> &Load {
@@ -238,7 +273,8 @@ impl Column {
     /// Rows on the end join the index as they are, which is how a folder still loading
     /// publishes them; rows anywhere else move the ones after them.
     fn insert(&mut self, position: usize, rows: Vec<Row>) {
-        if position < self.rows.len() {
+        // A grouped listing places a row by its type, not at the end.
+        if position < self.rows.len() || self.grouping.is_some() {
             self.rows.splice(position..position, rows);
             self.index();
             return;
@@ -260,7 +296,8 @@ impl Column {
         let Some(current) = self.rows.get_mut(position) else {
             return;
         };
-        let moved = current.id != row.id || current.hidden != row.hidden;
+        let regroup = self.grouping.is_some() && current.group != row.group;
+        let moved = current.id != row.id || current.hidden != row.hidden || regroup;
         *current = row;
         if moved {
             self.index();
@@ -276,7 +313,42 @@ impl Column {
                 self.shown.push(position);
             }
         }
+        self.group();
         self.version += 1;
+    }
+
+    /// Puts the rows shown in file-type groups, as GTK's grouped List shows them: by
+    /// strata-fs's own rule (`compare_type_groups`, under the folder's preferences), each
+    /// group keeping the browser's order inside it. Ungrouped, it leaves the browser's order
+    /// and allocates nothing.
+    fn group(&mut self) {
+        self.back.clear();
+        let Some(preferences) = self.grouping else {
+            return;
+        };
+        let mut types: Vec<TypeGroup> = Vec::new();
+        for position in &self.shown {
+            let group = self.rows[*position].group;
+            if !types.contains(&group) {
+                types.push(group);
+            }
+        }
+        let names: Vec<_> = types.iter().map(|group| group.description()).collect();
+        let mut ranked: Vec<usize> = (0..types.len()).collect();
+        ranked.sort_by(|a, b| compare_type_groups(&names[*a], &names[*b], preferences));
+        let mut rank = vec![0; types.len()];
+        for (place, kind) in ranked.into_iter().enumerate() {
+            rank[kind] = place;
+        }
+        let rank_of = |group: TypeGroup| types.iter().position(|t| *t == group).map(|i| rank[i]);
+        let rows = &self.rows;
+        // A stable sort: each group keeps the browser's order.
+        self.shown
+            .sort_by_key(|position| rank_of(rows[*position].group));
+        self.back = vec![usize::MAX; self.rows.len()];
+        for (index, position) in self.shown.iter().enumerate() {
+            self.back[*position] = index;
+        }
     }
 
     /// The browser's position of the row the view shows at `index`.
@@ -309,6 +381,11 @@ impl Column {
         self.from
     }
 
+    /// The file type of the row shown at `index`.
+    pub(crate) fn group_at(&self, index: usize) -> Option<TypeGroup> {
+        Some(self.rows.get(self.position_at(index)?)?.group)
+    }
+
     /// What the row the view shows at `index` is, as assistive technology hears it.
     pub(crate) fn description<'a>(&self, index: usize, words: &'a Words) -> Option<&'a str> {
         let row = self.rows.get(self.position_at(index)?)?;
@@ -326,7 +403,15 @@ impl EntrySource for Column {
     }
 
     fn index_of(&self, id: EntryId) -> Option<usize> {
-        self.shown.binary_search(self.positions.get(&id)?).ok()
+        let position = *self.positions.get(&id)?;
+        if self.grouping.is_some() {
+            return self
+                .back
+                .get(position)
+                .copied()
+                .filter(|index| *index != usize::MAX);
+        }
+        self.shown.binary_search(&position).ok()
     }
 
     fn entry(&self, index: usize) -> Entry<'_> {

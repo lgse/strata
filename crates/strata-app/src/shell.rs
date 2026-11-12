@@ -132,6 +132,12 @@ impl App {
         };
         debug_assert_eq!(Registry::check(parts, commands::own()), Ok(()));
         let parts = Registry::new(parts, &saved.browser_mode);
+        // Before the first load, so that its cursor lands on the first row a grouped view
+        // shows (`rebuild.rs` in `src/ui/browser_modes`). The one place a view is mounted.
+        let groups = parts
+            .shown()
+            .is_some_and(|view| view.supports_type_grouping);
+        browser.set_type_grouping(saved.group_by_type && groups);
         let mut listeners = parts.listeners(&setup);
         listeners.push(Box::new(hear));
         events.observe(&browser, listeners);
