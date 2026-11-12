@@ -112,7 +112,8 @@ isolation, resource limits, or the other narrow optional runtime mounts.
 ## Providers
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
-  images to dimension- and size-bounded PNG images.
+  images to dimension- and size-bounded PNG images. WebP is decoded first by the
+  built-in decoder, so it needs no system pixbuf loader or ImageMagick.
 - `ffmpegthumbnailer` (or the software FFmpeg fallback) produces bounded media thumbnails. Browser thumbnails and
   media details share the bounded, reusable sandbox supervisors described below.
   Duplicate requests share work, obsolete targets detach, and thumbnail failures
