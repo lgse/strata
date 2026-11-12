@@ -52,7 +52,7 @@
 //! | To tell the browser what the user changed in it | [`Part::publish`], called before GLib dispatches and around every applied queue; [`Part::caught_up`], called once a queue is applied |
 //! | Its own timers | [`Part::poll`], called in Rune's `poll` after the queue is applied |
 //! | The keyboard | A part focuses its own element with `Tx::focus`. A field or a menu gives the keyboard back to the shown view: `shell::view_focus(app)` is the key for a component's `focus_return`. A view whose keyboard leaves it at its start (Left in the first column) calls `shell::leave_view_at_start(app, tx)`: the sidebar takes it at its [`Sidebar::focus`], and nothing happens when there is no sidebar |
-//! | The view, whichever is shown | `shell::shown_view(app)`. A part never names a view's module. The rename editor opens and polls through the shown view's [`Editing`]; the context menu decides what a chosen row does once, in `menus.rs`, and asks the view's [`Rows`] only for what differs from view to view; the QA backend reads its panes by the view's [`Probe`] |
+//! | The view, whichever is shown | `shell::shown_view(app)`. A part never names a view's module. The rename editor opens and polls through the shown view's [`Editing`]; a chosen menu row runs a command of the registry ([`crate::commands`]), which asks the view's [`Rows`] only for what differs from view to view; the QA backend reads its panes by the view's [`Probe`] |
 //! | The id of an entry | `shell::id_of(app, &location)`: the window's one table, which [`Setup::ids`] also hands a part for its listener |
 //! | A context menu on one of its rows, or on its folder | A view's handler calls `menus::open(app, Request { depth, entry, anchor }, tx)` for the collection's `Intent::ContextMenu`, with no entry for the folder. The opener decides what the menu is for and lists, once for every view, and asks the view only for a row's position ([`Rows`]) |
 //! | The window's shortcuts to wait | [`Part::holds_keyboard`], true while the part has a text field open |
@@ -78,7 +78,7 @@
 //!   shown is built too.
 //! - **A handler that calls the browser ends with `shell::settle(app, tx)`,** after
 //!   `shell::publish(app)` where the browser acts on its cursor. `heard` in
-//!   `columns/intents.rs` and `chosen` in `menus.rs` are the pattern. Without the `settle`, what the browser answered at
+//!   `columns/intents.rs` and `call` in `commands.rs` are the pattern. Without the `settle`, what the browser answered at
 //!   once stays queued until the next poll, and the frame drawn for the input shows the view
 //!   one step behind the browser.
 //! - **Element keys are one namespace across the parts.** Start a part's keys with its name.
@@ -127,12 +127,11 @@
 //!
 //! | A part that needs | Waits on |
 //! | --- | --- |
-//! | A window chord (Ctrl+T, Ctrl+L, the sidebar's key) or one of the header's five buttons | The command registry, lgse/strata#2126. A component's own keys are its own; `shell::on_key`'s table and `shell::bar` are not an area's to add to. The runs that need them stay `pending` on that package |
+//! | A window chord (Ctrl+T, Ctrl+L, the sidebar's key), one of the header's five buttons, or a menu row that runs its command | Its own table of commands, which is the next change to this contract (`docs/rune/parity/packages/B3.md`, "The part hooks"). The registry is [`crate::commands`]: a key, a chosen row and a pressed button each run the command registered under a name, and a row or a button whose name nothing registered is drawn and inert. Until a part can register, the window's own table (`commands/browser.rs`) is the only one, and neither it nor `shell::bar` nor `menus.rs` is an area's to add to. Even then, a key the shown view's own controller takes (Escape, Delete, Space, Ctrl+A) does not reach a registered command from the view until the entry points land ("What Rune gives" there) |
 //! | To save a setting | Nothing: `shell::saved(app).change(…)`, by the rules under [Saving a setting](#saving-a-setting) |
 //! | A `Browser` and a state for each tab | lgse/strata#2131, which opens with a `contract` change. There is one `Browser`, and one state for each part, made once in `App::new` |
 //! | To change the shown view while the window is open | lgse/strata#2140, with a `contract` change: a setter, and a listener and a rebuild from the browser for a view that starts hidden |
 //! | Another order within a slot | A `contract` change. The order is the registration lines', which is the packages', and a line is not moved from under its comment |
-//! | A menu row that runs an area's command | The command registry, lgse/strata#2126, which replaces the `match` in `menus::chosen`. Until then a row acts only if `menus.rs` wires it, and that file is one package's |
 //! | The stored names `grid` and `explorer` read in one place | The preference store's move, lgse/strata#2125: they are read in `src/ui/preferences/stored.rs` on the GTK side. Until then the Icons view's `shows` answers to `icons` and `grid`, and the List view's to `list` and `explorer` |
 //! | More of the Columns view than the listing and the handover | The listing a view shows is shared (`listing.rs`), and so is the cursor and selection handover (`handover.rs`), which Columns uses for each column and a single-pane view through `pane.rs`. What stays in `columns/` is the Columns component's own: `Listings` as its `ColumnSources`, the adapter that puts a change into `ColumnsState`, the active column and the mirror. A view that needs more of it opens a `contract` change |
 //! | Panes the QA backend cannot read by a view's [`Probe`] | A `contract` change with the harness, lgse/strata#2135. The backend takes a pane to be the nearest named group around a keyed entry list, with rows keyed as the collection keys them; `qa/roles.rs` has to know the view's roles |
@@ -145,6 +144,7 @@
 //! | File | Owner |
 //! | --- | --- |
 //! | `shell.rs`, `slots.rs` and `slots/`, `host/`, `test_support.rs` | The contract |
+//! | `commands.rs` and `commands/`: the command registry, the key routing and the press builder | The contract |
 //! | `events.rs` and `listing.rs`: the reader a view's listener calls, and the listing it fills | The contract |
 //! | `handover.rs`: the cursor and selection every view hands the browser and takes from it | The contract |
 //! | `pane.rs`: the one folder a single-pane view (Icons, List) shows, the browser's active column | The contract |

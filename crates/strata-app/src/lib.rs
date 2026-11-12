@@ -39,6 +39,7 @@ mod columns;
 mod menus;
 mod rename;
 // B3 Commands and key dispatch
+mod commands;
 // A1 Icons view and thumbnails
 mod icons;
 // A2 List view
