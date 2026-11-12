@@ -221,7 +221,14 @@ impl App {
 
 /// The saved settings as they are now, and the way to change one:
 /// `shell::saved(app).change(|settings| …)` changes the values and queues the save of what
-/// changed. Call it from a handler or a queued update, never from a listener.
+/// changed. Call it from a handler or a queued update, never from a listener. A part calls
+/// `change` and `preferences` and nothing else of [`Saved`].
+///
+/// The save's result is heard when GLib is next pumped and the queue applied. After a change
+/// made in a handler that is the `poll` that follows. After one made in a queued update it
+/// is the next pump, whenever that comes: the update ran after its pump had asked GLib what
+/// to wait for. Nothing is lost on disk; until the result is heard the keys count as
+/// unsaved, and a change made meanwhile writes them again.
 pub(crate) fn saved(app: &mut App) -> &mut Saved {
     &mut app.window.settings
 }

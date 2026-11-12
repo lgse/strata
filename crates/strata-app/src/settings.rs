@@ -9,8 +9,8 @@
 //! save here writes what a save there writes: the keys this process changed since a save
 //! last succeeded, with what loading repaired, and another Strata process's other keys stay.
 //!
-//! A part reads the settings with `shell::settings` and changes one with
-//! `shell::saved(app).change(…)`.
+//! A part reaches the settings through `shell::saved(app)`: `preferences()` to read them as
+//! they are now, and `change(…)` to change one and have it saved. `slots.rs` has the rules.
 
 use strata_core::model::ViewPreferences;
 use strata_desktop::settings::{

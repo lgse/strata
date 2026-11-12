@@ -95,12 +95,39 @@
 //!   again after merging `strata-next`: a second part in a slot for one, or a part registered
 //!   twice, shows only there and in a debug build's start.
 //!
+//! # Saving a setting
+//!
+//! `shell::saved(app)` is the window's saved settings. A part calls two things on it:
+//! `preferences()`, the values as they are now, and `change(|settings| …)`, which changes
+//! them and queues the save of what changed through the bookkeeping the GTK application
+//! saves with (`strata_desktop::settings::Saving`). Its other methods are the shell's and
+//! start-up's.
+//!
+//! - **Call `change` from a handler.** It borrows all of `app`, so read whatever the new
+//!   value depends on into a local first. From a queued update it works too, and the save's
+//!   result is then heard a pump later (`shell::saved`).
+//! - **`change` does not validate.** A plain value is assigned as it is. A value with a range
+//!   or a rule goes through the function in `strata_desktop::settings` that holds the rule;
+//!   where that rule is still inside a GTK setter, the package that needs it moves it there
+//!   first (`docs/rune/shared-state.md`, "The rule for a setter's body").
+//! - **Nothing is notified.** No part hears that a setting changed, and nothing follows a
+//!   change another window or process saves: the part that changes a value also updates what
+//!   it shows, in its own state.
+//! - **`show_hidden`, `folders_first` and the sort keys are the browser's.** The shell stores
+//!   them whenever the browser says they changed, over whatever `change` wrote. Change them
+//!   through the browser.
+//! - **A failed save is only logged.** There is no notice yet.
+//! - **A test that seeds `settings.toml` gives it `mode` and `theme`,** unless it means the
+//!   salvaged case: a file without them is salvaged, and every default is then saved into it
+//!   with the first change.
+//! - **The offscreen host does not flush the writer at exit.** A test waits for the file.
+//!
 //! # What waits on what
 //!
 //! | A part that needs | Waits on |
 //! | --- | --- |
 //! | A window chord (Ctrl+T, Ctrl+L, the sidebar's key) or one of the header's five buttons | The command registry, lgse/strata#2126. A component's own keys are its own; `shell::on_key`'s table and `shell::bar` are not an area's to add to. The runs that need them stay `pending` on that package |
-//! | To save a setting | Nothing: `shell::saved(app).change(\|settings\| …)` in a handler or a queued update changes the values and queues the save of what changed, through the bookkeeping the GTK application saves with. The part keeps what it shows in its own state, as before. A setter that validates is a function in `strata_desktop::settings`, moved there by the package that first needs it (`docs/rune/shared-state.md`) |
+//! | To save a setting | Nothing: `shell::saved(app).change(…)`, by the rules under [Saving a setting](#saving-a-setting) |
 //! | A `Browser` and a state for each tab | lgse/strata#2131, which opens with a `contract` change. There is one `Browser`, and one state for each part, made once in `App::new` |
 //! | To change the shown view while the window is open | lgse/strata#2140, with a `contract` change: a setter, and a listener and a rebuild from the browser for a view that starts hidden |
 //! | Another order within a slot | A `contract` change. The order is the registration lines', which is the packages', and a line is not moved from under its comment |

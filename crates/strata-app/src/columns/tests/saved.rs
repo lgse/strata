@@ -103,3 +103,44 @@ fn an_unreadable_settings_file_is_never_saved_over() {
         },
     );
 }
+
+/// A key is written until its save is known to have succeeded, and then left alone: what
+/// another Strata process saves there afterwards stays through this one's next save. The
+/// save's result reaches the bookkeeping through the window's queue, and a part's change
+/// goes through `shell::saved`.
+#[test]
+fn a_saved_key_is_left_to_another_process_once_its_save_has_succeeded() {
+    hosted_after(
+        MODULE,
+        "saved::a_saved_key_is_left_to_another_process_once_its_save_has_succeeded",
+        || save_settings("mode = \"theme\"\ntheme = \"azure-glow\"\n"),
+        |mut host| {
+            let folder = fixture();
+            open(&mut host, folder.path());
+            press(&mut host, "ctrl+period");
+            let saved = host.run_until(PATIENCE, |_| saved_show_hidden() == Some(true));
+            assert!(saved, "show_hidden was not saved");
+            // The writer answers after the file is in place, and the answer is heard in a turn.
+            host.run_until(Duration::from_millis(300), |_| false);
+
+            let ours = std::fs::read_to_string(settings_file()).expect("settings");
+            let theirs = ours.replace("show_hidden = true", "show_hidden = false");
+            assert_ne!(theirs, ours, "{ours}");
+            std::fs::write(settings_file(), theirs).expect("another process's save");
+
+            host.runtime().update(|app, _| {
+                crate::shell::saved(app).change(|settings| settings.folder_peeking = true);
+            });
+            let peeking = || {
+                let file = std::fs::read_to_string(settings_file()).ok()?;
+                file.parse::<toml::Table>()
+                    .ok()?
+                    .get("folder_peeking")?
+                    .as_bool()
+            };
+            let saved = host.run_until(PATIENCE, |_| peeking() == Some(true));
+            assert!(saved, "the part's change was not saved");
+            assert_eq!(saved_show_hidden(), Some(false));
+        },
+    );
+}
