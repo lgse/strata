@@ -3,7 +3,7 @@
 //! The Columns adapter: Strata's `Browser` on one side, strata-components' Columns view on
 //! the other. Nothing else knows both.
 //!
-//! - **Events in.** The browser's observer queues what each event changed
+//! - **Events in.** The view's listener queues what each event changed
 //!   ([`crate::events`]); [`Columns::apply`] puts it into the view's listings and state.
 //! - **Intents out.** What the view asks goes to the browser ([`intents`]).
 //! - **One cursor and one selection.** The view interprets keys and the pointer, and the
@@ -35,6 +35,7 @@ mod ids;
 mod intents;
 mod listing;
 mod mirror;
+mod part;
 mod selection;
 mod view;
 
@@ -51,10 +52,10 @@ use mirror::Mirror;
 pub(crate) const VIEW: &str = "columns";
 
 /// What applying a change needs beside the change.
-pub(crate) struct Hands<'a> {
-    pub(crate) browser: &'a Rc<Browser>,
-    pub(crate) look: &'a Look,
-    pub(crate) tx: &'a mut Tx,
+struct Hands<'a> {
+    browser: &'a Rc<Browser>,
+    look: &'a Look,
+    tx: &'a mut Tx,
 }
 
 pub(crate) struct Columns {
@@ -92,7 +93,7 @@ fn clicks(count: u8) -> ClickCount {
 }
 
 impl Columns {
-    pub(crate) fn new(settings: &Preferences, ids: Ids) -> Self {
+    fn with_settings(settings: &Preferences, ids: Ids) -> Self {
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
         Self {
@@ -141,8 +142,8 @@ impl Columns {
         self.listings.columns.get(depth)?.row_of(id)
     }
 
-    /// Applies one change the browser's observer queued.
-    pub(crate) fn apply(&mut self, change: Change, hands: &mut Hands<'_>) {
+    /// Applies one change the view's listener queued.
+    fn apply(&mut self, change: Change, hands: &mut Hands<'_>) {
         match change {
             // The first column's `Added` follows, and replaces the strip.
             Change::Reset => {
@@ -195,7 +196,7 @@ impl Columns {
                         .follow(hands.browser, depth, landed.position, landed.by_removal);
                 }
             }
-            // `Path` is the window's, and `apply` took the rest.
+            // `apply` took the rest.
             _ => {}
         }
     }
