@@ -1410,7 +1410,7 @@ the GTK target with the Rune target is package F2's (lgse/strata#2138).
 ./scripts/qa-fuzz.sh replay --parked --repeats 24               # a survey: the parked sequences, on purpose
 ./scripts/qa-fuzz.sh shrink --alphabet calibration --seeds 7    # shrink one seed's divergence and confirm it
 ./scripts/qa-fuzz.sh shrink tests/qa/fuzz/corpus/calibration/fuzz-calibration-v3-0000000000000007.jsonl
-./scripts/qa-fuzz.sh generate --alphabet calibration --seeds 7  # print the sequence; replay nothing
+./scripts/qa-fuzz.sh generate --alphabet calibration --seeds 7  # print the sequence, alone on stdout; replay nothing
 ./scripts/qa-fuzz.sh scenario <file>                            # run a sequence file as the scenario it is
 ./scripts/qa-fuzz.sh compare <stream> <stream>                  # compare two kept streams
 ./scripts/qa-fuzz.sh check                                      # load the alphabets, the map, the mask and the corpus
@@ -1531,7 +1531,9 @@ observation moves sometimes. The Columns pilot alphabet is F2's.
 A sequence is a scenario file: the header line, then one step to a line. It is
 named for where it came from, `fuzz-<area>-v<version>-<seed>`, the alphabet's
 version and the seed as sixteen hex digits, and the ordinary loader checks it
-as it checks every scenario. `generate` prints one.
+as it checks every scenario. `generate` prints one, alone on stdout, so
+`generate … > <file>` writes a scenario file; what the image and Cargo say
+goes to stderr.
 
 `scenario <file>` runs one through the ordinary runner, to read a transcript
 or a screenshot of it. That run is not a verdict: the ordinary runner stops at
@@ -1794,33 +1796,53 @@ be replayed (every sequence, with `--keep`) leaves
 
 The projection and the rest rule were fixed by measuring two GTK replays of one
 seed against each other, in the pinned image, with the `calibration` alphabet.
-This is what F1 found on `strata-next` in November 2026; the runs themselves
-are recorded on lgse/strata#2127. Measure again before changing the rest rule,
-and after any change that moves the application's own timers.
+This is what F1 found on `strata-next` in November 2026. The counts of seeds
+and observations below are from the driver as it merges, version 3 of the
+alphabet; the commands are on lgse/strata#2181. The runs made while the
+driver was being built are history: they found the first four faults and set
+the window. Of their numbers, only what each of those faults did then is
+quoted, in the table of faults, and the three delays named below. Measure
+again before changing the rest rule, and after any change that moves the
+application's own timers.
 
 **How long GTK goes on changing after a reply.** With the quiet window
-stretched to a second (`--rest-samples 40 --rest-poll-ms 25`), a stream's
-`changed_ms` shows every late change. Over 16,236 steps, at 24 and at 96
-sequences at once:
+stretched to a second (`--rest-samples 40 --rest-poll-ms 25`), the summary's
+`FUZZ late changes` line counts every late change:
 
-| | 24 at once | 96 at once |
+| | 24 at once, seeds 1 to 100 | 96 at once, seeds 1 to 96 |
 | --- | --- | --- |
-| Steps that changed after their reply | 12.7 % | 12.7 % |
-| Quiet before a late change: median | 66 ms | 67 ms |
-| 99th percentile | 164 ms | 157 ms |
-| Longest | 218 ms | 214 ms |
+| Observations | 7,986 | 7,678 |
+| Changed after their step's reply | 10.7 % | 10.3 % |
+| Quiet before a late change: median | 66 ms | 69 ms |
+| 99th percentile | 169 ms | 175 ms |
+| Longest | 224 ms | 265 ms |
 
-One step in eight is not at rest when its reply is written, which is V3's
+One step in ten is not at rest when its reply is written, which is V3's
 finding with a number on it. The late changes with the longest quiet before
-them are the application's own delays, not load: a dialog is still named for
-about 165 ms after the Escape or Return that closes it, the inline editor of a
-new folder opens about 200 ms after its row is listed, and a file written
-behind the application's back is listed 150 to 170 ms later.
+them are the application's own delays, as the earlier runs' streams showed
+them: a dialog is still named for about 165 ms after the Escape or Return
+that closes it, the inline editor of a new folder opens about 200 ms after
+its row is listed, and a file written behind the application's back is
+listed 150 to 170 ms later.
 
-**What the quiet window has to be.** Of 300 seeds replayed twice, three
-differed with a window of 150 ms, one with 250 ms and none with 350 ms. So
-rest is eight equal reads 50 ms apart: 350 ms of quiet, against a longest
-measured wait of 218 ms.
+The runs with the default window see a late change only up to 350 ms, and saw
+none after more than 256 ms of quiet at one sequence to a core (115,375
+observations) or 273 ms at 96 at once (24,492).
+
+**What the quiet window has to be.** It is the longest quiet before a late
+change at one sequence to a core, about 220 to 260 ms, and a margin: eight
+equal reads 50 ms apart, 350 ms. Under 96 sequences at once the margin is
+thinner: an earlier run of the table's second column, on the same code, saw
+304 ms. Shorter windows were tried on seeds 1 to 300, two replays each:
+
+| Quiet window | Seeds whose replays differed |
+| --- | --- |
+| 150 ms (`--rest-samples 4`) | 3 of 300, each on `app.field`: a new folder's editor, open in one replay and not yet in the other |
+| 250 ms (`--rest-samples 6`) | 0 of 300 |
+| 350 ms, the rule | 0 of 300 |
+
+So what a short window cuts, here the editor of a new folder, is cured by the
+wait. 250 ms was enough for these seeds, and the rule keeps a margin over it.
 
 **What two GTK replays differed on, and what was done about it.**
 
@@ -1829,11 +1851,12 @@ measured wait of 218 ms.
 | `app.field`, `app.focused`, `app.panes[].focused`: a new folder's inline editor, open or not yet | The editor opens about 200 ms after the row, with nothing to see in between | Rest: the 350 ms window |
 | `app.dialog`: still named after the key that closes it | The dialog goes about 165 ms after the key | Rest: the 350 ms window |
 | `app.matches`: the listing of `/tmp` | The sequence left the fixture, and `/tmp` holds every other run's folders. Left of the fixture's own column does it, and so does Return once the arrow keys have taken focus up to the path bar | The driver: a replay ends at the step that leaves the fixture. The alphabet guards Left besides, so that fewer sequences end early |
-| `app.field.caret`, `app.field.selection`: after Shift+click on the entry being renamed | A race in GTK, whatever the rest: the same input events clear the selection in five replays of six and select the whole name in the sixth | An `oracle` issue, lgse/strata#2173, and its seed parked. The alphabet does not click an entry while a name is edited: where such a click puts the caret is a matter of pixels in any case |
+| `app.field.caret`, `app.field.selection`: after Shift+click on the entry being renamed | A race in GTK, whatever the rest: the same input events clear the selection in 28 replays of 34 and select the whole name in the other 6 | An `oracle` issue, lgse/strata#2173, and its seed parked. The alphabet does not click an entry while a name is edited: where such a click puts the caret is a matter of pixels in any case |
 | `app.preview`: which file the preview shows after Move to Trash from a context menu on a filtered pane | A race in GTK, whatever the rest: a file that is neither focused nor selected in 23 replays of 24, the focused one in the other | An `oracle` issue, lgse/strata#2177, and its seed parked. The alphabet is left as it is, so another seed can meet it |
-| `app.focused`, `app.panes[].focused`: after a click that opens a folder's column, with the machine loaded four times over | A race in GTK between the column's listing and focus moving into it: focus on the column in one replay, on its first entry in the other. Seen once, and not at one sequence to a core | An `oracle` issue, lgse/strata#2180, and its seed parked |
+| `app.focused`, `app.panes[].focused`: after a click that opens a folder's column, with 96 sequences at once | A race in GTK between the column's listing and focus moving into it: focus on the column in one replay, on its first entry in the other. Seen once, and not at one sequence to a core | An `oracle` issue, lgse/strata#2180, and its seed parked |
+| `app.matches`, `app.menu`: after Space in the sort menu, opened from the keyboard, once a right-click and Down have gone to it | A race in GTK, whatever the rest: from the same input events the menu closes and the folder is sorted by name in 16 replays of 24, and the menu stays open over another order in the other 8. Met by seed `0x1de` in the last run of seeds 1 to 1000; the shrinker took it from 40 steps to 10, which differed in two confirmations of three | Nothing yet. It is not parked, because a parked line cites an issue and what a new finding is cited by is not settled (`docs/rune/parity/packages/F1.md`, "Open"). Until it is, `run` reports that seed as differing about four times in nine |
 
-A fourth `oracle` issue is not a difference: GTK logs a critical, the same one
+One more `oracle` issue is not a difference: GTK logs a critical, the same one
 at the same step in both replays (lgse/strata#2176). A GLib warning is a
 divergence in itself, so the comparator reported it, and the shrinker took it
 from 40 steps to 7.
@@ -1843,16 +1866,22 @@ the projection is all ten `app` keys, the tree and the settings. With the rule
 above, two GTK replays of a seed agree on every observation but where GTK
 itself races or warns:
 
-| Run | Seeds | Agreed | The others |
+| Run | Seeds replayed | Agreed | The others |
 | --- | --- | --- | --- |
-| 40 actions, two replays, 24 at once | 1,299 | 1,297 | The preview race; the critical |
-| The same with the machine loaded four times over, 96 at once | 300, twice | 599 of 600 | The focus race |
-| 120 actions, three replays, 24 at once | 100 | 100 | |
+| 40 actions, two replays, 24 at once: seeds 1 to 1000 | 1,000 | 999 | Seed `0x1de`, the sort menu race |
+| The same at 96 at once: seeds 1001 to 1300 | 299 | 299 | Seed `0x41c` is parked and was not replayed |
+| 120 actions, three replays, 24 at once: seeds 2001 to 2100 | 100 | 100 | |
 
-No step was left unsettled in any of them. The first 999 of the 1,299 ran
-before the alphabet had its hidden-files action and before a replay ended on
-leaving the fixture; the rest, and the other two rows, ran as the driver is
-now.
+No step was left unsettled and no GLib warning was logged in any of them:
+139,867 observations in 2,898 replays.
+
+`replay --parked --repeats 24` says what the parked sequences do on the same
+code: the critical of lgse/strata#2176 in every replay; the Shift+click of
+lgse/strata#2173 one way in 23 replays and the other in 1; the preview of
+lgse/strata#2177 on one file in 19 and on another in 5; and the focus of
+lgse/strata#2180 the same in all 24, at four sequences at once and not the
+load it was met under. The rates move from run to run, which is why a parked
+sequence that agrees is not thereby fixed.
 
 **What that does not cover.**
 
@@ -1860,26 +1889,43 @@ now.
   `calibration.toml` lists. `app.view_mode` never changes there, and
   `settings.toml` changes on one action only. No file operation ran long
   enough to show progress. An area whose actions wait on longer delays than
-  220 ms (a copy with its progress dialog, a per-folder view saved after
+  260 ms (a copy with its progress dialog, a per-folder view saved after
   500 ms) has to measure its own, and where the application shows that it is
   busy, wait on that with a `wait` step.
 - **Rest is told from outside.** A change that comes after more than 350 ms
   of quiet is taken for the next step's. Two replays then usually agree with
   each other and are both wrong about which step did it, which a comparison of
   two GTK replays cannot see and a comparison with Rune will.
+- **What a replay that leaves the fixture does not reach.** A replay ends at
+  the step that leaves the fixture, and what the sequence would have done
+  after it is not observed: 58 of 2,000 replays and 1.3 % of the observations
+  at 40 actions, 30 of 300 replays and 5.2 % of the observations at 120.
 - **Rarer races.** Each race above was met in one seed of several hundred or
   more. One that shows in one seed of ten thousand was not met.
 - **The clock.** A file made during a replay has the time of the replay, and
   a preview shows its date. Two replays on either side of midnight would
   differ there; none did.
-- **The machine.** 24 cores. "96 at once" loads it four times over; a slower
-  machine under the same load was not measured.
+- **A machine starved of CPU.** "96 at once" is 96 sequences on 24 cores, and
+  a replay mostly sleeps between its reads: the load average ended between
+  12.7 and 30.6 in the runs at 96 at once, on a machine other sessions were
+  using too. So the machine was at most a little oversubscribed, and what a
+  replay does when it cannot get a core for long was not measured.
 
 #### What the next packages build on
 
+- **The sentence for the checkpoint.** Two GTK replays of one seed agree with
+  nothing masked: on 999 of 1,000 seeds at 40 actions, and on 100 of 100 at
+  120 actions and three replays. Every seed that did not agree, there or
+  while the driver was built, is a fault of GTK's own that is named above.
+  That holds for one alphabet, Columns on the canonical fixture, on a machine
+  that is not starved of CPU; with an alphabet that keeps every
+  click, Ctrl+click, Shift+click and right-click off the entries while a name
+  is edited; and with a replay ending where it leaves the fixture, which
+  left 1.3 % of the observations unmade at 40 actions and 5.2 % at 120.
 - **"Agree" is a rate.** Two replays catch a race that goes the rare way once
-  in 24 about 8 % of the time, and one that does so once in 6 about 28 %. Two
-  of the races above agreed in a whole batch before they were seen. So a
+  in 24 about 8 % of the time, one that does so once in 6 about 28 %, and one
+  that does so once in 3 about 44 %. Two of the races above agreed in a whole
+  batch before they were seen. So a
   difference between GTK and Rune is replayed GTK against GTK many times, 24
   and not 2, before Rune is blamed for it.
 - **Two targets.** A replay starts the target `STRATA_QA_TARGET` names, which

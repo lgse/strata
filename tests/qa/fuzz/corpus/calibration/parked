@@ -7,8 +7,8 @@
 # `replay --parked` replays them on purpose. A seed means nothing across versions, so a
 # line for v1 stops no run of v3. See docs/testing.md, "Fuzzing".
 #
-# v1, 0x67: a Shift+click on the entry being renamed clears the selection in five GTK
-# replays of six and selects the whole name in the sixth. The sequence is the seed's as
+# v1, 0x67: a Shift+click on the entry being renamed clears the selection in 28 GTK
+# replays of 34 and selects the whole name in the other 6. The sequence is the seed's as
 # version 1 of the alphabet wrote it, cut after the click; from version 2 on the alphabet
 # does not click an entry while a name is edited.
 v1-0000000000000067 oracle lgse/strata#2173
