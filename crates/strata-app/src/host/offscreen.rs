@@ -9,7 +9,7 @@ use rune::{Env, Runtime, text::TextSystem};
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::csd::{Backend, Csd, Policy};
 
-use crate::{App, settings::Saved, shell, startup::UiThread};
+use crate::{App, settings::Saved, shell, slots::Entry, startup::UiThread};
 
 /// The QA runner's screen (`tests/qa/`: Xvfb at 1440x900): what the tests draw on.
 #[cfg(test)]
@@ -28,13 +28,20 @@ impl Offscreen {
         Self::sized(ui, settings, SIZE)
     }
 
+    /// A host whose window is made of a test's table `parts`.
+    #[cfg(test)]
+    pub(crate) fn with_parts(parts: &'static [Entry<App>], ui: UiThread, settings: Saved) -> Self {
+        Self::over(parts, ui, settings, SIZE)
+    }
+
     /// A host that draws at `size`, in points.
     pub(crate) fn sized(ui: UiThread, settings: Saved, size: (f32, f32)) -> Self {
-        let app = App::new(
-            &ui,
-            Csd::new(Policy::Auto.frame(), Backend::Headless),
-            settings,
-        );
+        Self::over(crate::PARTS, ui, settings, size)
+    }
+
+    fn over(parts: &'static [Entry<App>], ui: UiThread, settings: Saved, size: (f32, f32)) -> Self {
+        let csd = Csd::new(Policy::Auto.frame(), Backend::Headless);
+        let app = App::over(parts, &ui, csd, settings);
         let mut runtime = Runtime::with_text(
             app,
             shell::view,
@@ -103,7 +110,9 @@ impl Offscreen {
         let now = Instant::now();
         let animating = self.runtime.frame((now - self.stepped).as_secs_f64());
         self.stepped = now;
-        dispatched || queued || animating
+        // What a handler queued during the frame is work for the next turn.
+        let left = self.runtime.state.has_queued_changes();
+        dispatched || queued || animating || left
     }
 
     /// Blocks until GLib has work or Rune's next timer is due, and for `limit` at most.

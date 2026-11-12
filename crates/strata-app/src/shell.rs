@@ -11,6 +11,7 @@
 use std::rc::Rc;
 
 use rune::{Cx, El, KeyEvent, Keybind, Tx, col, row};
+use strata_components::contract::EntryId;
 use strata_components::header::{
     self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
 };
@@ -24,11 +25,9 @@ use strata_kit::{icons::IconName, look::Look};
 use strata_platform::csd::{self, Csd};
 
 use crate::{
-    App, Built, PARTS,
-    columns::Ids,
-    rename,
+    App, Built, PARTS, rename,
     settings::Saved,
-    slots::{Frame, Heard, Inbox, Registry, Setup, Slot},
+    slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, Slot, View},
     startup::UiThread,
 };
 
@@ -67,6 +66,8 @@ pub(crate) struct Window {
     events: Inbox<App>,
     /// The registered parts, with the view that is shown.
     parts: Registry<'static, App>,
+    /// The table that names an entry for the components: every part holds the same one.
+    ids: Ids,
     /// The browser's active location as of the last `poll`: what the title names.
     location: Option<Location>,
     title: String,
@@ -100,24 +101,38 @@ impl App {
     /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with
     /// the saved sort and hidden-files choice, every registered part, and every event queued
     /// for [`apply_queued`].
-    pub(crate) fn new(_ui: &UiThread, csd: Csd, settings: Saved) -> Self {
+    pub(crate) fn new(ui: &UiThread, csd: Csd, settings: Saved) -> Self {
+        Self::over(PARTS, ui, csd, settings)
+    }
+
+    /// The window over the table `parts`: the registered parts, or a test's made-up ones. The
+    /// state of every registered part is built either way, and only the table's hooks run.
+    pub(crate) fn over(
+        parts: &'static [Entry<App>],
+        _ui: &UiThread,
+        csd: Csd,
+        settings: Saved,
+    ) -> Self {
         let saved = settings.preferences();
         let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
         browser.set_operation_provider(Rc::new(LocalOperationProvider));
         let ids = Ids::default();
+        let events = Inbox::new();
+        let later = events.later();
         let setup = Setup {
             settings: saved,
             ids: &ids,
+            later: &later,
         };
-        debug_assert_eq!(Registry::check(PARTS), Ok(()));
-        let parts = Registry::new(PARTS, &saved.browser_mode);
+        debug_assert_eq!(Registry::check(parts), Ok(()));
+        let parts = Registry::new(parts, &saved.browser_mode);
         let mut listeners = parts.listeners(&setup);
         listeners.push(Box::new(hear));
-        let events = Inbox::observing(&browser, listeners);
-        let queue = events.clone();
+        events.observe(&browser, listeners);
+        let queue = setup.later.clone();
         // The browser's sort or hidden-files choice changed: the saved settings follow it.
         browser.observe_preferences(move |view| {
-            queue.push(move |app: &mut App, _: &mut Tx| {
+            queue.then(move |app: &mut App, _: &mut Tx| {
                 app.window.settings.store_view(view);
                 false
             });
@@ -127,6 +142,7 @@ impl App {
             settings,
             events,
             parts,
+            ids,
             location: None,
             title: title_for(None),
             csd,
@@ -195,6 +211,11 @@ impl App {
     pub(crate) fn rows_copied(&self) -> u64 {
         self.window.events.copied()
     }
+
+    /// The way into the window's queue, as `Setup::later` hands it to a part.
+    pub(crate) fn later(&self) -> crate::slots::Later<Self> {
+        self.window.events.later()
+    }
 }
 
 /// The GTK window's rule (`src/ui/window/composition/tabs.rs`): the folder, then the name.
@@ -209,10 +230,31 @@ pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
     &mut app.window.csd
 }
 
+/// The view that is shown, as the parts that work in it see it: the rename editor, a context
+/// menu, the QA backend.
+pub(crate) fn shown_view(app: &App) -> Option<&'static View<App>> {
+    app.window.parts.shown()
+}
+
+/// The id the components know the entry at `location` by.
+pub(crate) fn id_of(app: &App, location: &Location) -> EntryId {
+    app.window.ids.of(location)
+}
+
+/// The keyboard leaves the shown view at its start, as Left in the first column asks: the
+/// sidebar takes it. False when there is no sidebar, and the keyboard stays where it is.
+pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
+    let Some(sidebar) = app.window.parts.sidebar() else {
+        return false;
+    };
+    tx.focus(sidebar.focus, true);
+    true
+}
+
 /// The key of the shown view's element that takes the keyboard: where a field or a menu
 /// gives it back.
 pub(crate) fn view_focus(app: &App) -> Option<&'static str> {
-    app.window.parts.shown().map(|view| view.focus)
+    shown_view(app).map(|view| view.focus)
 }
 
 fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
@@ -310,8 +352,7 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
         .min_h(0.0)
         .fill(app.look.kit.c.bg_base)
         .on_pointer_move_local(|app: &mut App, pointer, tx: &mut Tx| {
-            let view = app.window.parts.shown();
-            if let Some(pointer_at) = view.and_then(|view| view.pointer_at) {
+            if let Some(pointer_at) = shown_view(app).and_then(|view| view.pointer_at) {
                 pointer_at(app, (pointer.window_x, pointer.window_y));
             }
             tx.live_only();
@@ -355,12 +396,17 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     })
 }
 
-/// Rune's `poll` hook: what the browser's observers queued, then each part's own timers.
+/// Rune's `poll` hook: what the browser's observers queued, then each part's own timers,
+/// then whatever those queued: a part's poll may ask a service that answers at once, and
+/// nothing is left in the queue for a frame that may not come.
 pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let mut ran = settle(app, tx);
     let parts = app.window.parts;
     for part in parts.active() {
         ran |= (part.poll)(app, clock, tx);
+    }
+    if !app.window.events.is_empty() {
+        ran |= settle(app, tx);
     }
     ran
 }
@@ -450,3 +496,6 @@ pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
     settle(app, tx);
     true
 }
+
+#[cfg(test)]
+mod tests;

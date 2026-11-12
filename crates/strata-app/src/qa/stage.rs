@@ -12,8 +12,8 @@ use rune::ElementInfo;
 use strata_components::collection::element::LABEL;
 use strata_qa::Rect;
 
-use super::tree::{Drawn, DrawnColumn, DrawnRow, NameLabel, Snapshot};
-use crate::{App, host::offscreen::Offscreen};
+use super::tree::{Drawn, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
+use crate::{App, host::offscreen::Offscreen, shell};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
 /// this long for a frame.
@@ -86,8 +86,15 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
 /// What the snapshot reads beside the accessibility tree.
 fn drawn(host: &Offscreen) -> Drawn {
     let elements = host.elements();
-    let lists = host.app().columns.list_keys();
+    let app = host.app();
+    let probe = shell::shown_view(app).map(|view| &view.probe);
+    let lists = probe.map_or_else(Vec::new, |probe| (probe.lists)(app));
     Drawn {
+        view: probe.map(|probe| Shape {
+            name: probe.name,
+            list: probe.roles.0,
+            entry: probe.roles.1,
+        }),
         columns: lists
             .iter()
             .filter_map(|list| drawn_column(&elements, list))

@@ -9,6 +9,10 @@
 //! What an event changed is read by each part's [`Listener`] while the browser still holds
 //! exactly that: by the time the queue is applied, later events may have moved its entries
 //! on. So a listener copies what its part needs, and queues an update that carries the copy.
+//!
+//! The callback of any other service runs inside GLib's dispatch too, and queues through a
+//! [`Later`]. Both hosts apply the queue after every dispatch, so it is the one way in that
+//! wakes the window: a queue of a part's own, read in its `poll`, waits for a frame.
 
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
@@ -56,8 +60,29 @@ impl<S> Clone for Inbox<S> {
     }
 }
 
+/// Where a part queues an update from the callback of a service other than `Browser`: a
+/// volume monitor, a thumbnailer, a session store. Call it on the interface thread, from
+/// what GLib dispatches there. The update runs in the next `poll`, in its turn among what
+/// the browser's events queued.
+pub(crate) struct Later<S>(Inbox<S>);
+
+impl<S> Clone for Later<S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<S: 'static> Later<S> {
+    /// Queues `update`, after everything queued before it. It returns true when the view has
+    /// to run.
+    pub(crate) fn then(&self, update: impl FnOnce(&mut S, &mut Tx) -> bool + 'static) {
+        let mut queue = self.0.0.borrow_mut();
+        queue.updates.push_back(Box::new(update));
+    }
+}
+
 impl<S: 'static> Inbox<S> {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self(Rc::new(RefCell::new(Queue {
             updates: VecDeque::new(),
             heard: 0,
@@ -65,22 +90,25 @@ impl<S: 'static> Inbox<S> {
         })))
     }
 
-    /// An inbox that `listeners` fill from every event of `browser`, each in turn.
-    pub(crate) fn observing(browser: &Rc<Browser>, listeners: Vec<Listener<S>>) -> Self {
-        let inbox = Self::new();
-        let queue = inbox.clone();
+    /// The way into this queue for what is not a browser event.
+    pub(crate) fn later(&self) -> Later<S> {
+        Later(self.clone())
+    }
+
+    /// Lets `listeners` fill the inbox from every event of `browser`, each in turn.
+    pub(crate) fn observe(&self, browser: &Rc<Browser>, listeners: Vec<Listener<S>>) {
+        let queue = self.clone();
         let observed = Rc::downgrade(browser);
         browser.observe(move |event| {
             if let Some(browser) = observed.upgrade() {
                 queue.hear(event, &browser, &listeners);
             }
         });
-        inbox
     }
 
     /// Lets each of `listeners` read `event`, in order, and queues what they ask in that
     /// order.
-    pub(crate) fn hear(&self, event: &BrowserEvent, browser: &Browser, listeners: &[Listener<S>]) {
+    fn hear(&self, event: &BrowserEvent, browser: &Browser, listeners: &[Listener<S>]) {
         let mut batch = Batch {
             updates: Vec::new(),
             copied: 0,
@@ -92,11 +120,6 @@ impl<S: 'static> Inbox<S> {
         queue.heard += 1;
         queue.copied += batch.copied;
         queue.updates.extend(batch.updates);
-    }
-
-    /// Queues `update` from outside an event.
-    pub(crate) fn push(&self, update: impl FnOnce(&mut S, &mut Tx) -> bool + 'static) {
-        self.0.borrow_mut().updates.push_back(Box::new(update));
     }
 
     pub(crate) fn pop(&self) -> Option<Update<S>> {

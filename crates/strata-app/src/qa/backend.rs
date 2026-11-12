@@ -24,7 +24,7 @@ use super::{
     stage::Stage,
     tree::{Kept, Node, Seen, Snapshot},
 };
-use crate::{columns::Load, host::offscreen::Offscreen};
+use crate::{host::offscreen::Offscreen, shell};
 
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 const READY_POLL: Duration = Duration::from_millis(5);
@@ -97,10 +97,8 @@ impl Rune {
 
     /// Whether the folder the launch opened has been listed, or could not be.
     fn listed(stage: &Stage) -> bool {
-        matches!(
-            stage.app().columns.load(0),
-            Some(Load::Listed | Load::Failed(_))
-        )
+        let app = stage.app();
+        shell::shown_view(app).is_some_and(|view| (view.probe.listed)(app))
     }
 
     /// Tells Rune which modifiers are down, as a keyboard does before the key they modify.

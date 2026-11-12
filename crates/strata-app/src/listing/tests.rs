@@ -6,7 +6,7 @@ use strata_components::contract::{EntryKind, EntrySource};
 use strata_core::model::{EntryKind as Kind, FileEntry, Location, MetadataValue};
 
 use super::{Column, Edit, Row};
-use crate::columns::Ids;
+use crate::slots::Ids;
 
 const FOLDER: &str = "/listing";
 
