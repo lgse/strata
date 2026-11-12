@@ -305,10 +305,10 @@ pub(crate) const fn rows<V: SinglePane>() -> Rows<App> {
         // What the context menu's Open asks (`open_context_entry` in
         // `src/ui/browser/context_menu/item_menu.rs`): what a click on the row does.
         activate: |app, (depth, id)| open_in_place::<V>(app, depth, id, Activation::Click),
-        select_only: |app, (depth, id), tx| {
-            V::single_mut(app).pane.select_only(depth, id);
-            tx.focus(V::KEY, false);
-        },
+        // The keyboard is the editor's that opens next (Tab's `advance` and the menu's Rename
+        // both open one on the row): focusing the list here would take it from the field, as
+        // the Columns view does not either.
+        select_only: |app, (depth, id), _| V::single_mut(app).pane.select_only(depth, id),
         // Select All in a single pane is the browser's (`select_all` in
         // `src/ui/browser/view_state.rs`): the view adopts it.
         select_all: |app, depth| app.browser.select_all(depth),
