@@ -60,6 +60,13 @@ The checkpoint a package feeds is its wave's, in the plan's
 - **Running checks:** `AGENTS.md`, "Pre-push checks", "QA scenarios" and "Test image reuse",
   and the Rune side's rules under "The Rune side". `./scripts/qa-parity.sh <selection>
   --counts` and `--twins` read files on the host and start no container.
+- **While a gate runs from the worktree, leave the worktree alone, and commit by name.**
+  `./scripts/qa-mutation.sh`, and so the mutation phases of `./scripts/qa-parity.sh slice`
+  and `mutations`, apply each patch to the source files in place (`git apply`) and take it
+  out again with `git restore`. A `git add -A` or `git commit -a` made meanwhile commits a
+  mutation, and an uncommitted edit to a file a patch names stops the run or is discarded
+  with the patch. So no source file is edited until the run ends; a Markdown file that must
+  change is added by its own path; and `git status` is read before anything is committed.
 - **The rules carried over from the slice** are the plan's
   ([Rules carried over from the slice](README.md#rules-carried-over-from-the-slice)). The one
   ruled exception to never editing a GTK mutation patch is a line of `quick-preview.patch`

@@ -3,9 +3,10 @@
 //! What the process does before the interface asks for its first listing. `src/main.rs` does
 //! the same for the GTK application.
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::OnceLock};
 
 use strata_core::{logging, metrics};
+use strata_desktop::keys::{self, Binding, Command, Map, Table};
 
 use crate::settings::Saved;
 
@@ -36,6 +37,7 @@ pub(crate) struct UiThread {
 
 impl UiThread {
     pub(crate) fn claim() -> Result<Self, String> {
+        install_key_library()?;
         strata_fs::startup::claim_watched_ui_thread();
         let context = glib::MainContext::default();
         let owned = context
@@ -48,3 +50,27 @@ impl UiThread {
         })
     }
 }
+
+/// This interface's answer to which bindings of a keymap entry never fire, which a key label
+/// leaves out: none. It has no conflict check yet, and no shipped binding is one the GTK
+/// application's check leaves out either.
+fn every_binding_fires(_: Map, _: Command, _: Binding, _: bool) -> bool {
+    false
+}
+
+/// Makes the shared key catalog answerable in this process: `strata_desktop::keys` asks an
+/// installed key library for a key's name, character and case, and this interface's is the
+/// table over the keys Strata declares. Once for the process, however many windows or hosts
+/// claim the UI thread. An error means another library was installed first, so keys would be
+/// read by rules this interface did not choose.
+pub(crate) fn install_key_library() -> Result<(), String> {
+    static OURS: OnceLock<bool> = OnceLock::new();
+    if *OURS.get_or_init(|| keys::install(&Table, every_binding_fires)) {
+        Ok(())
+    } else {
+        Err("another key library was installed before the interface's own".to_owned())
+    }
+}
+
+#[cfg(test)]
+mod tests;

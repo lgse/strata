@@ -4,9 +4,11 @@
 //! writes, asked of whichever library the running interface has.
 //!
 //! The GTK application installs a backend that asks GDK and GTK, so everything it reads,
-//! writes, labels and matches is what it always was. The Rune interface installs one that
-//! asks `xkbcommon` and corrects it to GDK's answers. The seam is process-wide, set once at
-//! start-up, and exists only while there are two interfaces: it goes when GTK does.
+//! writes, labels and matches is what it always was. The Rune interface installs
+//! [`Table`](super::Table), which answers for the keys Strata declares and needs no library;
+//! a backend that asks `xkbcommon` for the rest, corrected to GDK's answers, is to sit on
+//! it. The seam is process-wide, set once at start-up, and exists only while there are two
+//! interfaces: it goes when GTK does.
 //!
 //! One more answer is installed with it, because it too is an interface's own: which
 //! bindings never fire there ([`NeverFires`]).
@@ -55,13 +57,19 @@ struct Installed {
 static INSTALLED: OnceLock<Installed> = OnceLock::new();
 
 /// Makes `backend` the process's key library and `never_fires` its answer for labels. The
-/// first call decides; a later one is ignored, so a test binary whose tests each install the
-/// same pair is fine.
-pub fn install(backend: &'static dyn Backend, never_fires: NeverFires) {
-    INSTALLED.get_or_init(|| Installed {
-        backend,
-        never_fires,
+/// first call decides, and a later one is ignored. The answer is whether this call was the
+/// one that installed: `false` means an earlier pair stays, which is fine for a caller that
+/// installs the same pair again and a mistake for one that meant another.
+pub fn install(backend: &'static dyn Backend, never_fires: NeverFires) -> bool {
+    let mut installed_now = false;
+    INSTALLED.get_or_init(|| {
+        installed_now = true;
+        Installed {
+            backend,
+            never_fires,
+        }
     });
+    installed_now
 }
 
 fn installed() -> &'static Installed {

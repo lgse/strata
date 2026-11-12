@@ -10,6 +10,7 @@ mod labels;
 mod letters;
 mod modifiers;
 mod parts;
+mod table;
 
 const NONE: Modifiers = Modifiers::empty();
 const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
