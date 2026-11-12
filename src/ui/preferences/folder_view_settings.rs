@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{
-    cell::RefCell,
-    fs, io,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{cell::RefCell, io, path::Path, time::Duration};
 
 use gtk::glib;
 
@@ -15,23 +10,23 @@ use crate::{
     services::{ItemIdentity, LoadHandle},
 };
 
+use strata_desktop::settings::{FolderViewsSave, load_folder_views, save_folder_views};
+// The tests name the path here.
+pub(in crate::ui) use strata_desktop::settings::folder_views_path;
+
 use super::{
     MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, PreferenceManager, SHARED_MANAGER,
-    file_stamp,
     folder_views::{FolderKey, FolderViews, TakenViews, key_for_location},
-    lock_saves, parse_preferences, read_state_file, settings_path, store_sort,
+    parse_preferences, settings_path, store_sort,
     trashed::TrashedValues,
 };
 use crate::storage::writer;
 
-const FILE_NAME: &str = "folder-views.toml";
 /// Coalesces bursts of changes, such as a thumbnail-size drag, into one write
 /// that stays off the click that made them.
 const SAVE_DELAY: Duration = Duration::from_millis(500);
 /// Opening folders only refreshes use times, which can wait for other changes.
 const USE_SAVE_DELAY: Duration = Duration::from_secs(60);
-/// Another process saves in milliseconds; one stopped mid-save must not hold up exit.
-const EXIT_LOCK_WAIT: Duration = Duration::from_secs(1);
 
 /// Whether a change can reach saved sorts, which re-sort open columns.
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -66,26 +61,8 @@ fn watch(path: &Path, changed: fn(&PreferenceManager)) -> LoadHandle {
 
 impl FolderViewStore {
     fn load() -> Self {
+        let (views, load_failure) = load_folder_views();
         let path = folder_views_path();
-        writer::note(&path, file_stamp(&path));
-        let loaded = read_state_file(&path).and_then(|contents| match contents {
-            Some(contents) => FolderViews::parse(&contents),
-            None => Ok((FolderViews::default(), false)),
-        });
-        let (views, load_failure) = match loaded {
-            Ok((views, repaired)) => {
-                if repaired {
-                    tracing::warn!(path = %path.display(),
-                        "folder settings file has invalid entries; keeping the valid ones");
-                }
-                (views, None)
-            }
-            Err(error) => (FolderViews::default(), Some(error)),
-        };
-        if let Some(error) = &load_failure {
-            tracing::warn!(%error, path = %path.display(),
-                "unable to load folder settings; using none without saving; fix the file and restart Strata");
-        }
         Self {
             views: RefCell::new(views),
             load_failure,
@@ -100,10 +77,6 @@ impl FolderViewStore {
             ],
         }
     }
-}
-
-pub(in crate::ui) fn folder_views_path() -> PathBuf {
-    crate::storage::state_directory().join(FILE_NAME)
 }
 
 /// Writes pending folder settings, such as use times, before the process exits.
@@ -570,50 +543,5 @@ impl PreferenceManager {
                 store.views.borrow_mut().mark_saved_through(edits);
             }
         }
-    }
-}
-
-enum FolderViewsSave {
-    Busy,
-    Saved(Option<FolderViews>),
-    Failed(io::Error),
-}
-
-/// An unreadable file, or one from a newer version, must not be overwritten.
-fn save_folder_views(path: &Path, snapshot: FolderViews, exit: bool) -> FolderViewsSave {
-    let lock = lock_saves(path, if exit { EXIT_LOCK_WAIT } else { Duration::ZERO });
-    if let Err(error) = &lock {
-        if error.kind() == io::ErrorKind::WouldBlock && !exit {
-            return FolderViewsSave::Busy;
-        }
-        tracing::debug!(%error, path = %path.display(), "saving folder settings unlocked");
-    }
-    let saved = match read_state_file(path).and_then(|contents| {
-        contents
-            .map(|contents| FolderViews::parse(&contents).map(|(views, _)| views))
-            .transpose()
-    }) {
-        Ok(saved) => saved,
-        Err(error) => return FolderViewsSave::Failed(error),
-    };
-    let (written, changed) = match saved {
-        Some(saved) => {
-            let merged = snapshot.merged_over(saved);
-            let changed = !merged.same_views(&snapshot);
-            (merged, changed)
-        }
-        None => (snapshot, false),
-    };
-    let result = written.to_toml().and_then(|contents| {
-        fs::create_dir_all(path.parent().unwrap_or(path))?;
-        crate::storage::atomic_write(path, contents.as_bytes())
-    });
-    if result.is_ok() {
-        writer::note(path, file_stamp(path));
-    }
-    drop(lock);
-    match result {
-        Ok(()) => FolderViewsSave::Saved(changed.then_some(written)),
-        Err(error) => FolderViewsSave::Failed(error),
     }
 }

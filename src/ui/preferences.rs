@@ -26,9 +26,9 @@ pub(crate) use strata_desktop::settings::{
 use strata_desktop::settings::{FinishedSave, PendingSave, SaveOutcome, Saving};
 use strata_desktop::settings::{
     KeymapOverrides, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE,
-    configured_hardware_acceleration, configured_video_preview_backend, lock_saves,
-    normalized_font_family, normalized_search_limit, normalized_video_start, normalized_volume,
-    parse_preferences, read_state_file, settings_path, sort_preferences, store_sort,
+    configured_hardware_acceleration, configured_video_preview_backend, normalized_font_family,
+    normalized_search_limit, normalized_video_start, normalized_volume, parse_preferences,
+    settings_path, sort_preferences, store_sort,
 };
 pub(in crate::ui) use strata_desktop::settings::{
     MAX_PREVIEW_VIDEO_START, Preferences, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
@@ -40,7 +40,6 @@ use crate::{
     model::{FolderColorValue, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
     services::{Channel, CrossVolumeDropStrategy, SearchLimits},
-    storage::file_stamp,
 };
 
 use super::browser_modes::DensityScale;
