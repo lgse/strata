@@ -17,6 +17,8 @@ use crate::{
     startup::{self, UiThread},
 };
 
+pub(crate) mod view;
+
 /// How long a test waits for the browser before it fails.
 pub(crate) const PATIENCE: Duration = Duration::from_secs(30);
 
