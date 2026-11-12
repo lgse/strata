@@ -6,6 +6,9 @@
 {"expect":{"menu_items":{"excludes":[""]}},"message":"every menu item needs a name"}
 {"expect":{"description":{"target":{"menu_item":"Copy"},"text":"Ctrl+C"}},"message":"the accelerator belongs in the description, not the name"}
 {"expect":{"menu_items":{"in_order":["Open","Open With…","Quick preview","Cut","Copy","Duplicate","Rename","Move to…","Copy to…","Compress…","Customize…","Copy path","Copy name","Properties","Move to Trash","Permanently delete"]}},"message":"unexpected action order"}
+{"click":{"menu_item":"Properties"},"button":3}
+{"expect":{"dialog":null},"message":"secondary click on a menu item must not run it"}
+{"expect":{"menu_items":{}},"message":"the menu must stay open after secondary click"}
 {"key":"Escape"}
 {"wait":{"menu_items":null},"message":"the menu to close"}
 {"click":{"entry":"documents"},"button":3}
