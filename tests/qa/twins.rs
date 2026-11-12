@@ -7,7 +7,7 @@
 //!
 //! This is where "parity" could come to mean little, so everything a check can hold is
 //! held here, and `scripts/qa_parity_twins.py` holds the same for `./scripts/qa-parity.sh`:
-//! `tests/qa/parity_cases.toml` is the table both are tested against.
+//! `tests/qa/parity_pair_cases.toml` is the table both are tested against.
 
 use std::{
     collections::BTreeSet,
@@ -19,11 +19,11 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    REPOSITORY,
+    REPOSITORY, STEP_MODES, STEP_VARIANTS,
     parity::{Entry, Ledger, Planned, Status, gate},
-    scenario::{Header, header_line, one_line, scenario_files, scenario_name},
+    scenario::{Header, one_line, scenario_files, scenario_name},
     target::Target,
-    variables::{Run, runs},
+    variables::{Run, runs, substitute},
 };
 
 /// What a twin's name adds to its original's.
@@ -189,9 +189,10 @@ fn original_problem(header: &Header, label: &Label) -> Option<String> {
     }
 }
 
-/// What a run starts from, by header key: the fixture, the preferences and the layout a
-/// twin keeps from its original. The environment, the bus and the toolkit's settings are
-/// how a target is started, and are left to the reviewer.
+/// What a run starts from, by header key: the fixture, the preferences, the layout, the
+/// environment and the bus a twin keeps from its original. `gtk_settings` is not among
+/// them: the Rune target reads no GTK settings, so a twin has nothing to keep there. A
+/// variant's `vars` are read into the steps instead.
 type Start = Vec<(&'static str, Value)>;
 
 fn start(header: &Header, raw: &Value, run: &Run) -> Start {
@@ -215,14 +216,105 @@ fn start(header: &Header, raw: &Value, run: &Run) -> Start {
             json!(variant.layout.as_ref().unwrap_or(&header.layout)),
         ),
         ("portal", json!(header.portal)),
+        ("env", json!(header.env)),
+        ("session_bus", json!(header.session_bus)),
+        ("input_method", json!(header.input_method)),
     ]
 }
 
-/// A run of a scenario: its mode, its label and what it starts from.
+/// A scenario's steps by their line in the file, the header being line 1.
+type Steps = Vec<(usize, Value)>;
+
+/// What a step says on failure and how long it may take are no part of what it does or
+/// asserts, so two steps that differ only there are one step.
+const UNCOMPARED: [&str; 2] = ["message", "timeout_ms"];
+
+fn steps<'a>(lines: impl Iterator<Item = (usize, &'a str)>) -> Result<Steps, String> {
+    let step = |(index, line): (usize, &str)| {
+        let line_number = index + 1;
+        let step: Value =
+            serde_json::from_str(line).map_err(|error| format!("line {line_number}: {error}"))?;
+        if step.is_object() {
+            Ok((line_number, step))
+        } else {
+            Err(format!("line {line_number}: a step must be an object"))
+        }
+    };
+    lines.map(step).collect()
+}
+
+/// The steps of one run, as the runner picks them (`run_steps` in `steps.rs`): the
+/// variant's `vars` read in, and the steps of other modes and variants left out. They are
+/// what a twin is compared by, so the selectors and what [`UNCOMPARED`] names are dropped.
+fn run_steps(steps: &Steps, run: &Run) -> Steps {
+    let vars: Vec<(String, String)> = run.variant.vars.clone().into_iter().collect();
+    let selects = |listed: Option<Value>, name: &str| {
+        listed.is_none_or(|listed| {
+            let listed = listed.as_array();
+            listed.is_some_and(|listed| listed.iter().any(|item| item == name))
+        })
+    };
+    let of_run = |(line, step): &(usize, Value)| {
+        let mut step = substitute(step, &vars);
+        let object = step.as_object_mut()?;
+        let runs = selects(object.remove(STEP_MODES), &run.mode)
+            && selects(object.remove(STEP_VARIANTS), &run.variant.id);
+        for key in UNCOMPARED {
+            object.remove(key);
+        }
+        runs.then_some((*line, step))
+    };
+    steps.iter().filter_map(of_run).collect()
+}
+
+/// Whether a predicate reads `settings.toml`: a `pref` anywhere in it.
+fn reads_pref(value: &Value) -> bool {
+    match value {
+        Value::Object(map) => map
+            .iter()
+            .any(|(key, value)| key == "pref" || reads_pref(value)),
+        Value::Array(items) => items.iter().any(reads_pref),
+        _ => false,
+    }
+}
+
+/// What a step is among those a twin must keep: the runner's `fs` steps, which change and
+/// check the files on disk, and the checks that read `settings.toml`. The parity plan lists
+/// both end states under what must match with no exception.
+fn end_state(step: &Value) -> Option<&'static str> {
+    let checks = ["wait", "expect"]
+        .into_iter()
+        .filter_map(|key| step.get(key));
+    if step.get("fs").is_some() {
+        Some("an fs step")
+    } else {
+        checks.into_iter().any(reads_pref).then_some("a pref check")
+    }
+}
+
+/// The end-state steps of `shared` that `own` lacks, or has out of the original's order:
+/// each by its line and what it is.
+fn dropped(shared: &Steps, own: &Steps) -> Vec<(usize, &'static str)> {
+    let mut from = 0;
+    let mut missing = Vec::new();
+    for (line, step) in shared {
+        let Some(kind) = end_state(step) else {
+            continue;
+        };
+        match own[from..].iter().position(|(_, kept)| kept == step) {
+            Some(at) => from += at + 1,
+            None => missing.push((*line, kind)),
+        }
+    }
+    missing
+}
+
+/// A run of a scenario: its mode, its label, what it starts from and the steps it runs.
 struct Planning {
     mode: String,
     label: String,
     start: Start,
+    steps: Steps,
 }
 
 /// What a header says of its scenario, for the pair checks.
@@ -234,12 +326,22 @@ struct Read {
 }
 
 impl Read {
+    /// Reads a scenario file: its header, and for a labelled scenario its steps, which
+    /// only a pair is compared by.
     fn of(text: &str) -> Result<Self, String> {
         let unread = |error: serde_json::Error| format!("line 1, the header: {error}");
-        let raw: Value = serde_json::from_str(text).map_err(unread)?;
+        let mut lines = text.lines().enumerate();
+        let mut lines = lines.by_ref().filter(|(_, line)| !line.trim().is_empty());
+        let first = lines.next().map_or("", |(_, line)| line);
+        let raw: Value = serde_json::from_str(first).map_err(unread)?;
         let header: Header = serde_json::from_value(raw.clone()).map_err(unread)?;
+        let steps = match header.parity {
+            Some(_) => steps(lines)?,
+            None => Vec::new(),
+        };
         let planning = |run: Run| Planning {
             start: start(&header, &raw, &run),
+            steps: run_steps(&steps, &run),
             mode: run.mode,
             label: run.label,
         };
@@ -319,12 +421,12 @@ impl Corpus {
         }
     }
 
-    /// Adds a scenario by its header line, at its place in the runner's order.
-    pub(crate) fn add(&mut self, folder: &str, scenario: &str, header: &str) {
+    /// Adds a scenario by its file's text, at its place in the runner's order.
+    pub(crate) fn add(&mut self, folder: &str, scenario: &str, text: &str) {
         let facts = Facts {
             folder: folder.to_owned(),
             scenario: scenario.to_owned(),
-            read: Read::of(header),
+            read: Read::of(text),
         };
         let file = facts.file();
         let place = self.scenarios.partition_point(|other| other.file() < file);
@@ -344,8 +446,8 @@ impl Corpus {
         let mut corpus = Self::citing(&patches, &packet);
         for path in scenario_files() {
             let folder = text(path.parent().and_then(Path::file_name)).unwrap_or_default();
-            let header = header_line(&path).unwrap_or_default();
-            corpus.add(&folder, &scenario_name(&path), &header);
+            let text = fs::read_to_string(&path).unwrap_or_default();
+            corpus.add(&folder, &scenario_name(&path), &text);
         }
         corpus
     }
@@ -374,8 +476,8 @@ impl Corpus {
             .find(|facts| facts.scenario == scenario)
     }
 
-    /// The headers that cannot be read, one line each. Their runs are unknown, so nothing
-    /// is checked against a corpus that has one.
+    /// The files that cannot be read, one line each: a header, or a step of a labelled
+    /// scenario. Their runs are unknown, so nothing is checked against a corpus that has one.
     pub(crate) fn unread(&self) -> Vec<String> {
         self.scenarios.iter().filter_map(Facts::unread).collect()
     }
@@ -542,28 +644,53 @@ impl Pair<'_> {
         code.into_iter().chain(reference).collect()
     }
 
-    /// What is wrong with the twin's runs: one its original lacks, or one that starts from
-    /// something else.
+    /// What is wrong with the twin's runs: each against the run of its original it stands
+    /// in for.
     fn strays(&self) -> Vec<String> {
-        let original = &self.original.scenario;
-        let stray = |run: &Planning| {
-            let label = &run.label;
-            let Some(shared) = self.shared.run(label) else {
-                return Some(format!(
-                    "has the run {label}, which {original} lacks: a twin holds only modes and \
-                     variants of its original"
-                ));
-            };
-            let differs = shared.start.iter().zip(&run.start);
-            let (key, _) = differs
-                .map(|(shared, own)| (shared.0, shared.1 == own.1))
-                .find(|(_, same)| !same)?;
-            Some(format!(
+        let runs = self.stand_in.runs.iter();
+        runs.flat_map(|run| self.stray(run)).collect()
+    }
+
+    /// What is wrong with one of the twin's runs: its original lacks it, starts it from
+    /// something else, runs it by the same steps, or ends it with a check the twin lacks.
+    fn stray(&self, run: &Planning) -> Vec<String> {
+        let (original, label) = (&self.original.scenario, &run.label);
+        let Some(shared) = self.shared.run(label) else {
+            return vec![format!(
+                "has the run {label}, which {original} lacks: a twin holds only modes and \
+                 variants of its original"
+            )];
+        };
+        let mut starts = shared.start.iter().zip(&run.start);
+        if let Some((_, (key, _))) = starts.find(|(shared, own)| shared.1 != own.1) {
+            return vec![format!(
                 "starts {label} with another {key:?} than {original}: a twin keeps what its \
                  original starts from, and only the steps \"differs\" names differ"
-            ))
+            )];
+        }
+        let done =
+            |steps: &Steps| -> Vec<Value> { steps.iter().map(|step| step.1.clone()).collect() };
+        if run.steps.is_empty() {
+            return vec![format!(
+                "has no step in {label}: a twin reaches its original's result by steps of \
+                 its own"
+            )];
+        }
+        if done(&shared.steps) == done(&run.steps) {
+            return vec![format!(
+                "runs {label} by its original's steps, so nothing differs: a run the shared \
+                 file passes on Rune is required and has no twin"
+            )];
+        }
+        let lacks = |(line, kind): (usize, &str)| {
+            format!(
+                "lacks line {line} of {original} in {label}, {kind}: a twin keeps every fs \
+                 step and every pref check of its original, in its order, for the files on \
+                 disk and settings.toml match with no exception"
+            )
         };
-        self.stand_in.runs.iter().filter_map(stray).collect()
+        let missing = dropped(&shared.steps, &run.steps);
+        missing.into_iter().map(lacks).collect()
     }
 
     /// What is wrong with how an entry of the original stands against the twin's runs.

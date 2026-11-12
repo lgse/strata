@@ -12,7 +12,8 @@ selects nothing.
 
 A `parallel` run is at parity as a `required` one is, by another route: its scenario passes
 on GTK, and its twin, `<scenario>-rune/<run>`, on Rune. So the runs that must pass differ by
-target, and `--on` names the target.
+target, and `--on` names the target. `--twins` lists the twins for a review or a checkpoint,
+and `--status parallel` names the runs whose shared file a survey tries on Rune again.
 """
 
 from __future__ import annotations
@@ -155,7 +156,9 @@ def counts(ledger: dict, selection: str) -> str:
 
     runs = chosen(ledger, selection)
     spread = len({run["folder"] for run in runs})
-    by_host = Counter(run["host"] for run in runs if "host" in run)
+    # A parallel run that names no host is on the offscreen one.
+    implied = {"parallel": OFFSCREEN}
+    by_host = Counter(host for run in runs if (host := run.get("host", implied.get(run["status"]))))
     by_mode = Counter(mode(run) for run in runs)
     return "\n".join([
         f"== {selection}: {len(runs)} run(s) in {spread} folder(s) ==",
@@ -195,6 +198,26 @@ def _by_package(runs: list[dict]) -> list[str]:
         lines.append(f"{package:<10}{sum(owned.values()):>5}"
                      + "".join(f"{owned[status]:>10}" for status in STATUSES))
     return lines
+
+
+def twin_listing(ledger: dict, selection: str) -> str:
+    """A selection's twins, each with what a reviewer or a checkpoint audits: the exception
+    and its reference, the runs it stands in for, what its header says differs, and how its
+    steps stand to its original's over those runs."""
+
+    runs = [run for run in chosen(ledger, selection) if run["status"] == "parallel"]
+    names = list(dict.fromkeys(twin_scenario(run) for run in runs))
+    lines = [f"== {selection}: {len(names)} twin(s) for {len(runs)} parallel run(s) =="]
+    for twin in names:
+        own = [run for run in runs if twin_scenario(run) == twin]
+        kept, added, lost = ledger["twins"][twin]["steps"]
+        lines += [
+            f"{twin}  {own[0]['exception']}  {own[0]['ref']}  {own[0]['package']}",
+            f"  stands in for  {', '.join(name(run) for run in own)}",
+            f"  differs        {ledger['twins'][twin]['differs']}",
+            f"  steps          {kept} the original's, {added} its own, {lost} of the original's dropped",
+        ]
+    return "\n".join(lines)
 
 
 def _listed(counter: Counter, order: tuple[str, ...]) -> str:
@@ -290,7 +313,8 @@ def load(ledger: Path = LEDGER, scenarios: Path = SCENARIOS, packet: Path = PACK
     runs = [{**run, "folder": folder} for folder, text in texts.items()
             for run in tomllib.loads(text).get("run", [])]
     allowances = read(ledger / ALLOWANCES) if (ledger / ALLOWANCES).is_file() else {}
-    return {"run": runs, **{key: allowances.get(key, []) for key in ("flaky", "stale_patch")}}
+    return {"run": runs, "twins": qa_parity_twins.twins(corpus),
+            **{key: allowances.get(key, []) for key in ("flaky", "stale_patch")}}
 
 
 def refuse(ledger: Path, error: BadLedger) -> int:
@@ -337,6 +361,9 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("--scenario", help="only this scenario's runs, or a twin's pair")
     parser.add_argument("--counts", action="store_true",
                         help="instead of the runs: the selection's counts by status and reason")
+    parser.add_argument("--twins", action="store_true",
+                        help="instead of the runs: the selection's twins, each with its exception, "
+                             "its reference, what differs and how its steps stand to its original's")
     parser.add_argument("--ledger", type=Path, default=LEDGER, help="the ledger's directory")
     parser.add_argument("--scenarios", type=Path, default=SCENARIOS,
                         help="the scenario folders whose runs the ledger lists")
@@ -353,8 +380,8 @@ def main(arguments: list[str] | None = None) -> int:
     if args.failed_in:
         return report_excused(ledger, args.failed_in)
     try:
-        if args.counts:
-            print(counts(ledger, args.selection))
+        if args.counts or args.twins:
+            print(counts(ledger, args.selection) if args.counts else twin_listing(ledger, args.selection))
             return 0
         return report_selected(ledger, args)
     except UnknownSelection as error:

@@ -245,6 +245,10 @@ fn main() -> std::process::ExitCode {
         );
     }
     let plan = planned_tests();
+    if let Some(refusal) = plan.unrunnable(&arguments, Target::from_environment().ok()) {
+        eprintln!("error: {refusal}");
+        return std::process::ExitCode::from(harness::FAILED);
+    }
     plan.announce(arguments.list || arguments.help);
     let status = harness::run(plan.tests, &arguments);
     drop(

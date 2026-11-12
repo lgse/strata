@@ -216,6 +216,26 @@ impl Plan {
         }
     }
 
+    /// Why a selection cannot run: it names, as `./scripts/qa.sh` names scenarios, one
+    /// that is no run on this target. A name that selects nothing must not pass unnoticed
+    /// beside one that selects something.
+    pub(crate) fn unrunnable(
+        &self,
+        arguments: &harness::Arguments,
+        target: Option<Target>,
+    ) -> Option<String> {
+        let target = target?.name();
+        let names = |scenario: &&String| {
+            let named = |filter: &String| filter.split('/').next() == Some(scenario.as_str());
+            arguments.exact && arguments.filters.iter().any(named)
+        };
+        let scenario = self.elsewhere.iter().find(names)?;
+        Some(format!(
+            "{scenario} is no run on {target}: its header lists other targets. Run a twin \
+             with ./scripts/qa-parity.sh <its folder> --target rune --scenario {scenario}"
+        ))
+    }
+
     /// What to say of the scenarios left out, when there are any.
     pub(crate) fn notice(&self, target: Option<Target>) -> Option<String> {
         let target = target?.name();

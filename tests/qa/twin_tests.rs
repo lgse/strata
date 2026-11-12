@@ -1,25 +1,34 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use serde::Deserialize;
 
 use crate::{
+    REPOSITORY, harness,
     parity::Ledger,
-    parity_tests::{Cases, Edit},
+    parity_tests::Edit,
     scenario::{load_scenario, plan},
     target::Target,
     twins::Corpus,
 };
 
-/// The second corpus of `tests/qa/parity_cases.toml`: scenario headers with a labelled
-/// pair, their ledger, the Rune mutation patches and the packet's entries.
+/// What both of the ledger's readers accept and refuse of a labelled pair. The scripts'
+/// tests read the same table for theirs (`scripts/test_qa_parity_twins.py`).
+const CASES: &str = "tests/qa/parity_pair_cases.toml";
+
+/// The table's corpus: scenario files with a labelled pair, their ledger, the Rune
+/// mutation patches and the packet's entries.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Pairs {
+struct Pairs {
     patches: Vec<String>,
     packet: Vec<String>,
-    /// A header line for each `<folder>/<scenario>`.
+    /// A file's text for each `<folder>/<scenario>`.
     scenarios: BTreeMap<String, String>,
     ledger: BTreeMap<String, String>,
     #[serde(rename = "case")]
@@ -38,11 +47,17 @@ struct PairCase {
     patches: Option<Vec<String>>,
     /// The one problem the readers report, word for word.
     problem: Option<String>,
-    /// What a reader that cannot read a header says, in its own words.
+    /// What a reader that cannot read a file says, in its own words.
     refused: Option<String>,
 }
 
 impl Pairs {
+    fn load() -> Self {
+        let text = fs::read_to_string(Path::new(REPOSITORY).join(CASES))
+            .unwrap_or_else(|error| panic!("{CASES}: {error}"));
+        toml::from_str(&text).unwrap_or_else(|error| panic!("{CASES}: {error}"))
+    }
+
     /// What the reader makes of the corpus after a case's edits: its problems, where a
     /// ledger file it cannot read is one.
     fn outcome(&self, case: Option<&PairCase>) -> Vec<String> {
@@ -61,9 +76,9 @@ impl Pairs {
         }
         let patches = case.and_then(|case| case.patches.as_ref());
         let mut corpus = Corpus::citing(patches.unwrap_or(&self.patches), &self.packet);
-        for (path, header) in &scenarios {
+        for (path, text) in &scenarios {
             let (folder, scenario) = path.split_once('/').expect("<folder>/<scenario>");
-            corpus.add(folder, scenario, header);
+            corpus.add(folder, scenario, text);
         }
         let mut ledger = Ledger::default();
         let read = files
@@ -74,7 +89,7 @@ impl Pairs {
 }
 
 pub(crate) fn the_pair_checks_accept_and_refuse_what_the_shared_table_says() {
-    let pairs = Cases::load().pairs;
+    let pairs = Pairs::load();
     assert_eq!(
         pairs.outcome(None),
         Vec::<String>::new(),
@@ -101,29 +116,39 @@ pub(crate) fn the_pair_checks_accept_and_refuse_what_the_shared_table_says() {
     }
 }
 
+/// A scenario file with one step, by its name and the rest of its header.
+fn written(directory: &Path, name: &str, rest: &str) -> PathBuf {
+    let path = directory.join(format!("{name}.jsonl"));
+    let text = format!("{{\"scenario\":\"{name}\",{rest}}}\n{{\"key\":\"Escape\"}}\n");
+    fs::write(&path, text).expect("the scenario should be written");
+    path
+}
+
+const LABEL: &str = r#""exception":"timing","ref":"lgse/strata#2200""#;
+
+/// `moves-rune`, the twin of `moves` in Columns, with what its header says of its targets.
+fn twin(directory: &Path, targets: &str) -> PathBuf {
+    let parity = format!(r#""parity":{{"twin":"moves",{LABEL},"differs":"line 2"}}"#);
+    let rest = format!(r#""modes":["columns"],{targets}{parity}"#);
+    written(directory, "moves-rune", &rest)
+}
+
+/// The twin and its original, `moves`, in the runner's order.
+fn pair(directory: &Path) -> [PathBuf; 2] {
+    let label = format!(r#""parity":{{"twin":"moves-rune",{LABEL}}}"#);
+    let original = written(
+        directory,
+        "moves",
+        &format!(r#""modes":["columns","list"],{label}"#),
+    );
+    [twin(directory, r#""targets":["rune"],"#), original]
+}
+
 /// A twin lists Rune as its one target, so on GTK it is no run at all: the suite plans,
 /// counts and names what it did before the twin was written.
 pub(crate) fn a_twin_is_planned_on_rune_alone_and_leaves_the_gtk_suite_as_it_was() {
     let directory = tempfile::tempdir().expect("a scratch directory");
-    let label = r#""exception":"timing","ref":"lgse/strata#2200""#;
-    let write = |name: &str, rest: &str| -> PathBuf {
-        let path = directory.path().join(format!("{name}.jsonl"));
-        let header = format!("{{\"scenario\":\"{name}\",{rest}}}\n{{\"key\":\"Escape\"}}\n");
-        fs::write(&path, header).expect("the scenario should be written");
-        path
-    };
-    let original = write(
-        "moves",
-        &format!(r#""modes":["columns","list"],"parity":{{"twin":"moves-rune",{label}}}"#),
-    );
-    let twin = |targets: &str| {
-        let parity = format!(r#""parity":{{"twin":"moves",{label},"differs":"line 2"}}"#);
-        write(
-            "moves-rune",
-            &format!(r#""modes":["columns"],{targets}{parity}"#),
-        )
-    };
-    let files = [twin(r#""targets":["rune"],"#), original];
+    let files = pair(directory.path());
     for file in &files {
         load_scenario(file).unwrap_or_else(|error| panic!("{}: {error}", file.display()));
     }
@@ -152,7 +177,7 @@ pub(crate) fn a_twin_is_planned_on_rune_alone_and_leaves_the_gtk_suite_as_it_was
     // A target the environment cannot name plans every file, and each launch says why.
     assert_eq!(planned(&files, None).0.len(), 3);
 
-    let on_both = twin("");
+    let on_both = twin(directory.path(), "");
     let refused = load_scenario(&on_both)
         .map(|_| ())
         .expect_err("a twin on GTK");
@@ -160,4 +185,31 @@ pub(crate) fn a_twin_is_planned_on_rune_alone_and_leaves_the_gtk_suite_as_it_was
         refused.contains("is a twin that also runs on GTK"),
         "{refused}"
     );
+}
+
+/// A scenario named as `./scripts/qa.sh` names one, which is no run on the target, fails
+/// the selection whatever else it names; a substring that happens to cover it does not.
+pub(crate) fn a_named_scenario_that_is_no_run_on_the_target_fails_the_selection() {
+    let directory = tempfile::tempdir().expect("a scratch directory");
+    let files = pair(directory.path());
+    let selection = |arguments: &[&str], target: Target| {
+        let arguments = harness::Arguments::parse(arguments.iter().map(|&text| text.to_owned()))
+            .expect("the arguments should parse");
+        plan(&files, Some(target), false).unrunnable(&arguments, Some(target))
+    };
+    for named in [
+        &["--exact", "moves-rune", "moves"][..],
+        &["--exact", "moves", "moves-rune/columns"],
+    ] {
+        let refusal = selection(named, Target::Gtk).expect("the twin is no run on GTK");
+        assert!(
+            refusal.starts_with("moves-rune is no run on gtk"),
+            "{refusal}"
+        );
+        assert!(refusal.contains("qa-parity.sh"), "{refusal}");
+    }
+    assert_eq!(selection(&["--exact", "moves"], Target::Gtk), None);
+    assert_eq!(selection(&["moves-rune"], Target::Gtk), None);
+    assert_eq!(selection(&[], Target::Gtk), None);
+    assert_eq!(selection(&["--exact", "moves-rune"], Target::Rune), None);
 }

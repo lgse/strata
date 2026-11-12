@@ -15,8 +15,13 @@
 #   ./scripts/qa-parity.sh A7 --counts        the selection's runs by status and reason, by
 #                                             host, view and package; nothing is run
 #   ./scripts/qa-parity.sh g2 --target rune   one target only: gtk or rune
+#   ./scripts/qa-parity.sh A7 --twins         the selection's twins: exception, reference,
+#                                             what differs and the step counts; nothing is run
 #   ./scripts/qa-parity.sh A7 --pending       a survey: the selection's pending runs on the
 #                                             Rune target, listing which pass and which fail
+#   ./scripts/qa-parity.sh A7 --parallel      a survey: the selection's parallel runs from the
+#                                             shared file on the Rune target; one that passes
+#                                             has an exception that lapsed
 #   ./scripts/qa-parity.sh g2 --scenario shift-click-range
 #                                             only that scenario's runs of the selection
 #   ./scripts/qa-parity.sh mutations          each patch under tests/qa/parity/mutations must
@@ -41,8 +46,9 @@ set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-usage='Usage: scripts/qa-parity.sh <selection> [--target gtk|rune] [--pending] [--scenario <name>]
+usage='Usage: scripts/qa-parity.sh <selection> [--target gtk|rune] [--pending|--parallel] [--scenario <name>]
        scripts/qa-parity.sh <selection> --counts
+       scripts/qa-parity.sh <selection> --twins
        scripts/qa-parity.sh mutations
        scripts/qa-parity.sh gtk-mutations
 A selection is slice, g1, g2, g3, all, a folder of tests/qa/scenarios or a package id.'
@@ -68,8 +74,8 @@ while (($#)); do
       narrowed=1
       shift 2
       ;;
-    --pending)
-      status=pending
+    --pending|--parallel)
+      status="${1#--}"
       narrowed=1
       shift
       ;;
@@ -80,8 +86,9 @@ while (($#)); do
       narrowed=1
       shift 2
       ;;
-    --counts)
+    --counts|--twins)
       counts=1
+      report="$1"
       shift
       ;;
     *) echo "$usage" >&2; exit 2 ;;
@@ -89,14 +96,15 @@ while (($#)); do
 done
 if ((counts)); then
   if ((narrowed)); then
-    echo "--counts counts the whole selection: it takes no --target, --pending or --scenario." >&2
+    echo "$report is of the whole selection: it takes no --target, --pending, --parallel or --scenario." >&2
     exit 2
   fi
-  # The ledger alone answers: no image, no build.
-  exec python3 "$repository/scripts/qa_parity.py" "$selection" --counts
+  # The ledger and the scenario files alone answer: no image, no build.
+  exec python3 "$repository/scripts/qa_parity.py" "$selection" "$report"
 fi
-if [[ "$status" == pending ]]; then
-  # Pending runs pass on GTK already; the survey asks what they do on Rune.
+if [[ "$status" != required ]]; then
+  # A survey asks what runs do on Rune from the shared file: pending runs, which pass on GTK
+  # already, or parallel runs, whose twin stands in for them there.
   targets=rune
 fi
 
@@ -105,8 +113,8 @@ if [[ "$targets" != "gtk rune" || "$status" != required ]]; then whole=0; fi
 # runner's tests would; then a selection it does not have, and a run it cannot start here.
 list() { python3 "$repository/scripts/qa_parity.py" "$selection" "$@" "${scenario[@]}"; }
 gtk_runs="" rune_runs="" parallel=0 kind="$status"
-if [[ "$status" == pending ]]; then
-  rune_runs="$(list --status pending)" || exit 2
+if [[ "$status" != required ]]; then
+  rune_runs="$(list --status "$status")" || exit 2
 else
   # What must pass differs by target: a parallel run is its scenario on GTK, its twin on Rune.
   kind="required or parallel"
@@ -175,7 +183,7 @@ code=0
       mapfile -t runs <<< "${listed[$target]}"
       count="${#runs[@]}"
       heading="$count $status run(s)"
-      if ((parallel)); then
+      if ((parallel)) && [[ "$status" == required ]]; then
         heading="$count run(s): $((count - parallel)) required and $parallel parallel, the scenario on gtk and its twin on rune"
       fi
       echo "== $selection on $target: $heading =="
@@ -186,10 +194,12 @@ code=0
       passed="$(grep -Ec "^(PASS|KNOWN BUG) " "$output" || true)"
       planned="$(grep -c "^RUN " "$output" || true)"
       echo "== $target: $passed of $count passed =="
-      if [[ "$status" == pending ]]; then
+      if [[ "$status" != required ]]; then
         # A survey fails only when it could not run: its failures are what it is for.
         if ((planned == 0)); then failed=1; fi
-        grep -E "^PASS " "$output" | sed "s/^PASS /PASSES ON RUNE, STILL PENDING: /" || true
+        found="PASSES ON RUNE, STILL PENDING: "
+        if [[ "$status" == parallel ]]; then found="PASSES ON RUNE FROM THE SHARED FILE, STILL PARALLEL: "; fi
+        grep -E "^PASS " "$output" | sed "s/^PASS /$found/" || true
       elif ((code != 0 || passed != count)); then
         failed=1
       fi

@@ -8,7 +8,6 @@ use crate::{
     REPOSITORY,
     parity::{Gate, HELP, Ledger, Planned, Status},
     target::{RUNE_BINARY_VARIABLE, TARGET_VARIABLE, Target},
-    twin_tests::Pairs,
     twins::Corpus,
 };
 
@@ -62,14 +61,12 @@ const CASES: &str = "tests/qa/parity_cases.toml";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Cases {
+struct Cases {
     planned: Vec<Planned>,
     ledger: BTreeMap<String, String>,
     #[serde(rename = "case")]
     refused: Vec<Case>,
     accepted: Vec<Case>,
-    /// The table's second corpus, which has scenario headers: `twin_tests.rs`.
-    pub(crate) pairs: Pairs,
 }
 
 /// An edit to the table's ledger, and what a reader makes of the result.
@@ -90,7 +87,8 @@ struct Case {
     refused: Option<String>,
 }
 
-/// An edit to one text of the table: a ledger file's, or a scenario header's.
+/// An edit to one text of a table: a ledger file's, or a scenario file's, which the pair
+/// table names by `header`.
 #[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Edit {
@@ -144,7 +142,7 @@ impl Case {
 }
 
 impl Cases {
-    pub(crate) fn load() -> Self {
+    fn load() -> Self {
         let text = fs::read_to_string(Path::new(REPOSITORY).join(CASES))
             .unwrap_or_else(|error| panic!("{CASES}: {error}"));
         toml::from_str(&text).unwrap_or_else(|error| panic!("{CASES}: {error}"))
