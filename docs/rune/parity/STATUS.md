@@ -31,7 +31,7 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | ID | Package | State | Depends on | Pull requests |
 | --- | --- | --- | --- | --- |
 | [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192), [#2199](https://github.com/lgse/strata/pull/2199), [#2202](https://github.com/lgse/strata/pull/2202), [#2208](https://github.com/lgse/strata/pull/2208), [#2211](https://github.com/lgse/strata/pull/2211), [#2220](https://github.com/lgse/strata/pull/2220), [#2221](https://github.com/lgse/strata/pull/2221), [#2223](https://github.com/lgse/strata/pull/2223) |
-| [A2](packages/A2.md) | List view | in progress | B1 | [#2205](https://github.com/lgse/strata/pull/2205), [#2206](https://github.com/lgse/strata/pull/2206), [#2212](https://github.com/lgse/strata/pull/2212), [#2213](https://github.com/lgse/strata/pull/2213), [#2215](https://github.com/lgse/strata/pull/2215), [#2216](https://github.com/lgse/strata/pull/2216), [#2217](https://github.com/lgse/strata/pull/2217), [#2222](https://github.com/lgse/strata/pull/2222), [#2224](https://github.com/lgse/strata/pull/2224), [#2225](https://github.com/lgse/strata/pull/2225), [#2226](https://github.com/lgse/strata/pull/2226), [#2228](https://github.com/lgse/strata/pull/2228) |
+| [A2](packages/A2.md) | List view | in progress | B1 | [#2205](https://github.com/lgse/strata/pull/2205), [#2206](https://github.com/lgse/strata/pull/2206), [#2212](https://github.com/lgse/strata/pull/2212), [#2213](https://github.com/lgse/strata/pull/2213), [#2215](https://github.com/lgse/strata/pull/2215), [#2216](https://github.com/lgse/strata/pull/2216), [#2217](https://github.com/lgse/strata/pull/2217), [#2222](https://github.com/lgse/strata/pull/2222), [#2224](https://github.com/lgse/strata/pull/2224), [#2225](https://github.com/lgse/strata/pull/2225), [#2226](https://github.com/lgse/strata/pull/2226), [#2228](https://github.com/lgse/strata/pull/2228); [#2229](https://github.com/lgse/strata/pull/2229) (open) |
 | [A3](packages/A3.md) | Sidebar | not started | B1 | None |
 | [A4](packages/A4.md) | Tabs | not started | B1, B2 | None |
 | [A5](packages/A5.md) | Location bar | not started | B1 | None |
@@ -86,16 +86,17 @@ explained in [B3's file](packages/B3.md).
 ## Checkpoints
 
 The plan's checkpoints are where the owner looks at the numbers
-([Checkpoints](README.md#checkpoints)). Each report gives five counts. Here they are at
-`strata-next` `0c3d86fff` (2026-11-12), with the command that produces each. They are
-updated only when a checkpoint report is written, by whoever writes it.
+([Checkpoints](README.md#checkpoints)). Each report gives five counts. These are running
+counts, retaken by the coordinator at the commit the table names, `strata-next` `0c3d86fff`
+(2026-11-12), with the command that produces each. The end-of-wave-0 checkpoint report is
+still owed: it is written when B2 and B3 close.
 
 | Count | At `0c3d86fff` | Command |
 | --- | --- | --- |
 | Runs by status and reason | 760 runs: 69 `required`, 0 `parallel`, 682 `pending` (678 `scope`, 3 `platform`, 1 `rune`), 9 `excluded`. A1: 16 `required` and 15 `pending` of 31; A2: 17 `required` and 12 `pending` of 29 | `./scripts/qa-parity.sh all --counts` |
 | Twins by exception code | 0 of each code | The `twins` line of `./scripts/qa-parity.sh all --counts`; `./scripts/qa-parity.sh all --twins` lists each twin |
-| Normalisation rules by code | 0: `tests/qa/fuzz/normalisation.map` and `calibration.mask` are empty | `./scripts/qa-fuzz.sh check` |
-| Open `divergence` and `oracle` findings | 0 `divergence`; 12 `oracle`, none fixed | [`findings.md`](findings.md) |
+| Normalisation rules by code | 0: `tests/qa/fuzz/normalisation.map` and `calibration.mask` hold comments and no rule | `./scripts/qa-fuzz.sh check` |
+| Open `divergence` and `oracle` findings | 13 entries, all open: 12 `oracle`, 0 `divergence`, and [#2179](https://github.com/lgse/strata/issues/2179), which carries none of the plan's codes | [`findings.md`](findings.md) |
 | Packet entries added | 2: entries 99 and 100, in the packet's "Added during parity work" section | `docs/rune/upstream/rune/README.md` |
 
 Both `qa-parity.sh` reports read the ledger and the scenario files on the host: they start no
