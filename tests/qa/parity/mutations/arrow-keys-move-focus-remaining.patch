@@ -1,0 +1,11 @@
+diff --git a/crates/strata-app/src/icons/mod.rs b/crates/strata-app/src/icons/mod.rs
+--- a/crates/strata-app/src/icons/mod.rs
++++ b/crates/strata-app/src/icons/mod.rs
+@@ -57,6 +57,6 @@ fn keys(typing: bool) -> KeySettings {
+     let keys = KeySettings::default().wrap_rows(true);
+     match typing {
+         true => keys,
+-        false => keys.letters(Letters::Arrows),
++        false => keys.letters(Letters::Pass),
+     }
+ }

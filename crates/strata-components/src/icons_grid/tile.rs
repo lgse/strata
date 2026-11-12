@@ -270,13 +270,11 @@ pub(super) fn content_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Cont
                 .child(frame.mt(m.margin + m.card_y));
             if m.name_lines > 0 {
                 // The rename editor (C5's) keeps the name's reserved lines, so the details line
-                // stays put.
+                // stays put. It takes the card's inner width: centred, a field that grows from no
+                // width of its own would be laid out with none, and Rune gives the keyboard to
+                // no field it cannot show.
                 let label = if rcx.state.renaming {
-                    col()
-                        .w(inner)
-                        .h(m.caption_height())
-                        .items_center()
-                        .child(label)
+                    col().w(inner).h(m.caption_height()).child(label.w_full())
                 } else {
                     label
                 };
