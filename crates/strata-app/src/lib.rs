@@ -13,9 +13,17 @@ rust_i18n::i18n!(
 );
 
 mod events;
+// The cursor and selection handover every view shares.
+mod handover;
 mod host;
 mod launch;
 mod listing;
+// The one folder a single-pane view shows: the Icons and List views'.
+#[expect(
+    dead_code,
+    reason = "the Icons view, lgse/strata#2128, is its first user"
+)]
+mod pane;
 #[cfg(feature = "qa")]
 mod qa;
 mod settings;

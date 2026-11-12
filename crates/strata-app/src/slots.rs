@@ -133,7 +133,7 @@
 //! | Another order within a slot | A `contract` change. The order is the registration lines', which is the packages', and a line is not moved from under its comment |
 //! | A menu row that runs an area's command | The command registry, lgse/strata#2126, which replaces the `match` in `menus::chosen`. Until then a row acts only if `menus.rs` wires it, and that file is one package's |
 //! | The stored names `grid` and `explorer` read in one place | The preference store's move, lgse/strata#2125: they are read in `src/ui/preferences/stored.rs` on the GTK side. Until then the Icons view's `shows` answers to `icons` and `grid`, and the List view's to `list` and `explorer` |
-//! | More of the Columns view than the listing | The listing a view shows is shared (`listing.rs`). What stays in `columns/` is the Columns component's own: `Listings` as its `ColumnSources`, and the adapter that puts a change into `ColumnsState`. If a second view needs part of that, lgse/strata#2128 opens that `contract` change and lgse/strata#2129 waits for it |
+//! | More of the Columns view than the listing and the handover | The listing a view shows is shared (`listing.rs`), and so is the cursor and selection handover (`handover.rs`), which Columns uses for each column and a single-pane view through `pane.rs`. What stays in `columns/` is the Columns component's own: `Listings` as its `ColumnSources`, the adapter that puts a change into `ColumnsState`, the active column and the mirror. A view that needs more of it opens a `contract` change |
 //! | Panes the QA backend cannot read by a view's [`Probe`] | A `contract` change with the harness, lgse/strata#2135. The backend takes a pane to be the nearest named group around a keyed entry list, with rows keyed as the collection keys them; `qa/roles.rs` has to know the view's roles |
 //!
 //! # Who owns what
@@ -145,6 +145,8 @@
 //! | --- | --- |
 //! | `shell.rs`, `slots.rs` and `slots/`, `host/`, `test_support.rs` | The contract |
 //! | `events.rs` and `listing.rs`: the reader a view's listener calls, and the listing it fills | The contract |
+//! | `handover.rs`: the cursor and selection every view hands the browser and takes from it | The contract |
+//! | `pane.rs`: the one folder a single-pane view (Icons, List) shows, the browser's active column | The contract |
 //! | `lib.rs` | Each package, under its own comment and nowhere else |
 //! | A part's module | The package that registered it |
 //! | `columns/` | No area package: a change to it by any package is a `contract` pull request |
