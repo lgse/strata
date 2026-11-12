@@ -66,10 +66,11 @@ impl Part for Icons {
         single::publish::<Self>(app);
     }
 
-    fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
+    fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+        let said = single::poll::<Self>(app, clock, tx);
         let grid = view::grid();
         let ticked = grid.collection(app).tick(app, tx);
         grid.poll(app, tx);
-        ticked
+        ticked | said
     }
 }

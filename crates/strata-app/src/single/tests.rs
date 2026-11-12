@@ -254,3 +254,74 @@ fn a_right_click_selects_an_unselected_row_and_keeps_a_selection_it_is_in() {
     let name = "a_right_click_selects_an_unselected_row_and_keeps_a_selection_it_is_in";
     a_right_click_selects_or_keeps(&LIST, name);
 }
+
+/// An empty folder: the list keeps the keyboard and, named by the folder, is described as
+/// GTK's pane surface is then, by what it shows, "This directory is empty", which it also
+/// shows (`describe_pane_surface` in `src/ui/accessibility.rs`).
+fn an_empty_folder_says_so(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = tempfile::tempdir().expect("folder");
+        let title = Location::local(folder.path()).display_name();
+        host.app().open(Location::local(folder.path()));
+
+        let empty = "This directory is empty".to_owned();
+        let seen = wait(&mut host, case.shape, "the empty folder's status", |seen| {
+            seen.list
+                .as_ref()
+                .is_some_and(|[_, described]| *described == empty)
+        });
+
+        assert_eq!(seen.list, Some([title, empty.clone()]));
+        assert!(seen.entries.is_empty());
+        assert!(seen.texts.contains(&empty), "{seen:#?}");
+        assert!(seen.keyboard, "the list has the keyboard: {seen:#?}");
+    });
+}
+
+#[test]
+fn an_empty_folder_says_so_in_icons() {
+    an_empty_folder_says_so(&ICONS, "an_empty_folder_says_so_in_icons");
+}
+
+#[test]
+fn an_empty_folder_says_so_in_list() {
+    an_empty_folder_says_so(&LIST, "an_empty_folder_says_so_in_list");
+}
+
+/// A folder that cannot be read: the list says the browser's message, and shows it. Skipped
+/// where the folder stays readable, as it does for root.
+fn an_unreadable_folder_says_why(case: &Case, name: &str) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let folder = tempfile::tempdir().expect("folder");
+    let locked = folder.path().join("locked");
+    std::fs::create_dir(&locked).expect("folder");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("mode");
+    if std::fs::read_dir(&locked).is_ok() {
+        eprintln!("skipped: {} stays readable to this user", locked.display());
+        return;
+    }
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        host.app().open(Location::local(&locked));
+
+        let said = wait(&mut host, case.shape, "the folder's failure", |seen| {
+            seen.list
+                .as_ref()
+                .is_some_and(|[_, described]| !described.is_empty() && described != "Files")
+        });
+
+        let [_, message] = said.list.clone().expect("the list");
+        assert!(said.texts.contains(&message), "{said:#?}");
+    });
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("mode");
+}
+
+#[test]
+fn an_unreadable_folder_says_why_in_icons() {
+    an_unreadable_folder_says_why(&ICONS, "an_unreadable_folder_says_why_in_icons");
+}
+
+#[test]
+fn an_unreadable_folder_says_why_in_list() {
+    an_unreadable_folder_says_why(&LIST, "an_unreadable_folder_says_why_in_list");
+}
