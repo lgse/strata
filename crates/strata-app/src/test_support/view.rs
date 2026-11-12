@@ -5,12 +5,12 @@
 
 use std::path::{Path, PathBuf};
 
-use rune::{Key, KeyEvent, Mods, PhysicalInput};
+use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
 use strata_components::{collection::element::row_key, contract::EntryId};
 use strata_core::model::Location;
 
-use super::{PATIENCE, hosted_after};
+use super::{PATIENCE, hosted_after, send_key};
 use crate::host::offscreen::Offscreen;
 
 fn settings_file() -> PathBuf {
@@ -181,10 +181,7 @@ pub(crate) fn open(host: &mut Offscreen, shape: Shape, folder: &Path) -> Seen {
 
 /// Feeds the host a key with its modifiers held, as a keyboard sends one.
 pub(crate) fn press(host: &mut Offscreen, key: Key, mods: Mods) {
-    let runtime = host.runtime();
-    runtime.physical_input(PhysicalInput::Modifiers(mods));
-    runtime.key(KeyEvent { key, mods });
-    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
+    send_key(host, KeyEvent { key, mods });
     idle(host);
 }
 
