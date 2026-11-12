@@ -243,3 +243,39 @@ fn return_opens_a_folder_in_place() {
         assert_eq!(active.as_deref(), Some("documents"));
     });
 }
+
+/// The rename field, as assistive technology hears it: its text, and whether it has the
+/// keyboard.
+fn field(host: &Offscreen) -> Option<(String, bool)> {
+    let tree = host.tree();
+    let fields = all(&tree, &|node| node["role"] == "text-input");
+    let field = fields.first()?;
+    let states = field["states"].as_array();
+    let focused = states.is_some_and(|states| states.iter().any(|state| state == "focused"));
+    Some((text(field, "value"), focused))
+}
+
+/// `inline_renaming`'s Icons runs: F2 opens the editor on the cursor's tile with the
+/// keyboard in it, and a window key the field passes on leaves it there.
+#[test]
+fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there() {
+    hosted_in(
+        "icons",
+        "f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there",
+        |mut host| {
+            let folder = fixture();
+            open(&mut host, folder.path());
+            press(&mut host, Key::End, Mods::default());
+
+            press(&mut host, Key::Function(2), Mods::default());
+            let editing = host.run_until(PATIENCE, |host| {
+                field(host).is_some_and(|(_, focused)| focused)
+            });
+            assert!(editing, "the field: {:?}", field(&host));
+
+            press(&mut host, Key::Function(5), Mods::default());
+            host.run_until(std::time::Duration::from_millis(500), |_| false);
+            assert_eq!(field(&host).map(|(_, focused)| focused), Some(true));
+        },
+    );
+}
