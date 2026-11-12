@@ -4,12 +4,13 @@
 > (<https://claude.ai/artifact/XSdySkE6Zs1d2jvHWox9JM>), copied at rev 57 of 2026-11-11. The
 > document is the owner's, and this copy follows it.
 >
-> - The text is the document's, word for word. Its tables have header rules here, and its
->   "At a glance" drawing is replaced by a table, as that section says.
+> - The text is the document's, word for word, with its bold. Three things differ in form:
+>   the byline below is plain text where the document has a date chip and a mention; tables
+>   have Markdown header rules; and the "At a glance" drawing is replaced by a table, as
+>   that section says.
 > - The [issue map](#issue-map) at the end is this copy's own. It gives each package's
 >   issue on `lgse/strata`; the tracker is
 >   [#2160](https://github.com/lgse/strata/issues/2160).
-> - This copy is reference, not a status board. Agents share state through the issues.
 
 2026-11-11 · William
 
@@ -35,26 +36,27 @@ blocker. Differential fuzzing covers the behaviour no scenario names.
 
 The plan assumes three things:
 
-- The slice is approved. V10's report is written, `strata-next` is an integration branch,
-  and packages land by pull request.
-- The component library is done. Every W, S, P, K, C and X package in
+- **The slice is approved.** V10's report is written, `strata-next` is an integration
+  branch, and packages land by pull request.
+- **The component library is done.** Every W, S, P, K, C and X package in
   `docs/rune/work/STATUS.md` is merged. What remains is the application layer in
   `crates/strata-app`, the harness's reach, and proof.
-- GTK stays the oracle. `main` keeps releasing 1.x and decides what correct means until the
-  exit wave.
+- **GTK stays the oracle.** `main` keeps releasing 1.x and decides what correct means until
+  the exit wave.
 
 ## At a glance
 
 The document shows a drawing here, "work packages by wave · 39 packages, 5 tracks", which
-this copy cannot carry; this table of the packages by wave and track stands in for it.
+this copy cannot carry; this table of the packages, one column for each wave and one row for
+each track, stands in for it.
 
-| Wave | Harness | Base | Fuzz | Area | Exit |
+| Track | Wave 0: foundations | Wave 1: first fan-out | Wave 2: second fan-out | Wave 3: bound to a real window | Wave 4: exit |
 | --- | --- | --- | --- | --- | --- |
-| 0: foundations | H0, H1, H2 | B1, B2, B3 | F1 |  |  |
-| 1: first fan-out | H3, H4, H5 |  | F2, F3 | A1, A2, A3, A4, A5, A6, A7 |  |
-| 2: second fan-out |  |  | F4 | A8, A9, A10, A11, A12, A13, A14, A15, A16, A17, A18 |  |
-| 3: bound to a real window |  |  | F5 | A19, A20, A21 |  |
-| 4: exit |  |  |  |  | E1, E2, E3, E4 |
+| Harness | H0, H1, H2 | H3, H4, H5 |  |  |  |
+| Base | B1, B2, B3 |  |  |  |  |
+| Fuzz | F1 | F2, F3 | F4 | F5 |  |
+| Area |  | A1, A2, A3, A4, A5, A6, A7 | A8, A9, A10, A11, A12, A13, A14, A15, A16, A17, A18 | A19, A20, A21 |  |
+| Exit |  |  |  |  | E1, E2, E3, E4 |
 
 Read it left to right. A package starts when the packages it names have merged, not when its
 wave does. H4, the session host, starts in wave 1 because all of wave 3 waits on it.
@@ -65,12 +67,12 @@ A behaviour is at parity when the same input produces the same user-visible resu
 binaries, and a deliberate break of the Rune side is caught. Three proofs carry that, and
 each area needs all three:
 
-1. Scenario parity. One scenario file, one fixture, both targets pass. The ledger marks the
-   run `required`.
-2. Fuzz parity. One seeded action sequence gives the same observation at every settled
+1. **Scenario parity.** One scenario file, one fixture, both targets pass. The ledger marks
+   the run `required`.
+2. **Fuzz parity.** One seeded action sequence gives the same observation at every settled
    point, and the same files on disk at the end.
-3. The proof can fail. A Rune mutation patch breaks the behaviour and a required run catches
-   it.
+3. **The proof can fail.** A Rune mutation patch breaks the behaviour and a required run
+   catches it.
 
 ### What must match with no exception
 
@@ -86,14 +88,14 @@ A difference is a Rune-side bug until shown otherwise. When it is shown to be a 
 Strata itself, file the issue and go straight to step 4. Work down this list and stop at the
 first step that fits:
 
-1. Fix the port. Change the adapter in `strata-app` or the component, as the slice did for
-   seven Columns keys.
-2. Absorb it in the backend. Key names, role maps, settle rules and field offsets belong in
-   the Rune QA backend, never in a scenario.
-3. Reword the scenario on `main`. A GTK-side change with its own reason keeps one file for
-   both targets. It reaches `strata-next` by merge.
-4. Write a labelled twin. Only under an exception below, with a reference.
-5. Mark it pending. With a reason code and a blocker someone can act on.
+1. **Fix the port.** Change the adapter in `strata-app` or the component, as the slice did
+   for seven Columns keys.
+2. **Absorb it in the backend.** Key names, role maps, settle rules and field offsets belong
+   in the Rune QA backend, never in a scenario.
+3. **Reword the scenario on `main`.** A GTK-side change with its own reason keeps one file
+   for both targets. It reaches `strata-next` by merge.
+4. **Write a labelled twin.** Only under an exception below, with a reference.
+5. **Mark it pending.** With a reason code and a blocker someone can act on.
 
 ### Exceptions to total parity
 
@@ -140,11 +142,11 @@ names keep their meanings.
 
 The plan changes the ledger in three ways (packages H1 and H2):
 
-- One ledger file per scenario folder, replacing the single `tests/qa/parity/slice.toml`, so
-  parallel branches never edit the same file.
-- Every run listed. The runner's unit test already fails on a missing or doubled run; it
+- **One ledger file per scenario folder**, replacing the single
+  `tests/qa/parity/slice.toml`, so parallel branches never edit the same file.
+- **Every run listed.** The runner's unit test already fails on a missing or doubled run; it
   widens from 7 folders to 58.
-- Two more statuses, `parallel` and `excluded`, beside `required` and `pending`.
+- **Two more statuses**, `parallel` and `excluded`, beside `required` and `pending`.
 
 | Status | Meaning | Carries |
 | --- | --- | --- |
@@ -158,19 +160,20 @@ The plan changes the ledger in three ways (packages H1 and H2):
 The fuzzer replays one generated input sequence on both targets and compares what a user
 could observe. It adds a generator, a comparator and a shrinker to the QA runner.
 
-1. Generate. A seed picks actions from an area's alphabet: keys, clicks and menu picks on
-   accessibility targets, typed text, and runner-side `fs` changes. Actions name targets by
-   role and name, never by coordinate, so each toolkit resolves them in its own geometry.
-2. Replay. The runner starts each target on a fresh copy of one fixture and sends the same
-   steps.
-3. Observe at rest. Both targets settle after each step. The observation is a fixed
+1. **Generate.** A seed picks actions from an area's alphabet: keys, clicks and menu picks
+   on accessibility targets, typed text, and runner-side `fs` changes. Actions name targets
+   by role and name, never by coordinate, so each toolkit resolves them in its own geometry.
+2. **Replay.** The runner starts each target on a fresh copy of one fixture and sends the
+   same steps.
+3. **Observe at rest.** Both targets settle after each step. The observation is a fixed
    projection of the reply's `app` snapshot, plus a digest of the fixture tree and of
    `settings.toml`.
-4. Compare. A difference outside the normalisation map is a divergence. So is a step one
+4. **Compare.** A difference outside the normalisation map is a divergence. So is a step one
    target refuses, a panic, or a critical.
-5. Shrink. Shorter sequences are replayed until the divergence is minimal, then confirmed
-   three times out of three.
-6. Triage. Each divergence becomes one GitHub issue with one outcome from the table below.
+5. **Shrink.** Shorter sequences are replayed until the divergence is minimal, then
+   confirmed three times out of three.
+6. **Triage.** Each divergence becomes one GitHub issue with one outcome from the table
+   below.
 
 | Outcome | What happens |
 | --- | --- |
@@ -183,15 +186,15 @@ could observe. It adds a generator, a comparator and a shrinker to the QA runner
 
 Four conventions keep the fuzzer honest:
 
-- Calibrate on GTK first. The slice's V3 found the `app` snapshot differs between two GTK
-  runs of one scenario. The projection is fixed only once two GTK runs of a seed agree on it
-  (F1).
-- Compare only at rest. Nothing is compared mid-animation. Timeouts are budgets, never
+- **Calibrate on GTK first.** The slice's V3 found the `app` snapshot differs between two
+  GTK runs of one scenario. The projection is fixed only once two GTK runs of a seed agree
+  on it (F1).
+- **Compare only at rest.** Nothing is compared mid-animation. Timeouts are budgets, never
   assertions, which is how the `timing` exception applies to fuzzing.
-- One normalisation map. A single file of rules, each naming a snapshot field, an exception
-  code and an issue. Its rule count is printed in every fuzz summary and reviewed at each
-  wave gate.
-- Alphabets belong to areas. Each area package adds its alphabet with its first required
+- **One normalisation map.** A single file of rules, each naming a snapshot field, an
+  exception code and an issue. Its rule count is printed in every fuzz summary and reviewed
+  at each wave gate.
+- **Alphabets belong to areas.** Each area package adds its alphabet with its first required
   runs. Columns navigation, selection and rename are the pilot (F2).
 
 Rune-side invariants (F3) cover states with no GTK peer to compare. Examples: the selection
@@ -230,17 +233,17 @@ steps.
 {"scenario":"<scenario>-rune","modes":["columns"],"targets":["rune"],"parity":{"twin":"<scenario>","exception":"timing","ref":"lgse/strata#NNN","differs":"<one line: which steps differ and why>"}}
 ```
 
-- Both files are labelled. Each header names its twin, the exception code and the issue. The
-  `parity` label is the only edit made to a GTK scenario for parity's sake.
-- The twin runs on Rune only. `targets` keeps it out of the plain GTK suite. The scenario
-  header rejects unknown keys today, so H2 adds both keys.
-- The ledger agrees. The original's run is `parallel` and names the twin. A runner unit test
-  checks that the pair exists, names each other and shares one code and reference.
-- The run is the unit. When only some runs differ, the twin holds only those modes or
+- **Both files are labelled.** Each header names its twin, the exception code and the issue.
+  The `parity` label is the only edit made to a GTK scenario for parity's sake.
+- **The twin runs on Rune only.** `targets` keeps it out of the plain GTK suite. The
+  scenario header rejects unknown keys today, so H2 adds both keys.
+- **The ledger agrees.** The original's run is `parallel` and names the twin. A runner unit
+  test checks that the pair exists, names each other and shares one code and reference.
+- **The run is the unit.** When only some runs differ, the twin holds only those modes or
   variants.
-- A twin is a full scenario. It gets messages on its waits, a proof that it can fail, and
-  `cost` and `quality`.
-- Twins outlive GTK. At retirement they lose the suffix and become the corpus (E4).
+- **A twin is a full scenario.** It gets messages on its waits, a proof that it can fail,
+  and `cost` and `quality`.
+- **Twins outlive GTK.** At retirement they lose the suffix and become the corpus (E4).
 
 ### Ledger entries
 
@@ -276,8 +279,8 @@ the owner.
 5. Cite the entry from the ledger blocker or the twin, and from the module docs of the shim
    or workaround.
 
-Then work around it. A documented gap is never where a package stops. The package builds a
-workaround in the same pull request series and takes the run to parity, in this order of
+**Then work around it.** A documented gap is never where a package stops. The package builds
+a workaround in the same pull request series and takes the run to parity, in this order of
 preference:
 
 1. A thin shim in `strata-platform`, behind its own feature, when the gap is generic to a
@@ -309,17 +312,17 @@ Agents file nothing upstream, and never vendor or patch Rune.
 
 ### Rules carried over from the slice
 
-- Never edit the oracle to pass. No change to a GTK scenario's steps, a visual baseline or a
-  GTK mutation patch.
-- Container runs only. QA evidence comes from the pinned image. One QA script at a time per
-  machine.
-- Stop rather than widen. A package that needs something outside its scope writes it up on
-  its issue and waits.
-- No GTK in the Rune binary. `cargo tree -p strata-rune -i gtk4` finds nothing.
-- Two lanes. Never `--workspace`. Never move `src/ui`, `src/assets` or `src/qa`.
-- Strings stay in the catalogs. Labels and accessible names reach components as data from
-  the thirteen locales.
-- Cite evidence. Each "done" names the command, the container run and the artifact
+- **Never edit the oracle to pass.** No change to a GTK scenario's steps, a visual baseline
+  or a GTK mutation patch.
+- **Container runs only.** QA evidence comes from the pinned image. One QA script at a time
+  per machine.
+- **Stop rather than widen.** A package that needs something outside its scope writes it up
+  on its issue and waits.
+- **No GTK in the Rune binary.** `cargo tree -p strata-rune -i gtk4` finds nothing.
+- **Two lanes.** Never `--workspace`. Never move `src/ui`, `src/assets` or `src/qa`.
+- **Strings stay in the catalogs.** Labels and accessible names reach components as data
+  from the thirteen locales.
+- **Cite evidence.** Each "done" names the command, the container run and the artifact
   directory.
 
 ## Work packages
@@ -436,17 +439,17 @@ meets. No agent learns what another is doing from a document or a branch.
 
 ### Issues
 
-- One tracker issue lists every package as a sub-issue, grouped by wave.
-- One issue per package, titled like `[A7] Entry management and undo`. Its body holds the
-  scope, the scenario folders, the dependencies as issue links and the done-when list.
-- The owner assigns. The owner hands each package to an agent. The agent checks that every
-  dependency's issue is closed, then marks the issue with the `claimed` label and a comment
-  naming its session, branch and date.
-- Search before filing. Look for an open issue by label and by scenario or seed name before
-  opening a finding.
-- Report on the issue. Each pull request gets one comment: the runs it flipped, the command,
-  the artifact directory.
-- A stalled package goes back to the owner, who hands it on. There is no timer.
+- **One tracker issue** lists every package as a sub-issue, grouped by wave.
+- **One issue per package**, titled like `[A7] Entry management and undo`. Its body holds
+  the scope, the scenario folders, the dependencies as issue links and the done-when list.
+- **The owner assigns.** The owner hands each package to an agent. The agent checks that
+  every dependency's issue is closed, then marks the issue with the `claimed` label and a
+  comment naming its session, branch and date.
+- **Search before filing.** Look for an open issue by label and by scenario or seed name
+  before opening a finding.
+- **Report on the issue.** Each pull request gets one comment: the runs it flipped, the
+  command, the artifact directory.
+- **A stalled package goes back** to the owner, who hands it on. There is no timer.
 
 | Label | Used for |
 | --- | --- |
@@ -461,17 +464,17 @@ meets. No agent learns what another is doing from a document or a branch.
 
 ### Branches and worktrees
 
-- Branch `<type>/<issue>-<package>-<slug>`, for example `feat/123-a7-entry-management`, as
-  `docs/rune/work/README.md` names them.
-- One worktree per package, such as `../strata-a7`, with its own `target/`.
-- Pull requests target `strata-next`, with Conventional Commit titles and the repository's
-  template. They reference the package issue.
-- Small pull requests. One per scenario folder is a natural size. Each flips the ledger rows
-  it proves.
-- Contracts first. A `contract` change lands as its own small pull request, and dependents
-  merge `strata-next` afterwards.
-- Merge, never rebase. A branch takes `strata-next` by merge. `strata-next` itself is never
-  rebased.
+- **Branch** `<type>/<issue>-<package>-<slug>`, for example `feat/123-a7-entry-management`,
+  as `docs/rune/work/README.md` names them.
+- **One worktree per package**, such as `../strata-a7`, with its own `target/`.
+- **Pull requests target `strata-next`**, with Conventional Commit titles and the
+  repository's template. They reference the package issue.
+- **Small pull requests.** One per scenario folder is a natural size. Each flips the ledger
+  rows it proves.
+- **Contracts first.** A `contract` change lands as its own small pull request, and
+  dependents merge `strata-next` afterwards.
+- **Merge, never rebase.** A branch takes `strata-next` by merge. `strata-next` itself is
+  never rebased.
 
 ### Integration with `main`
 
@@ -582,45 +585,45 @@ making every exception a counted, referenced record.
 
 Three remain. The first two wait on what the gaps turn out to be.
 
-- [ ] Shipping with open Rune gaps. Which `rune` pending runs may remain at exit. Left open
-  on 2026-11-11: it depends on the size of each gap and whether a workaround is found.
-- [ ] The cutover. Whether `main` takes `strata-next` by merge at E4, and which release
+- [ ] **Shipping with open Rune gaps.** Which `rune` pending runs may remain at exit. Left
+  open on 2026-11-11: it depends on the size of each gap and whether a workaround is found.
+- [ ] **The cutover.** Whether `main` takes `strata-next` by merge at E4, and which release
   carries it. Left open on 2026-11-11 for the same reason.
-- [ ] Golden images altogether. Whether to drop them for their wall-clock cost. Raised on
-  2026-11-11 and not ruled. Until it is, the existing GTK baselines and the Rune gallery's
-  goldens stay as they are.
+- [ ] **Golden images altogether.** Whether to drop them for their wall-clock cost. Raised
+  on 2026-11-11 and not ruled. Until it is, the existing GTK baselines and the Rune
+  gallery's goldens stay as they are.
 
 ### Decided
 
-- Labelling GTK scenario files. Yes, ruled 2026-11-11. The `parity` header key is the one
-  edit allowed to a GTK scenario for parity's sake, with its steps unchanged.
-- Twin approval. Yes, ruled 2026-11-11. The reviewer approves `timing`, `a11y`, `toolkit`
-  and clear-cut `oracle` twins. Only `deviation` twins, and `oracle` twins whose bug is
-  arguable, need the owner.
-- Slice decision 22, the Menu key. B3 wraps each view's keyboard controller once, so the
+- **Labelling GTK scenario files.** Yes, ruled 2026-11-11. The `parity` header key is the
+  one edit allowed to a GTK scenario for parity's sake, with its steps unchanged.
+- **Twin approval.** Yes, ruled 2026-11-11. The reviewer approves `timing`, `a11y`,
+  `toolkit` and clear-cut `oracle` twins. Only `deviation` twins, and `oracle` twins whose
+  bug is arguable, need the owner.
+- **Slice decision 22, the Menu key.** B3 wraps each view's keyboard controller once, so the
   Menu key and Shift+F10 open the context menu in Columns, Icons and List.
-- Slice decision 23, undo. A7 binds it as its first pull request. `Browser` already has the
-  engine.
-- Slice decision 24, naming a new folder or file. Confirmed as A7's.
-- Slice decision 25, a rename that fails. Parity during the migration: A7 shows GTK's
+- **Slice decision 23, undo.** A7 binds it as its first pull request. `Browser` already has
+  the engine.
+- **Slice decision 24, naming a new folder or file.** Confirmed as A7's.
+- **Slice decision 25, a rename that fails.** Parity during the migration: A7 shows GTK's
   "Unable to rename item" dialog. The reopened inline editor is not taken as a deviation.
-- Slice decision 21, the Appearance popover. A8 owns it as a host composition built from the
-  existing slider and toggle components, not as a context menu.
-- Slice decision 15, a home for the audio shim. Deferred as long as possible, on the
+- **Slice decision 21, the Appearance popover.** A8 owns it as a host composition built from
+  the existing slider and toggle components, not as a context menu.
+- **Slice decision 15, a home for the audio shim.** Deferred as long as possible, on the
   expectation that Rune closes the gap (packet entry 26, PCM output on Linux). No shim is
   imported meanwhile. The question returns at each Rune pin bump, and at the end of wave 3
   at the latest.
-- B2's moves. All four stores move: `PreferenceManager`, the per-folder views, the key
+- **B2's moves.** All four stores move: `PreferenceManager`, the per-folder views, the key
   catalog and tab sessions. Their toolkit-free parts go to `crates/strata-desktop`, beside
   `strata_desktop::settings`. `AGENTS.md` gains a "Shared state" section that says so.
-- No CI for parity or fuzzing. CI runs only linting and unit tests. Each agent runs the
+- **No CI for parity or fuzzing.** CI runs only linting and unit tests. Each agent runs the
   verification before merging. The planned CI package, H7, is dropped.
-- Fuzz budgets. Calibrated after work starts, from F2's pilot numbers.
-- No coordinator. The owner delegates each package by hand. The coordinator's duties go to
-  the package agents and to tasks the owner hands out, and there is no stale-claim timer.
-- Golden images on Rune. Not in scope. The planned package for Rune visual baselines, H6, is
-  dropped, and the test image gets no software Vulkan driver. The 9 `visual_baselines` runs
-  are `excluded`: they run on GTK only.
+- **Fuzz budgets.** Calibrated after work starts, from F2's pilot numbers.
+- **No coordinator.** The owner delegates each package by hand. The coordinator's duties go
+  to the package agents and to tasks the owner hands out, and there is no stale-claim timer.
+- **Golden images on Rune.** Not in scope. The planned package for Rune visual baselines,
+  H6, is dropped, and the test image gets no software Vulkan driver. The 9
+  `visual_baselines` runs are `excluded`: they run on GTK only.
 
 ## Issue map
 
