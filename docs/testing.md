@@ -322,6 +322,9 @@ The QA runner, `tests/qa.rs`, has its own harness (`harness = false`, see
 "Scheduling and run costs") that keeps libtest's `--list`, `--ignored`,
 `--exact`, and `test result:` formats, so its scenario runs are inventoried as
 explicitly ignored tests and its unit tests run in the shards like any other.
+A test that runs in a shard therefore cannot rely on `CARGO_BIN_EXE_*`, or on
+anything else under the build directory, existing at run time: the bundle carries
+test binaries only, so the application binary is not on a shard's runner.
 
 Published environments are pulled by the build job's exact manifest digest and
 verified again by `quality.sh`. Deliberate unpublished recipe updates transfer
