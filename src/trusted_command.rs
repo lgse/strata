@@ -40,10 +40,20 @@ const CONFIGURED_SEARCH_PATH: &str = match option_env!("STRATA_TRUSTED_COMMAND_P
 mod tests;
 
 pub(crate) fn resolve(name: &str) -> Result<PathBuf, String> {
+    resolve_system(name, false)
+}
+
+/// Sized tmpfs mounts are forbidden by Bubblewrap in privileged mode. Keep the
+/// sandbox limits by selecting a trusted binary without setuid/setgid bits.
+pub(crate) fn resolve_unprivileged(name: &str) -> Result<PathBuf, String> {
+    resolve_system(name, true)
+}
+
+fn resolve_system(name: &str, unprivileged: bool) -> Result<PathBuf, String> {
     let trust: Vec<&Path> = TRUST_ROOTS.iter().copied().map(Path::new).collect();
     let search = search_roots(SEARCH_ROOTS, CONFIGURED_SEARCH_PATH, &trust);
     let search: Vec<&Path> = search.iter().map(PathBuf::as_path).collect();
-    resolve_in(name, &search, &trust)
+    resolve_matching(name, &search, &trust, unprivileged)
 }
 
 /// Like [`resolve`], but also accepts a search-root entry whose target lies
@@ -122,6 +132,15 @@ pub(crate) fn resolve_in(
     search_roots: &[&Path],
     trust_roots: &[&Path],
 ) -> Result<PathBuf, String> {
+    resolve_matching(name, search_roots, trust_roots, false)
+}
+
+fn resolve_matching(
+    name: &str,
+    search_roots: &[&Path],
+    trust_roots: &[&Path],
+    unprivileged: bool,
+) -> Result<PathBuf, String> {
     if !is_single_basename(name) {
         return Err("helper name must be a single basename".to_owned());
     }
@@ -134,7 +153,9 @@ pub(crate) fn resolve_in(
         let Ok(canonical) = candidate.canonicalize() else {
             continue;
         };
-        if sits_under(&canonical, trust_roots) {
+        let mode_allowed = !unprivileged
+            || fs::metadata(&canonical).is_ok_and(|metadata| metadata.mode() & 0o6000 == 0);
+        if mode_allowed && sits_under(&canonical, trust_roots) {
             // Preserve argv0 for multicall binaries and profile wrappers.
             return Ok(found_path(candidate));
         }

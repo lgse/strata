@@ -217,8 +217,8 @@ fn spawn_sandboxed(request: &ParseRequest<'_>, output: &PrivateOutput) -> Result
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable =
         resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
-    let bwrap =
-        crate::trusted_command::resolve("bwrap").map_err(|error| sandbox_unavailable(&error))?;
+    let bwrap = crate::trusted_command::resolve_unprivileged("bwrap")
+        .map_err(|error| sandbox_unavailable(&error))?;
     let devices = Vec::new();
     let mut command = SandboxCommand {
         bwrap: &bwrap,
