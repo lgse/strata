@@ -42,6 +42,7 @@ mod rename;
 // A1 Icons view and thumbnails
 mod icons;
 // A2 List view
+mod list;
 // A3 Sidebar
 // A4 Tabs
 // A5 Location bar
@@ -73,6 +74,7 @@ slots::parts! {
     // A1 Icons view and thumbnails
     icons: icons::Icons,
     // A2 List view
+    list: list::List,
     // A3 Sidebar
     // A4 Tabs
     // A5 Location bar

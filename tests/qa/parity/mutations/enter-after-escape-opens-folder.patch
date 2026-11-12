@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/icons/intents.rs b/crates/strata-app/src/icons/intents.rs
+--- a/crates/strata-app/src/icons/intents.rs
++++ b/crates/strata-app/src/icons/intents.rs
+@@ -38,7 +38,8 @@ pub(super) fn heard(app: &mut App, intent: Intent, tx: &mut Tx) {
+         return;
+     };
+     match intent {
+-        Intent::Activate { id, how } => app.open_in_place(depth, id, how),
++        Intent::Activate { how: Activation::Key, .. } => {}
++        Intent::Activate { id, how } => app.open_in_place(depth, id, how),
+         // A slow second click on the name.
+         Intent::BeginRename { id } => rename::begin_on(app, depth, id, tx),
+         // A press with any button outside the field commits an open rename in the GTK view.
