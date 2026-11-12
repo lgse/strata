@@ -110,9 +110,8 @@ blocker = "B3: the view-generic context-menu opener in `menus.rs`, at `menu_item
 scenario = "right-click-selects-entry"
 run = "list-file"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A2"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "right-click-selects-entry"
@@ -134,9 +133,8 @@ blocker = "B3: the view-generic context-menu opener in `menus.rs`, at `menu_item
 scenario = "right-click-selects-entry"
 run = "list-folder"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A2"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "shift-click-range"
