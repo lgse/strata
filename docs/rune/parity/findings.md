@@ -98,10 +98,9 @@ closed issue is not a fixed finding: the state given here is the finding's.
   Since then: the fourth failed again on a loaded host, once in a run of 417 tests and 1 time
   in 5 alone, on [#2195](https://github.com/lgse/strata/pull/2195); the third failed again in CI's shard 1 on [#2197](https://github.com/lgse/strata/pull/2197), with its recorded
   message; a fifth, a `strata-fs` test with no GTK in it, failed in shard 2 of that same
-  run, its search coming back empty; and on the rerun, where those two passed, a sixth, a
-  `strata-desktop` test with no GTK in it, failed in shard 1: the update's metadata fetch
-  ended with "Interrupted system call" where a cancellation was expected. It did not fail in
-  80 runs on a host, with or without the crate's child-process tests beside it.
+  run, its search coming back empty. The rerun, where those two passed, failed on a third
+  test, which is not a flaky test but a fault of the updater: see "The updater shows
+  'Interrupted system call'" below.
 - **Concerns:**
   `ui::browser::progress::tests::minimization::deletion::overlapping_fast_deletions_restore_browser_input_after_playback`,
   `ui::window::tests::keyboard_dispatch::direct_commands::shipped_keys_never_reach_the_direct_stage`,
@@ -110,14 +109,14 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `ui::window::tests::keyboard_dispatch::folder_jump::tenxer_z_ranks_history_and_opens_the_chosen_folder_once`;
   and, in `strata-fs`,
   `services::search::tests::folder_path_search_leads_with_a_folder_the_query_names_outright`
-  (`crates/strata-fs/src/services/search/tests.rs:819`); and, in `strata-desktop`,
-  `services::update_install::tests::cancel_stops_a_silent_metadata_fetch_without_waiting_for_a_timeout`
-  (`crates/strata-desktop/src/services/update_install/tests.rs:927`).
+  (`crates/strata-fs/src/services/search/tests.rs:819`).
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
-  GTK test is added to this entry. The rule does not say what to do when the rerun fails on
-  another test, as on [#2197](https://github.com/lgse/strata/pull/2197): there the package's agent stopped and asked.
+  GTK test is added to this entry. When the rerun fails on another test that the
+  change cannot reach, as on [#2197](https://github.com/lgse/strata/pull/2197), the orchestrating session's ruling of 2026-11-12 is: record
+  the sighting and rerun the whole workflow once more; a test that fails a second time on the
+  same pull request stops the agent again.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -180,3 +179,24 @@ the names [#2181](https://github.com/lgse/strata/pull/2181) merges with.
 - **State:** open, not taken up. Until the harness checks that the child ran its test, a
   move or rename of a test file, module or function takes the name strings with it; in a
   log the only sign is a GTK test printed once and not twice. A fix lands on `main`.
+
+### The updater shows "Interrupted system call" when a signal arrives during a download
+
+- **Code:** `oracle`. No issue: recorded here on 2026-11-12. A fix lands on `main` and starts
+  from a bug issue there, which is the owner's to file.
+- `IdleLimited::await_input` (`crates/strata-desktop/src/services/update_install/download.rs`)
+  waits for the server in slices so that a cancellation is noticed, and hands any error of a
+  slice but a timeout up as the download's failure. The wait is a read with a receive
+  timeout, which the kernel does not restart after a signal, so a signal that arrives during
+  it ends the download with "Could not download signed update metadata: Interrupted system
+  call". The GTK application catches `SIGCHLD` through GLib's child watches, so a child
+  process that exits during a metadata fetch can show the user that message.
+- **Concerns:** the updater on both branches. Seen once in CI, on [#2197](https://github.com/lgse/strata/pull/2197), shard 1 of the
+  second attempt of its first run:
+  `services::update_install::tests::cancel_stops_a_silent_metadata_fetch_without_waiting_for_a_timeout`
+  (`update_install/tests.rs:927`) got that failure where it expected a cancellation. What
+  interrupted the read there is not known: nothing in the shared crates installs a signal
+  handler, and the test passed 80 of 80 times on a host.
+- **State:** open, not taken up, and not to be fixed on `strata-next`. Until it is fixed on
+  `main`, the same test can fail a shard; whoever meets it reads the failure, and it is this
+  entry and not a new flaky test.
