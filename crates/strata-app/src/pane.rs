@@ -11,7 +11,9 @@
 //! - **Events in.** A view's listener queues the changes [`crate::events`] reads, and
 //!   [`Pane::apply`] puts them into its listings, one for each of the browser's columns, so
 //!   that whichever the browser makes active can show at once. The collection shows the active
-//!   one.
+//!   one, chosen on the same events as GTK's: a reset, an active column added, and columns
+//!   closing. A cursor moving to another column (`Browser::set_active_column` raises nothing
+//!   of its own) leaves the shown one, as it leaves GTK's pane.
 //! - **One cursor and one selection,** kept through [`crate::handover`], as each column of the
 //!   Columns view keeps them: the collection interprets keys and the pointer, the browser
 //!   holds the result, and [`Pane::publish`] hands it over. The collection is reached only
@@ -216,12 +218,17 @@ impl Pane {
         self.held = Held::of(&self.collection);
     }
 
-    /// The columns from `len` closed: when the one shown is among them, the browser's active
-    /// column shows, as GTK rebuilds its pane from it.
+    /// The columns from `len` closed. GTK rebuilds its pane from the browser's active column
+    /// then, so the active column shows if it is another. An active column not added yet (a
+    /// sibling's `Added` follows) leaves the shown one, as GTK's rebuild finds no snapshot for
+    /// it and keeps its pane, unless the shown one closed.
     fn truncate(&mut self, len: usize, active: Option<usize>, tx: &mut rune::Tx) {
         self.columns.truncate(len);
-        if self.shown.is_some_and(|shown| shown >= len) {
-            self.show(active, tx);
+        match active.filter(|active| *active < len) {
+            Some(active) if self.shown != Some(active) => self.show(Some(active), tx),
+            Some(_) => {}
+            None if self.shown.is_some_and(|shown| shown >= len) => self.show(None, tx),
+            None => {}
         }
     }
 
@@ -240,7 +247,10 @@ impl Pane {
         self.columns.push(Column::new(location, show_hidden, None));
         // Opening a folder in place makes the new root active, and history the column it
         // restores. A column opened with its parent kept active (`descend`) does not show.
-        if active {
+        // The browser closes a column before it adds another at its depth, so `truncate` has
+        // already left a shown column of this depth; should it not have, the new folder
+        // shows in its place rather than the old one's rows under the new listing.
+        if active || self.shown == Some(depth) {
             self.show(Some(depth), tx);
         }
     }
@@ -276,22 +286,18 @@ impl Pane {
         }
     }
 
-    /// The browser's cursor or selection changed in column `depth`, and it may have made
-    /// another column active: Left out of a column, Escape closing one.
+    /// The browser's cursor or selection changed in column `depth`. It never changes which
+    /// column shows: GTK's `on_focus_changed` only moves the selection and the focus.
     fn selected(&mut self, selection: Change, tx: &mut rune::Tx) {
         let Change::Selection {
             depth,
             marks,
-            active,
             reveal,
             ..
         } = selection
         else {
             return;
         };
-        if active.is_some_and(|active| Some(active) != self.shown) {
-            self.show(active, tx);
-        }
         if self.shown != Some(depth) {
             return;
         }

@@ -201,25 +201,33 @@ issue [#2128](https://github.com/lgse/strata/issues/2128).
    views focus the listing whenever another folder shows. Meanwhile: the Rune views', until
    the header buttons ([B3](packages/B3.md)) and the sidebar exist to keep focus.
 5. **"Arrows scoped to content"** (`arrow_navigation_scoped`) keeps Left and Up inside the
-   content in GTK (`src/ui/window/keyboard/items.rs:151, 180`). Neither Rune view honours
+   content in GTK (`src/ui/window/keyboard/items.rs:152, 180`). Neither Rune view honours
    it. Meanwhile: not honoured; it goes with items 2 and 3.
-6. **Context menus on the Icons grid** (`right-click-selects-entry/icons-*`), a `contract`
-   change either way. The menus are built privately in
-   `crates/strata-app/src/columns/intents.rs`. Option A shares those builders in a new
-   module. Option B adds one view-generic opener to `menus.rs` ([A6](packages/A6.md)'s),
-   reading the entry through the shown view's `Rows` and "Type to search" from the saved
-   settings, and deletes Columns' copy. The agent recommends B. Meanwhile: the grid opens no
-   menu, and the two runs stay `pending`.
-7. **Thumbnails, as one `contract` pull request.** `strata-rune` needs the
-   `--browser-worker` entry point the GTK binary has (`src/main.rs`,
-   `LaunchMode::BrowserWorker` calls `strata_preview::sandbox::browser::run`), or every
-   worker it spawns starts a window. It also needs a thumbnail service in `strata-app` (new
-   code: `src/ui/thumbnail/` does not move) feeding C25's `ThumbnailStore`. The
-   `browser_workers` Columns runs need Columns to ask the service for its visible rows,
-   which touches `columns/`. Drawing thumbnails in Columns rows would further need a C2
-   component API change. The agent recommends the entry point, the service and the
-   visible-rows request first, and drawing in Columns rows later. Meanwhile: nothing is
-   started beyond the Icons grid's own part.
+6. **How the Rune binary gets thumbnail workers, which today means `gdk-pixbuf`.** The
+   worker pool in `strata-preview` re-runs the current executable as `--browser-worker`
+   (`sandbox/browser.rs`), and the GTK binary answers it in `src/main.rs`
+   (`LaunchMode::BrowserWorker`, which calls
+   `strata_preview::sandbox::browser::run(sandbox_helper::browser_render)`). `strata-preview`
+   depends on `gdk-pixbuf`, `poppler`, `cairo` and `pango`, and `strata-app` does not depend
+   on it today. So the same entry point in `strata-rune` would bring `gdk-pixbuf` into the
+   Rune binary, which the plan's exit criterion 6 bans. The three answers:
+   1. **Accept `strata-preview` in `strata-rune` until [E4](packages/E4.md),** which then
+      owns removing it. Cheapest now: the entry point is a few lines. But exit criterion 6
+      would fail until E4 replaces the image path.
+   2. **A separate worker binary**, which `strata-rune`'s pool runs instead of itself. That
+      keeps `strata-rune`'s tree clean. It costs a second binary to build, ship and point
+      the pool at (the pool's `/app/strata` path and the sandbox's command line), and the
+      packaging that goes with it.
+   3. **A client crate split from `strata-preview`, free of gdk:** the pool, the wire
+      protocol and the thumbnail request in one crate; the renderers (`browser_render` and
+      what it decodes with) in another that only the worker links. The design stays right
+      at exit, at the cost of a refactor of a shared crate both binaries use, as a
+      `contract` change of its own.
+
+   What waits on it: the thumbnail service, which `strata-app` would need anyway, and A1's
+   `browser_workers` and `thumbnail_worker_settings` runs. Meanwhile: no thumbnail service is
+   started, and those runs stay `pending`. Source: the orchestrating session, on the review
+   of A1's proposal, 2026-11-12.
 
 ### Packages added later
 

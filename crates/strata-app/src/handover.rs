@@ -161,14 +161,19 @@ impl Moving {
         column: &Column,
         collection: &mut CollectionState,
     ) -> Vec<(EntryId, EntryId)> {
-        let here = |(from, to): &(EntryId, EntryId)| {
-            column.position_of(*to).is_some() && column.position_of(*from).is_none()
-        };
-        let arrived: Vec<(EntryId, EntryId)> = self.0.iter().copied().filter(here).collect();
+        let arrived = self.arriving(column);
         for (from, to) in &arrived {
             let _ = collection.selection.relocate(*from, *to);
         }
         arrived
+    }
+
+    /// The pairs whose entry `column` now shows under its new id, and no longer under its old.
+    pub(crate) fn arriving(&self, column: &Column) -> Vec<(EntryId, EntryId)> {
+        let here = |(from, to): &(EntryId, EntryId)| {
+            column.position_of(*to).is_some() && column.position_of(*from).is_none()
+        };
+        self.0.iter().copied().filter(here).collect()
     }
 
     /// Drops the pairs whose old id `listed` no longer finds: they have nothing left to move.

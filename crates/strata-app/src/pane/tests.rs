@@ -125,25 +125,60 @@ fn closing_the_shown_column_shows_the_one_the_browser_leaves_active() {
     assert_eq!(fixture.shows(), shown(1));
 }
 
-/// A history restore adds every column of its path and makes only the one it focuses active;
-/// a later change that makes another column active shows that one.
+/// The cursor change that follows a column closing lands on the folder the browser leaves
+/// the keyboard on, and the pane adopts it in the column it now shows.
 #[test]
-fn the_browser_making_another_column_active_shows_it() {
+fn after_a_column_closes_the_browsers_cursor_is_adopted_in_the_column_shown() {
     let mut fixture = Fixture::new();
-    fixture.open(0, false);
+    fixture.open(0, true);
     fixture.open(1, true);
-    assert_eq!(fixture.shows(), shown(1));
+    fixture.open(2, true);
+    fixture.apply(Change::Truncated {
+        len: 2,
+        replacing: false,
+        active: Some(1),
+    });
+    let left = fixture.ids.of(&entry(&location(1), "in-1").location);
 
-    let applied = fixture.apply(Change::Selection {
-        depth: 0,
-        marks: Marks::default(),
-        active: Some(0),
+    fixture.apply(Change::Selection {
+        depth: 1,
+        marks: Marks {
+            cursor: Some(left),
+            selected: vec![left],
+            provisional: false,
+        },
+        active: Some(1),
         reveal: true,
         landed: None,
     });
 
-    assert_eq!(applied, Applied::Entered);
-    assert_eq!(fixture.shows(), shown(0));
+    let selection = &fixture.pane.collection().selection;
+    assert_eq!(selection.cursor(), Some(left));
+    assert_eq!(selection.len(), 1);
+}
+
+/// A column that is not shown keeps up with its rows, and shows them when it shows.
+#[test]
+fn rows_a_hidden_column_received_show_when_it_shows() {
+    let mut fixture = Fixture::new();
+    fixture.open(0, true);
+    fixture.open(1, true);
+    let folder = location(0);
+    let row = Row::of(&entry(&folder, "late"), &fixture.ids);
+    fixture.apply(Change::Rows {
+        depth: 0,
+        edit: Edit::Insert(vec![(1, vec![row])]),
+        marks: Some(Marks::default()),
+    });
+
+    fixture.apply(Change::Truncated {
+        len: 1,
+        replacing: false,
+        active: Some(0),
+    });
+
+    let names = vec!["in-0".to_owned(), "late".to_owned()];
+    assert_eq!(fixture.shows(), Some((folder.display_name(), names)));
 }
 
 #[test]

@@ -122,13 +122,14 @@ impl Columns {
     /// them yet: what it holds by an old id it holds by the new one, and so does the cursor
     /// the child column follows.
     pub(super) fn arrived(&mut self, depth: usize) {
-        let (Some(column), Some(state)) = (
-            self.listings.columns.get(depth),
-            self.state.column_mut(depth),
-        ) else {
+        let Some(column) = self.listings.columns.get(depth) else {
             return;
         };
-        for (from, to) in self.moving.arrived(column, &mut state.collection) {
+        let arrived = match self.state.column_mut(depth) {
+            Some(state) => self.moving.arrived(column, &mut state.collection),
+            None => self.moving.arriving(column),
+        };
+        for (from, to) in arrived {
             self.follow_moved(from, to);
         }
         // A pair whose old id no column lists any more has nothing left to move.
