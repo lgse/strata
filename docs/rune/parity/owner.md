@@ -153,6 +153,30 @@ comments of 2026-11-12, unless another is named.
   documented format and its observed behaviour, by a session that has not read GTK's
   accelerator source. In force, as the rule that follows from the owner's ruling on GTK's
   source.
+- **Which bindings the Rune side says never fire.** A key label leaves out a binding that
+  can never fire in its map, and which those are is the interface's answer, installed
+  with its key backend (`NeverFires`). GTK answers from `src/ui/keys/conflicts.rs`, which
+  knows the keys GTK's own stages and widgets take. It is one question with which
+  conflicts Rune's keyboard settings report, under A6 and A18 below. Meanwhile: the Rune
+  side installs no backend; the first one it installs answers that every binding fires,
+  so its labels show every key of an entry, and the pull request that installs it says
+  which labels that changes. Source: [#2195](https://github.com/lgse/strata/pull/2195).
+- **A rebinding's round trip where key libraries differ.** With the `xkbcommon` backend
+  the names of keys beyond those the code declares follow the user's installed library,
+  and the comparison with GDK is exact only for the test image's pair of GTK and
+  `xkbcommon`. Where a user's library names a key the image's does not, or the reverse, a
+  rebinding of that key can be lost at restart or be unreadable by a 1.x release. On the
+  host's versions `xkbcommon` read 361 names GDK refuses, 139 of them not `XF86` keys;
+  the count for the image's pair comes with the backend. Meanwhile, by the orchestrating
+  session's ruling: a refusal list exact for the image's pair, no reading of numbers added
+  to cure it, and every declared key read from Strata's own table whatever library is
+  installed.
+- **Tab-session restore has no QA scenario.** No scenario seeds or reads `tabs.toml` or
+  sets `restore_tabs`, so the ledger holds no interface to the rules for using the shared
+  store, which live in GTK code that is deleted at parity (`docs/rune/shared-state.md`,
+  "What the seam does not carry"). Whether a scenario is owed and whose it is. Meanwhile:
+  the rules are listed there, and GTK's unit tests are their only tests. Also on the
+  archived issues [#2131](https://github.com/lgse/strata/issues/2131) and [#2137](https://github.com/lgse/strata/issues/2137).
 
 ### B3: Commands and key dispatch
 
@@ -175,6 +199,59 @@ comments of 2026-11-12, unless another is named.
   binding loads, gets a label and never fires. Meanwhile: `src/ui/keys/conflicts.rs` stays in
   `src/ui`, and the Rune side has no conflict check. Source: the archived issues
   [#2133](https://github.com/lgse/strata/issues/2133) and [#2150](https://github.com/lgse/strata/issues/2150).
+
+### A1: Icons view and thumbnails
+
+Found in the review of [#2192](https://github.com/lgse/strata/pull/2192) and by the
+package's agent. Source: the package's agent, 2026-11-12; first written on the archived
+issue [#2128](https://github.com/lgse/strata/issues/2128).
+
+1. **Down on the last row when every row is full.** GTK moves to the last tile (GtkGridView's
+   `n_items / n_columns` test in `gtk_grid_view_move_focus_along`). Rune's `IconsGrid` treats
+   it as an edge, on purpose (`crates/strata-components/src/icons_grid/mod.rs`, "Decisions
+   and deviations", first bullet). A deviation for the owner to rule. Meanwhile: the
+   component's edge; no run pins it.
+2. **Left with no cursor.** GTK sends it to the sidebar when the pane is at its left edge
+   and the sidebar shows (`single_pane_arrow_action`, `src/ui/window/key_routing.rs:96`;
+   `at_left_edge`, `src/ui/browser_modes/focus.rs:133`). Rune's keyboard controller lands
+   on the last tile. Meanwhile: Rune's, until there is a sidebar ([A3](packages/A3.md)) to
+   go to; then the Icons part matches GTK.
+3. **Up from the first row.** GTK focuses the pane header (`focus_header_from_top`,
+   `src/ui/window/keyboard/items.rs:166-180`). Rune ignores `Edge(Up)`. No package owns the
+   pane header. Meanwhile: nothing happens.
+4. **Focus after Back, Forward and Up.** GTK focuses the new listing on an explicit
+   navigation, and leaves focus on a header button or the sidebar for history unless it was
+   in the pane (`on_navigation_starting`, `src/ui/browser_modes/events.rs:58-66`). The Rune
+   views focus the listing whenever another folder shows. Meanwhile: the Rune views', until
+   the header buttons ([B3](packages/B3.md)) and the sidebar exist to keep focus.
+5. **"Arrows scoped to content"** (`arrow_navigation_scoped`) keeps Left and Up inside the
+   content in GTK (`src/ui/window/keyboard/items.rs:152, 180`). Neither Rune view honours
+   it. Meanwhile: not honoured; it goes with items 2 and 3.
+6. **How the Rune binary gets thumbnail workers, which today means `gdk-pixbuf`.** The
+   worker pool in `strata-preview` re-runs the current executable as `--browser-worker`
+   (`sandbox/browser.rs`), and the GTK binary answers it in `src/main.rs`
+   (`LaunchMode::BrowserWorker`, which calls
+   `strata_preview::sandbox::browser::run(sandbox_helper::browser_render)`). `strata-preview`
+   depends on `gdk-pixbuf`, `poppler`, `cairo` and `pango`, and `strata-app` does not depend
+   on it today. So the same entry point in `strata-rune` would bring `gdk-pixbuf` into the
+   Rune binary, which the plan's exit criterion 6 bans. The three answers:
+   1. **Accept `strata-preview` in `strata-rune` until [E4](packages/E4.md),** which then
+      owns removing it. Cheapest now: the entry point is a few lines. But exit criterion 6
+      would fail until E4 replaces the image path.
+   2. **A separate worker binary**, which `strata-rune`'s pool runs instead of itself. That
+      keeps `strata-rune`'s tree clean. It costs a second binary to build, ship and point
+      the pool at (the pool's `/app/strata` path and the sandbox's command line), and the
+      packaging that goes with it.
+   3. **A client crate split from `strata-preview`, free of gdk:** the pool, the wire
+      protocol and the thumbnail request in one crate; the renderers (`browser_render` and
+      what it decodes with) in another that only the worker links. The design stays right
+      at exit, at the cost of a refactor of a shared crate both binaries use, as a
+      `contract` change of its own.
+
+   What waits on it: the thumbnail service, which `strata-app` would need anyway, and A1's
+   `browser_workers` and `thumbnail_worker_settings` runs. Meanwhile: no thumbnail service is
+   started, and those runs stay `pending`. Source: the orchestrating session, on the review
+   of A1's proposal, 2026-11-12.
 
 ### Packages added later
 

@@ -177,7 +177,10 @@ impl Chord {
                 (step(SORT_BY_ALPHABETICAL), "Alphabetical"),
                 (step(SORT_BY_CASE_SENSITIVE), "Case-sensitive names"),
                 (step(SORT_BY_FOLDERS_FIRST), "Folders first"),
-                (Mention::Held(gtk::gdk::ModifierType::SHIFT_MASK), "Reverse"),
+                (
+                    Mention::Held(crate::ui::keys::Modifiers::SHIFT_MASK),
+                    "Reverse",
+                ),
             ],
             Self::Action | Self::FolderAction | Self::BookmarkGo => Vec::new(),
             Self::BookmarkSet => vec![(

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{glib, prelude::*};
 
 use super::{ShortcutFooter, catalog::category_buttons, reference::ReferenceArea};
 use crate::ui::keys::{
-    KeyPress,
+    KeyPress, Modifiers,
     bindings::{
         DOWN, END_KEY, ENTER_ANY_SHIFT, ESCAPE_ANY, FOCUS_NEXT, FOCUS_PREVIOUS, HOME_KEY, LEFT,
         PAGE_DOWN_KEY, PAGE_UP_KEY, REFERENCE, REFERENCE_CATEGORIES, REFERENCE_LIST,
@@ -12,7 +12,7 @@ use crate::ui::keys::{
     },
 };
 
-const SHIFT: gdk::ModifierType = gdk::ModifierType::SHIFT_MASK;
+const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
 
 /// Which reference area holds keyboard focus.
 struct AreaFocus {

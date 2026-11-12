@@ -198,7 +198,7 @@ impl Dispatcher {
         if !event.text_has_focus()
             && event
                 .press
-                .is(PROPERTIES.ignoring(gtk::gdk::ModifierType::SUPER_MASK))
+                .is(PROPERTIES.ignoring(crate::ui::keys::Modifiers::SUPER_MASK))
             && self.view.show_focused_properties()
         {
             return Some(Propagation::Stop);

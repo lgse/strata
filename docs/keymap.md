@@ -170,7 +170,7 @@ toggle_sidebar = ["<Control>n", "F9"]
 - An entry replaces the action's whole entry in that table, primary key first.
   An empty list removes every key. Settings removes an entry that returns to the
   shipped keys.
-- The ids are the stable names in `src/ui/keys/bindings/`. Rebinding an action
+- The ids are the stable names in `crates/strata-desktop/src/keys/bindings/`. Rebinding an action
   in Settings writes its id to the file. Quote ids that contain a dot:
   unquoted, TOML reads `go.home = [..]` as a table.
 - Keys use GTK's accelerator syntax: `<Control>`, `<Alt>`, `<Shift>` and

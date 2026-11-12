@@ -295,7 +295,14 @@ fn press_through(fixture: &KeyboardFixture, key: Key, mods: ModifierType) -> &'s
             .item(index)
             .and_downcast::<gtk::EventControllerKey>()
     }) {
-        if keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &mods]) {
+        if keys.emit_by_name::<bool>(
+            "key-pressed",
+            &[
+                &crate::ui::keys::gdk_key(key),
+                &0u32,
+                &crate::ui::keys::gdk_modifiers(mods),
+            ],
+        ) {
             return "timeline";
         }
     }

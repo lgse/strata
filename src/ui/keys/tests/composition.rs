@@ -31,7 +31,8 @@ mod key_event {
         pub struct Builder(ObjectSubclass<Imp>) @extends gtk::IMContext;
     }
 
-    pub fn press(window: &gtk::Window, key: gdk::Key) {
+    pub fn press(window: &gtk::Window, key: crate::ui::keys::Key) {
+        let key = crate::ui::keys::gdk_key(key);
         let display = WidgetExt::display(window);
         let keycode = display
             .map_keyval(key)
@@ -52,7 +53,7 @@ mod key_event {
             &keyboard,
             0,
             keycode,
-            super::NONE,
+            gdk::ModifierType::empty(),
             0,
         );
         let event = builder.imp().0.take().expect("a key event");

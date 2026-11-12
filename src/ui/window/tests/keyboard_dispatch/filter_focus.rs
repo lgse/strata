@@ -118,7 +118,14 @@ fn field_handles_key(field: &gtk::Entry, key: Key) -> bool {
                 .and_downcast::<gtk::EventControllerKey>()
         })
         .any(|keys| {
-            keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &ModifierType::empty()])
+            keys.emit_by_name::<bool>(
+                "key-pressed",
+                &[
+                    &crate::ui::keys::gdk_key(key),
+                    &0u32,
+                    &crate::ui::keys::gdk_modifiers(ModifierType::empty()),
+                ],
+            )
         })
 }
 

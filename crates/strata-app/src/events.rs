@@ -63,6 +63,10 @@ pub(crate) enum Change {
         len: usize,
         /// A sibling's `Added` at `len` follows at once.
         replacing: bool,
+        /// The browser's active column once the others closed: what a single-pane view shows
+        /// then, as GTK's rebuilds its pane (`ColumnsTruncated` in
+        /// `src/ui/browser_modes/events.rs`).
+        active: Option<usize>,
     },
     Added(Added),
     Relocated {
@@ -258,6 +262,7 @@ impl Reader<'_> {
                 self.changes.push(Change::Truncated {
                     len: *len,
                     replacing: *replacing,
+                    active: self.browser.active_depth(),
                 });
             }
             BrowserEvent::ColumnAdded { depth, location } => {

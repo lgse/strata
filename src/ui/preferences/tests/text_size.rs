@@ -4,7 +4,7 @@ use super::super::*;
 
 #[test]
 fn custom_text_size_shortcuts_accept_standard_and_keypad_keys_without_stealing_alt_combinations() {
-    use gtk::gdk::{Key, ModifierType as M};
+    use crate::ui::keys::{Key, Modifiers as M};
     let size = TextSize::new(24);
     let shortcut = |key, modifiers| {
         size.for_shortcut(&crate::ui::keys::KeyPress::from_signal(key, 0, modifiers))

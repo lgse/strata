@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::gdk::{Key, ModifierType};
+use crate::ui::keys::{Key, Modifiers as ModifierType};
 
 use super::*;
 use crate::{test_support::gtk_test, ui::blur::BlurBin};
@@ -51,7 +51,14 @@ impl OpenPage {
                 .item(index)
                 .and_downcast::<gtk::EventControllerKey>()
             {
-                keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]);
+                keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[
+                        &crate::ui::keys::gdk_key(key),
+                        &0u32,
+                        &crate::ui::keys::gdk_modifiers(modifiers),
+                    ],
+                );
             }
         }
         settle();

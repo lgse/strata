@@ -307,15 +307,15 @@ fn assert_saved_keymap(manager: &PreferenceManager) {
     assert_eq!(
         keymap.bindings(Map::Default, bindings::SETTINGS),
         [
-            Binding::ctrl(gtk::gdk::Key::comma),
-            Binding::ctrl_alt(gtk::gdk::Key::F12)
+            Binding::ctrl(crate::ui::keys::Key::comma),
+            Binding::ctrl_alt(crate::ui::keys::Key::F12)
         ]
     );
     assert_eq!(
         keymap.bindings(Map::Tenxer, bindings::SIDEBAR_FOCUS),
         [
-            Binding::ctrl_shift(gtk::gdk::Key::b),
-            Binding::ctrl_alt(gtk::gdk::Key::F11)
+            Binding::ctrl_shift(crate::ui::keys::Key::b),
+            Binding::ctrl_alt(crate::ui::keys::Key::F11)
         ]
     );
     assert_eq!(

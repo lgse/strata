@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::{gdk::ModifierType as Modifiers, glib::Propagation, prelude::*};
+use crate::ui::keys::Modifiers;
+use gtk::{glib::Propagation, prelude::*};
 
 use super::{Dispatcher, KeyEvent, KeyResult};
 use crate::{

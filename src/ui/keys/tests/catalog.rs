@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::glib::translate::IntoGlib;
-
 use super::super::{
-    CUSTOM_ACTIONS, Keymap, Keys, Letters, Map, Shown,
+    CUSTOM_ACTIONS, CommandKind as Kind, Keymap, Keys, Letters, Map, Shown,
     bindings::{self, Entry, Listed},
-    command::{Kind, registry},
-    main_key, use_keymap,
+    main_key, registry, use_keymap,
 };
 use super::*;
 
@@ -35,7 +32,7 @@ fn catalog_bindings_use_the_canonical_key() {
                 Key::ISO_Left_Tab,
                 "{name} spells Shift+Tab as ISO_Left_Tab"
             );
-            let symbol = (0x21..=0x7e).contains(&key.into_glib())
+            let symbol = (0x21..=0x7e).contains(&key.keysym())
                 && !key.to_unicode().is_some_and(|c| c.is_ascii_alphanumeric());
             assert!(
                 !(symbol && binding.modifiers().contains(SHIFT)),

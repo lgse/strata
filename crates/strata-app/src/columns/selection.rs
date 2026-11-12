@@ -1,30 +1,21 @@
 // SPDX-License-Identifier: MIT
 
-//! One cursor and one selection, kept by two owners. The view moves them as keys and the
-//! pointer ask, and the browser holds the result, as it does for the GTK views' pointer and
-//! for every key in their Icons and List modes (`SelectionSync` in
-//! `src/ui/browser/columns/append/models.rs`).
-//!
-//! - [`Columns::publish`] hands the browser what the view changed, through
-//!   `Browser::set_selection`. The browser answers with `SelectionSynced`, which nothing
-//!   applies again.
-//! - [`Columns::adopt`] writes to the view what the browser changed by itself: the cursor a
-//!   load places, the neighbour a deletion moves it to, a reveal.
-//!
-//! The view's selection has a revision that moves with every change. The adapter remembers,
-//! for each column, the revision the browser holds, so neither side hears its own change
-//! back.
+//! One cursor and one selection for each column, kept by two owners through
+//! [`crate::handover`], which every view shares: [`Columns::publish`] hands the browser what
+//! a column's collection changed, and [`Columns::adopt`] writes to it what the browser changed
+//! by itself. What is the Columns view's own is the active column and the mirror that follows
+//! the cursor.
 
 use std::rc::Rc;
 
 use strata_components::{
-    collection::selection::{AnchorRule, Position},
+    collection::selection::AnchorRule,
     contract::{EntryId, EntrySource},
 };
 use strata_fs::app::Browser;
 
 use super::Columns;
-use crate::listing::Load;
+use crate::handover::{self, Held, Shown};
 
 /// What made the view change its cursor or its selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,10 +38,11 @@ impl Columns {
         self.state.column(depth)?.collection.selection.cursor()
     }
 
-    pub(super) fn revision(&self, depth: usize) -> u64 {
+    /// What the browser holds of column `depth` once it has its collection's selection.
+    pub(super) fn held_now(&self, depth: usize) -> Held {
         self.state
             .column(depth)
-            .map_or(0, |column| column.collection.selection.revision())
+            .map_or_else(Held::default, |column| Held::of(&column.collection))
     }
 
     /// The active column and its cursor: what the GTK views call the focused item.
@@ -63,7 +55,7 @@ impl Columns {
     }
 
     /// Writes the browser's cursor and selection for column `depth` to the view, unless the
-    /// view shows them already: a write ends a Shift range the user is extending.
+    /// view shows them already ([`handover::adopt`]).
     pub(super) fn adopt(&mut self, depth: usize, marks: &Marks) {
         let (Some(column), Some(state)) = (
             self.listings.columns.get(depth),
@@ -71,30 +63,9 @@ impl Columns {
         ) else {
             return;
         };
-        // A folder still loading may not list an entry the browser already holds.
-        let loading = *column.load() == Load::Loading;
-        let listed = |id: &EntryId| loading || column.index_of(*id).is_some();
-        let cursor = marks.cursor.filter(listed);
-        let selected: Vec<EntryId> = marks.selected.iter().copied().filter(listed).collect();
-        let provisional = marks.provisional && cursor.is_some_and(|id| selected == [id]);
-        let selection = &mut state.collection.selection;
-        let shown = selection.cursor() == cursor
-            && selection.is_provisional() == provisional
-            && selection.len() == selected.len()
-            && selected.iter().all(|id| selection.contains(column, *id));
-        if !shown {
-            selection.restore(&Position {
-                cursor,
-                cursor_index: cursor.and_then(|id| column.index_of(id)),
-                anchor: cursor,
-                selected,
-                provisional,
-                scroll: None,
-            });
-            state.collection.note_selection(column);
-        }
+        let now = handover::adopt(column, &mut state.collection, marks);
         if let Some(held) = self.held.get_mut(depth) {
-            *held = state.collection.selection.revision();
+            *held = now;
         }
     }
 
@@ -116,37 +87,19 @@ impl Columns {
     }
 
     fn hand_over(&mut self, depth: usize, browser: &Browser) {
-        let (Some(column), Some(state)) =
-            (self.listings.columns.get(depth), self.state.column(depth))
-        else {
+        let (Some(column), Some(state), Some(held)) = (
+            self.listings.columns.get(depth),
+            self.state.column(depth),
+            self.held.get_mut(depth),
+        ) else {
             return;
         };
-        let selection = &state.collection.selection;
-        let revision = selection.revision();
-        let Some(held) = self.held.get_mut(depth).filter(|held| **held != revision) else {
-            return;
-        };
-        *held = revision;
-        let position = |id: EntryId| column.position_of(id);
-        let selected: Vec<usize> = selection
-            .selected_ids(column)
-            .into_iter()
-            .filter_map(position)
-            .collect();
-        let cursor = selection.cursor().and_then(position);
-        tracing::trace!(
+        let shown = Shown {
             depth,
-            selected = selected.len(),
-            ?cursor,
-            "the browser takes the view's selection"
-        );
-        // The user's own choice, as a key or a click is to the GTK views: it replaces a
-        // cursor a load placed.
-        browser.commit_selection();
-        browser.set_selection(depth, &selected, cursor);
-        if let Some(anchor) = selection.anchor().and_then(position) {
-            browser.set_selection_anchor(depth, anchor);
-        }
+            column,
+            collection: &state.collection,
+        };
+        handover::hand_over(&shown, browser, held);
     }
 
     /// Tells the mirror when the focused item moved since it last looked. The GTK views

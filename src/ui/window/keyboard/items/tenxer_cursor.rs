@@ -4,9 +4,10 @@
 
 use std::rc::Rc;
 
-use gtk::gdk::Key;
-
-use crate::app::{Browser, VisualKind};
+use crate::{
+    app::{Browser, VisualKind},
+    ui::keys::Key,
+};
 
 use super::super::Dispatcher;
 

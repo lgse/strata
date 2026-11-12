@@ -265,7 +265,7 @@ fn tab_alternates_complete_like_tab() {
                 bindings::{FOCUS_NEXT, FOCUS_PREVIOUS},
                 use_keymap,
             };
-            use gtk::gdk::{Key, ModifierType};
+            use crate::ui::keys::{Key, Modifiers as ModifierType};
 
             let _keymap = use_keymap(
                 Keymap::defaults()
@@ -302,7 +302,14 @@ fn tab_alternates_complete_like_tab() {
                 entry.set_text(&fixture.path().join("Doc").to_string_lossy());
                 wait_until(|| completion.popover.is_visible());
                 assert!(
-                    keys.emit_by_name::<bool>("key-pressed", &[&Key::F7, &0u32, &modifiers]),
+                    keys.emit_by_name::<bool>(
+                        "key-pressed",
+                        &[
+                            &crate::ui::keys::gdk_key(Key::F7),
+                            &0u32,
+                            &crate::ui::keys::gdk_modifiers(modifiers)
+                        ]
+                    ),
                     "{modifiers:?}"
                 );
                 wait_until(|| entry.text().as_str() == completed.to_string_lossy());

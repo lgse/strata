@@ -2,11 +2,9 @@
 
 use std::collections::HashSet;
 
-use gtk::gdk::{Key, ModifierType as Modifiers};
-
 use super::{
     super::{
-        Binding, CUSTOM_ACTIONS, KeyPress, Shown,
+        Binding, CUSTOM_ACTIONS, Key, KeyPress, Modifiers, Shown,
         bindings::{self, Entry, Listed, Maps},
         custom_action_slot,
     },

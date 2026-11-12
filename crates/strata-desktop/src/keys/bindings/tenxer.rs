@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::gdk::Key;
-
-use crate::ui::keys::{Binding, Command, Digits, Letters};
+use crate::keys::{Binding, Command, Digits, Key, Letters};
 
 catalog! {
     tenxer_only {

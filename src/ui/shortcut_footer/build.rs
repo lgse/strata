@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{glib, prelude::*};
 
 use super::{
     ShortcutFooter,
@@ -404,9 +404,9 @@ impl ShortcutFooter {
         let unused = gtk::EventControllerKey::new();
         crate::ui::keys::on_press(&unused, |_, press| {
             if press.modifiers().intersects(
-                gdk::ModifierType::CONTROL_MASK
-                    | gdk::ModifierType::ALT_MASK
-                    | gdk::ModifierType::SUPER_MASK,
+                crate::ui::keys::Modifiers::CONTROL_MASK
+                    | crate::ui::keys::Modifiers::ALT_MASK
+                    | crate::ui::keys::Modifiers::SUPER_MASK,
             ) {
                 glib::Propagation::Stop
             } else {

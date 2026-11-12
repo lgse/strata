@@ -182,11 +182,15 @@ fn override_change_reaches_two_windows() {
             assert!(tooltip(&second).contains("Ctrl+B"), "{}", tooltip(&second));
             assert_eq!(footer_button(&second), "F1 Shortcuts");
 
-            manager.set_bindings(Map::Default, bindings::SIDEBAR, vec![Binding::ctrl(Key::g)]);
+            manager.set_bindings(
+                Map::Default,
+                bindings::SIDEBAR,
+                vec![Binding::ctrl(crate::ui::keys::Key::g)],
+            );
             manager.set_bindings(
                 Map::Default,
                 bindings::REFERENCE,
-                vec![Binding::plain(Key::F12)],
+                vec![Binding::plain(crate::ui::keys::Key::F12)],
             );
             settle();
             for open in [&first, &second] {
@@ -271,9 +275,9 @@ fn capture_commits_and_second_window_follows() {
             assert_eq!(
                 manager.keymap().bindings(Map::Default, RENAME),
                 [
-                    Binding::plain(Key::F2),
-                    Binding::ctrl(Key::r),
-                    Binding::ctrl(Key::e)
+                    Binding::plain(crate::ui::keys::Key::F2),
+                    Binding::ctrl(crate::ui::keys::Key::r),
+                    Binding::ctrl(crate::ui::keys::Key::e)
                 ]
             );
 

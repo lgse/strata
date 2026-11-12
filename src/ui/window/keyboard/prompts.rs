@@ -9,8 +9,8 @@ use std::{
     rc::Rc,
 };
 
+use crate::ui::keys::Modifiers;
 use gtk::{
-    gdk::ModifierType as Modifiers,
     glib::{self, Propagation},
     prelude::*,
 };

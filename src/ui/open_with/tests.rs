@@ -51,7 +51,7 @@ fn dialogs_dismiss_on_escape_alternate() {
         "ui::open_with::tests::dialogs_dismiss_on_escape_alternate",
         || {
             use crate::ui::keys::{Binding, Keymap, Map, bindings::ESCAPE, use_keymap};
-            use gtk::gdk::{Key, ModifierType};
+            use crate::ui::keys::{Key, Modifiers as ModifierType};
             let _keymap = use_keymap(Keymap::defaults().with(
                 Map::Default,
                 ESCAPE,
@@ -83,7 +83,14 @@ fn dialogs_dismiss_on_escape_alternate() {
                             .and_downcast::<gtk::EventControllerKey>()
                     })
                     .any(|keys| {
-                        keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+                        keys.emit_by_name::<bool>(
+                            "key-pressed",
+                            &[
+                                &crate::ui::keys::gdk_key(key),
+                                &0u32,
+                                &crate::ui::keys::gdk_modifiers(modifiers),
+                            ],
+                        )
                     });
                 assert!(handled, "{key:?}");
                 assert!(crate::ui::modal::is_closing_layer(&layer), "{key:?}");

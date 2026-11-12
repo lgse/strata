@@ -18,7 +18,7 @@ use strata_components::{
     collection::{
         keyboard::{KeySettings, Letters},
         pointer::{ClickCount, ClickModes},
-        selection::{CursorGone, Listing, SyncRule},
+        selection::Listing,
     },
     columns::{ColumnsState, Focus, Opening},
     contract::{EntryId, EntrySource},
@@ -30,6 +30,7 @@ use strata_kit::look::Look;
 
 use crate::{
     events::{Added, Change, Marks, Moved},
+    handover::{self, Held, Moving},
     listing::{Column, Edit, Load, Row},
     slots::Ids,
 };
@@ -64,12 +65,11 @@ pub(crate) struct Columns {
     ids: Ids,
     /// For each column, the revision of its selection that the browser holds. Another
     /// revision is a change the view made, which [`Columns::publish`] hands over.
-    held: Vec<u64>,
+    held: Vec<Held>,
     /// The cursor the child column last followed, or was told of: its column and entry.
     followed: Option<(usize, EntryId)>,
-    /// Entries a rename gave another id, each as its old id and its new one, until the
-    /// listing shows the change.
-    moving: Vec<(EntryId, EntryId)>,
+    /// Entries a rename gave another id, until the listing shows the change.
+    moving: Moving,
     mirror: Mirror,
     clicks: ClickModes,
     /// The keys the view reads other than by its default, when the saved settings ask.
@@ -102,7 +102,7 @@ impl Columns {
             ids,
             held: Vec::new(),
             followed: None,
-            moving: Vec::new(),
+            moving: Moving::default(),
             mirror: Mirror::new(settings.columns_mirror_selection),
             clicks: ClickModes::new(
                 clicks(settings.columns_file_clicks),
@@ -150,7 +150,7 @@ impl Columns {
                 self.listings.columns.clear();
                 self.held.clear();
             }
-            Change::Truncated { len, replacing } => self.truncate(len, replacing, hands),
+            Change::Truncated { len, replacing, .. } => self.truncate(len, replacing, hands),
             Change::Added(added) => self.add(added, hands),
             Change::Relocated {
                 from_depth,
@@ -249,7 +249,7 @@ impl Columns {
             self.state
                 .swap_from(depth, opening, focus, hands.look, hands.tx);
         }
-        self.held.push(self.revision(depth));
+        self.held.push(self.held_now(depth));
     }
 
     /// Folders that moved keep their columns, under their new names and with every row read
@@ -283,13 +283,8 @@ impl Columns {
         let Some(column) = self.listings.columns.get(depth) else {
             return;
         };
-        // Where a cursor goes when its entry leaves is the browser's to say: the view only
-        // lets go of it.
-        let rule = match column.load() {
-            Load::Loading => SyncRule::loading(),
-            Load::Listed | Load::Failed(_) => SyncRule::complete(CursorGone::Clear),
-        };
-        self.state.sync(depth, column, rule, tx);
+        self.state
+            .sync(depth, column, handover::sync_rule(column), tx);
     }
 
     /// After column `depth`'s rows changed: the view catches up with them, and then the
@@ -299,7 +294,10 @@ impl Columns {
     fn settle(&mut self, depth: usize, marks: &Marks, hands: &mut Hands<'_>) {
         let before = self.cursor(depth);
         self.sync(depth, hands.tx);
-        let placed = before.is_none() && self.cursor(depth).is_some();
+        let placed = self
+            .state
+            .column(depth)
+            .is_some_and(|column| handover::placed(before, &column.collection));
         if !placed {
             self.adopt(depth, marks);
         }

@@ -58,7 +58,7 @@ fn sort_choice(press: &KeyPress) -> Option<(SortKey, SortDirection)> {
         step.bindings().into_iter().any(|binding| {
             press.is(Binding::new(
                 binding.key(),
-                binding.modifiers() | gtk::gdk::ModifierType::SHIFT_MASK,
+                binding.modifiers() | crate::ui::keys::Modifiers::SHIFT_MASK,
             ))
         })
     };

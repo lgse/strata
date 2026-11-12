@@ -368,7 +368,11 @@ fn context_hints_and_accelerators_follow_keymap_overrides() {
             };
             assert_eq!(hint().as_deref(), Some("F2 / Ctrl+R"));
             assert_eq!(accelerator(), "F2");
-            manager.set_bindings(Map::Default, RENAME, vec![Binding::ctrl(gtk::gdk::Key::e)]);
+            manager.set_bindings(
+                Map::Default,
+                RENAME,
+                vec![Binding::ctrl(crate::ui::keys::Key::e)],
+            );
             assert_eq!(hint().as_deref(), Some("Ctrl+E"));
             assert_eq!(accelerator(), "<Control>e");
             manager.set_bindings(Map::Default, RENAME, Vec::new());
@@ -388,7 +392,7 @@ fn context_hints_and_accelerators_follow_keymap_overrides() {
             manager.set_bindings(
                 Map::Default,
                 COPY_PATH,
-                vec![Binding::alt(gtk::gdk::Key::y)],
+                vec![Binding::alt(crate::ui::keys::Key::y)],
             );
             assert_eq!(copy_path().as_deref(), Some("Alt+Y"));
             menu.popdown();

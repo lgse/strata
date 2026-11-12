@@ -8,10 +8,8 @@
 
 use std::rc::Rc;
 
-use gtk::{
-    gdk::ModifierType as Modifiers,
-    glib::{self, Propagation},
-};
+use crate::ui::keys::Modifiers;
+use gtk::glib::{self, Propagation};
 
 use super::{Dispatcher, KeyResult};
 use crate::{

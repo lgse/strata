@@ -106,6 +106,7 @@ impl PreferenceManager {
             }
             let manager = Self::load();
             shared.replace(Rc::downgrade(&manager));
+            crate::ui::keys::follow(&manager);
             manager
         })
     }

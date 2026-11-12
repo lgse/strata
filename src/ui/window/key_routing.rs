@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use gtk::gdk::ModifierType;
+use crate::ui::keys::Modifiers as ModifierType;
 
 use crate::ui::{
     browser::BrowserView,
