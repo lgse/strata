@@ -262,6 +262,11 @@ fn right_click_at(host: &mut Offscreen, (x, y): (f32, f32)) -> Option<String> {
     runtime.secondary_down(x, y);
     runtime.secondary_up(x, y);
     idle(host);
+    open_menu(host)
+}
+
+/// The name of the menu that is open: what it acts on (`menus.rs`).
+pub(crate) fn open_menu(host: &Offscreen) -> Option<String> {
     let tree = host.tree();
     let menus = all(&tree, &|node| node["role"] == "menu");
     menus.first().map(|menu| text(menu, "name"))

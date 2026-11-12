@@ -33,9 +33,11 @@ use strata_desktop::{
 use crate::{App, shell, slots::At};
 
 mod browser;
+mod menu_key;
 mod owners;
 mod press;
 
+pub(crate) use menu_key::view_keys;
 pub(crate) use owners::{Holds, Situation};
 use owners::{Reach, reach};
 

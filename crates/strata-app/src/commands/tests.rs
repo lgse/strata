@@ -19,6 +19,7 @@ use crate::{
 
 const MODULE: &str = "commands::tests";
 
+mod menu_key;
 mod routing;
 mod views;
 
