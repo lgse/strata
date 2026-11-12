@@ -52,7 +52,7 @@ mod shortcut_footer;
 mod shortcut_reference;
 mod sidebar_toggle;
 mod table_view;
-mod tabs_session;
+use strata_desktop::tabs_session;
 mod tenxer_mode;
 mod terminal;
 mod theme;

@@ -36,7 +36,7 @@ needs asking.
 
 Its setters and getters are spread over nine `impl PreferenceManager` files. They read the
 fields of `Preferences` directly, publish through the bindings, and call into GTK code
-(thumbnails, motion, the tab session).
+(thumbnails, motion) and into the tab session, which was under `src/ui` then.
 
 The serialized `Preferences` struct needs no GTK. It did need three things from elsewhere
 under `src/ui`: the key catalog (`ui::keys`), the view-mode and density types

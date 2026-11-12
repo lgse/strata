@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Strata's desktop integration: portal setup, the updater, integrations, the saved settings and build information"
+description = "Strata's desktop integration: portal setup, the updater, integrations, the saved settings, the tab session and build information"
 publish = false
 
 [lints]
