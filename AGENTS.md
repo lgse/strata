@@ -274,6 +274,9 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
   issues; a new finding still gets an issue, as its reference only. A parity pull request
   links its package's file where the template asks for the issue, and its branch keeps the
   package's archived issue number. The rules for `main` are unchanged.
+- On `strata-next`, by the owner's instruction of 2026-11-12, the `CI` workflow does not run
+  and a merge does not wait for it: the package's own gate and an independent review are the
+  merge condition (`docs/rune/parity/working.md`). The rules for `main` are unchanged.
 - Work package documents are the exception to keeping task records out of the tree: the
   plans, their status, the parity plan's findings and the owner's decisions under
   `docs/rune/` stay in the repository as Markdown.

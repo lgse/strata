@@ -18,6 +18,9 @@
 >   [`packages/`](packages/) a file for each, [`owner.md`](owner.md) the questions and
 >   rulings, [`findings.md`](findings.md) the findings, and [`working.md`](working.md) how
 >   a package is worked on.
+> - Since the owner's instruction of 2026-11-12 the `CI` workflow does not run for
+>   `strata-next`, so "The merge gate" and the "Decided" item on CI differ from the document
+>   too, and [Checks in place of CI](#checks-in-place-of-ci) is this copy's own.
 > - Since the owner's rule of 2026-11-12 on mutation testing, the routine checks and the
 >   merge gate run no mutation patches, so "Before a package's pull request" and "The merge
 >   gate" differ from the document too, and [When a mutation run is
@@ -568,7 +571,9 @@ for p in tests/qa/parity/mutations/*.patch tests/qa/mutations/*.patch; do git ap
 ### The merge gate
 
 The package's agent runs the gate itself before merging, on its branch with the integration
-branch merged in. CI checks only linting and unit tests. The gate runs the package's ledger
+branch merged in. CI checks only linting and unit tests, and on `strata-next` it does not run
+at all for now; the agent runs its [checks in place of CI](#checks-in-place-of-ci) instead,
+and a merge does not wait for CI. The gate runs the package's ledger
 selection on both targets (`./scripts/qa-parity.sh <package>`). When the runner,
 `strata-qa`, a shared crate or `src/` changed, it is the full gate instead: every required
 and parallel run on both targets (`./scripts/qa-parity.sh all`), the whole GTK suite
@@ -577,6 +582,30 @@ and parallel run on both targets (`./scripts/qa-parity.sh all`), the whole GTK s
 `new-folder-with-selection-groups/columns` passes as finding #2162 only if it is the only
 failure, it fails as #2162 does (the opened folder's column does not take focus within
 15 s), and the change does not touch what the run exercises; otherwise it is the change's.
+
+### Checks in place of CI
+
+On `strata-next` the `CI` workflow does not run, by the owner's instruction of 2026-11-12
+([`owner.md`](owner.md#ruled)), and a merge does not wait for it. The package's agent runs
+what CI carried, as far as the change reaches, and writes each result on the pull request; a
+check skipped is named with its reason. This list is the orchestrating session's reading of
+"agent's own checks are sufficient", for the owner to confirm.
+
+| When | Check |
+| --- | --- |
+| Always | `typos` |
+| `scripts/`, `tests/qa/`, a ledger row, a twin or a mutation patch changed | `mise run scripts`: the Python tests under `scripts/`, which hold the ledger, the mutation patches' rules and the fuzz files |
+| `src/`, a shared crate, `tests/` or a manifest changed | `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` |
+| A Rune-side crate changed | The Rune lane's `cargo fmt --all --check`, and `cargo clippy $(python3 scripts/lanes.py rune) --all-targets --all-features --locked -- -D warnings` |
+| `src/` or a shared crate changed | `./scripts/quality.sh test`. With CI off it is the only run of the GTK unit tests, so it is required there |
+| A manifest, `Cargo.lock` or `deny.toml` changed | `cargo deny check`, and the two `cargo tree` guards of `ci.yml`'s "Quality build and lint", below |
+
+The two guards, from the repository root; each holds when it prints nothing:
+
+```bash
+cargo tree --locked --no-default-features -e normal,build --prefix none | grep -E "^unrar(_sys)? v"
+{ cargo tree --locked --no-default-features -e normal,build --prefix none; cargo tree --locked -e normal,build --prefix none; } | grep -E "^(x11rb|wayland-client|wayland-protocols-(misc|wlr)|xkbcommon) v"
+```
 
 ### When a mutation run is right
 
@@ -699,7 +728,9 @@ Three remain. The first two wait on what the gaps turn out to be.
   catalog and tab sessions. Their toolkit-free parts go to `crates/strata-desktop`, beside
   `strata_desktop::settings`. `AGENTS.md` gains a "Shared state" section that says so.
 - **No CI for parity or fuzzing.** CI runs only linting and unit tests. Each agent runs the
-  verification before merging. The planned CI package, H7, is dropped.
+  verification before merging. The planned CI package, H7, is dropped. (This copy: on
+  `strata-next` CI does not run at all for now, by the owner's instruction of 2026-11-12;
+  see [Checks in place of CI](#checks-in-place-of-ci).)
 - **Fuzz budgets.** Calibrated after work starts, from F2's pilot numbers.
 - **No coordinator.** The owner delegates each package by hand. The coordinator's duties go
   to the package agents and to tasks the owner hands out, and there is no stale-claim timer.

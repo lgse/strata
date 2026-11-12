@@ -23,15 +23,15 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | [H2](packages/H2.md) | Exception conventions in the runner | done | H1 | [#2171](https://github.com/lgse/strata/pull/2171) |
 | [B1](packages/B1.md) | Shell seams | done | None | [#2167](https://github.com/lgse/strata/pull/2167), [#2169](https://github.com/lgse/strata/pull/2169) |
 | [B2](packages/B2.md) | Shared state out of the GTK package | in progress | None | [#2168](https://github.com/lgse/strata/pull/2168), [#2170](https://github.com/lgse/strata/pull/2170), [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178), [#2188](https://github.com/lgse/strata/pull/2188), [#2195](https://github.com/lgse/strata/pull/2195), [#2197](https://github.com/lgse/strata/pull/2197) |
-| [B3](packages/B3.md) | Commands and key dispatch | in progress | B1; B2's key catalog | [#2200](https://github.com/lgse/strata/pull/2200) (open) |
-| [F1](packages/F1.md) | Fuzz driver and GTK calibration | in progress | None | [#2181](https://github.com/lgse/strata/pull/2181) (open) |
+| [B3](packages/B3.md) | Commands and key dispatch | in progress | B1; B2's key catalog | [#2200](https://github.com/lgse/strata/pull/2200), [#2204](https://github.com/lgse/strata/pull/2204); [#2207](https://github.com/lgse/strata/pull/2207) (open) |
+| [F1](packages/F1.md) | Fuzz driver and GTK calibration | done | None | [#2181](https://github.com/lgse/strata/pull/2181) |
 
 ### Wave 1: first fan-out
 
 | ID | Package | State | Depends on | Pull requests |
 | --- | --- | --- | --- | --- |
-| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192), [#2199](https://github.com/lgse/strata/pull/2199); [#2202](https://github.com/lgse/strata/pull/2202) (open) |
-| [A2](packages/A2.md) | List view | not started | B1 | None |
+| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192), [#2199](https://github.com/lgse/strata/pull/2199), [#2202](https://github.com/lgse/strata/pull/2202) |
+| [A2](packages/A2.md) | List view | in progress | B1 | [#2205](https://github.com/lgse/strata/pull/2205); [#2206](https://github.com/lgse/strata/pull/2206) (open) |
 | [A3](packages/A3.md) | Sidebar | not started | B1 | None |
 | [A4](packages/A4.md) | Tabs | not started | B1, B2 | None |
 | [A5](packages/A5.md) | Location bar | not started | B1 | None |
@@ -94,7 +94,7 @@ checkpoint report is written, by whoever writes it.
 | --- | --- | --- |
 | Runs by status and reason | 760 runs: 36 `required`, 0 `parallel`, 715 `pending` (711 `scope`, 3 `platform`, 1 `rune`), 9 `excluded` | `./scripts/qa-parity.sh all --counts` |
 | Twins by exception code | 0 of each code | The `twins` line of `./scripts/qa-parity.sh all --counts`; `./scripts/qa-parity.sh all --twins` lists each twin |
-| Normalisation rules by code | None on `strata-next`: the map arrives with F1's pull request [#2181](https://github.com/lgse/strata/pull/2181), empty there, with an empty calibration mask | `./scripts/qa-fuzz.sh check`, once [#2181](https://github.com/lgse/strata/pull/2181) merges |
+| Normalisation rules by code | None on `strata-next`: the map arrives with F1's pull request [#2181](https://github.com/lgse/strata/pull/2181), empty there, with an empty calibration mask | `./scripts/qa-fuzz.sh check` |
 | Open `divergence` and `oracle` findings | 0 `divergence`; 9 `oracle`, none fixed | [`findings.md`](findings.md) |
 | Packet entries added | 0: the packet has its 98 entries and no "Added during parity work" section | `docs/rune/upstream/rune/README.md` |
 
@@ -109,7 +109,7 @@ The plan's three conditions:
 | --- | --- |
 | H1 lists 760 runs, each with a package | Met: 760 runs in 58 files, each with its package ([H1](packages/H1.md)) |
 | B1 is merged | Met: [#2167](https://github.com/lgse/strata/pull/2167) and [#2169](https://github.com/lgse/strata/pull/2169) ([B1](packages/B1.md)) |
-| Two GTK runs of one fuzz seed agree | Not yet met: it waits on F1's pull request [#2181](https://github.com/lgse/strata/pull/2181), open ([F1](packages/F1.md)) |
+| Two GTK runs of one fuzz seed agree | Met: F1's [#2181](https://github.com/lgse/strata/pull/2181) merged, with the calibration on GTK ([F1](packages/F1.md)) |
 
 B2 and B3 are wave 0 packages that are not done, and the checkpoint does not wait on them:
 waves are dependency waves, and wave 1 packages start as their own dependencies finish
