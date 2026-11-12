@@ -6,8 +6,9 @@
 //! `strata_core::i18n::file_size`, the plural of "items" through `count_u64`.
 //!
 //! A port of GTK's `src/ui/browser_modes/metadata.rs` (`format_duration`, `folder_item_info`,
-//! `entry_icons_item_info`); `docs/rune/parity/packages/A1.md`, "Ported from GTK", has the
-//! commit. GTK's `format_file_size` is `strata_core::i18n::file_size` already.
+//! `entry_icons_item_info`) at `008d7e124` on `strata-next`, the same file as `b97813450` on
+//! `main`, as `docs/rune/parity/packages/A1.md`, "Ported from GTK", lists it. GTK's
+//! `format_file_size` is `strata_core::i18n::file_size` already.
 
 use strata_core::i18n::{count_u64, file_size, tr};
 
