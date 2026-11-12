@@ -1,0 +1,51 @@
+# The parity ledger of tests/qa/scenarios/preview_video: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "video-preview-badges-next-video"
+run = "columns-mp4"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "video-preview-badges-next-video"
+run = "list-mp4"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "video-preview-badges-next-video"
+run = "icons-mp4"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "video-preview-badges-next-video"
+run = "columns-h264"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "video-preview-badges-next-video"
+run = "list-h264"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "video-preview-badges-next-video"
+run = "columns-264"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"

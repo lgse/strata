@@ -1,0 +1,75 @@
+# The parity ledger of tests/qa/scenarios/properties_size: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "properties-nested-hidden-sizes"
+run = "columns-entry"
+package = "A17"
+status = "pending"
+reason = "scope"
+blocker = "A17"
+
+[[run]]
+scenario = "properties-nested-hidden-sizes"
+run = "columns-current-folder"
+package = "A17"
+status = "pending"
+reason = "scope"
+blocker = "A17"
+
+[[run]]
+scenario = "properties-unreadable-folder-explains"
+run = "columns"
+package = "A17"
+status = "pending"
+reason = "scope"
+blocker = "A17"
+
+[[run]]
+scenario = "properties-zero-empty-folder"
+run = "columns-archive"
+package = "A17"
+status = "pending"
+reason = "scope"
+blocker = "A17"
+
+[[run]]
+scenario = "properties-zero-empty-folder"
+run = "columns-readme"
+package = "A17"
+status = "pending"
+reason = "scope"
+blocker = "A17"
+
+[[run]]
+scenario = "selection-properties-aggregate-warnings"
+run = "columns-false-keyboard"
+package = "A17"
+status = "pending"
+reason = "scope"
+blocker = "A17"
+
+[[run]]
+scenario = "selection-properties-aggregate-warnings"
+run = "columns-false-context-menu"
+package = "A17"
+status = "pending"
+reason = "scope"
+blocker = "A17"
+
+[[run]]
+scenario = "selection-properties-aggregate-warnings"
+run = "columns-true-keyboard"
+package = "A17"
+status = "pending"
+reason = "scope"
+blocker = "A17"
+
+[[run]]
+scenario = "selection-properties-aggregate-warnings"
+run = "columns-true-context-menu"
+package = "A17"
+status = "pending"
+reason = "scope"
+blocker = "A17"

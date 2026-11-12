@@ -1,0 +1,51 @@
+# The parity ledger of tests/qa/scenarios/sidebar_file_drops: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "sidebar-destinations-accept-three-files"
+run = "columns-home"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "sidebar-destinations-accept-three-files"
+run = "icons-home"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "sidebar-destinations-accept-three-files"
+run = "list-home"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "sidebar-destinations-accept-three-files"
+run = "columns-trash"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "sidebar-destinations-accept-three-files"
+run = "icons-trash"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "sidebar-destinations-accept-three-files"
+run = "list-trash"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"

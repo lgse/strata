@@ -1,0 +1,131 @@
+# The parity ledger of tests/qa/scenarios/locations: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "breadcrumb-returns-to-parent"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "deleting-open-root-closes-children"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "named-location-controls"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "open-folder-follows-renamed-ancestor"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "open-folder-follows-renamed-ancestor"
+run = "icons"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "open-folder-follows-renamed-ancestor"
+run = "list"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "path-completion-dismisses-on-window-switch"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "refresh-reconciles-external-changes"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "refresh-reconciles-external-changes"
+run = "list"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "scrolled-away-crumbs-and-columns-stay-reachable"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "sidebar-place-navigates"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "typed-path-navigates"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "unreadable-folder-offers-retry"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "unreadable-folder-offers-retry"
+run = "list"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "unreadable-folder-offers-retry"
+run = "icons"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"
+
+[[run]]
+scenario = "unreadable-location-reports-error"
+run = "columns"
+package = "A5"
+status = "pending"
+reason = "scope"
+blocker = "A5"

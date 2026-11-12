@@ -6,6 +6,7 @@ the plans for that work, split out of two planning documents so they live beside
 | File | Holds |
 | --- | --- |
 | [workspace-migration.md](workspace-migration.md) | How the repository becomes one workspace for the GTK app, the shared crates and the Rune side, and how the branch lands on `main` |
+| [shared-state.md](shared-state.md) | The four stores that move out of the GTK package into `strata-desktop`, and where a change from `main` to a moved file goes |
 | [slice/README.md](slice/README.md) | The vertical slice: one view, one read path and one write path on Rune, passing the same QA scenarios as the GTK app |
 | [slice/V0-findings.md](slice/V0-findings.md) | What the slice's assumption checks found |
 | `slice/V3-…` to `slice/V10-…` | One file per work package of the slice, linked from the slice index |

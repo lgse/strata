@@ -9,6 +9,9 @@
 //! the notices about saving. The Rune interface holds one in `strata-app`'s `settings::Saved`,
 //! which saves the few values that interface changes. `docs/preferences.md` describes each
 //! setting.
+//!
+//! [`folder_views`] is the model of `folder-views.toml`, the sort and icon size a folder
+//! remembers. Finding, reading and saving that file is still `PreferenceManager`'s.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -28,6 +31,7 @@ use crate::{
 
 mod corner_roundness;
 mod defaults;
+pub mod folder_views;
 mod keymap;
 mod list_columns;
 mod persistence;

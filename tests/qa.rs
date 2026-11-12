@@ -9,6 +9,12 @@ mod peers;
 #[path = "qa/harness.rs"]
 mod harness;
 
+#[path = "qa/allowances.rs"]
+mod allowances;
+
+#[path = "qa/allowance_tests.rs"]
+mod allowance_tests;
+
 #[path = "qa/baseline.rs"]
 mod baseline;
 
