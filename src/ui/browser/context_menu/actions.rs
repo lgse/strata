@@ -621,6 +621,8 @@ fn guard_unpaired_release(popover: &gtk::PopoverMenu) -> Rc<Cell<bool>> {
     pressed_inside
 }
 
+// Touch events do not reach context menus; unlike preview::resize::is_primary_press,
+// this checks only physical mouse buttons.
 fn is_primary_button(event: &gtk::gdk::Event) -> bool {
     event
         .downcast_ref::<gtk::gdk::ButtonEvent>()
