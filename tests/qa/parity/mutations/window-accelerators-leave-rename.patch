@@ -1,0 +1,14 @@
+diff --git a/crates/strata-app/src/pane.rs b/crates/strata-app/src/pane.rs
+index c4e17effb..55de9b3d5 100644
+--- a/crates/strata-app/src/pane.rs
++++ b/crates/strata-app/src/pane.rs
+@@ -363,6 +363,9 @@ impl Pane {
+ 
+     /// Hands the browser what the view changed since it last agreed with it.
+     pub(crate) fn publish(&mut self, browser: &Browser) {
++        if browser.active_depth().is_some() {
++            return;
++        }
+         let Some((depth, column)) = self
+             .shown
+             .and_then(|depth| Some((depth, self.columns.get(depth)?)))
