@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! The per-folder views: what `folder-views.toml` holds, how a folder is keyed, and how
-//! changes merge over what another Strata process saved. `docs/preferences.md` describes the
-//! behaviour.
+//! The per-folder views' model: what `folder-views.toml` holds, parsed from and serialized
+//! to its text, how a folder is keyed, and how changes merge over what another Strata
+//! process saved. It does not find, read or write the file. `docs/preferences.md` describes
+//! the behaviour.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -30,7 +31,10 @@ const MAX_USED: u64 = i64::MAX as u64;
 /// filesystem UUID and path inside the drive, so it survives remounting.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum FolderKey {
+    // Built only here, through the checks of `local` and `on_volume`.
+    #[non_exhaustive]
     Path(PathBuf),
+    #[non_exhaustive]
     Volume { uuid: String, relative: PathBuf },
 }
 

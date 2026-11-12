@@ -58,9 +58,9 @@ Rules that keep them in step:
 
 Merges should stay cheap because `src/ui`, `src/assets` and `src/qa` never move on the
 branch. What needs a hand merge is a fix that touches code an extraction has rewritten.
-Two parts of `src/ui` did move, by owner rulings: the settings schema, and the four stores
-both interfaces keep. [slice/V5b](slice/V5b-settings-store.md) and
-[shared-state.md](shared-state.md) say where a change from `main` goes.
+Two parts of `src/ui` move, by owner rulings: the settings schema, which has, and the four
+stores both interfaces keep, which move one at a time. [slice/V5b](slice/V5b-settings-store.md)
+and [shared-state.md](shared-state.md) say where a change from `main` goes.
 
 ## Target layout on the branch
 
@@ -190,7 +190,9 @@ The proposal listed work the split had to include. Two items are not done, and o
 - **Shared state under `src/ui`.** The settings schema and the reading of `settings.toml`
   moved to `strata_desktop::settings` ([slice/V5b](slice/V5b-settings-store.md)), by an
   owner ruling against the rule above on moving `src/ui`. `PreferenceManager` itself, the
-  per-folder views, the key catalog and tab sessions are still in the root package.
+  per-folder views, the key catalog and tab sessions follow by a second ruling, one store
+  at a time; [shared-state.md](shared-state.md) says which have moved. The per-folder
+  views' model has. The rest is still in the root package.
 - **The GLib main loop.** Done. `strata-fs` schedules on the default `MainContext`, and
   `strata-platform`'s `glib_loop` runs it on Rune's loop
   ([slice/V5](slice/V5-shell-and-loop.md)).

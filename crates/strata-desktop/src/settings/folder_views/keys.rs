@@ -11,6 +11,9 @@ use super::{FolderKey, local_path};
 
 /// `None` for non-native locations, network shares, and paths that cannot be stored.
 /// Local FUSE overlays such as mergerfs are remembered like the drives under them.
+///
+/// Call it on the interface thread only: it reads `strata-fs`'s mount snapshot, which is
+/// thread-local and kept current by a volume monitor's signals on that thread.
 pub fn key_for_location(location: &Location) -> Option<FolderKey> {
     let path = location.native_path()?;
     with_mount_snapshot(|snapshot| {

@@ -264,7 +264,7 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
 - All migration work stays on `strata-next`, including refactors that move no files. Do not
   move or reorganize `src/ui`, `src/assets` or `src/qa` there: they are deleted at parity,
   and every move makes the merges from `main` harder. The settings schema and the stores
-  under "Shared state" below are the parts that moved, by owner rulings;
+  under "Shared state" below are the parts the owner ruled may move;
   `docs/rune/slice/V5b-settings-store.md` and `docs/rune/shared-state.md` say where a
   change from `main` to them goes.
 - The vertical slice in `docs/rune/slice/` was approved on 2026-11-11. Since then migration
@@ -325,13 +325,16 @@ the files changed against `origin/main`. It needs `CS_ACCESS_TOKEN`.
 
 ## Shared state
 
-- State both interfaces keep belongs in `crates/strata-desktop`, beside
-  `strata_desktop::settings`, by the owner's ruling of 2026-11-11: the saved settings and
-  `PreferenceManager`, the per-folder views, the key catalog and tab sessions. `src/ui`
-  keeps only what needs GTK, as a thin wrapper that re-exports or adapts the shared part.
-- `docs/rune/shared-state.md` lists what has moved and what stayed, and says where a change
-  from `main` to a moved file goes. The ruling covers those four stores: nothing else under
-  `src/ui` moves.
+- Four stores both interfaces keep move to `crates/strata-desktop`, beside
+  `strata_desktop::settings`, by the owner's ruling of 2026-11-11: `PreferenceManager`, the
+  per-folder views, the key catalog and tab sessions. Each moves its toolkit-free part in
+  its own pull request, and what needs GTK stays in `src/ui` as a thin wrapper.
+- `docs/rune/shared-state.md` says which have moved and where a change from `main` to a
+  moved file goes. Until it lists a store as moved, that store's code stays where `main`
+  has it and the sections below apply as written.
+- A moved file takes no new code on `strata-next`: new shared code goes in a new file
+  beside it, so Git keeps pairing the moved file with `main`'s.
+- Nothing else under `src/ui` moves.
 
 ## Saved preferences
 

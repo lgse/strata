@@ -11,8 +11,7 @@
 //! setting.
 //!
 //! [`folder_views`] is the model of `folder-views.toml`, the sort and icon size a folder
-//! remembers, and [`trashed`] keeps the values of trashed items for the session. The store
-//! that schedules their saves is still `PreferenceManager`'s.
+//! remembers. Finding, reading and saving that file is still `PreferenceManager`'s.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -38,7 +37,6 @@ mod list_columns;
 mod persistence;
 mod stored;
 mod text_size;
-pub mod trashed;
 
 pub use corner_roundness::CornerRoundness;
 pub use defaults::default_sidebar_order;

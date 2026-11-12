@@ -58,7 +58,7 @@ Of the 22 files in the folder, with `src/ui/preferences.rs` itself:
 | `appearance_settings.rs`, `file_settings.rs`, `input_settings.rs`, `item_customizations.rs` | GTK | Stay: manager methods |
 | `layout_settings.rs`, `preview_settings.rs`, `sidebar_settings.rs` | Nothing | Stay: manager methods |
 | `bindings.rs`, `save_notice.rs`, `desktop_scale.rs` | GTK | Stay |
-| `folder_views.rs`, `folder_views/keys.rs`, `trashed.rs` | Nothing | Stay. See "Left for later" |
+| `folder_views.rs`, `folder_views/keys.rs`, `trashed.rs` | Nothing | Stayed in the slice. `folder_views.rs` and `folder_views/keys.rs` moved since ([shared-state.md](../shared-state.md)) |
 | `fixtures.rs` and `tests/` | The manager | Stay. See "Tests" |
 
 ## What moved
@@ -185,7 +185,8 @@ changed.
 - **Per-folder views.** `folder-views.toml` holds the sort and icon size a folder
   remembers. Its model (`folder_views.rs`) needs no GTK, but its store runs on GLib timers.
   The Rune interface applies the default sort to every folder until it moves. No scenario
-  in the slice seeds that file.
+  in the slice seeds that file. The model moved after the slice; the store has not
+  ([shared-state.md](../shared-state.md#per-folder-views)).
 - **The key catalog.** `KeymapOverrides` is read and kept, and nothing on the Rune side
   resolves it.
 - **The date format and reduced motion.** `PreferenceManager::load` applies both
