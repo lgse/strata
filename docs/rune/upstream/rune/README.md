@@ -195,6 +195,15 @@ Follow-ups in this repository, found on the way (not filings):
 | 97 | [A host that owns a `Runtime` cannot send a key press with its physical key](97-key-press-with-physical-key.md) | New issue | `strata-app`'s QA backend (the vertical slice's offscreen host) | The parity ledger's `rune` blocker on a plain-letter binding under a non-Latin layout | Filed: [#657](https://github.com/anomalyco/rune/issues/657) |
 | 98 | [The Escape that breaks off a dead-key sequence reaches a text field as a key press](98-escape-after-a-dead-key.md) | New issue | C5's rename editor in `strata-app`; C6 and C18's fields | The parity ledger's `rune` blocker on `tone-mark-escape-before-rename/columns` | Drafted: by source only, no headless repro possible; run it in a window first |
 
+## Added during parity work
+
+Entries drafted by the parity plan's packages (`docs/rune/parity/README.md`, "Rune framework
+gaps"), by number. The owner ranks each at the filing pass.
+
+| # | Entry | Kind | Affects | Workaround it would retire | Status |
+| --- | --- | --- | --- | --- | --- |
+| 99 | [A key handler cannot learn what a key types in the other configured layouts](99-configured-layouts.md) | New issue | `strata-app`'s press builder (B3) | The US position standing in for the user's other Latin layout, a deviation recorded in `docs/rune/parity/owner.md` | Drafted, checked by source only; no headless repro |
+
 ## Owner decisions (2026-11-10)
 
 - **Hold off filing.** The owner will make a second pass over the entries to avoid flooding the project; until then the packet is documentation only.
