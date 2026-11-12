@@ -128,6 +128,11 @@ merges only the keys it changed. It reads `type_to_search` and `tenxer_mode` for
 Columns view's letters. A file it cannot read gives it the defaults and is never saved
 over.
 
+After the slice `Saved` took the GTK application's bookkeeping,
+`strata_desktop::settings::Saving`, and with it what GTK writes: a salvaged file is saved
+with what loading filled in, and a key is written until a save succeeds, not by every later
+save ([shared-state.md](../shared-state.md#the-rune-interface)).
+
 ## Merging from `main`
 
 A change on `main` to code that moved conflicts when `main` merges into `strata-next`. Git
