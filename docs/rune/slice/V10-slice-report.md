@@ -193,3 +193,7 @@ no consent and no need.
 The owner decides whether the slice is approved. If it is, `strata-next` becomes an
 integration branch: work packages land through pull requests from then on, and the
 commits made directly on the branch are pushed to `lgse/strata` if they have not been.
+
+The owner ruled on 2026-11-11 that the slice counts as approved once the report is
+committed and the exit command exits 0. Both hold, so the slice is approved: the
+[index](README.md#approval) records it, and `AGENTS.md` has the branch's rule from here on.

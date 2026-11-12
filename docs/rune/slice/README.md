@@ -9,7 +9,22 @@ and a new Rune binary, and both pass.
   `Browser`: keyboard navigation, selection, and inline rename with filesystem checks.
 - **Command:** `./scripts/qa-parity.sh slice`, run in the pinned QA container.
 
-Source: the slice plan of 2026-11-09. Status below is as of 2026-11-11, after V9b.
+Source: the slice plan of 2026-11-09. Status below is as of 2026-11-11, after V10.
+[The slice report](slice-report.md) has what the slice proved and did not, what it cost and
+what is open after it.
+
+## Approval
+
+The slice is approved, as of 2026-11-11.
+
+- **The ruling.** The owner ruled on 2026-11-11 that the slice counts as approved once the
+  report is committed and the exit command exits 0.
+- **Both hold.** [The report](slice-report.md) is committed, and `./scripts/qa-parity.sh
+  slice` exits 0 at `d4f086f25`, with every part passing
+  ([the run](slice-report.md#the-exit-check)).
+- **What follows.** `strata-next` is an integration branch from here on. Migration work
+  lands by issue and pull request, with pull requests targeting `strata-next`; `AGENTS.md`,
+  "Two branches", has the rule. The commits V0 to V10 made directly on the branch stand.
 
 ## Exit check
 
@@ -53,12 +68,12 @@ G2 and 33 under G3.
 | V4b | [Import the component crates](V4b-import-components.md) | V4 | Done: `ad88c18a8` to `7f7a11c26` | The Rune side builds and tests in the workspace; GTK suite passes |
 | V5 | [`strata-rune` shell and loop](V5-shell-and-loop.md) | V4b | Done: `651ea8bfb` to `679fb74c9` | A themed window opens on a directory; GLib work reaches the UI thread |
 | V5b | [The settings store without GTK](V5b-settings-store.md) | V4 | Done, `ce3b5b83d` | Both interfaces read `settings.toml` through one schema; GTK suite passes |
-| V6 | [Columns adapter](V6-columns-adapter.md) | V5 | Done: `90fdcb2f7` to `25d40091f`. The owner's look at the window moved to V10 | Columns shows a real directory with Strata's accessible names |
+| V6 | [Columns adapter](V6-columns-adapter.md) | V5 | Done: `90fdcb2f7` to `25d40091f`. The owner's look at the window moved to V10, and was done there | Columns shows a real directory with Strata's accessible names |
 | V7 | [Rune QA backend](V7-rune-qa-backend.md) | V3, V6 | Done: `4de69a313` to `e97b84e0b`. The image's dependency stage was not changed (decision 12) | Gate G1 passes on both targets |
 | V8 | [Read-path parity](V8-read-path-parity.md) | V7 | Done: `dc1f7ed9c` to its record. Gate G2 passes with 23 of 42 runs `required`. One part stopped: the Appearance popover is not mounted | Gate G2: ledger complete, required runs pass three times running |
 | V9 | [Rename parity](V9-rename-parity.md) | V8 | Done: `3ba9a1f312ae2b9163c9dde892af88b866bf4bbe` to its record. Gate G3 passes with 13 of 33 runs `required`; 17 are `scope` pending, 2 `platform`, 1 `rune` | Gate G3: same bar, with fs checks |
 | V9b | [Test image and exit check](V9b-test-image-and-exit-check.md) | V9 | Done. The exit check: `37b63862f`, `481392c68`, and `033f8fb48` for decision 27 as the owner ruled it. The image: `50124f6e2` and `7c3d69d3f`, validated in a base built here, pushed on 2026-11-11 and published: the build job and the publisher both passed | The exit command passes or fails for the slice's reasons only, and checks all four items; a run fetches no crate on first use |
-| V10 | [Slice report](V10-slice-report.md) | V9b | Not started | Report committed; the exit command passes |
+| V10 | [Slice report](V10-slice-report.md) | V9b | Done: [the report](slice-report.md). The exit command exits 0 at `d4f086f25`, and the owner's hand check on Hyprland is recorded | Report committed; the exit command passes |
 
 V3 can run beside V4b, V5 and V6. V4b is not in the slice plan: it is the import stage of
 the [workspace migration](../workspace-migration.md), which the slice needs before V5. V5b
@@ -159,6 +174,17 @@ every part passing; the flaky run passed that time, and the rehearsal shows the 
 exits 0 when it does not. The scripts' own tests: 270.
 [V9b](V9b-test-image-and-exit-check.md#done-when-and-the-evidence) has the figures and
 names the artifacts.
+
+**After V10.** At `d4f086f25`, on 2026-11-11, in the pinned image, in the base built here
+for the key `4fa6c8cf…`: `./scripts/qa-parity.sh slice` exits 0 in 13 min 43 s. 36 of 36
+required runs pass on GTK and on Rune, the whole suite has 793 passed (758 scenario runs
+and the runner's 35 tests) and 2 ignored, 3 of 3 Rune patches and 21 of 21 GTK patches are
+caught, and one allowance is used, `cut.patch`'s; the flaky run passed in this run.
+`./scripts/qa-parity.sh slice --pending`: none of the 39 pending runs passes on Rune. The
+report's launch and listing times were taken on both targets in the same image, in a
+`./scripts/qa-drive.sh` session. On the host: `cargo run --locked -p strata-rune -- --help`
+alone. No file outside `docs/` and `AGENTS.md` changed. [The report](slice-report.md) has
+the figures and names the artifacts.
 
 ### What the exit command lets stand
 
@@ -311,8 +337,9 @@ conflicts with them, follow them and report the conflict.
 - **One QA script at a time.** `qa.sh`, `qa-drive.sh`, `qa-mutation.sh` and `qa-parity.sh`
   share `target/qa-container`.
 - **One package, one reviewable unit.** The slice plan asked for a branch and a pull
-  request per package. Until the slice is approved, the owner has work land as focused
-  commits on `strata-next`. A refactor commit contains no behaviour change, and says so.
+  request per package. Until the slice was approved, the owner had work land as focused
+  commits on `strata-next`; since the [approval](#approval) a package lands by issue and
+  pull request. A refactor commit contains no behaviour change, and says so.
 - **Upstream Rune is read-only.** A gap in Rune becomes a ledger entry and a written
   request. Before V4b the same holds for strata-components; after it, a component change is
   a change on `strata-next` with its own commit.
@@ -352,7 +379,7 @@ Work halts and is reported when any of these holds.
 | 4 | Which strata-components revision | V4b | Settled: `integration` at `e4f2df1a`. The old repository is frozen there |
 | 5 | GTK's accessible names and AT-SPI role names as the contract | V6 | Settled on 2026-11-11: the component changed. A host describes each row and the view names each column's group. [V6](V6-columns-adapter.md#decision-5-row-descriptions-and-the-pane-group) |
 | 6 | Non-US layout runs: required or pending | V8 | Settled on 2026-11-11: required, against the plan's assumption. V7 built the mechanism: the runner tells a Rune target the layout and the backend types under it. [V7](V7-rune-qa-backend.md#decision-6-a-layout-on-a-target-with-no-display). G2 has one such run, `arrow-keys-move-focus/columns-hjkl-tenxer-ru`: it is `scope` pending for 10xer mode, with the physical key Rune's input lacks named behind it and [the request](../upstream/rune/97-key-press-with-physical-key.md) filed as [anomalyco/rune#657](https://github.com/anomalyco/rune/issues/657). G3 has one step under `cn-altgr-pinyin`, whose dead keys V9 taught the backend to compose: the step passes, and the run is `rune` pending for the Escape after it ([the request](../upstream/rune/98-escape-after-a-dead-key.md), drafted) |
-| 7 | Hand check of the windowed binary on Hyprland | V10 | Settled on 2026-11-11 as to who: the owner does the check. V10's report leaves a slot for it, with the exact command and the things to try. The check itself is open. The compositor tests see the window list its folder, and nothing looks at the picture |
+| 7 | Hand check of the windowed binary on Hyprland | V10 | Settled on 2026-11-11: the owner does the check, and did it that day. A real directory in the Columns view, keyboard navigation and selection, and inline rename all behaved correctly, and nothing looked wrong. [The report](slice-report.md#the-hand-check) records it as the owner stated it. It is the slice's only evidence from a real compositor, and no other compositor was checked. The compositor tests see the window list its folder, and nothing in them looks at the picture |
 | 8 | The windowed wake: a tick, or a GLib embedding shim | V5 | Settled on 2026-11-11: the embedding, notified through `AppHandle::update_if`. A `Waker` call never runs `poll` under a covered Wayland window at Rune `2a44156` |
 | 9 | `gstreamer` in `strata-platform` against the `AGENTS.md` rule | V4b | Settled: the rule stands, and the `media-audio` shim was not imported |
 | 10 | Import history: squash or keep | V4b | Settled: squashed |
