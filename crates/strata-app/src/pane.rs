@@ -31,7 +31,7 @@ use strata_fs::app::Browser;
 
 use crate::{
     events::{Added, Change, Marks, Moved},
-    handover::{self, Held, Moving},
+    handover::{self, Held, Moving, Shown},
     listing::{Column, Edit, Load},
 };
 
@@ -296,10 +296,17 @@ impl Pane {
             return;
         }
         self.adopt(&marks);
-        if reveal
-            && let Some(column) = self.listing()
-            && let Some(index) = self.collection.selection.cursor_index(column)
-        {
+        if reveal {
+            self.reveal_cursor(tx);
+        }
+    }
+
+    /// Scrolls the cursor's entry into view, as the browser asks of a change it makes.
+    fn reveal_cursor(&self, tx: &mut rune::Tx) {
+        let Some(column) = self.listing() else {
+            return;
+        };
+        if let Some(index) = self.collection.selection.cursor_index(column) {
             self.collection.reveal(self.scope, column, index, tx);
         }
     }
@@ -356,7 +363,12 @@ impl Pane {
         else {
             return;
         };
-        handover::hand_over(depth, column, &self.collection, browser, &mut self.held);
+        let shown = Shown {
+            depth,
+            column,
+            collection: &self.collection,
+        };
+        handover::hand_over(&shown, browser, &mut self.held);
     }
 
     /// Selects entry `id` of column `depth` alone, with the cursor on it.

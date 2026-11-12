@@ -91,16 +91,22 @@ pub(crate) fn adopt(column: &Column, collection: &mut CollectionState, marks: &M
     Held::of(collection)
 }
 
-/// Gives the browser's column `depth` what its collection changed since the browser last
-/// held it. Call it before GLib dispatches and before any call that makes the browser act on
-/// its cursor, so the browser never works from a selection older than the view's.
-pub(crate) fn hand_over(
-    depth: usize,
-    column: &Column,
-    collection: &CollectionState,
-    browser: &Browser,
-    held: &mut Held,
-) {
+/// One of the browser's columns as a view shows it: the listing, and the collection over it.
+pub(crate) struct Shown<'a> {
+    pub(crate) depth: usize,
+    pub(crate) column: &'a Column,
+    pub(crate) collection: &'a CollectionState,
+}
+
+/// Gives the browser's column what its collection changed since the browser last held it.
+/// Call it before GLib dispatches and before any call that makes the browser act on its
+/// cursor, so the browser never works from a selection older than the view's.
+pub(crate) fn hand_over(shown: &Shown<'_>, browser: &Browser, held: &mut Held) {
+    let Shown {
+        depth,
+        column,
+        collection,
+    } = *shown;
     let selection = &collection.selection;
     let now = Held::of(collection);
     if *held == now {

@@ -15,7 +15,7 @@ use strata_components::{
 use strata_fs::app::Browser;
 
 use super::Columns;
-use crate::handover::{self, Held};
+use crate::handover::{self, Held, Shown};
 
 /// What made the view change its cursor or its selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -94,7 +94,12 @@ impl Columns {
         ) else {
             return;
         };
-        handover::hand_over(depth, column, &state.collection, browser, held);
+        let shown = Shown {
+            depth,
+            column,
+            collection: &state.collection,
+        };
+        handover::hand_over(&shown, browser, held);
     }
 
     /// Tells the mirror when the focused item moved since it last looked. The GTK views
