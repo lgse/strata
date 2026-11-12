@@ -1,8 +1,7 @@
 diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
-index e9deea9e4..7c8de866b 100644
 --- a/crates/strata-app/src/single/mod.rs
 +++ b/crates/strata-app/src/single/mod.rs
-@@ -169,7 +169,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
+@@ -169,7 +169,7 @@
      .on_selection(moved);
      // The editor answers in this view only while its edit names it.
      collection.rename(
