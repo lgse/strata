@@ -34,6 +34,7 @@
                 "focus",
                 "context-menu"
               ],
+              "activeDescendant": "row-9",
               "children": [
                 {
                   "actions": [
@@ -151,6 +152,7 @@
                               "children": [
                                 {
                                   "actions": [
+                                    "context-menu",
                                     "scroll-into-view"
                                   ],
                                   "children": [
@@ -158,12 +160,13 @@
                                       "actions": [
                                         "click",
                                         "focus",
+                                        "context-menu",
                                         "set-value",
                                         "replace-selected-text",
                                         "set-text-selection",
                                         "scroll-into-view"
                                       ],
-                                      "key": "c3-rename-field",
+                                      "key": "rename-field",
                                       "name": "Rename",
                                       "role": "text-input",
                                       "states": [
@@ -172,7 +175,7 @@
                                       "value": "cat.png"
                                     }
                                   ],
-                                  "key": "c3-rename",
+                                  "key": "rename",
                                   "role": "group"
                                 }
                               ],
@@ -180,7 +183,10 @@
                               "key": "row-9",
                               "name": "cat.png",
                               "position": 9,
-                              "role": "grid-cell"
+                              "role": "grid-cell",
+                              "states": [
+                                "selected"
+                              ]
                             },
                             {
                               "actions": [

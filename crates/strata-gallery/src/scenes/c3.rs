@@ -24,12 +24,12 @@
 //! | Ctrl+Alt+plus, Ctrl+Alt+=, Ctrl+Alt+minus, Ctrl+Alt+0 | The size keys, from anywhere on the page |
 //! | Ctrl+T | 10xer mode on or off: plain +, = and − then step the size with the grid focused |
 //! | F5 | Refresh |
-//! | Escape | Ends a rename: the page draws a stand-in for C5's editor |
+//! | Escape | Ends a rename: C5's editor, in the tile's caption, cancels it |
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use rune::{Cx, El, HelpLook, Key, KeyEvent, TextEdit, Tx, col, row, text, text_input};
+use rune::{Cx, El, HelpLook, Key, KeyEvent, Tx, col, row, text};
 use strata_components::collection::element::{
     Collection, CollectionState, Controllers, Intent, RowMarks,
 };
@@ -42,6 +42,7 @@ use strata_components::icons_grid::{
     IconsGrid, IconsGridState, IconsParts, SizeKeyed, SizeKeys, SizeRequest, autoscroll_background,
     size_command,
 };
+use strata_components::rename::{Initial, RenameEditor, RenameState};
 use strata_components::scroll::{
     Autoscroll, AutoscrollPointer, AutoscrollSettings, BarMode, Shield,
 };
@@ -262,11 +263,8 @@ pub struct Demo {
     pub thumbs_on: bool,
     /// The details line shows.
     pub with_details: bool,
-    /// The entry being renamed: a stand-in editor shows in its name's place (C5's comes
-    /// later). Escape ends it.
-    pub renaming: Option<EntryId>,
-    /// The stand-in editor's field: what it holds, and that it has the keyboard.
-    pub rename_edit: TextEdit,
+    /// The rename editor (C5's own), in the caption of the tile it renames.
+    pub rename: RenameState,
     /// The host's marks on tiles (cut, dragging, the filter's Enter target).
     pub marks: HashMap<EntryId, RowMarks>,
     /// The window's autoscroll (C24).
@@ -313,8 +311,7 @@ impl Demo {
             busy: false,
             thumbs_on: true,
             with_details: true,
-            renaming: None,
-            rename_edit: TextEdit::default(),
+            rename: RenameState::new(),
             marks: HashMap::new(),
         }
     }
@@ -357,11 +354,14 @@ impl Demo {
             .unwrap_or_default()
     }
 
-    /// Opens the stand-in editor on `id` with the keyboard in it, as C5's editor opens.
+    /// Opens C5's editor on `id`, the stem selected and the keyboard in it, as Strata opens it.
     pub fn begin_rename(&mut self, id: EntryId) {
-        self.renaming = Some(id);
-        self.rename_edit = TextEdit::new(self.name_of(id));
-        self.rename_edit.focused = true;
+        let Some(index) = self.listing.index_of(id) else {
+            return;
+        };
+        let entry = self.listing.entry(index);
+        let (name, kind) = (entry.name.to_owned(), entry.kind);
+        let _ = self.rename.begin(SCOPE, id, &name, kind, Initial::Stem);
     }
 
     fn heard(&mut self, intent: Intent) -> Option<Intent> {
@@ -569,9 +569,12 @@ fn selection(g: &mut Gallery, dark: bool) {
     d.coll.note_selection(&d.listing);
 }
 
-/// A tile renaming: the stand-in editor in its caption, with the keyboard.
+/// A tile renaming, as F2 and a slow second click rename: the selected cursor entry, with C5's
+/// editor in its caption, the stem selected and the keyboard in the field.
 fn renaming(g: &mut Gallery, dark: bool) {
     let d = open(g, dark, Folder::Pictures);
+    let _ = d.coll.selection.select_only(&d.listing, 8);
+    d.coll.note_selection(&d.listing);
     let id = d.listing.id_at(8);
     d.begin_rename(id);
 }
@@ -738,29 +741,12 @@ pub fn collection(g: &Gallery) -> Collection<Gallery> {
         }
     })
     .rename(
-        |g: &Gallery| g.c3.renaming,
-        // A field that grows from no width of its own, as C5's editor does: the tile, not the
-        // stand-in, gives it its width.
-        strata_components::collection::element::Slot::pure(|g: &Gallery, _| {
-            let kit = g.kit();
-            row()
-                .key("c3-rename")
-                .grow(1.0)
-                .min_w(0.0)
-                .fill(kit.c.layer_01)
-                .outline(1.0, 0.0, kit.c.border_focus)
-                .child(
-                    text_input(&g.c3.rename_edit, kit.ty.ui_compact)
-                        .single_line()
-                        .key("c3-rename-field")
-                        .label("Rename")
-                        .color(kit.c.text_base)
-                        .grow(1.0)
-                        .shrink()
-                        .min_w(0.0)
-                        .on_edit(|g: &mut Gallery| &mut g.c3.rename_edit),
-                )
-        }),
+        |g: &Gallery| g.c3.rename.renaming_in(SCOPE),
+        RenameEditor::new(
+            |g: &Gallery| &g.c3.rename,
+            |g: &mut Gallery| &mut g.c3.rename,
+        )
+        .slot(),
     )
     .describe(strata_components::collection::element::Describe::pure(
         |_: &Gallery, rcx| Some(kind_name(rcx.entry.kind, rcx.entry.icon).to_owned()),
@@ -887,7 +873,6 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, tx: &mut Tx) -> bool {
     }
     match &key.key {
         Key::Function(5) => g.c3.refresh(tx),
-        Key::Escape if g.c3.renaming.is_some() => g.c3.renaming = None,
         _ if key.is_command('t') => g.c3.tenxer = !g.c3.tenxer,
         _ => return false,
     }
