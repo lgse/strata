@@ -22,7 +22,7 @@ the files on disk keep their format and their place.
 | --- | --- | --- | --- |
 | Per-folder views | The model moved, and the file code: its path, the read at start-up and the save. The store has not: when a save is scheduled, the monitors, the notices | `strata_desktop::settings::folder_views` and `settings::folder_view_file` | `src/ui/preferences/folder_view_settings.rs`: `FolderViewStore` and the manager's methods |
 | Tab sessions | Moved, whole | `strata_desktop::tabs_session` | One import in `src/ui/mod.rs`. When to save and how to restore stay in `src/ui/window/composition/tabs.rs` |
-| Key catalog | Not moved | None yet | `src/ui/keys` |
+| Key catalog | Moved, behind a backend seam: the key and modifier types, the catalog, the command registry and `Keymap`, `KeyPress` and its normalizer, the alias rewrite and the labels. Reading a GDK event, GTK's own effect for an alias, capture, composition and the conflict check have not | `strata_desktop::keys` | `src/ui/keys/`: the reader and the old names (`mod.rs`), the GDK backend, and `alias.rs`, `capture.rs`, `composition.rs` and `conflicts.rs` with every test |
 | `PreferenceManager` | The save bookkeeping moved. The manager, its getters and setters, its bindings and its notices have not | The schema, from V5b, and `strata_desktop::settings::Saving` | `src/ui/preferences.rs` and the files under it, with `persistence.rs` as the wrapper around `Saving` |
 
 Until a row says a store moved, its code stays where `main` has it, and a change to it is
@@ -180,6 +180,126 @@ difference reaches the user:
 | The writer is flushed at exit, or a save on its way to the file is lost. The windowed Rune host flushes; the offscreen host does not, which a restore scenario on the Rune target would need | `crates/strata-app/src/host/windowed.rs:90` |
 
 The line numbers are as of the move.
+
+## The key catalog
+
+Which key does what, and how a press is matched and labelled
+([keyboard-shortcuts.md](../keyboard-shortcuts.md)). It moved to `strata_desktop::keys` so
+that the Rune interface matches the same catalog through the same tables.
+
+| Moved to `crates/strata-desktop/src/` | Holds |
+| --- | --- |
+| `keys.rs`, from `src/ui/keys.rs` | `Binding`, `KeyPress` and what a handler asks of it, `Match`, `normalize` with its tables (the modifier keys, the keypad, the digit row, US QWERTY), and the lists of direct, text-editing and custom-action commands. The whole file but the reader |
+| `keys/bindings.rs` and the eight files under `keys/bindings/` | The catalog: every shortcut as a named constant |
+| `keys/command.rs` | `Command`, `Map`, `registry()`, `Keymap` with reading and writing a saved entry, and `active_keymap()` |
+| `keys/label.rs` | `Keys`, `Shown`, `Digits`, `Letters`, `label` and the functions beside it |
+
+The moved files changed in visibility, in paths, and where they called GDK or the
+preference manager, which are the three seams below. Five new files hold what is new:
+
+| New in `crates/strata-desktop/src/keys/` | Holds |
+| --- | --- |
+| `key.rs`, `key_constants.rs` | `Key` and `Modifiers`, and the keys Strata names in code |
+| `backend.rs` | `Backend`, `NeverFires` and `install` |
+| `active.rs` | `Active`, `Fixed` and `set_active` |
+| `alias.rs` | `rewrite` and `Context`: the half of `src/ui/keys/alias.rs` that touches no widget, moved as text |
+| `parts.rs` | `KeyPress::from_parts`, for an interface whose events are not GDK's |
+
+### Keys and modifiers
+
+`Key` is an XKB keysym, which is the number `gdk::Key` holds, and its constants have GDK's
+names (`Key::Return`, `Key::_1`, `Key::KP_Enter`). `Modifiers` has GDK's names and bits. So
+the catalog reads as it did, and the application converts without a table:
+`ui::keys::gdk_key`, `key_from_gdk`, `gdk_modifiers` and `modifiers_from_gdk`.
+`modifiers_from_gdk` drops the pointer-button bits of a GDK state, which every reader of a
+press already masked off.
+
+**A key Strata names in code is a constant in `keys/key_constants.rs`,** and that is where
+a new one goes: a key a catalog entry binds, a key a table of the normalizer names, or a
+named key an interface delivers, whether or not the catalog binds it. The name is X's
+keysym name, with a leading underscore where it starts with a digit, and the value is the
+one in `xkbcommon-keysyms.h`. While the GTK application exists, its test
+`ui::keys::tests::constants` holds every constant to GDK's key of the same name. The list
+is a macro so that the test, and a backend, can walk it.
+
+### The key library is the interface's: `Backend`
+
+Six questions have no answer without a key library: a key's name, the key of a name, the
+character a key types, the key of a character, and a key's lower and upper case. Two more
+are GTK's accelerator strings, which `settings.toml` saves: reading one and writing one.
+`Backend` is those eight methods. An interface installs its own once, at start-up, with
+`keys::install`, and the shared code asks it.
+
+- **The GTK application installs GDK** (`src/ui/keys/gdk_backend.rs`): each method is one
+  GDK or GTK call, the call the moved code made before. So what the application parses,
+  writes, labels and matches is unchanged by construction, and GTK stays an oracle that a
+  mistake in another backend cannot reach. `main` installs it first. A test binary installs
+  it as it loads, from `.init_array`, because a `#[test]` has no start-up and one that
+  forgot would fail only for what it happened to read.
+- **`strata-desktop` holds no backend yet.** A lookup with none installed panics, with a
+  message that says so. Until the `xkbcommon` backend lands, behind a cargo feature only
+  `strata-app` enables, nothing on the Rune side may call `Key::name`, `to_unicode`,
+  `to_lower`, `to_upper`, `from_name` or `from_char`, `Binding::parse` or
+  `Binding::accelerator`, `normalize`, `KeyPress::from_parts`, a label, or `Keymap`'s
+  reading of saved entries. That is why the tests of the moved code stayed in the GTK lane.
+- The seam is one process-wide value, and it goes when GTK does.
+
+`install` takes a second answer that is also the interface's own: `NeverFires`, whether a
+binding in a map's entry can ever fire there, which `label` uses to leave such a binding
+out. The GTK application's answer is `ui::keys::conflicts::never_fires`, from its own key
+stages.
+
+### The settings that are read at each press: `Active`
+
+`Map::active()`, `active_keymap()` and the labels read three live values: whether 10xer
+mode is on, whether typing starts a search, and the keymap. On `main` they call
+`PreferenceManager::existing()`. Here they ask the `Active` an interface registered for its
+thread with `keys::set_active`, and fall back to the shipped defaults when none is
+registered or it has gone, as they did when no manager existed.
+
+`PreferenceManager` implements `Active`, and `PreferenceManager::shared()` registers a weak
+reference to the manager it makes, so the values are read at the same moments from the same
+manager. An interface that holds its values some other way registers its own, and `Fixed`
+is one that holds them as plain fields.
+
+### What an interface does with a press
+
+1. Build the press: `KeyPress::from_parts(KeyPressParts { … })`, with the key, the modifiers
+   as a binding sees them, the modifiers held, what the press typed, the digit position
+   and whether the key came from a fallback. The GTK application's `normalize` derives the
+   same from a GDK event, and `ui::keys::tests::parts` holds the two to the same press.
+2. Read it through the aliases: `rewrite(press, Context { typing })`, where `typing` says
+   whether what has focus takes text. A release is not rewritten.
+3. Match it: `press.is(COPY)`, `press.digit_in(TAB_NUMBERS)`, and the rest of `KeyPress`.
+
+`KeyPress::unclaimed_alias()` gives the canonical key of an alias nothing claimed, for an
+interface that then wants its toolkit's own effect for that key, as GTK does.
+
+### What stayed in `src/ui/keys/`
+
+- **`mod.rs`, the reader.** `on_press`, `on_release` and `read_event`, with the two raw key
+  signals and the read of a `gdk::KeyEvent`, are the text that was in `src/ui/keys.rs`.
+  It re-exports every shared name at the path it always had, so `crate::ui::keys::Binding`,
+  `ui::keys::bindings::COPY` and `keys::label` resolve as before, and it implements
+  `Active` for the manager. No file is left at `src/ui/keys.rs`.
+- **`alias.rs`, the GTK half:** what owns typing where a press lands, read from the focused
+  widget, and GTK's own effect for an alias nothing claimed.
+- **`capture.rs` and `composition.rs`,** unchanged.
+- **`conflicts.rs`,** with three import lines changed. It knows which keys GTK's widgets
+  and input methods take, so it is GTK's. What the Rune settings report as a conflict is an
+  open question for the owner (lgse/strata#2133, lgse/strata#2150).
+- **`PreferenceManager`'s keymap methods** (`src/ui/preferences/keymap.rs`), unchanged:
+  they use the conflict check.
+- **Every test.** `src/ui/keys/command/tests.rs` kept its path, through a test-only module
+  in `mod.rs`, so its test names and the names its GTK tests re-run themselves by did not
+  change.
+
+Outside `ui::keys`, a file that named `gdk::Key` or `gdk::ModifierType` for a binding or a
+press now names `ui::keys::Key` and `ui::keys::Modifiers`: an import line in most, and a
+conversion where a key goes to GTK, as in `focus_navigation::activate_native_binding`. No
+handler changed.
+
+Nothing in the moved code logs, so no log target changed.
 
 ## `PreferenceManager`
 
@@ -341,6 +461,15 @@ Where each file is:
 | A new process-wide effect of loading | `PreferenceManager::load` in `src/ui/preferences.rs`, after the shared `load` |
 | A new call of `changes.record` or `changes.reset_baseline` | It merges clean and builds, and the next `save_preferences` then panics in debug builds, so in the QA runs: the bindings' snapshot and `Saving`'s no longer agree. Add the matching call beside it: `commit` for a save, `record_adopted` for adopted values, `rebase` for a start-up repair |
 | A new use of `last_queued`, `dirty_keys`, `persistence_dirty`, `saves_requested`, `load_failure` or a start-up value | It merges clean and does not build: the field is in `Saving` now |
+| `src/ui/keys.rs` | `crates/strata-desktop/src/keys.rs`, less the reader. A change from `main` to `on_press`, `on_release`, `read_event`, `signals`, `read`, `normalize_event` or `Event::read` conflicts there, against lines that are gone, and is applied by hand to `src/ui/keys/mod.rs` |
+| `src/ui/keys/bindings.rs`, the files under `bindings/`, `command.rs`, `label.rs` | The file of the same name under `crates/strata-desktop/src/keys/` |
+| `src/ui/keys/alias.rs` | The same file as on `main`, less the rewrite. A change from `main` to `FALLBACK`, `Context`'s fields, `Aliasing`, `Alias`, `structural` or `rewrite` conflicts there, against lines that are gone, and is applied by hand to `crates/strata-desktop/src/keys/alias.rs`. `Context::of` and `Context::of_controller` are the free functions `context_of` and `context_of_controller` |
+| `src/ui/keys/capture.rs`, `composition.rs`, `conflicts.rs` and every test under `src/ui/keys/` | The same file as on `main` |
+| A new item in a moved key file | It merges clean. `pub(crate)` builds in `strata-desktop` and fails where the application names the item: make it `pub`, and re-export it from `src/ui/keys/mod.rs` |
+| A call of GDK or GTK in a moved key file, or of `PreferenceManager` | It merges clean and does not build. A question about a key goes through `Key`'s methods, to the backend; a live setting through `Active`. A new question is a new method of the trait, answered in `src/ui/keys/gdk_backend.rs` |
+| `Key::…` for a key the catalog did not name before | It merges clean and does not build: add the constant to `crates/strata-desktop/src/keys/key_constants.rs` |
+| `gdk::Key` or `gdk::ModifierType` in a new binding, a new `.ignoring(…)` or a new `KeyPress::from_signal`, anywhere in `src/ui` | It merges clean and does not build. Name `ui::keys::Key` and `ui::keys::Modifiers`; convert with `keys::gdk_key` and `keys::gdk_modifiers` where the value goes to GTK, such as a test's emission of `key-pressed` |
+| `tests/qa/mutations/quick-preview.patch` | One line differs from `main`'s, by the owner's exception of 2026-11-12 to the rule that the oracle is not edited: the mutation binds `crate::ui::keys::Key::F35` where `main`'s binds `gtk::gdk::Key::F35`. Keep this side's line in a conflict. A new mutation from `main` that names a GDK key in a binding needs the same one-line change, and the owner's word for it |
 
 [slice/V5b](slice/V5b-settings-store.md#merging-from-main) has the table for the settings
 schema.
