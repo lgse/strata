@@ -230,16 +230,32 @@ fn image_previews_and_thumbnails_preserve_small_sources_and_bound_large_decodes(
 }
 
 #[test]
-fn webp_decodes_without_a_system_pixbuf_loader() {
+fn webp_decodes_upright_without_a_system_pixbuf_loader() {
+    use image::ImageEncoder as _;
+
     let directory = tempfile::tempdir().expect("webp fixture");
     let path = directory.path().join("image.webp");
-    image::RgbImage::new(1200, 600)
-        .save(&path)
-        .expect("save webp");
+    let mut webp = Vec::new();
+    let mut encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut webp);
+    // Little-endian TIFF EXIF, one SHORT orientation entry (6 = rotate 90 degrees).
+    encoder
+        .set_exif_metadata(vec![
+            73, 73, 42, 0, 8, 0, 0, 0, 1, 0, 18, 1, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0,
+        ])
+        .expect("EXIF");
+    encoder
+        .write_image(
+            &vec![0; 1200 * 600 * 3],
+            1200,
+            600,
+            image::ExtendedColorType::Rgb8,
+        )
+        .expect("encode webp");
+    std::fs::write(&path, webp).expect("save webp");
     let png = render_webp(&path, 800).expect("decode with the built-in decoder");
     assert_eq!(
         read_png_dimensions(&mut std::io::Cursor::new(png)),
-        Some((800, 400))
+        Some((400, 800))
     );
 }
 
