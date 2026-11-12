@@ -6,6 +6,7 @@
 use std::{collections::HashMap, fmt::Write as _, rc::Rc};
 
 use serde_json::Value;
+use strata_components::{collection::element::row_key, contract::EntryId};
 use strata_qa::{Mark, Rect};
 
 use super::roles;
@@ -174,6 +175,14 @@ fn bounds(node: &Value) -> Option<Rect> {
     })
 }
 
+/// Whether `key` is the collection's key for an entry's row ([`row_key`]). A list holds
+/// other nodes of an entry's role: the List table's headings are a `row` of its grid too.
+fn is_entry_key(key: &str) -> bool {
+    let digits = key.trim_start_matches(|c: char| !c.is_ascii_digit());
+    let id = digits.parse::<u64>();
+    id.is_ok_and(|id| row_key(EntryId::new(id)) == key)
+}
+
 impl Snapshot {
     /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`, and what the view
     /// draws that the tree leaves out.
@@ -338,8 +347,9 @@ impl Snapshot {
     }
 
     /// Marks one column where the adapter put it: the list with the column's key is the entry
-    /// container, the options under it are the entries, and the named group around it, which
-    /// the view names by the folder, is the pane.
+    /// container, the nodes of the entry role under it keyed as the collection keys its rows
+    /// are the entries, and the named group around it, which the view names by the folder, is
+    /// the pane.
     fn mark_column(&mut self, list: &str, view: &Shape) {
         let is_list = |seen: &Seen| seen.role == view.list && seen.key.as_deref() == Some(list);
         let Some(container) = self.nodes.iter().position(is_list) else {
@@ -347,7 +357,8 @@ impl Snapshot {
         };
         self.nodes[container].mark = Some(Mark::EntryContainer);
         for index in self.below(container) {
-            if self.nodes[index].role == view.entry {
+            let seen = &self.nodes[index];
+            if seen.role == view.entry && seen.key.as_deref().is_some_and(is_entry_key) {
                 self.nodes[index].mark = Some(Mark::Entry);
             }
         }

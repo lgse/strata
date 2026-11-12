@@ -288,7 +288,10 @@ pub(crate) struct Editing<S: 'static> {
 
 /// What the QA backend needs to know of a view to read its panes out of the tree: which
 /// elements are the entry lists, by key, and what Rune calls a list and an entry in it. A
-/// pane is the nearest named group around a list.
+/// pane is the nearest named group around a list. An entry is a node of the entry role keyed
+/// as the collection keys an entry's row (`collection::element::row_key`), so a node a view
+/// puts in the list that is no entry, such as a table's headings or a group's header, must
+/// not take that key's form.
 #[cfg(feature = "qa")]
 pub(crate) struct Probe<S: 'static> {
     /// The view's name in the QA protocol: `view_name` in `src/ui/accessibility.rs`.
