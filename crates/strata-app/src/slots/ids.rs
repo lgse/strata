@@ -15,8 +15,9 @@ struct Table {
     issued: u64,
 }
 
-/// The table, shared by the browser's observer, which names the rows it copies, and the
-/// adapter, which names the folder a column shows.
+/// The table. The shell makes one for the window and hands it to every part
+/// ([`super::Setup`]): a view's listener names the rows it copies with it, and its adapter the
+/// folder it shows.
 ///
 /// A rename gives an entry a new location, and so a new id: `Browser` says which entry is
 /// selected after one, and the adapter writes that to the view.

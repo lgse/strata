@@ -6,15 +6,16 @@ use rune::Tx;
 use strata_components::{
     collection::element::{Activation, Intent},
     columns::ColumnsIntent,
-    context_menu::{MenuIntent, MenuTarget},
+    context_menu::MenuTarget,
     contract::{EntryId, Point, Rect},
 };
 
 use super::Input;
 use crate::{
     App,
-    menus::{self, EntryTarget, FolderTarget, Opening, Wired},
+    menus::{self, EntryTarget, FolderTarget, Opening},
     rename, shell,
+    slots::At,
 };
 
 impl App {
@@ -172,38 +173,18 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
             rename::commit(app, tx);
             app.folder_menu(depth, Point::new(anchor.x, anchor.y));
         }
-        // `LeftOfRoot` is the sidebar's, which the slice has not. `Width` and `Dropped` are
-        // saved widths and drag and drop: out of the slice.
+        // The sidebar takes the keyboard, when there is one.
+        ColumnsIntent::LeftOfRoot => {
+            shell::leave_view_at_start(app, tx);
+        }
+        // `Width` and `Dropped` are saved widths and drag and drop: out of the slice.
         _ => {}
     }
     shell::settle(app, tx);
 }
 
-/// A row of the open menu was chosen. The menu has closed, and the keyboard is back in the
-/// view.
-pub(crate) fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
-    let MenuIntent::Activate { target, action } = intent;
-    let depth = app.menu.depth();
-    match menus::wired(&action) {
-        // `open_context_entry` in `src/ui/browser/context_menu/item_menu.rs`.
-        Some(Wired::Open) => {
-            if let Some(id) = target.entry() {
-                app.activate(depth, id, Activation::Click);
-            }
-        }
-        // `rename_context_entry` in `src/ui/browser/context_menu/focus.rs`: the entry is
-        // selected alone, and then renamed as F2 renames it.
-        Some(Wired::Rename) => {
-            if let Some(id) = target.entry() {
-                app.columns.select_only((depth, id), &app.look, tx);
-                shell::publish(app);
-                rename::begin_on(app, depth, id, tx);
-            }
-        }
-        Some(Wired::SelectAll) => app.columns.select_all(depth),
-        Some(Wired::Refresh) => app.browser.retry_column(depth),
-        Some(Wired::ToggleHidden) => app.browser.toggle_hidden(),
-        None => tracing::debug!(%action, "a menu row for a part this interface has not"),
-    }
-    shell::settle(app, tx);
+/// Opens the entry of a row as a click on it does: what the context menu's Open asks
+/// (`open_context_entry` in `src/ui/browser/context_menu/item_menu.rs`).
+pub(super) fn clicked_open(app: &mut App, (depth, id): At) {
+    app.activate(depth, id, Activation::Click);
 }

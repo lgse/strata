@@ -21,9 +21,11 @@
 //! A row whose action belongs to a part this interface does not have yet is shown as the
 //! GTK menu shows it at rest and does nothing: [`Row::wired`] is `None` for it.
 
-use rune::{El, Keybind};
+use rune::{El, Keybind, Tx};
 use strata_components::{
-    context_menu::{ContextMenu, ContextMenuState, Item, MenuModel, MenuTarget, Section},
+    context_menu::{
+        ContextMenu, ContextMenuState, Item, MenuIntent, MenuModel, MenuTarget, Section,
+    },
     contract::Point,
 };
 use strata_core::{
@@ -32,7 +34,7 @@ use strata_core::{
 };
 
 use crate::{
-    App, columns,
+    App, rename, shell,
     slots::{Frame, Part, Place, Setup},
 };
 
@@ -56,6 +58,36 @@ pub(crate) struct Opening {
     pub(crate) at: Point,
 }
 
+/// A row of the open menu was chosen. The menu has closed, and the keyboard is back in the
+/// view. What a row does is decided here, once for every view: the view the menu was opened
+/// in gives only what differs from view to view ([`Rows`](crate::slots::Rows)).
+fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
+    let MenuIntent::Activate { target, action } = intent;
+    let Some(rows) = shell::shown_view(app).map(|view| &view.rows) else {
+        return;
+    };
+    let depth = app.menu.depth();
+    let row = target.entry().map(|id| (depth, id));
+    match (wired(&action), row) {
+        // `open_context_entry` in `src/ui/browser/context_menu/item_menu.rs`.
+        (Some(Wired::Open), Some(row)) => (rows.activate)(app, row),
+        // `rename_context_entry` in `src/ui/browser/context_menu/focus.rs`: the entry is
+        // selected alone, and then renamed as F2 renames it.
+        (Some(Wired::Rename), Some((depth, id))) => {
+            (rows.select_only)(app, (depth, id), tx);
+            shell::publish(app);
+            rename::begin_on(app, depth, id, tx);
+        }
+        (Some(Wired::SelectAll), _) => (rows.select_all)(app, depth),
+        (Some(Wired::Refresh), _) => app.browser.retry_column(depth),
+        (Some(Wired::ToggleHidden), _) => app.browser.toggle_hidden(),
+        // A row for an entry, chosen in a menu that has none.
+        (Some(Wired::Open | Wired::Rename), None) => {}
+        (None, _) => tracing::debug!(%action, "a menu row for a part this interface has not"),
+    }
+    shell::settle(app, tx);
+}
+
 /// The menu's element, with its surfaces in the layer while it is open.
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let menu = ContextMenu::new(
@@ -64,7 +96,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         |app: &mut App| &mut app.menu.state,
     )
     .name(app.menu.name())
-    .on_intent(columns::chosen)
+    .on_intent(chosen)
     .build(app, &app.look, frame.layer);
     Some(menu)
 }
@@ -249,7 +281,7 @@ const ROWS: &[Row] = &[
 ];
 
 /// What the row with `id` does here, if anything.
-pub(crate) fn wired(id: &str) -> Option<Wired> {
+fn wired(id: &str) -> Option<Wired> {
     ROWS.iter().find(|row| row.id == id)?.wired
 }
 

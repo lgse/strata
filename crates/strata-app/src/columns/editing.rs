@@ -11,18 +11,12 @@ use strata_components::{
     contract::{EntryId, EntrySource},
     rename::{By, Initial, Polled, RenameState},
 };
-use strata_core::model::Location;
 use strata_fs::app::Browser;
 use strata_kit::look::Look;
 
 use super::Columns;
 
 impl Columns {
-    /// The id the view knows the entry at `location` by.
-    pub(crate) fn id_of(&self, location: &Location) -> EntryId {
-        self.ids.of(location)
-    }
-
     /// The column whose collection is keyed `scope`, while it is open.
     fn depth_of(&self, scope: &str) -> Option<usize> {
         (0..self.open()).find(|depth| self.state.column_key(*depth).as_deref() == Some(scope))

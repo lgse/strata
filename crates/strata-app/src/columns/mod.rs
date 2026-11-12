@@ -28,24 +28,24 @@ use strata_desktop::settings::Preferences;
 use strata_fs::app::Browser;
 use strata_kit::look::Look;
 
-use crate::events::{Added, Change, Marks, Moved};
+use crate::{
+    events::{Added, Change, Marks, Moved},
+    listing::{Column, Edit, Load, Row},
+    slots::Ids,
+};
 
 mod editing;
-mod ids;
 mod intents;
-mod listing;
+mod listings;
 mod mirror;
 mod part;
 mod selection;
 mod view;
 
-pub(crate) use ids::Ids;
-pub(crate) use intents::chosen;
-pub(crate) use listing::{Edit, Load, Row};
 pub(crate) use selection::Input;
 pub(crate) use view::view;
 
-use listing::{Column, Listings};
+use listings::Listings;
 use mirror::Mirror;
 
 /// The view's key: every element key of the strip starts with it.

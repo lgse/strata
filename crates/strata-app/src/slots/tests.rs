@@ -13,8 +13,10 @@ use strata_fs::{
     app::{Browser, BrowserEvent},
 };
 
-use super::{Entry, Frame, Inbox, Listener, Place, Registry, Setup, Slot, View, registry::Fault};
-use crate::columns::Ids;
+use super::{
+    Entry, Frame, Ids, Inbox, Listener, Place, Registry, Setup, Sidebar, Slot, registry::Fault,
+};
+use crate::test_support::idle_view;
 
 /// What the made-up parts did, in order.
 type Log = Vec<String>;
@@ -39,7 +41,7 @@ macro_rules! made {
 made! {
     Columns = "columns",
     Icons = "icons",
-    Sidebar = "sidebar",
+    Rail = "sidebar",
     Drawer = "drawer",
     Editor = "editor",
     Menu = "menu",
@@ -80,12 +82,15 @@ fn part<P: Made>(place: Place<Log>) -> Entry<Log> {
 
 /// A view that answers to its own name as the saved mode, and takes the keyboard there.
 fn view<P: Made>() -> Entry<Log> {
-    part::<P>(Place::View(View {
+    let shows = |mode: &str| mode == P::NAME;
+    part::<P>(Place::View(idle_view(P::NAME, nothing, shows)))
+}
+
+fn rail() -> Sidebar<Log> {
+    Sidebar {
         build: nothing,
-        shows: |mode| mode == P::NAME,
-        focus: P::NAME,
-        pointer_at: None,
-    }))
+        focus: "rail",
+    }
 }
 
 fn overlay<P: Made>() -> Entry<Log> {
@@ -118,8 +123,8 @@ fn a_part_registered_twice_is_refused_and_so_is_a_second_part_in_a_slot_for_one(
         ),
         (
             vec![
-                part::<Sidebar>(Place::Sidebar(nothing)),
-                part::<Menu>(Place::Sidebar(nothing)),
+                part::<Rail>(Place::Sidebar(rail())),
+                part::<Menu>(Place::Sidebar(rail())),
             ],
             Err(Fault::Crowded(Slot::Sidebar, "sidebar", "menu")),
         ),
@@ -170,7 +175,7 @@ fn a_part_builds_its_element_in_every_slot_but_the_drawer_which_wraps_the_views(
     let places = [
         (Place::Tabs(nothing), Slot::Tabs, true),
         (Place::Location(nothing), Slot::Location, true),
-        (Place::Sidebar(nothing), Slot::Sidebar, true),
+        (Place::Sidebar(rail()), Slot::Sidebar, true),
         (view::<Columns>().place, Slot::View, true),
         (Place::Drawer(|_, files, _| files), Slot::Drawer, false),
         (Place::Footer(nothing), Slot::Footer, true),
@@ -184,6 +189,7 @@ fn a_part_builds_its_element_in_every_slot_but_the_drawer_which_wraps_the_views(
         let registry = Registry::new(table(vec![part::<Drawer>(place)]), "columns");
         assert_eq!(names(registry.of(slot)), ["drawer"], "{slot:?}");
         assert_eq!(registry.drawer().is_some(), !builds, "{slot:?}");
+        assert_eq!(registry.sidebar().is_some(), slot == Slot::Sidebar);
     }
 }
 
@@ -220,29 +226,45 @@ fn a_window_with_no_view_registered_shows_none() {
     assert!(registry.shown().is_none());
 }
 
-/// What the parts of `entries` logged after the browser changed its hidden-files choice
-/// twice, with their listeners on the browser's observer as the shell puts them.
-fn heard_by(entries: &'static [Entry<Log>]) -> Log {
+/// The registry's listeners on a new browser's observer, as the shell puts them, with the
+/// queue they fill.
+fn observed(entries: &'static [Entry<Log>]) -> (Rc<Browser>, Inbox<Log>) {
     let registry = Registry::new(entries, "columns");
-    let (settings, ids) = (Preferences::default(), Ids::default());
+    let (settings, ids, inbox) = (Preferences::default(), Ids::default(), Inbox::new());
     let setup = Setup {
         settings: &settings,
         ids: &ids,
+        // The made-up parts are over a log, and the handle is the window's.
+        later: &Inbox::new().later(),
     };
     let browser = Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
-    let inbox = Inbox::observing(&browser, registry.listeners(&setup));
+    inbox.observe(&browser, registry.listeners(&setup));
+    (browser, inbox)
+}
+
+/// Applies everything `inbox` holds to a new log. Returns the log, and what each update said
+/// of whether the view has to run.
+fn applied(inbox: &Inbox<Log>) -> (Log, Vec<bool>) {
+    let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
+    let mut asks_for_a_view = Vec::new();
+    runtime.update(|log, tx| {
+        while let Some(update) = inbox.pop() {
+            asks_for_a_view.push(update(log, tx));
+        }
+    });
+    (runtime.state, asks_for_a_view)
+}
+
+/// What the parts of `entries` logged after the browser changed its hidden-files choice
+/// twice.
+fn heard_by(entries: &'static [Entry<Log>]) -> Log {
+    let (browser, inbox) = observed(entries);
 
     browser.toggle_hidden();
     browser.toggle_hidden();
 
     assert_eq!(inbox.heard(), 2);
-    let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
-    runtime.update(|log, tx| {
-        while let Some(update) = inbox.pop() {
-            update(log, tx);
-        }
-    });
-    runtime.state
+    applied(&inbox).0
 }
 
 #[test]
@@ -285,35 +307,21 @@ fn parts_hear_each_event_in_the_order_they_are_registered_and_a_hidden_view_hear
 }
 
 #[test]
-fn an_update_pushed_from_outside_an_event_waits_its_turn_in_the_queue() {
-    let browser = Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
-    let listeners = Registry::new(table(vec![overlay::<Menu>()]), "columns");
-    let (settings, ids) = (Preferences::default(), Ids::default());
-    let inbox = Inbox::observing(
-        &browser,
-        listeners.listeners(&Setup {
-            settings: &settings,
-            ids: &ids,
-        }),
-    );
+fn what_a_service_queues_waits_its_turn_among_the_browsers_events() {
+    let (browser, inbox) = observed(table(vec![overlay::<Menu>()]));
+    let later = inbox.later();
 
     browser.toggle_hidden();
-    inbox.push(|log: &mut Log, _| {
-        log.push("pushed".to_owned());
+    later.then(|log: &mut Log, _| {
+        log.push("the service said so".to_owned());
         false
     });
     browser.toggle_hidden();
 
-    let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
-    let mut asks_for_a_view = Vec::new();
-    runtime.update(|log, tx| {
-        while let Some(update) = inbox.pop() {
-            asks_for_a_view.push(update(log, tx));
-        }
-    });
+    let (log, asks_for_a_view) = applied(&inbox);
     assert_eq!(
-        runtime.state,
-        ["menu heard true", "pushed", "menu heard false"]
+        log,
+        ["menu heard true", "the service said so", "menu heard false"]
     );
     assert_eq!(asks_for_a_view, [true, false, true]);
     assert!(inbox.is_empty());
