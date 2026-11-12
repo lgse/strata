@@ -268,7 +268,7 @@ impl SidebarState {
     }
 
     pub(super) fn sync_active_place(&self) {
-        let active = self.browser.active_location();
+        let active = self.browser().active_location();
         let rows = self.place_rows.borrow();
         let selected = rows
             .iter()

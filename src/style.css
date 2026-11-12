@@ -2644,40 +2644,118 @@ scrollbar.horizontal > range > trough > slider {
   font-weight: 700;
 }
 
-paned > separator {
-  background: alpha(@strata_border, 0.6);
+paned.horizontal > separator,
+paned.horizontal > separator.wide {
   min-width: 1px;
+  margin: 0 -4px 0 -4px;
+  padding: 0 4px 0 4px;
+  border: none;
+  background: alpha(@strata_border, 0.6);
+  background-clip: content-box;
+  background-image: none;
+  box-shadow: none;
+}
+
+paned.horizontal > separator:hover,
+paned.horizontal > separator.wide:hover,
+paned.horizontal > separator.resize-hover {
+  background-color: @strata_accent;
+}
+
+paned.vertical > separator,
+paned.vertical > separator.wide {
+  min-height: 1px;
+  margin: -4px 0 -4px 0;
+  padding: 4px 0 4px 0;
+  border: none;
+  background: alpha(@strata_border, 0.6);
+  background-clip: content-box;
+  background-image: none;
+  box-shadow: none;
+}
+
+paned.vertical > separator:hover,
+paned.vertical > separator.wide:hover {
+  background-color: @strata_accent;
 }
 
 .sidebar-split > .sidebar-shell {
   border-right: none;
 }
 
-.sidebar-split > separator.wide {
+.sidebar-split > separator:not(.wide) {
   min-width: 1px;
   margin: 0;
   padding: 0;
   border: none;
   background: alpha(@strata_border, 0.6);
+  background-clip: border-box;
   background-image: none;
   box-shadow: none;
+}
+
+.sidebar-split > separator.wide {
+  min-width: 1px;
+  margin: 0 -4px 0 -4px;
+  padding: 0 4px 0 4px;
+  border: none;
+  background: alpha(@strata_border, 0.6);
+  background-clip: content-box;
+  background-image: none;
+  box-shadow: none;
+}
+
+.sidebar-split > separator.wide:hover {
+  background-color: @strata_accent;
 }
 
 /* Share the column's edge without GTK's wider default handle overhang. */
 .preview-split > separator,
 .preview-split > separator.wide {
   background: mix(@strata_bg, @strata_border, 0.6);
+  background-clip: content-box;
   background-image: none;
   border: none;
   box-shadow: none;
-  margin: 0 0 0 -1px;
-  padding: 0;
+  margin: 0 -4px 0 -4px;
+  padding: 0 4px 0 4px;
   min-width: 1px;
 }
 
 .preview-split > separator:hover,
+.preview-split > separator.wide:hover,
 .preview-split > separator.resize-hover {
-  background: @strata_accent;
+  background-color: @strata_accent;
+}
+
+/* Each split pane owns its location controls; the active pane carries the accent. */
+.dual-pane > separator,
+.dual-pane > separator.wide {
+  min-width: 1px;
+  margin: 0 -4px 0 -4px;
+  padding: 0 4px 0 4px;
+  border: none;
+  background: alpha(@strata_border, 0.6);
+  background-clip: content-box;
+  background-image: none;
+  box-shadow: none;
+}
+
+.dual-pane > separator:hover,
+.dual-pane > separator.wide:hover {
+  background-color: @strata_accent;
+}
+
+.pane-location {
+  padding: 3px 10px;
+  box-shadow: inset 0 -1px alpha(@strata_border, 0.6);
+}
+
+.browser-pane.active-pane > .pane-location {
+  color: @strata_accent;
+  font-weight: 600;
+  background: alpha(@strata_accent, 0.08);
+  box-shadow: inset 0 -2px @strata_accent;
 }
 
 .preview-resize-grip {

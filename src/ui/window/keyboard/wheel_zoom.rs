@@ -24,13 +24,14 @@ pub(super) fn zoom_controller(
     root: &gtk::Widget,
     preferences: Rc<PreferenceManager>,
     view: WeakBrowserView,
+    input: Option<super::PaneInput>,
 ) -> gtk::EventControllerScroll {
     let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
     wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
     let zoom = Rc::new(WheelZoom::default());
     let wheel_root = root.downgrade();
     wheel.connect_scroll(move |controller, dx, dy| {
-        if !accepts_input(&wheel_root) {
+        if !accepts_input(&wheel_root) || input.as_ref().is_some_and(|input| !input.get()) {
             return Propagation::Proceed;
         }
         let Some(view) = view.upgrade() else {

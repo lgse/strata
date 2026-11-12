@@ -5,6 +5,7 @@ use gtk::gdk;
 use super::*;
 use crate::test_support::gtk_test;
 
+mod panes;
 mod reopen;
 
 fn press(key: gdk::Key, modifiers: gdk::ModifierType) -> KeyPress {

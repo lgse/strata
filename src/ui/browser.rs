@@ -59,6 +59,7 @@ mod listing_filter;
 mod listing_search;
 mod location;
 mod pane_header;
+mod pane_target;
 pub(in crate::ui) mod paths;
 mod peek;
 mod preferences;
@@ -128,6 +129,7 @@ pub(super) use crate::ui::browser::pane_header::{
     leftovers_button, list_sort_menu, lists_back_history, pane_new_folder_button,
     pane_refresh_button, sync_column_sort_direction, sync_list_sort_menu,
 };
+pub(in crate::ui) use crate::ui::browser::pane_target::{PaneTarget, WeakPaneTarget};
 pub(super) use crate::ui::browser::paths::is_trash_root;
 pub use crate::ui::browser::peek::PeekBehavior;
 pub(super) use crate::ui::browser::presentation::{administrator_notice, not_responding_notice};
@@ -317,9 +319,22 @@ pub(super) struct ViewState {
     listing_filter: listing_filter::FilterState,
     listing_search: listing_search::SearchState,
     result_selection: result_selection::ResultSelection,
+    /// Set while another pane shares the tab: view switches stay with this
+    /// pane and the preview sizes itself against both.
+    split_pane: Cell<bool>,
+    other_pane: RefCell<Option<OtherPane>>,
     #[cfg(test)]
     send_to_menu_test_override: RefCell<Option<SendToMenuTestOverride>>,
     browser: Rc<Browser>,
+}
+
+/// The tab's other pane, which the item menu's other-pane rows target.
+#[derive(Clone)]
+pub(in crate::ui) struct OtherPane {
+    /// The other pane's folder while both panes show.
+    pub(in crate::ui) location: Rc<dyn Fn() -> Option<Location>>,
+    /// Copies (`false`) or moves (`true`) entries into that folder.
+    pub(in crate::ui) transfer: Rc<dyn Fn(Vec<FileEntry>, bool)>,
 }
 
 fn focus_header_action(actions: &gtk::Box, direction: gtk::DirectionType) -> bool {
@@ -498,22 +513,39 @@ impl BrowserView {
     ) {
         let weak_state = Rc::downgrade(&self.state);
         super::marquee::install_shared_origin_surface(surface, click, move |_, _, _, _| {
-            let state = weak_state.upgrade()?;
-            // Sidebar-origin events do not reach the browser's pointer controllers.
-            state.hovered_column.set(None);
-            state.pointer_navigation();
-            let mode = state.mode.get();
-            if mode == BrowserMode::Columns {
-                let columns = state.columns.borrow();
-                let column = match edge {
-                    gtk::PackType::End => columns.last(),
-                    _ => columns.first(),
-                };
-                return column.map(|column| column.marquee.clone());
-            }
-            state.mode_views.borrow().leading_marquee()
+            marquee_origin(&weak_state.upgrade()?, edge)
         });
     }
+
+    /// Like `add_marquee_origin`, for chrome that a tab's panes share: the
+    /// drag runs into the active pane.
+    pub(super) fn add_pane_marquee_origin(
+        target: &PaneTarget,
+        surface: &impl IsA<gtk::Widget>,
+        edge: gtk::PackType,
+        click: super::marquee::OriginClick,
+    ) {
+        let target = target.downgrade();
+        super::marquee::install_shared_origin_surface(surface, click, move |_, _, _, _| {
+            marquee_origin(&target.upgrade()?.view().state, edge)
+        });
+    }
+}
+
+fn marquee_origin(state: &Rc<ViewState>, edge: gtk::PackType) -> Option<super::marquee::Marquee> {
+    // Sidebar-origin events do not reach the browser's pointer controllers.
+    state.hovered_column.set(None);
+    state.pointer_navigation();
+    let mode = state.mode.get();
+    if mode == BrowserMode::Columns {
+        let columns = state.columns.borrow();
+        let column = match edge {
+            gtk::PackType::End => columns.last(),
+            _ => columns.first(),
+        };
+        return column.map(|column| column.marquee.clone());
+    }
+    state.mode_views.borrow().leading_marquee()
 }
 
 fn paste_destination(

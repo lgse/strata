@@ -15,6 +15,7 @@ pub(super) fn release_preview_keys_on_mode_exit(
     window: &gtk::Widget,
     preview: &PreviewDrawer,
     browser: &std::rc::Weak<Browser>,
+    input: Option<super::PaneInput>,
 ) {
     let preview = preview.clone();
     let browser = browser.clone();
@@ -22,7 +23,7 @@ pub(super) fn release_preview_keys_on_mode_exit(
         window,
         crate::ui::preferences::PreferenceManager::tenxer_mode,
         move |window, enabled| {
-            if enabled {
+            if enabled || input.as_ref().is_some_and(|input| !input.get()) {
                 return;
             }
             if preview.owns_focus(window.root().and_then(|root| root.focus()).as_ref())
@@ -245,6 +246,7 @@ pub(super) fn clear_find_on_mode_exit(
     let armed_actions = dispatcher.armed_actions.clone();
     let bookmark_pending = dispatcher.bookmark_pending.clone();
     let browser = browser.clone();
+    let input = dispatcher.input.clone();
     let primed = Cell::new(false);
     crate::ui::preferences::PreferenceManager::shared().bind_preference(
         window,
@@ -266,7 +268,8 @@ pub(super) fn clear_find_on_mode_exit(
             shortcuts.dismiss_prompt();
             // Focus left with the prompt, or nowhere: give it back to the listing.
             let focus_lost = prompt_focused || focus.is_none();
-            if !window.is_mapped() || !focus_lost {
+            let inactive_pane = input.as_ref().is_some_and(|input| !input.get());
+            if !window.is_mapped() || !focus_lost || inactive_pane {
                 return;
             }
             if let Some(browser) = browser.upgrade() {

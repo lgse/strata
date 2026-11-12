@@ -15,7 +15,7 @@ use crate::{
     },
     ui::{
         blur::BlurBin,
-        browser::WeakBrowserView,
+        browser::WeakPaneTarget,
         keys::{self, bindings::SETTINGS},
         preferences::PreferenceManager,
         settings::{self, InstallGuard, UpdateNoticeHandler},
@@ -50,14 +50,21 @@ pub(super) fn install(
     let launcher = Rc::new(SettingsLauncher {
         layer: RefCell::new(None),
         focus_restore: RefCell::new(None),
-        browser: content.browser.downgrade(),
+        target: content.target().downgrade(),
         button: content.header.settings.clone(),
         blurred_root: content.blurred_root.clone(),
         overlay: content.overlay.clone(),
         preferences: preferences.clone(),
         notice: notice.clone(),
         guard,
-        shortcuts: content.footer.shortcuts.clone(),
+        cancel_chords: {
+            let panes = Rc::downgrade(&content.panes);
+            Rc::new(move || {
+                if let Some(panes) = panes.upgrade() {
+                    panes.cancel_chords();
+                }
+            })
+        },
     });
     prepare_after_first_paint(&launcher);
     let clicked_settings = Rc::downgrade(&launcher);
@@ -119,14 +126,15 @@ fn prepare_after_first_paint(launcher: &Rc<SettingsLauncher>) {
 struct SettingsLauncher {
     layer: RefCell<Option<settings::SettingsLayer>>,
     focus_restore: RefCell<Option<Rc<Cell<bool>>>>,
-    browser: WeakBrowserView,
+    target: WeakPaneTarget,
     button: gtk::Button,
     blurred_root: BlurBin,
     overlay: gtk::Overlay,
     preferences: Rc<PreferenceManager>,
     notice: UpdateNoticeHandler,
     guard: InstallGuard,
-    shortcuts: crate::ui::shortcut_footer::ShortcutFooter,
+    /// Drops a chord armed in any of the tab's pane footers.
+    cancel_chords: Rc<dyn Fn()>,
 }
 
 impl SettingsLauncher {
@@ -134,10 +142,10 @@ impl SettingsLauncher {
         if let Some(layer) = self.layer.borrow().clone() {
             return layer;
         }
-        let browser = self.browser.clone();
+        let target = self.target.clone();
         let open_folder: settings::OpenFolder = Rc::new(move |path: PathBuf| {
-            if let Some(browser) = browser.upgrade() {
-                browser.navigate_location(Location::local(path));
+            if let Some(target) = target.upgrade() {
+                target.view().navigate_location(Location::local(path));
             }
         });
         let layer = settings::build_layer(
@@ -179,13 +187,13 @@ impl SettingsLauncher {
         {
             return;
         }
-        self.shortcuts.cancel_chord();
+        (self.cancel_chords)();
         // Closing Settings returns focus to the file list, not to the gear or other chrome
         // that opened it; only a focused filter session gets its field or results back.
         let filter_had_focus = self
-            .browser
+            .target
             .upgrade()
-            .is_some_and(|browser| browser.filter_focus().is_some());
+            .is_some_and(|target| target.view().filter_focus().is_some());
         let layer = self.layer();
         self.blurred_root.set_blurred(true);
         layer.widget.set_visible(true);

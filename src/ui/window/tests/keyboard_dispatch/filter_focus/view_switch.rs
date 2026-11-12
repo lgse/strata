@@ -56,12 +56,7 @@ fn is_appearance_option(widget: &gtk::Widget, label: &str) -> bool {
 /// Picks `to` from the Appearance menu the way a click does: focus moves into the menu,
 /// which closes after the switch.
 fn switch_from_menu(fixture: &KeyboardFixture, to: BrowserMode) -> Result<(), String> {
-    let menu = build_appearance_menu(
-        &fixture.view,
-        &fixture.view.browser(),
-        PreferenceManager::shared(),
-        &fixture.preview,
-    );
+    let menu = build_appearance_menu(&fixture.view, PreferenceManager::shared(), &fixture.preview);
     fixture.overlay.add_overlay(&menu);
     menu.popup();
     let Some(popover) = menu

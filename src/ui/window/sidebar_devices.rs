@@ -137,9 +137,9 @@ impl SidebarState {
     /// Lock and release actions on one row share a context, so only one runs at a time.
     fn device_action_context(&self) -> DeviceActionContext {
         DeviceActionContext {
-            parent: self.view.widget(),
-            browser: Some(self.browser.clone()),
-            view: self.view.clone(),
+            parent: self.view().widget(),
+            browser: Some(self.browser()),
+            view: self.view(),
             in_flight: Rc::new(Cell::new(false)),
         }
     }
@@ -250,7 +250,7 @@ impl SidebarState {
     }
 
     fn install_mounted_volume_row(self: &Rc<Self>, row: &gtk::Button, location: Location) {
-        sidebar::install_open_in_tab(row, &self.view, &location, &self.drop_feedback);
+        sidebar::install_open_in_tab(row, &self.view(), &location, &self.drop_feedback);
         self.place_rows
             .borrow_mut()
             .push((location.clone(), row.clone()));
@@ -258,25 +258,19 @@ impl SidebarState {
     }
 
     fn connect_volume_click(&self, row: &gtk::Button, volume: &gio::Volume) {
-        let weak_browser = Rc::downgrade(&self.browser);
+        let target = self.target.clone();
         let sidebar = self.widget.downgrade();
         let clicked_volume = volume.clone();
-        let mount_view = self.view.downgrade();
         row.connect_clicked(move |row| {
             let volume = clicked_volume.clone();
             if let Some(sidebar) = sidebar.upgrade() {
                 select_sidebar_row(&sidebar, row);
             }
-            let Some(browser) = weak_browser.upgrade() else {
-                return;
-            };
             if let Some(mount) = volume.get_mount() {
-                navigate_to_gio_file(&browser, &mount.root());
+                navigate_to_gio_file(&target.browser(), &mount.root());
                 return;
             }
-            if let Some(view) = mount_view.upgrade() {
-                view.mount_volume(volume);
-            }
+            target.view().mount_volume(volume);
         });
     }
 
@@ -307,7 +301,7 @@ impl SidebarState {
             }) as DeviceAction
         });
         let on_mount = {
-            let mount_view = self.view.clone();
+            let mount_view = self.view();
             let mount_volume = volume.clone();
             Rc::new(move || mount_view.mount_volume(mount_volume.clone())) as DeviceAction
         };
@@ -338,7 +332,7 @@ impl SidebarState {
         }
         let sidebar = self.widget.downgrade();
         let clicked_drive = drive.clone();
-        let mount_view = self.view.downgrade();
+        let mount_view = self.view().downgrade();
         row.connect_clicked(move |row| {
             if let Some(sidebar) = sidebar.upgrade() {
                 select_sidebar_row(&sidebar, row);
@@ -356,14 +350,14 @@ impl SidebarState {
         let actions = device_row_actions(true, false, drive.can_eject(), false, false);
         let on_crypto = Some({
             let drive = drive.clone();
-            let view = self.view.clone();
+            let view = self.view();
             Rc::new(move || view.start_password_drive(drive.clone(), true)) as DeviceAction
         });
         let on_release = actions.release.map(|action| {
             let context = DeviceActionContext {
-                parent: self.view.widget(),
+                parent: self.view().widget(),
                 browser: None,
-                view: self.view.clone(),
+                view: self.view(),
                 in_flight: Rc::new(Cell::new(false)),
             };
             Rc::new(move || eject_password_drive(&drive, action, &context)) as DeviceAction
@@ -394,10 +388,10 @@ impl SidebarState {
         menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         menu.append(&disconnect);
         let popover = context_popover(&row, &menu);
-        sidebar::append_open_in_tab(&menu, &popover, &row, &self.view, &properties_location);
+        sidebar::append_open_in_tab(&menu, &popover, &row, &self.view(), &properties_location);
 
         let properties_popover = popover.downgrade();
-        let properties_view = self.view.downgrade();
+        let properties_view = self.view().downgrade();
         properties.connect_clicked(move |_| {
             popdown(&properties_popover);
             if let Some(view) = properties_view.upgrade() {
@@ -406,8 +400,8 @@ impl SidebarState {
         });
 
         let disconnect_popover = popover.downgrade();
-        let parent = self.view.widget();
-        let browser = Rc::downgrade(&self.browser);
+        let parent = self.view().widget();
+        let browser = Rc::downgrade(&self.browser());
         let in_flight = Rc::new(Cell::new(false));
         disconnect.connect_clicked(move |_| {
             popdown(&disconnect_popover);
@@ -449,7 +443,7 @@ impl SidebarState {
             on_mount: None,
             properties: None,
         };
-        attach_device_menu(&row, &self.view, entries);
+        attach_device_menu(&row, &self.view(), entries);
         self.append_sidebar_row(&sidebar_device_row(&row, None, Some(&eject)));
         row
     }
@@ -466,7 +460,7 @@ impl SidebarState {
             .zip(entries.on_release.clone())
             .map(|(action, on_release)| sidebar_eject_button(action, move || on_release()));
         if entries.offers_actions() {
-            attach_device_menu(row, &self.view, entries);
+            attach_device_menu(row, &self.view(), entries);
             self.append_sidebar_row(&sidebar_device_row(row, lock.as_ref(), eject.as_ref()));
         } else {
             self.append_sidebar_row(row);

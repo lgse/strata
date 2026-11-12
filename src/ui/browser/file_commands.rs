@@ -748,7 +748,16 @@ impl BrowserView {
         destination: PathBuf,
         moving: bool,
     ) -> Result<(), &'static str> {
-        let destination_file = gio_file_for_location(&Location::local(&destination));
+        self.transfer_to_location(entries, Location::local(destination), moving)
+    }
+
+    pub(in crate::ui) fn transfer_to_location(
+        &self,
+        entries: Vec<FileEntry>,
+        destination: Location,
+        moving: bool,
+    ) -> Result<(), &'static str> {
+        let destination_file = gio_file_for_location(&destination);
         if entries.iter().any(|entry| {
             let source = gio_file_for_location(&entry.location);
             entry.is_directory()
@@ -766,7 +775,7 @@ impl BrowserView {
             return Err("Already in this folder");
         }
         self.state.start_transfer_in_place(
-            Location::local(destination),
+            destination,
             entries.into_iter().map(|entry| entry.location).collect(),
             moving,
         );

@@ -446,6 +446,8 @@ fn new_view_state(parts: StateParts) -> Rc<ViewState> {
         listing_filter: listing_filter::FilterState::default(),
         listing_search: listing_search::SearchState::default(),
         result_selection: result_selection::ResultSelection::default(),
+        split_pane: Cell::new(false),
+        other_pane: RefCell::new(None),
         #[cfg(test)]
         send_to_menu_test_override: RefCell::new(None),
         browser,

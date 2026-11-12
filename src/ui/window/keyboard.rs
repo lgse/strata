@@ -68,13 +68,23 @@ pub(super) struct DispatcherParts {
     pub history: Rc<NavigationHistory>,
 }
 
+/// Set while a tab's pane is the active one; only that pane's dispatcher
+/// reads keys.
+pub(super) type PaneInput = Rc<Cell<bool>>;
+
 #[cfg(test)]
 pub(super) fn install(
     window: &impl IsA<gtk::Window>,
     sidebar: &SidebarView,
     parts: DispatcherParts,
 ) {
-    let _ = install_on(window, window.upcast_ref::<gtk::Window>(), sidebar, parts);
+    let _ = install_on(
+        window,
+        window.upcast_ref::<gtk::Window>(),
+        sidebar,
+        parts,
+        None,
+    );
 }
 
 pub(super) fn install_on(
@@ -82,6 +92,7 @@ pub(super) fn install_on(
     root: &impl IsA<gtk::Widget>,
     sidebar: &SidebarView,
     parts: DispatcherParts,
+    input: Option<PaneInput>,
 ) -> Vec<gtk::EventController> {
     let window = window.upcast_ref::<gtk::Window>();
     let keys = gtk::EventControllerKey::new();
@@ -89,12 +100,13 @@ pub(super) fn install_on(
     let weak_browser = Rc::downgrade(&parts.view.browser());
     let preferences = parts.type_to_search.preferences.clone();
     let wheel_view = parts.view.downgrade();
-    let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, None));
+    let wheel_input = input.clone();
+    let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, None, input));
     submit_prompt_on_activate(&dispatcher, weak_browser.clone());
     descend_on_committed_slash(&dispatcher);
     connect_key_presses(&keys, root.as_ref(), dispatcher, weak_browser);
     window.add_controller(keys.clone());
-    let wheel = wheel_zoom::zoom_controller(root.as_ref(), preferences, wheel_view);
+    let wheel = wheel_zoom::zoom_controller(root.as_ref(), preferences, wheel_view, wheel_input);
     window.add_controller(wheel.clone());
     let controllers = vec![keys.upcast(), wheel.upcast()];
     release_controllers_on_close(window, root, &controllers);
@@ -128,7 +140,7 @@ fn connect_key_presses(
     let key_root = root.downgrade();
     let tab_scoped = !root.is::<gtk::Window>();
     keys::on_press(keys, move |_, press| {
-        if !accepts_input(&key_root) {
+        if !accepts_input(&key_root) || !dispatcher.reads_input() {
             return Propagation::Proceed;
         }
         if dispatcher.cancel_pending_bookmark(press) {
@@ -206,7 +218,7 @@ impl ChooserKeys {
         policy: ChooserPolicy,
     ) -> Self {
         let browser = Rc::downgrade(&parts.view.browser());
-        let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, Some(policy)));
+        let dispatcher = Rc::new(Dispatcher::bind(window, sidebar, parts, Some(policy), None));
         submit_prompt_on_activate(&dispatcher, browser.clone());
         descend_on_committed_slash(&dispatcher);
         Self {
@@ -257,6 +269,7 @@ struct Dispatcher {
     bookmark_revision: Rc<Cell<u64>>,
     bookmark_pending: Rc<Cell<bool>>,
     chooser: Option<ChooserPolicy>,
+    input: Option<PaneInput>,
 }
 
 struct KeyEvent {
@@ -296,6 +309,7 @@ impl Dispatcher {
         sidebar: &SidebarView,
         parts: DispatcherParts,
         chooser: Option<ChooserPolicy>,
+        input: Option<PaneInput>,
     ) -> Self {
         let weak_browser = Rc::downgrade(&parts.view.browser());
         let dispatcher = Self {
@@ -323,6 +337,7 @@ impl Dispatcher {
                 previous: RefCell::new(None),
             },
             chooser,
+            input,
         };
         dispatcher.preview.bind_keyboard_view(&dispatcher.view);
         let keycaps = Rc::downgrade(&sidebar.state);
@@ -378,6 +393,7 @@ impl Dispatcher {
             &dispatcher.view.widget(),
             &dispatcher.preview,
             &weak_browser,
+            dispatcher.input.clone(),
         );
         clear_find_on_mode_exit(&dispatcher.view.widget(), &dispatcher, &weak_browser);
         bind_footer_filter(&dispatcher);
@@ -555,6 +571,11 @@ impl Dispatcher {
             }
             _ => Propagation::Proceed,
         }
+    }
+
+    /// A tab's inactive pane leaves keys to the active one.
+    fn reads_input(&self) -> bool {
+        self.input.as_ref().is_none_or(|input| input.get())
     }
 
     fn inline_editing_active(&self) -> bool {

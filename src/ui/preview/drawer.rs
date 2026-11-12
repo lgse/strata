@@ -128,7 +128,14 @@ impl PreviewDrawer {
         let weak_state = Rc::downgrade(&self.state);
         let weak_browser = Rc::downgrade(browser);
         self.state.open.connect_clicked(move |_| {
-            let (Some(state), Some(browser)) = (weak_state.upgrade(), weak_browser.upgrade())
+            let Some(state) = weak_state.upgrade() else {
+                return;
+            };
+            let Some(browser) = state
+                .sizing
+                .browser()
+                .map(|view| view.browser())
+                .or_else(|| weak_browser.upgrade())
             else {
                 return;
             };
@@ -146,13 +153,19 @@ impl PreviewDrawer {
             .prepare_handoff(&location);
             super::super::browser::open_location_at(&location, position, &state.pane, &browser);
         });
+        self.observe_events(browser);
+    }
+
+    pub(super) fn observe_events(&self, browser: &Rc<Browser>) {
         let preview = self.clone();
         let weak_browser = Rc::downgrade(browser);
         browser.observe(move |event| {
             let Some(browser) = weak_browser.upgrade() else {
                 return;
             };
-            preview.handle_browser_event(&browser, event);
+            if preview.state.follows(&browser) {
+                preview.handle_browser_event(&browser, event);
+            }
         });
     }
 

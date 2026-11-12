@@ -162,7 +162,10 @@ pub(in crate::ui) fn apply_browser_mode(
     mode: BrowserMode,
 ) {
     view.set_view_mode(mode);
-    preferences.set_browser_mode(mode);
+    // Each of two side-by-side panes keeps its own view.
+    if !view.is_split_pane() {
+        preferences.set_browser_mode(mode);
+    }
 }
 
 pub(in crate::ui) fn browser_mode_for_digit(press: &KeyPress) -> Option<BrowserMode> {

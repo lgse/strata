@@ -293,6 +293,8 @@ pub(crate) enum ContextHint {
     Pin,
     MoveTo,
     CopyTo,
+    CopyToOtherPane,
+    MoveToOtherPane,
     Restore,
     RemoveFromRecent,
     Terminal,
@@ -1302,6 +1304,10 @@ const DEFAULT_TOOLS: &[Shortcut] = &[
         "Move the active tab left / right",
     ),
     SELECT_TAB,
+    row(One(EXTRA_PANE.shown()), "Show or hide the extra pane"),
+    row(One(OTHER_PANE.shown()), "Switch to the other pane"),
+    row(One(COPY_TO_OTHER_PANE.shown()), "Copy to Other Pane"),
+    row(One(MOVE_TO_OTHER_PANE.shown()), "Move to Other Pane"),
     row(One(TERMINAL.shown()), "Open a terminal"),
     row(One(REFRESH.shown()), "Refresh"),
     row(One(HIDDEN_FILES.shown()), "Show or hide hidden files"),
@@ -1507,12 +1513,20 @@ const TENXER_REFERENCE: &[Shortcut] = &[
     row(One(REFERENCE.shown()), "Show or hide this reference"),
 ];
 
+const PANES: &[Shortcut] = &[
+    row(One(EXTRA_PANE.shown()), "Show or hide the extra pane"),
+    row(One(OTHER_PANE.shown()), "Switch to the other pane"),
+    row(One(COPY_TO_OTHER_PANE.shown()), "Copy to Other Pane"),
+    row(One(MOVE_TO_OTHER_PANE.shown()), "Move to Other Pane"),
+];
+
 fn tenxer_tools(mode: BrowserMode, chooser: bool) -> Vec<Shortcut> {
     let mut shortcuts = TENXER_FIND.to_vec();
     shortcuts.push(dismiss_search_hits(mode));
     shortcuts.extend_from_slice(TENXER_HEADER_AND_SIDEBAR);
     if !chooser {
         shortcuts.extend_from_slice(TENXER_TABS);
+        shortcuts.extend_from_slice(PANES);
     }
     shortcuts.extend_from_slice(TENXER_VIEW);
     if !chooser {
@@ -1583,6 +1597,8 @@ fn default_hint(hint: ContextHint, type_to_search: bool) -> Option<Keys> {
         ContextHint::SelectAll => SELECT_ALL.shown(),
         ContextHint::Refresh => REFRESH.shown(),
         ContextHint::HiddenFiles => HIDDEN_FILES.alternate(0).shown(),
+        ContextHint::CopyToOtherPane => COPY_TO_OTHER_PANE.shown(),
+        ContextHint::MoveToOtherPane => MOVE_TO_OTHER_PANE.shown(),
     }))
 }
 

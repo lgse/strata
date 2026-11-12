@@ -9,6 +9,7 @@ struct TabFixture {
     outer: gtk::Overlay,
     overlay: gtk::Overlay,
     launcher: SettingsLauncher,
+    shortcuts: crate::ui::shortcut_footer::ShortcutFooter,
 }
 
 fn tab_fixture() -> TabFixture {
@@ -20,29 +21,34 @@ fn tab_fixture() -> TabFixture {
     outer.add_css_class("tab-window");
     outer.set_child(Some(&overlay));
     let window = gtk::Window::builder().child(&outer).build();
+    let shortcuts = crate::ui::shortcut_footer::ShortcutFooter::new(
+        crate::ui::browser_modes::BrowserMode::Columns,
+    );
+    let view = crate::ui::browser::BrowserView::new(
+        Rc::new(crate::adapters::LocalFileSource),
+        crate::ui::browser::PeekBehavior::default(),
+    );
     let launcher = SettingsLauncher {
         layer: RefCell::new(None),
         focus_restore: RefCell::new(None),
-        browser: crate::ui::browser::BrowserView::new(
-            Rc::new(crate::adapters::LocalFileSource),
-            crate::ui::browser::PeekBehavior::default(),
-        )
-        .downgrade(),
+        target: crate::ui::browser::PaneTarget::new(&view).downgrade(),
         button: gtk::Button::new(),
         blurred_root,
         overlay: overlay.clone(),
         preferences: PreferenceManager::shared(),
         notice: Rc::new(|_| {}),
         guard: settings::install_guard(),
-        shortcuts: crate::ui::shortcut_footer::ShortcutFooter::new(
-            crate::ui::browser_modes::BrowserMode::Columns,
-        ),
+        cancel_chords: {
+            let shortcuts = shortcuts.clone();
+            Rc::new(move || shortcuts.cancel_chord())
+        },
     };
     TabFixture {
         window,
         outer,
         overlay,
         launcher,
+        shortcuts,
     }
 }
 
@@ -126,6 +132,7 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
                 outer,
                 overlay,
                 launcher,
+                shortcuts,
             } = tab_fixture();
             let action = crate::ui::modal::modal_layer(
                 &gtk::Button::with_label("Action"),
@@ -144,11 +151,9 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
             assert_eq!(gtk::prelude::RootExt::focus(&window), focus);
 
             outer.remove_overlay(&action);
-            launcher
-                .shortcuts
-                .arm_chord(crate::ui::tenxer_mode::Chord::Go);
+            shortcuts.arm_chord(crate::ui::tenxer_mode::Chord::Go);
             launcher.show();
-            assert_eq!(launcher.shortcuts.armed_chord(), None);
+            assert_eq!(shortcuts.armed_chord(), None);
             let settings = launcher
                 .layer
                 .borrow()

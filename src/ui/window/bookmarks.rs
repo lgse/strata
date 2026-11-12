@@ -23,11 +23,11 @@ pub(super) fn watch_sidebar(state: &Rc<SidebarState>) -> BookmarkWatch {
                 true
             }
             Err(error) => {
-                if state.view.widget().root().is_none() {
+                if state.view().widget().root().is_none() {
                     return false;
                 }
                 show_error_dialog(
-                    &state.view.widget(),
+                    &state.view().widget(),
                     &crate::i18n::tr("Unable to update pinned folders"),
                     &crate::services::io_error_message(error),
                 );

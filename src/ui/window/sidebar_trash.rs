@@ -160,7 +160,7 @@ pub(super) fn install_sidebar_trash_drop(state: &SidebarState, row: &impl IsA<gt
             leave_feedback.leave(&row);
         }
     });
-    let view = state.view.downgrade();
+    let view = state.view().downgrade();
     let drop_feedback = state.drop_feedback.clone();
     drop.connect_drop(move |target, value, _, _| {
         if let Some(row) = target.widget() {
@@ -266,13 +266,15 @@ impl SidebarState {
         self.apply_trash_menu_visibility();
         self.watch_trash();
         self.refresh_trash_contents();
-        self.view.set_trash_button(row.clone());
+        for view in self.target.views() {
+            view.set_trash_button(row.clone());
+        }
         let popover = context_popover(&row, &menu);
         sidebar::append_open_in_tab(
             &menu,
             &popover,
             &row,
-            &self.view,
+            &self.view(),
             &Location::uri("trash:///"),
         );
         self.connect_trash_items(&popover, &items);
@@ -312,7 +314,7 @@ impl SidebarState {
     }
 
     fn connect_trash_items(self: &Rc<Self>, popover: &gtk::Popover, items: &TrashMenuItems) {
-        connect_view_item(&items.properties, popover, &self.view, |view| {
+        connect_view_item(&items.properties, popover, &self.view(), |view| {
             view.show_location_properties(&Location::uri("trash:///"));
         });
         self.connect_state_item(&items.unpin, popover, |state| {
@@ -321,7 +323,7 @@ impl SidebarState {
         connect_view_item(
             &items.empty,
             popover,
-            &self.view,
+            &self.view(),
             BrowserView::confirm_empty_trash,
         );
     }

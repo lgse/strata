@@ -21,15 +21,14 @@ pub(super) fn install(
     content: &WindowContent,
     preferences: &Rc<PreferenceManager>,
 ) {
-    let controller = content.browser.browser();
     let history = NavigationHistory::shared();
-    install_history_recorder(&controller, &history);
+    record_history(&content.browser);
     let preview = content.preview.clone();
     let search_preferences = preferences.clone();
-    let activated_browser = content.browser.downgrade();
+    let activated_target = content.target().downgrade();
     let activate = Rc::new(move |item| {
-        if let Some(browser) = activated_browser.upgrade() {
-            activate_result(&browser, &preview, &search_preferences, item);
+        if let Some(target) = activated_target.upgrade() {
+            activate_result(&target.view(), &preview, &search_preferences, item);
         }
     });
     let dismissed_root = content.blurred_root.downgrade();
@@ -42,12 +41,12 @@ pub(super) fn install(
             button.remove_css_class("active");
         }
     });
-    let browser = content.browser.downgrade();
+    let target = content.target().downgrade();
     let preview = content.preview.clone();
     let reveal = Rc::new(move |item: SearchItem| {
         preview.clear_target();
-        if let Some(browser) = browser.upgrade() {
-            browser.reveal_location(Location::local(item.path));
+        if let Some(target) = target.upgrade() {
+            target.view().reveal_location(Location::local(item.path));
         }
     });
     let dialog = SearchDialog::new(activate, reveal, dismiss);
@@ -65,7 +64,7 @@ pub(super) fn install(
         window,
         &content.actions,
         "search",
-        &content.browser,
+        content.target(),
         Some(own_layer.clone()),
         move || toggle(),
     );
@@ -75,7 +74,7 @@ pub(super) fn install(
         window,
         &content.actions,
         "jump-folder",
-        &content.browser,
+        content.target(),
         Some(own_layer),
         move || jump(),
     );
@@ -109,6 +108,11 @@ impl VisitRecorder {
         }
         None
     }
+}
+
+/// Records the folders a pane visits for jump-to-folder and the Go prompt.
+pub(super) fn record_history(view: &BrowserView) {
+    install_history_recorder(&view.browser(), &NavigationHistory::shared());
 }
 
 fn install_history_recorder(controller: &Rc<Browser>, history: &Rc<NavigationHistory>) {

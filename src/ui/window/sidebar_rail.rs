@@ -215,7 +215,7 @@ fn sync_rail_label(button: &gtk::Button, label: &gtk::Label, rail: bool) {
     }
     label.set_visible(!rail);
 }
-pub(super) fn paned_separator(paned: &gtk::Paned) -> Option<gtk::Widget> {
+pub(in crate::ui) fn paned_separator(paned: &gtk::Paned) -> Option<gtk::Widget> {
     let mut child = paned.first_child();
     while let Some(widget) = child {
         if widget.css_name() == "separator" {
@@ -224,4 +224,10 @@ pub(super) fn paned_separator(paned: &gtk::Paned) -> Option<gtk::Widget> {
         child = widget.next_sibling();
     }
     None
+}
+
+pub(in crate::ui) fn configure_paned_handle(paned: &gtk::Paned, cursor: &str) {
+    if let Some(handle) = paned_separator(paned) {
+        handle.set_cursor_from_name(Some(cursor));
+    }
 }

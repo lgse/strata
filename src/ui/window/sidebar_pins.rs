@@ -101,7 +101,7 @@ impl SidebarState {
                 Err(error) => {
                     if let Some(state) = weak.upgrade() {
                         show_error_dialog(
-                            &state.view.widget(),
+                            &state.view().widget(),
                             &crate::i18n::tr("Unable to update pinned folders"),
                             &crate::services::io_error_message(&error),
                         );

@@ -7,9 +7,9 @@ use std::{
 
 use gtk::{gio, glib};
 
-use crate::{app::Browser, model::Location};
+use crate::model::Location;
 
-use super::browser::{BrowserView, WeakBrowserView, show_error_dialog};
+use super::browser::{BrowserView, PaneTarget, WeakBrowserView, show_error_dialog};
 
 mod appearance_menu;
 mod bookmarks;
@@ -51,7 +51,7 @@ mod sidebar_width;
 mod unlock_argument;
 mod volume_password;
 
-pub(super) use appearance_menu::build_appearance_menu;
+pub(super) use appearance_menu::{build_appearance_menu, build_pane_appearance_menu};
 use device_actions::{MediaRelease, media_release_error_title};
 pub(crate) use device_lock::crypto_password_uuid_for_volume;
 #[cfg(test)]
@@ -85,7 +85,7 @@ pub(super) use modal_layers::{
 };
 pub use open_argument::present_open;
 use places::resolve_place_order;
-pub(super) use sidebar::build_sidebar;
+pub(super) use sidebar::{build_pane_sidebar, build_sidebar};
 use sidebar_context_menu::{PlaceMenuExtra, sidebar_context_option};
 use sidebar_devices::sidebar_device_row;
 use sidebar_file_drop::install_sidebar_file_drop;
@@ -123,8 +123,7 @@ type RailListener = Rc<dyn Fn(bool)>;
 
 pub(super) struct SidebarState {
     widget: gtk::Box,
-    view: BrowserView,
-    browser: Rc<Browser>,
+    target: PaneTarget,
     volume_monitor: gio::VolumeMonitor,
     mount_monitor: gio_unix::MountMonitor,
     preference_manager: Rc<super::preferences::PreferenceManager>,
@@ -156,6 +155,8 @@ pub(super) struct SidebarState {
     empty_pinned_section: RefCell<Vec<glib::WeakRef<gtk::Widget>>>,
     file_drag_over: Cell<bool>,
     drop_feedback: Rc<sidebar_drop_feedback::SidebarDropFeedback>,
+    /// Keeps panes after the first among the browsers a device release leaves.
+    pane_release_watches: RefCell<Vec<device_release::SidebarWatch>>,
 }
 
 #[cfg(test)]

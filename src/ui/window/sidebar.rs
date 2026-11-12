@@ -8,8 +8,12 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
+    app::Browser,
     model::Location,
-    ui::{browser::BrowserView, preferences::PreferenceManager},
+    ui::{
+        browser::{BrowserView, PaneTarget},
+        preferences::PreferenceManager,
+    },
 };
 
 use super::{
@@ -134,17 +138,27 @@ pub(in crate::ui) fn build_sidebar(
     preferences: Rc<PreferenceManager>,
     local_only: bool,
 ) -> SidebarView {
+    build_pane_sidebar(PaneTarget::new(&view), preferences, local_only)
+}
+
+/// A sidebar whose places open in `target`'s active pane.
+pub(in crate::ui) fn build_pane_sidebar(
+    target: PaneTarget,
+    preferences: Rc<PreferenceManager>,
+    local_only: bool,
+) -> SidebarView {
     let shell = SidebarShell::new();
     let state = SidebarState::new(
         shell.places,
-        view,
+        target,
         preferences,
         local_only,
         shell.update_label.clone(),
     );
     state.bind_order();
     let bookmark_watch = super::bookmarks::watch_sidebar(&state);
-    state.observe_navigation_and_trash();
+    state.observe_navigation_and_trash(&state.browser());
+    state.follow_panes();
     let (handlers, mount_handler) = connect_device_changes(&state);
     let recent_setting_handler = connect_recent_setting_changes(&state);
     reveal_empty_pins_during_file_drags(&state, &shell.widget);
@@ -153,7 +167,7 @@ pub(in crate::ui) fn build_sidebar(
     state.sync_active_place();
     let release_watch = {
         let weak = Rc::downgrade(&state);
-        super::device_release::watch_sidebars(Some(&state.browser), move || {
+        super::device_release::watch_sidebars(Some(&state.browser()), move || {
             if let Some(state) = weak.upgrade() {
                 state.rebuild();
             }
@@ -304,7 +318,7 @@ fn update_notice() -> (gtk::Box, gtk::Button, gtk::Label, gtk::Label) {
 impl SidebarState {
     fn new(
         widget: gtk::Box,
-        view: BrowserView,
+        target: PaneTarget,
         preference_manager: Rc<PreferenceManager>,
         local_only: bool,
         update_label: gtk::Label,
@@ -317,8 +331,7 @@ impl SidebarState {
         ));
         Rc::new(Self {
             widget,
-            browser: view.browser(),
-            view,
+            target,
             volume_monitor,
             mount_monitor: gio_unix::MountMonitor::get(),
             preference_manager,
@@ -349,6 +362,7 @@ impl SidebarState {
             empty_pinned_section: RefCell::new(Vec::new()),
             file_drag_over: Cell::new(false),
             drop_feedback,
+            pane_release_watches: RefCell::new(Vec::new()),
         })
     }
 
@@ -397,9 +411,45 @@ impl SidebarState {
         );
     }
 
-    fn observe_navigation_and_trash(self: &Rc<Self>) {
+    pub(super) fn view(&self) -> BrowserView {
+        self.target.view()
+    }
+
+    pub(super) fn browser(&self) -> Rc<Browser> {
+        self.target.browser()
+    }
+
+    /// Places highlight the active pane's folder; every pane keeps the Trash
+    /// row as its delete target and leaves a device that is released.
+    fn follow_panes(self: &Rc<Self>) {
         let weak = Rc::downgrade(self);
-        self.browser.observe(move |event| {
+        self.target.connect_retargeted(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.sync_active_place();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.target.connect_added(move |view| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.observe_navigation_and_trash(&view.browser());
+            if let Some(trash) = state
+                .target
+                .views()
+                .first()
+                .and_then(BrowserView::trash_button)
+            {
+                view.set_trash_button(trash);
+            }
+            let watch = super::device_release::watch_sidebars(Some(&view.browser()), || {});
+            state.pane_release_watches.borrow_mut().push(watch);
+        });
+    }
+
+    fn observe_navigation_and_trash(self: &Rc<Self>, browser: &Browser) {
+        let weak = Rc::downgrade(self);
+        browser.observe(move |event| {
             let changes_active_place = Self::event_changes_active_place(event);
             let changes_trash = event_changes_trash_contents(event);
             if !changes_active_place && !changes_trash {
@@ -427,8 +477,8 @@ impl SidebarState {
             .borrow_mut()
             .push((location.clone(), row.clone()));
         install_sidebar_file_drop(self, row, location.clone());
-        install_open_in_tab(row, &self.view, &location, &self.drop_feedback);
-        let browser = Rc::downgrade(&self.browser);
+        install_open_in_tab(row, &self.view(), &location, &self.drop_feedback);
+        let target = self.target.clone();
         let sidebar = self.widget.downgrade();
         let keyboard_activation = Rc::new(Cell::new(false));
         let activating = keyboard_activation.clone();
@@ -438,14 +488,13 @@ impl SidebarState {
             if let Some(sidebar) = sidebar.upgrade() {
                 select_sidebar_row(&sidebar, row);
             }
-            if let Some(browser) = browser.upgrade() {
-                match navigation {
-                    PlaceNavigation::Direct => {
-                        browser.navigate_with_selection(location.clone(), select_first);
-                    }
-                    PlaceNavigation::Validate => {
-                        browser.navigate_location(location.clone(), select_first);
-                    }
+            let browser = target.browser();
+            match navigation {
+                PlaceNavigation::Direct => {
+                    browser.navigate_with_selection(location.clone(), select_first);
+                }
+                PlaceNavigation::Validate => {
+                    browser.navigate_location(location.clone(), select_first);
                 }
             }
         });

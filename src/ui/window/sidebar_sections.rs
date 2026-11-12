@@ -290,7 +290,7 @@ impl SidebarState {
             return;
         };
         let items = section.items.borrow();
-        let active = self.browser.active_location();
+        let active = self.browser().active_location();
         let active_index = active.and_then(|active| {
             let rows = self.place_rows.borrow();
             items.iter().position(|item| {

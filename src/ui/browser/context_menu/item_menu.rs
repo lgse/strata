@@ -314,6 +314,16 @@ impl ItemMenu {
                 state.show_transfer_dialog(entries, moving);
             });
         }
+        for (button, moving) in [
+            (&single.other_pane.moving, true),
+            (&single.other_pane.copy, false),
+            (&multiple.other_pane.moving, true),
+            (&multiple.other_pane.copy, false),
+        ] {
+            self.on_selection(button, move |state, entries| {
+                state.transfer_to_other_pane(entries, moving);
+            });
+        }
         self.connect_clipboard_rows(options);
         for button in [&single_open.group, &multiple_open.group] {
             self.on_selection(button, move |state, entries| {
@@ -572,6 +582,11 @@ impl ItemMenuOptions {
             &self.multiple.move_to,
         ] {
             button.set_visible(removable);
+        }
+        let other_pane = target.state.other_pane_location().is_some();
+        for options in [&self.single.other_pane, &self.multiple.other_pane] {
+            options.copy.set_visible(other_pane);
+            options.moving.set_visible(other_pane && removable);
         }
         let groupable = target.groupable(removable);
         self.single_open.group.set_visible(groupable);

@@ -15,7 +15,7 @@ fn appearance_menu_shows_i_preview_while_tenxer_is_on() {
             preferences.set_tenxer_mode(false);
             let view = browser_for_window();
             let preview = PreviewDrawer::new(Rc::new(TextPreview), false);
-            let menu = build_appearance_menu(&view, &view.browser(), preferences.clone(), &preview);
+            let menu = build_appearance_menu(&view, preferences.clone(), &preview);
             let window = gtk::Window::builder().child(&menu).build();
             window.present();
             menu.popup();

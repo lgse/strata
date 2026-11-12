@@ -83,6 +83,32 @@ On X11, Escape may not cancel after a drag hover switches tabs
 ([#2091](https://github.com/lgse/strata/issues/2091)); move away from drop targets
 before releasing if cancellation does not end the drag.
 
+## Extra pane
+
+The toolbar's pane toggle or **F3** shows or hides an extra pane in the current
+tab: a second pane beside the first, opened on the same folder with its own
+navigation history,
+selection, view and sort. A click or keyboard focus inside a pane makes it the
+active pane, and **F6** switches to the other one. Each pane has its own complete
+location bar, with breadcrumbs and an editable path. The active pane's location
+bar carries the accent color. Sidebar places, Back and Forward, search, the
+Appearance menu's view switch, the preview panel, the footer, and the tab label and window
+title all follow the active pane. While both panes show, switching views changes
+only the active pane and is not saved as the default view.
+
+**Ctrl+Shift+C** copies and **Ctrl+Shift+X** moves the active pane's selection
+into the other pane's folder, with the usual progress, undo and conflict
+handling; the item context menu offers **Copy to Other Pane** and **Move to
+Other Pane** while both panes show. Commander-style **F5** stays Refresh. These
+keys leave a focused text field alone, and none of the pane keys act while a
+rename is open. Dragging files from one pane to the other copies or moves them
+as any file drag does.
+
+**F3** again closes the extra pane. When it was the active pane, the remaining
+pane takes over its folder, view and selection, so the folder you were working
+in stays open. The extra pane is not restored when Strata restarts. Rebind the
+four keys in **Settings → Keyboard**.
+
 ## Input precedence
 
 The last navigation input determines the destination of Ctrl+V:

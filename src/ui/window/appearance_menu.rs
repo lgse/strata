@@ -7,19 +7,16 @@ use std::rc::Rc;
 
 use gtk::{gio, glib, prelude::*};
 
-use crate::{
-    app::Browser,
-    ui::{
-        browser::BrowserView,
-        browser_modes::BrowserMode,
-        keys::{
-            Keys,
-            bindings::{HIDDEN_FILES, TEXT_LARGER, TEXT_RESET, TEXT_SMALLER},
-        },
-        preferences::{PreferenceManager, TextSize},
-        preview::PreviewDrawer,
-        shortcut_reference::with_keys,
+use crate::ui::{
+    browser::{BrowserView, PaneTarget},
+    browser_modes::BrowserMode,
+    keys::{
+        Keys,
+        bindings::{HIDDEN_FILES, TEXT_LARGER, TEXT_RESET, TEXT_SMALLER},
     },
+    preferences::{PreferenceManager, TextSize},
+    preview::PreviewDrawer,
+    shortcut_reference::with_keys,
 };
 
 use super::{apply_browser_mode, density_slider};
@@ -120,19 +117,27 @@ struct ListingOptions {
 
 pub(in crate::ui) fn build_appearance_menu(
     view: &BrowserView,
-    controller: &Rc<Browser>,
+    preferences: Rc<PreferenceManager>,
+    preview: &PreviewDrawer,
+) -> gtk::MenuButton {
+    build_pane_appearance_menu(&PaneTarget::new(view), preferences, preview)
+}
+
+/// The menu for a tab whose panes share it: every row acts on the active pane.
+pub(in crate::ui) fn build_pane_appearance_menu(
+    target: &PaneTarget,
     preferences: Rc<PreferenceManager>,
     preview: &PreviewDrawer,
 ) -> gtk::MenuButton {
     let shell = MenuShell::new();
     let popover = shell.popover();
     shell.append_heading("VIEW");
-    let current_mode = view.view_mode();
+    let current_mode = target.view().view_mode();
     let button_icon = crate::assets::chrome_icon(browser_mode_icon(current_mode));
     let modes = mode_options(current_mode);
-    let listing = listing_options(view, &preferences, &popover, current_mode);
-    connect_mode_buttons(&modes, view, &preferences, &popover);
-    follow_view_mode(view, &modes, &listing, &button_icon);
+    let listing = listing_options(target, &preferences, &popover, current_mode);
+    connect_mode_buttons(&modes, target, &preferences, &popover);
+    follow_view_mode(target, &modes, &listing, &button_icon);
     for option in &modes {
         shell.content.append(&option.button);
     }
@@ -152,7 +157,7 @@ pub(in crate::ui) fn build_appearance_menu(
     shell.content.append(&listing.column_sizes);
     shell
         .content
-        .append(&hidden_files_option(controller, &preferences, &popover));
+        .append(&hidden_files_option(target, &preferences, &popover));
     shell.finish(&button_icon)
 }
 
@@ -188,7 +193,7 @@ fn mode_options(current_mode: BrowserMode) -> [ModeOption; 4] {
 }
 
 fn listing_options(
-    view: &BrowserView,
+    target: &PaneTarget,
     preferences: &Rc<PreferenceManager>,
     popover: &glib::WeakRef<gtk::Popover>,
     current_mode: BrowserMode,
@@ -197,7 +202,7 @@ fn listing_options(
         group_by_type: group_by_type_option(preferences, popover, current_mode),
         compact_full_names: compact_full_names_option(preferences, popover, current_mode),
         column_sizes: column_sizes_option(preferences, popover, current_mode),
-        customize_columns: customize_columns_option(view, popover, current_mode),
+        customize_columns: customize_columns_option(target, popover, current_mode),
     }
 }
 
@@ -292,7 +297,7 @@ fn column_sizes_option(
 }
 
 fn customize_columns_option(
-    view: &BrowserView,
+    target: &PaneTarget,
     popover: &glib::WeakRef<gtk::Popover>,
     current_mode: BrowserMode,
 ) -> gtk::Button {
@@ -304,32 +309,29 @@ fn customize_columns_option(
         role: gtk::AccessibleRole::MenuItem,
     });
     option.button.set_visible(current_mode == BrowserMode::List);
-    let view = view.downgrade();
+    // Buttons keep the target alive; a chooser's menu is its only owner.
+    let target = target.clone();
     let popover = popover.clone();
     option.button.connect_clicked(move |_| {
         popdown(&popover);
-        if let Some(view) = view.upgrade() {
-            view.open_list_columns_popover();
-        }
+        target.view().open_list_columns_popover();
     });
     option.button
 }
 
 fn connect_mode_buttons(
     modes: &[ModeOption],
-    view: &BrowserView,
+    target: &PaneTarget,
     preferences: &Rc<PreferenceManager>,
     popover: &glib::WeakRef<gtk::Popover>,
 ) {
     for option in modes {
         let mode = option.mode;
-        let view = view.downgrade();
+        let target = target.clone();
         let preferences = preferences.clone();
         let popover = popover.clone();
         option.button.connect_clicked(move |_| {
-            let Some(view) = view.upgrade() else {
-                return;
-            };
+            let view = target.view();
             apply_browser_mode(&view, &preferences, mode);
             popdown(&popover);
             let view = view.downgrade();
@@ -342,33 +344,66 @@ fn connect_mode_buttons(
     }
 }
 
-/// The mode also changes from the keyboard, so track the view rather than
-/// only the buttons in this menu.
+/// The mode also changes from the keyboard, so track the active pane's view
+/// rather than only the buttons in this menu.
 fn follow_view_mode(
-    view: &BrowserView,
+    target: &PaneTarget,
     modes: &[ModeOption],
     listing: &ListingOptions,
     button_icon: &gtk::Image,
 ) {
+    // The target keeps its listeners, so they hold the menu's widgets weakly.
     let checks: Vec<_> = modes
         .iter()
-        .map(|option| (option.mode, option.check.clone()))
+        .map(|option| (option.mode, option.check.downgrade()))
         .collect();
-    let group_by_type = listing.group_by_type.clone();
-    let compact_full_names = listing.compact_full_names.clone();
-    let column_sizes = listing.column_sizes.clone();
-    let customize_columns = listing.customize_columns.clone();
-    let button_icon = button_icon.clone();
-    view.connect_view_mode_changed(move |mode| {
+    let group_by_type = listing.group_by_type.downgrade();
+    let compact_full_names = listing.compact_full_names.downgrade();
+    let column_sizes = listing.column_sizes.downgrade();
+    let customize_columns = listing.customize_columns.downgrade();
+    let button_icon = button_icon.downgrade();
+    let show: Rc<dyn Fn(BrowserMode)> = Rc::new(move |mode| {
         for (checked_mode, check) in &checks {
-            check.set_visible(mode == *checked_mode);
+            if let Some(check) = check.upgrade() {
+                check.set_visible(mode == *checked_mode);
+            }
         }
-        group_by_type.set_sensitive(mode.supports_type_grouping());
-        compact_full_names.set_visible(mode == BrowserMode::Compact);
-        column_sizes.set_visible(mode == BrowserMode::Columns);
-        customize_columns.set_visible(mode == BrowserMode::List);
-        crate::assets::set_primary_icon(&button_icon, browser_mode_icon(mode));
+        if let Some(group_by_type) = group_by_type.upgrade() {
+            group_by_type.set_sensitive(mode.supports_type_grouping());
+        }
+        if let Some(compact_full_names) = compact_full_names.upgrade() {
+            compact_full_names.set_visible(mode == BrowserMode::Compact);
+        }
+        if let Some(column_sizes) = column_sizes.upgrade() {
+            column_sizes.set_visible(mode == BrowserMode::Columns);
+        }
+        if let Some(customize_columns) = customize_columns.upgrade() {
+            customize_columns.set_visible(mode == BrowserMode::List);
+        }
+        if let Some(button_icon) = button_icon.upgrade() {
+            crate::assets::set_primary_icon(&button_icon, browser_mode_icon(mode));
+        }
     });
+    let follow = {
+        let target = target.downgrade();
+        let show = show.clone();
+        Rc::new(move |view: &BrowserView| {
+            let target = target.clone();
+            let followed = view.downgrade();
+            let show = show.clone();
+            view.connect_view_mode_changed(move |mode| {
+                let active = target.upgrade().zip(followed.upgrade());
+                if active.is_some_and(|(target, view)| target.is_active(&view)) {
+                    show(mode);
+                }
+            });
+        })
+    };
+    for view in target.views() {
+        follow(&view);
+    }
+    target.connect_added(move |view| follow(view));
+    target.connect_retargeted(move |view| show(view.view_mode()));
 }
 
 fn preview_toggle(
@@ -530,7 +565,7 @@ fn hidden_files_icon(shown: bool) -> &'static str {
 }
 
 fn hidden_files_option(
-    controller: &Rc<Browser>,
+    target: &PaneTarget,
     preferences: &Rc<PreferenceManager>,
     popover: &glib::WeakRef<gtk::Popover>,
 ) -> gtk::Button {
@@ -545,18 +580,40 @@ fn hidden_files_option(
         },
         Keys::One(HIDDEN_FILES.alternate(0).shown()),
     );
-    let observed_check = option.check.clone();
-    let observed_icon = option.icon.clone();
-    controller.observe_preferences(move |preferences| {
-        observed_check.set_visible(preferences.show_hidden);
-        crate::assets::set_primary_icon(&observed_icon, hidden_files_icon(preferences.show_hidden));
+    let observed_check = option.check.downgrade();
+    let observed_icon = option.icon.downgrade();
+    let show: Rc<dyn Fn(bool)> = Rc::new(move |shown| {
+        if let Some(check) = observed_check.upgrade() {
+            check.set_visible(shown);
+        }
+        if let Some(icon) = observed_icon.upgrade() {
+            crate::assets::set_primary_icon(&icon, hidden_files_icon(shown));
+        }
     });
-    let weak_controller = Rc::downgrade(controller);
+    let follow = {
+        let target = target.downgrade();
+        let show = show.clone();
+        Rc::new(move |view: &BrowserView| {
+            let target = target.clone();
+            let followed = view.downgrade();
+            let show = show.clone();
+            view.browser().observe_preferences(move |preferences| {
+                let active = target.upgrade().zip(followed.upgrade());
+                if active.is_some_and(|(target, view)| target.is_active(&view)) {
+                    show(preferences.show_hidden);
+                }
+            });
+        })
+    };
+    for view in target.views() {
+        follow(&view);
+    }
+    target.connect_added(move |view| follow(view));
+    target.connect_retargeted(move |view| show(view.browser().preferences().show_hidden));
+    let target = target.clone();
     let popover = popover.clone();
     option.button.connect_clicked(move |_| {
-        if let Some(controller) = weak_controller.upgrade() {
-            controller.toggle_hidden();
-        }
+        target.browser().toggle_hidden();
         popdown(&popover);
     });
     option.button

@@ -11,7 +11,7 @@ use gtk::{gdk, glib, prelude::*};
 use crate::ui::{
     accessibility,
     browser::{
-        BrowserView, DropHandler, PreparedFileDrop, attach_drop_target, commit_dropped_value,
+        DropHandler, PaneTarget, PreparedFileDrop, attach_drop_target, commit_dropped_value,
         file_drop_action, prepare_file_drop_target,
     },
     motion,
@@ -280,7 +280,7 @@ impl TabStrip {
         }
     }
 
-    pub(super) fn add(&self, state: &Rc<TabWindow>, id: u64, browser: &BrowserView) {
+    pub(super) fn add(&self, state: &Rc<TabWindow>, id: u64, panes: &PaneTarget) {
         let widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         widget.add_css_class("browser-tab");
         let select = gtk::Button::new();
@@ -373,7 +373,7 @@ impl TabStrip {
         });
         widget.add_controller(middle);
         install_reordering(state, id, &select, &label);
-        install_file_drop(state, id, &widget, browser);
+        install_file_drop(state, id, &widget, panes);
         self.headers.borrow_mut().push(Header {
             id,
             widget,
@@ -383,7 +383,7 @@ impl TabStrip {
         });
         self.label(
             id,
-            &super::tab_label(browser.browser().active_location().as_ref()),
+            &super::tab_label(panes.browser().active_location().as_ref()),
         );
     }
 
@@ -532,8 +532,9 @@ fn install_reordering(state: &Rc<TabWindow>, id: u64, widget: &gtk::Button, labe
     widget.add_controller(source);
 }
 
-fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser: &BrowserView) {
-    let destination_browser = browser.downgrade();
+/// Files dropped on a tab go into its active pane's folder.
+fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, panes: &PaneTarget) {
+    let destination_browser = panes.downgrade();
     let PreparedFileDrop {
         target,
         state: drop_state,
@@ -569,11 +570,14 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
     });
     let motion_drop = drop_state.clone();
     target.connect_motion(move |target, _, _| file_drop_action(target, &motion_drop));
-    let weak_browser = browser.downgrade();
+    let weak_browser = panes.downgrade();
     let weak = Rc::downgrade(state);
     let state_for_drop = drop_state.clone();
     target.connect_drop(move |target, value, _, _| {
-        let (Some(state), Some(browser)) = (weak.upgrade(), weak_browser.upgrade()) else {
+        let (Some(state), Some(browser)) = (
+            weak.upgrade(),
+            weak_browser.upgrade().map(|panes| panes.view()),
+        ) else {
             return false;
         };
         if state.blocked() {
@@ -597,7 +601,7 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
     // Images dropped on a tab are read before this runs; select it as the
     // main target's drop does.
     let handler: DropHandler = {
-        let browser = browser.downgrade();
+        let browser = panes.downgrade();
         let weak = Rc::downgrade(state);
         Rc::new(move |destination, request| {
             if let Some(state) = weak.upgrade()
@@ -605,8 +609,8 @@ fn install_file_drop(state: &Rc<TabWindow>, id: u64, widget: &gtk::Box, browser:
             {
                 state.select(id);
             }
-            if let Some(browser) = browser.upgrade() {
-                browser.commit_drop(destination, request);
+            if let Some(panes) = browser.upgrade() {
+                panes.view().commit_drop(destination, request);
             }
         })
     };

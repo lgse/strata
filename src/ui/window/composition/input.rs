@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-use std::rc::Rc;
-
 use gtk::prelude::*;
 
-use crate::ui::browser::BrowserView;
+use crate::ui::browser::{BrowserView, PaneTarget};
 
 use super::super::{MouseHistoryAction, mouse_history_action};
 
-pub(super) fn install_mouse_history(root: &gtk::Box, view: &BrowserView) {
+/// The mouse's back and forward buttons move the active pane, which a press
+/// inside a pane has already made it.
+pub(super) fn install_mouse_history(root: &gtk::Box, target: &PaneTarget) {
     let gesture = gtk::GestureClick::new();
     gesture.set_button(0);
     gesture.set_propagation_phase(gtk::PropagationPhase::Bubble);
-    let browser = Rc::downgrade(&view.browser());
+    let target = target.downgrade();
     gesture.connect_pressed(move |gesture, _, _, _| {
-        let Some(browser) = browser.upgrade() else {
+        let Some(browser) = target.upgrade().map(|target| target.browser()) else {
             return;
         };
         match mouse_history_action(gesture.current_button()) {

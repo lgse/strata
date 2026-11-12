@@ -86,7 +86,7 @@ pub(super) fn show(state: &Rc<SidebarState>) {
     let Some(ModalHost {
         overlay: window_overlay,
         blurred_root,
-    }) = ModalHost::blurred_for(&state.view.overlay())
+    }) = ModalHost::blurred_for(&state.view().overlay())
     else {
         return;
     };
@@ -170,7 +170,7 @@ pub(super) fn show(state: &Rc<SidebarState>) {
             if connecting.replace(false)
                 && let Some(state) = weak_state.upgrade()
             {
-                state.view.cancel_connect();
+                state.view().cancel_connect();
             }
             dismiss();
         }
@@ -210,7 +210,7 @@ pub(super) fn show(state: &Rc<SidebarState>) {
                             state.pin_location(location, label);
                         }
                         // Outcomes can arrive mid-dispatch of a browser event.
-                        let browser = Rc::downgrade(&state.browser);
+                        let browser = Rc::downgrade(&state.browser());
                         if let Some(layer) = weak_layer.upgrade() {
                             set_modal_focus_restore(
                                 layer.upcast_ref(),
@@ -246,7 +246,7 @@ pub(super) fn show(state: &Rc<SidebarState>) {
             }
         };
         let input = form.address.text();
-        if let Err(error) = state.view.connect_typed_location(input.trim(), finished) {
+        if let Err(error) = state.view().connect_typed_location(input.trim(), finished) {
             connecting.set(false);
             form.set_connecting(false);
             // `message()` is already localized.

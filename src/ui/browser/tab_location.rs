@@ -112,6 +112,11 @@ impl Drop for TabLocationHold {
 }
 
 impl BrowserView {
+    /// The folder the tab names after this view, as `observe_tab_location` reports it.
+    pub(in crate::ui) fn tab_location(&self) -> Option<Location> {
+        self.state.tab_location.borrow().location.clone()
+    }
+
     pub(in crate::ui) fn observe_tab_location(
         &self,
         observer: impl Fn(Option<&Location>) + 'static,

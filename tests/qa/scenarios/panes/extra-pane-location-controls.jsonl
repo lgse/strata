@@ -1,0 +1,22 @@
+{"scenario":"extra-pane-location-controls","modes":["list"],"layout":"us","quality":{"impact":3,"coverage":4,"criticality":3,"diagnostic":4,"score":42,"note":"Toolbar toggle and both location editors route to their own panes; typed-path-navigates covers single-pane entry editing"},"cost":{"list":2.8}}
+{"wait":{"entries":{"contains":["archive","documents","pictures"]}},"message":"the initial folder to finish listing"}
+{"click":{"named":"Show or hide the extra pane","within":{"window":true}}}
+{"wait":{"panes":["$root","$root"]},"message":"the toolbar button to open two panes"}
+{"key":"ctrl+l"}
+{"wait":{"field":{"name":"Location (Ctrl+L)"}},"message":"the extra pane location editor to take focus"}
+{"type":"$fixture/documents"}
+{"key":"Return"}
+{"wait":{"panes":["$root","documents"]},"message":"the extra location bar to navigate only its own pane"}
+{"key":"F6"}
+{"wait":{"focused_pane":"$root"},"message":"F6 to focus the main pane"}
+{"key":"ctrl+l"}
+{"wait":{"field":{"name":"Location (Ctrl+L)"}},"message":"the main pane location editor to take focus"}
+{"type":"$fixture/pictures"}
+{"key":"Return"}
+{"wait":{"panes":["pictures","documents"]},"message":"the main location bar to leave the extra pane unchanged"}
+{"click":{"named":"Show or hide the extra pane","within":{"window":true}}}
+{"wait":{"panes":["pictures"]},"message":"the toolbar button to close the extra pane and keep the main folder"}
+{"key":"F3"}
+{"wait":{"panes":["pictures","pictures"]},"message":"F3 to reopen the extra pane after using the button"}
+{"click":{"named":"Show or hide the extra pane","within":{"window":true}}}
+{"wait":{"panes":["pictures"]},"message":"the button to close the pane opened with F3"}

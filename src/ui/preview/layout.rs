@@ -116,12 +116,49 @@ impl PreviewDrawer {
         resize::install_resize(split, &self.state);
         grip::install_resize_grip(split, &self.state);
     }
+
+    /// Lets another pane of the same tab drive the drawer while it is the bound one.
+    pub(in crate::ui) fn follow_pane(&self, view: &BrowserView) {
+        self.observe_events(&view.browser());
+        view.bind_preview_scrolling(&self.state.revealer);
+        follow_browser(view, &self.state);
+    }
+
+    /// Binds the drawer to the tab's newly active pane: its focus picks what
+    /// shows, its columns size the split, and it takes keys back from the drawer.
+    pub(in crate::ui) fn retarget(&self, view: &BrowserView) {
+        if let Some(binding) = self.state.sizing.binding.borrow_mut().as_mut() {
+            binding.browser = view.downgrade();
+        }
+        self.bind_keyboard_view(view);
+        self.follow_operations(&view.browser());
+        self.clear_target();
+        self.state.refresh_panel_action();
+        if self.is_enabled()
+            && let (Some(entry), depth) = self.state.selected_entry()
+        {
+            self.show_after_focus_change(entry, depth);
+        }
+    }
+}
+
+impl PreviewState {
+    /// Whether `browser` belongs to the pane the drawer is bound to; events of
+    /// a tab's other pane leave it alone.
+    pub(super) fn follows(&self, browser: &crate::app::Browser) -> bool {
+        self.sizing
+            .browser()
+            .is_none_or(|view| std::ptr::eq(Rc::as_ptr(&view.browser()), browser))
+    }
 }
 
 fn follow_browser(browser: &BrowserView, state: &Rc<PreviewState>) {
     let weak = Rc::downgrade(state);
+    let weak_browser = browser.downgrade();
     browser.connect_view_mode_changed(move |_| {
-        if let Some(state) = weak.upgrade() {
+        if let (Some(state), Some(browser)) = (weak.upgrade(), weak_browser.upgrade())
+            && state.follows(&browser.browser())
+        {
             state.view_mode_changed();
         }
     });
@@ -137,7 +174,9 @@ fn follow_browser(browser: &BrowserView, state: &Rc<PreviewState>) {
             }) else {
                 return;
             };
-            if let Some(browser) = weak_browser.upgrade() {
+            if let Some(browser) = weak_browser.upgrade()
+                && state.follows(&browser.browser())
+            {
                 state.show_search_selection(&browser);
             }
         });
@@ -246,9 +285,9 @@ impl PreviewState {
     }
 
     pub(super) fn browsing_columns(&self) -> bool {
-        self.sizing
-            .browser()
-            .is_some_and(|browser| browser.view_mode() == BrowserMode::Columns)
+        self.sizing.browser().is_some_and(|browser| {
+            browser.view_mode() == BrowserMode::Columns && !browser.is_split_pane()
+        })
     }
 
     pub(super) fn reserves_column_space(&self) -> bool {
@@ -271,6 +310,13 @@ impl PreviewState {
         else {
             return;
         };
+        if browser.is_split_pane() {
+            let pane = browser.widget().width();
+            if pane > 0 {
+                browser.set_column_width_limit(pane);
+            }
+            return;
+        }
         let sidebar = self.full_sidebar_width(binding, &content);
         browser.set_column_width_limit(available - separator_width(split) - sidebar);
     }
@@ -301,7 +347,12 @@ impl PreviewState {
     fn preserve_column_positions(&self, content_width: i32) {
         let binding = self.sizing.binding.borrow();
         if let Some((_, content, browser)) = bound_views(&binding) {
-            browser.preserve_columns_for_viewport((content_width - sidebar_width(&content)).max(0));
+            let viewport = if browser.is_split_pane() {
+                browser.widget().width()
+            } else {
+                content_width - sidebar_width(&content)
+            };
+            browser.preserve_columns_for_viewport(viewport.max(0));
         }
     }
 
@@ -441,6 +492,15 @@ fn bound_views(
 
 fn browser_geometry(mut geometry: Geometry, sidebar: i32, browser: &BrowserView) -> Geometry {
     let available = geometry.available;
+    if browser.is_split_pane() {
+        // Two panes share the area, so the drawer takes room from both
+        // rather than fitting beside one pane's columns.
+        geometry.columns = false;
+        geometry.occupied = sidebar + (available - sidebar).max(0) / 2;
+        geometry.start_minimum = sidebar.saturating_add(COLUMN_WIDTH * 2);
+        geometry.show_minimum = geometry.start_minimum;
+        return geometry;
+    }
     geometry.columns = browser.view_mode() == BrowserMode::Columns;
     geometry.occupied = sidebar + browser.preview_navigated_width((available - sidebar).max(0));
     if geometry.columns {

@@ -85,7 +85,7 @@ fn value_text(scale: &gtk::Scale) -> String {
 fn open_appearance_menu(preferences: Rc<PreferenceManager>) -> (gtk::Window, gtk::Popover) {
     let view = browser_for_window();
     let preview = PreviewDrawer::new(Rc::new(NoPreview), false);
-    let menu = build_appearance_menu(&view, &view.browser(), preferences, &preview);
+    let menu = build_appearance_menu(&view, preferences, &preview);
     let window = gtk::Window::builder().child(&menu).build();
     window.present();
     menu.popup();

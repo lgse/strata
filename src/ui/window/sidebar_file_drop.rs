@@ -9,7 +9,7 @@ use gtk::{glib, prelude::*};
 use crate::{
     model::Location,
     ui::browser::{
-        DropHandler, PreparedFileDrop, WeakBrowserView, arm_spring_load_navigation,
+        DropHandler, PaneTarget, PreparedFileDrop, WeakBrowserView, arm_spring_load_navigation,
         attach_drop_target, commit_dropped_value, file_drag_hover_target, file_drop_action,
         prepare_file_drop_target,
     },
@@ -57,7 +57,7 @@ pub(super) fn install_sidebar_file_drop(
         move || Some(destination.clone())
     });
     drop.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let navigate = spring_navigation(&state.view.downgrade(), row.upcast_ref());
+    let navigate = spring_navigation(&state.target, row.upcast_ref());
     let feedback = state.drop_feedback.clone();
     let place = PlaceDrop {
         feedback: feedback.clone(),
@@ -87,7 +87,7 @@ pub(super) fn install_sidebar_file_drop(
             leave_feedback.leave(&row);
         }
     });
-    let handler = commit_handler(state.view.downgrade());
+    let handler = commit_handler(state.view().downgrade());
     let commit = {
         let drop_state = drop_state.clone();
         move |target: &gtk::DropTarget, value: &glib::Value, handler: DropHandler| {
@@ -104,15 +104,12 @@ pub(super) fn install_sidebar_file_drop(
     attach_drop_target(row, &drop, &drop_state, handler);
 }
 
-/// Spring-loaded opening navigates the window and keeps focus on the row.
-fn spring_navigation(view: &WeakBrowserView, row: &gtk::Widget) -> Rc<dyn Fn(Location)> {
-    let view = view.clone();
+/// Spring-loaded opening navigates the active pane and keeps focus on the row.
+fn spring_navigation(target: &PaneTarget, row: &gtk::Widget) -> Rc<dyn Fn(Location)> {
+    let target = target.clone();
     let row = row.downgrade();
     Rc::new(move |location| {
-        let Some(view) = view.upgrade() else {
-            return;
-        };
-        view.browser().navigate_location(location, false);
+        target.browser().navigate_location(location, false);
         if let Some(row) = row.upgrade() {
             row.grab_focus();
         }

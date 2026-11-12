@@ -52,7 +52,7 @@ impl SidebarState {
         });
         menu.append(&properties);
         let popover = context_popover(row, &menu);
-        sidebar::append_open_in_tab(&menu, &popover, row, &self.view, &place.location);
+        sidebar::append_open_in_tab(&menu, &popover, row, &self.view(), &place.location);
         if let Some((button, action)) = extra_item {
             self.connect_state_item(&button, &popover, action);
         }
@@ -60,7 +60,7 @@ impl SidebarState {
             connect_customize(&customize, &popover, row, path);
         }
         self.connect_state_item(&unpin, &popover, on_unpin);
-        connect_properties(&properties, &popover, &self.view, place.location);
+        connect_properties(&properties, &popover, &self.view(), place.location);
         open_on_secondary_click(row, &popover);
     }
 

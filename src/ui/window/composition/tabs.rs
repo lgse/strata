@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-use super::{WindowContent, layout, tenxer_splash};
+use super::{PaneCommand, WindowContent, layout, tenxer_splash};
 
 mod strip;
 use strip::TabStrip;
@@ -44,7 +44,7 @@ struct Tab {
 impl Tab {
     fn location(&self) -> Option<Location> {
         self.content
-            .browser
+            .active_view()
             .browser()
             .active_location()
             .or_else(|| self.checking.borrow().clone())
@@ -119,7 +119,7 @@ impl TabWindow {
                         .borrow()
                         .iter()
                         .find(|tab| tab.id == active)
-                        .map(|tab| tab.content.browser.clone())
+                        .map(|tab| tab.content.active_view())
                 });
                 if let Some(browser) = browser {
                     browser.restore_listing_focus();
@@ -135,7 +135,7 @@ impl TabWindow {
                 .tabs
                 .borrow()
                 .iter()
-                .any(|tab| tab.content.browser.browser().has_background_operations())
+                .any(|tab| tab.content.has_background_operations())
                 .then(operations_active)
         });
         let retained = state.clone();
@@ -187,15 +187,15 @@ impl TabWindow {
 
     fn share_presence(&self) {
         let (presence, power_saver) = self.presence.get();
-        let browsers: Vec<_> = self
+        let tabs: Vec<_> = self
             .tabs
             .borrow()
             .iter()
-            .map(|tab| (tab.id == self.active.get(), tab.content.browser.clone()))
+            .map(|tab| (tab.id == self.active.get(), tab.content.clone()))
             .collect();
-        for (active, browser) in browsers {
+        for (active, content) in tabs {
             let presence = if active { presence } else { Presence::Hidden };
-            browser.set_presence(presence, power_saver);
+            content.set_presence(presence, power_saver);
         }
     }
 
@@ -209,7 +209,7 @@ impl TabWindow {
     }
 
     pub(in crate::ui::window) fn active_browser(&self) -> BrowserView {
-        self.active_tab().content.browser.clone()
+        self.active_tab().content.active_view()
     }
 
     fn blocked(&self) -> bool {
@@ -276,6 +276,7 @@ impl TabWindow {
         self.next_id.set(id + 1);
         let content = Rc::new(WindowContent::new(&window, &self.preferences));
         content.bind_context(&window, &self.preferences);
+        super::pane_controls::bind(&content);
         let tab = Rc::new(Tab {
             id,
             content: content.clone(),
@@ -292,10 +293,10 @@ impl TabWindow {
             }
         });
         self.tabs.borrow_mut().push(tab);
-        self.strip.add(self, id, &content.browser);
+        self.strip.add(self, id, content.target());
         strip::install_new_tab_drop(self, &content.header.new_tab);
         let weak = Rc::downgrade(self);
-        content.browser.observe_tab_location(move |location| {
+        content.observe_location(move |location| {
             if let Some(state) = weak.upgrade() {
                 state.relabel(id, location);
                 state.persist_session();
@@ -331,15 +332,15 @@ impl TabWindow {
             // its listing loads, with GTK's default focus on the footer.
             let content = &previous.content;
             let panes = [
-                content.browser.widget(),
+                content.panes_widget(),
                 content.sidebar.widget.clone(),
                 content.preview.widget(),
             ];
             *previous.focus.borrow_mut() = gtk::prelude::RootExt::focus(&window)
                 .filter(|widget| panes.iter().any(|pane| widget.is_ancestor(pane)))
                 .map(|widget| widget.downgrade());
-            previous.content.footer.shortcuts.cancel_chord();
-            previous.content.browser.cancel_location_edit();
+            previous.content.cancel_chords();
+            previous.content.active_view().cancel_location_edit();
         }
         self.active.set(id);
         self.share_presence();
@@ -356,7 +357,7 @@ impl TabWindow {
             .filter(|widget| widget.is_mapped());
         // Saved focus may be a pane surface that is no longer focusable.
         if !saved.is_some_and(|focus| focus.grab_focus()) {
-            tab.content.browser.browser().focus_active();
+            tab.content.active_view().browser().focus_active();
         }
         self.persist_session();
     }
@@ -372,12 +373,7 @@ impl TabWindow {
         let Some(index) = tabs.iter().position(|tab| tab.id == id) else {
             return;
         };
-        if tabs[index]
-            .content
-            .browser
-            .browser()
-            .has_background_operations()
-        {
+        if tabs[index].content.has_background_operations() {
             operations_active().show(window.upcast_ref());
             return;
         }
@@ -760,7 +756,11 @@ impl TabWindow {
         if self.blocked() || !is_tab_shortcut(press) {
             return glib::Propagation::Proceed;
         }
-        self.active_tab().content.footer.shortcuts.cancel_chord();
+        let tab = self.active_tab();
+        tab.content.cancel_chords();
+        if let Some(command) = pane_command(press) {
+            return self.run_pane_command(&tab, command);
+        }
         if press.is(TAB_NEW) {
             self.new_tab();
         } else if press.is(TAB_CLOSE) {
@@ -779,6 +779,27 @@ impl TabWindow {
             self.select_index(tab_index(digit));
         }
         glib::Propagation::Stop
+    }
+
+    /// Pane commands act on the active tab. Copying or moving to the other
+    /// pane leaves a focused text field its keys, and none acts while an
+    /// inline edit owns the listing.
+    fn run_pane_command(&self, tab: &Tab, command: PaneCommand) -> glib::Propagation {
+        let transfers = matches!(command, PaneCommand::CopyToOther | PaneCommand::MoveToOther);
+        if transfers && self.text_has_focus() {
+            return glib::Propagation::Proceed;
+        }
+        if !tab.content.active_view().inline_edit_is_open() {
+            tab.content.run_pane_command(command);
+        }
+        glib::Propagation::Stop
+    }
+
+    fn text_has_focus(&self) -> bool {
+        self.window
+            .upgrade()
+            .and_then(|window| gtk::prelude::RootExt::focus(&window))
+            .is_some_and(|focused| focused.is::<gtk::Text>() || focused.is::<gtk::TextView>())
     }
 
     fn install_keys(self: &Rc<Self>, window: &gtk::ApplicationWindow) {
@@ -810,6 +831,8 @@ fn operations_active() -> crate::ui::close_guard::CloseBlocker {
     }
 }
 
+/// A key the tab window reads before the active pane's dispatcher: the tab
+/// commands and the commands for the tab's two panes.
 pub(in crate::ui::window) fn is_tab_shortcut(press: &KeyPress) -> bool {
     press.is_any(&[
         TAB_NEW,
@@ -820,6 +843,19 @@ pub(in crate::ui::window) fn is_tab_shortcut(press: &KeyPress) -> bool {
         TAB_MOVE_LEFT,
         TAB_MOVE_RIGHT,
     ]) || tab_number(press).is_some()
+        || pane_command(press).is_some()
+}
+
+fn pane_command(press: &KeyPress) -> Option<PaneCommand> {
+    [
+        (EXTRA_PANE, PaneCommand::Toggle),
+        (OTHER_PANE, PaneCommand::FocusOther),
+        (COPY_TO_OTHER_PANE, PaneCommand::CopyToOther),
+        (MOVE_TO_OTHER_PANE, PaneCommand::MoveToOther),
+    ]
+    .into_iter()
+    .find(|(command, _)| press.is(*command))
+    .map(|(_, pane)| pane)
 }
 
 /// A tab digit, unless the key types the `+` or `−` of a text size shortcut,

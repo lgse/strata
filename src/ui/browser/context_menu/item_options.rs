@@ -248,6 +248,7 @@ pub(super) struct SingleEditOptions {
     pub(super) rename: gtk::Button,
     pub(super) move_to: gtk::Button,
     pub(super) copy_to: gtk::Button,
+    pub(super) other_pane: OtherPaneOptions,
     pub(super) compress: gtk::Button,
     pub(super) pin: gtk::Button,
     pub(super) customize: gtk::Button,
@@ -277,6 +278,29 @@ fn copy_to_option() -> gtk::Button {
     item_context_option(icons::FOLDER_OUTPUT, "Copy to…", ContextHint::CopyTo)
 }
 
+/// Copy and Move to Other Pane, shown while the tab shows two panes.
+pub(super) struct OtherPaneOptions {
+    pub(super) copy: gtk::Button,
+    pub(super) moving: gtk::Button,
+}
+
+impl OtherPaneOptions {
+    fn build() -> Self {
+        Self {
+            copy: item_context_option(
+                icons::COLUMNS,
+                "Copy to Other Pane",
+                ContextHint::CopyToOtherPane,
+            ),
+            moving: item_context_option(
+                icons::ARROW_RIGHT,
+                "Move to Other Pane",
+                ContextHint::MoveToOtherPane,
+            ),
+        }
+    }
+}
+
 fn compress_option() -> gtk::Button {
     item_context_option(icons::PACKAGE_PLUS, "Compress…", ContextHint::None)
 }
@@ -295,6 +319,7 @@ impl SingleEditOptions {
             rename: item_context_option(icons::PENCIL, "Rename", ContextHint::Rename),
             move_to: move_to_option(),
             copy_to: copy_to_option(),
+            other_pane: OtherPaneOptions::build(),
             compress: compress_option(),
             pin: item_context_option(icons::PIN, "Pin to sidebar", ContextHint::Pin),
             customize: item_context_option(icons::PALETTE, "Customize…", ContextHint::None),
@@ -313,6 +338,8 @@ impl SingleEditOptions {
                 separator().upcast_ref(),
                 options.move_to.upcast_ref(),
                 options.copy_to.upcast_ref(),
+                options.other_pane.copy.upcast_ref(),
+                options.other_pane.moving.upcast_ref(),
                 separator().upcast_ref(),
                 options.compress.upcast_ref(),
                 separator().upcast_ref(),
@@ -377,6 +404,7 @@ pub(super) struct MultipleEditOptions {
     pub(super) duplicate: gtk::Button,
     pub(super) move_to: gtk::Button,
     pub(super) copy_to: gtk::Button,
+    pub(super) other_pane: OtherPaneOptions,
     pub(super) compress: gtk::Button,
     pub(super) copy_paths: gtk::Button,
     pub(super) copy_names: gtk::Button,
@@ -393,6 +421,7 @@ impl MultipleEditOptions {
             duplicate: duplicate_option(),
             move_to: move_to_option(),
             copy_to: copy_to_option(),
+            other_pane: OtherPaneOptions::build(),
             compress: compress_option(),
             copy_paths: item_context_option(icons::ROUTE, "Copy paths", ContextHint::CopyPaths),
             copy_names: item_context_option(icons::FILE_TYPE, "Copy names", ContextHint::None),
@@ -408,6 +437,8 @@ impl MultipleEditOptions {
                 separator().upcast_ref(),
                 options.move_to.upcast_ref(),
                 options.copy_to.upcast_ref(),
+                options.other_pane.copy.upcast_ref(),
+                options.other_pane.moving.upcast_ref(),
                 separator().upcast_ref(),
                 options.compress.upcast_ref(),
                 separator().upcast_ref(),

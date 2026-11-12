@@ -30,7 +30,7 @@ pub(super) fn build_chooser_hosted(
     if let Some(host) = &host {
         bind_host_parent(&window, host);
     }
-    let header = ChooserHeader::build(&view, &browser, &theme, &preview, &window);
+    let header = ChooserHeader::build(&view, &theme, &preview, &window);
     let panes = ChooserPanes::build(
         &view,
         &theme,
@@ -218,7 +218,6 @@ struct ChooserHeader {
 impl ChooserHeader {
     fn build(
         view: &BrowserView,
-        browser: &Rc<crate::app::Browser>,
         theme: &Rc<PreferenceManager>,
         preview: &PreviewDrawer,
         window: &gtk::Window,
@@ -229,7 +228,7 @@ impl ChooserHeader {
         let sidebar_toggle = crate::ui::sidebar_toggle::SidebarToggle::new();
         let location = view.location_widget();
         location.set_hexpand(true);
-        let appearance = build_appearance_menu(view, browser, theme.clone(), preview);
+        let appearance = build_appearance_menu(view, theme.clone(), preview);
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         content.set_hexpand(true);
         content.set_valign(gtk::Align::Center);

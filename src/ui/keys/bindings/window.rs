@@ -85,6 +85,12 @@ catalog! {
             9,
             true,
         );
+
+        // Nemo's extra pane keys; F5 refreshes, so the transfers take Ctrl+Shift.
+        EXTRA_PANE: Command "extra_pane" = Binding::plain(Key::F3);
+        OTHER_PANE: Command "other_pane" = Binding::plain(Key::F6);
+        COPY_TO_OTHER_PANE: Command "copy_to_other_pane" = Binding::ctrl_shift(Key::c);
+        MOVE_TO_OTHER_PANE: Command "move_to_other_pane" = Binding::ctrl_shift(Key::x);
     }
     default_only {
         // The 10xer map gives these keys to other commands or leaves them out.
