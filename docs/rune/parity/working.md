@@ -39,8 +39,8 @@ The checkpoint a package feeds is its wave's, in the plan's
   docs-only pull requests of its own.
 - **The archived issues are not reopened, edited or commented on.** That is the
   coordinator's rule: they are history, linked from the files. A new finding's reference
-  issue is filed and closed at once, as [`findings.md`](findings.md#recording-a-finding)
-  says.
+  issue is filed and may be closed at once, as
+  [`findings.md`](findings.md#recording-a-finding) says.
 
 ## Branch and worktree
 
@@ -80,8 +80,8 @@ The checkpoint a package feeds is its wave's, in the plan's
   owner's agreement.
 - **Strata's own faults are `oracle` findings:** search [`findings.md`](findings.md), then
   the issues, by code and by scenario or seed name; record a new one as `findings.md` says
-  (a reference issue, closed at once, and an entry there); set it aside, and do not chase
-  it.
+  (a reference issue, which may be closed at once, and an entry there); set it aside, and do
+  not chase it.
 - **Rune is read-only.** A gap is drafted into `docs/rune/upstream/rune/` as the plan's
   [Rune framework gaps](README.md#rune-framework-gaps) says, and then worked around.
 - **Stop rather than widen.** Something outside the package's scope, an owner ruling, or a
@@ -106,7 +106,7 @@ The checkpoint a package feeds is its wave's, in the plan's
   pull request's number, what it delivers and the runs it flips; what its dependents must
   know, if anything; the done-when items it completes, ticked; and what it leaves open. The
   validation and the evidence stay on the pull request, not in the file.
-- **Before opening, when `crates/strata-app`, `crates/strata-components` or `src/` changed:**
+- **Before opening, when anything under `crates/` or `src/` changed:**
   check that every mutation patch still applies, from the repository root:
   `for p in tests/qa/parity/mutations/*.patch tests/qa/mutations/*.patch; do git apply --check "$p" 2>/dev/null || echo "does not apply: $p"; done`.
   It takes seconds and starts no container; it is not a mutation run. Only `cut.patch`

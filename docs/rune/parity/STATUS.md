@@ -30,7 +30,7 @@ tracking moved here. The issues stay as an archive: each package file links its 
 
 | ID | Package | State | Depends on | Pull requests |
 | --- | --- | --- | --- | --- |
-| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192); [#2199](https://github.com/lgse/strata/pull/2199) (open) |
+| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192), [#2199](https://github.com/lgse/strata/pull/2199); [#2202](https://github.com/lgse/strata/pull/2202) (open) |
 | [A2](packages/A2.md) | List view | not started | B1 | None |
 | [A3](packages/A3.md) | Sidebar | not started | B1 | None |
 | [A4](packages/A4.md) | Tabs | not started | B1, B2 | None |

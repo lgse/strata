@@ -467,8 +467,9 @@ work meets. Work in flight is seen in the open pull requests that target `strata
   request sets the package's state to `in progress`.
 - **Findings.** Search [`findings.md`](findings.md), then the issues, by code and by
   scenario or seed name before adding one. A new finding gets a GitHub issue purely as its
-  reference, closed at once, and an entry in `findings.md`, which holds its state, in the
-  pull request that meets it ([`findings.md`](findings.md#recording-a-finding)).
+  reference, which may be closed at once, and an entry in `findings.md`, which holds its
+  state, in the pull request that meets it
+  ([`findings.md`](findings.md#recording-a-finding)).
 - **Report in the package's file.** Each pull request adds one dated entry to its record:
   its number, what it delivered and the runs it flipped. The commands and the evidence are
   on the pull request.
@@ -554,7 +555,7 @@ checkpoints.
 | Rune-side unit and gallery tests | `mise run test-rune <filter>`, with a filter that matches at least one test |
 | The GTK side, when a shared crate or `src/` changed | `./scripts/qa.sh <scenario>` and `./scripts/test-headless.py <filter>` |
 | The fuzz smoke tier for its alphabet | F1's command |
-| That every mutation patch still applies, when `crates/strata-app`, `crates/strata-components` or `src/` changed: seconds, no container, and no mutation run | The `git apply --check` loop below. Only `cut.patch` (finding #2161) is known not to apply |
+| That every mutation patch still applies, when anything under `crates/` or `src/` changed: seconds, no container, and no mutation run | The `git apply --check` loop below. Only `cut.patch` (finding #2161) is known not to apply |
 | No GTK in the Rune binary | `cargo tree -p strata-rune -i gtk4` |
 | Formatting, lint and code health, at the pre-push checkpoint only | `./scripts/quality.sh fmt`, `./scripts/quality.sh clippy`, `scripts/code-health.sh --changed` |
 
@@ -632,8 +633,10 @@ the commands.
 6. `cargo tree` shows no `gtk4`, `gdk4`, `sourceview5` or `gdk-pixbuf`.
 
 The thumbnail worker is the ruled exception to criterion 6 until E4: by the owner's ruling
-of 2026-11-12 it brings `gdk-pixbuf` into `strata-rune`, and E4 removes it
-([`owner.md`](owner.md#ruled)).
+of 2026-11-12 it uses `gdk-pixbuf` in `strata-rune`, which `strata-fs` brings into its tree
+already, and E4 removes it ([`owner.md`](owner.md#ruled)). It is an exception for
+`gdk-pixbuf` alone: `gtk4`, `gdk4` and `sourceview5` stay out of `strata-app` and
+`strata-rune`, and `cargo tree -p strata-rune -i gtk4` still finds nothing.
 
 Three oracle defects are open today and should be the first `oracle` issues: `cut.patch` no
 longer applies, `new-folder-with-selection-groups/columns` fails more often than not alone,

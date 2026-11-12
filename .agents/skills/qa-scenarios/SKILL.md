@@ -298,9 +298,10 @@ run stays `pending` with a blocker.
    and why none of those three fits (label `exception`; `oracle` for a bug in
    Strata itself). A `rune` twin cites its packet entry instead,
    `docs/rune/upstream/rune/<number>-<name>.md`. A `deviation` twin needs the
-   owner's ruling on its issue before it is written. A parity finding's issue is
-   its reference, closed at once, and `docs/rune/parity/findings.md` holds its
-   state.
+   owner's ruling before it is written. The ruling is recorded under "Ruled" in
+   `docs/rune/parity/owner.md` and names the finding's reference issue, which
+   the twin cites. A parity finding's issue is its reference, and may be closed
+   at once; `docs/rune/parity/findings.md` holds its state.
 2. **Write the twin** beside the original. It holds only the modes or
    variants that differ, and starts from the same `tree`, `images`,
    `fixture_root`, `setup`, `teardown`, `prefs`, `layout`, `portal`, `env`,

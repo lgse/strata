@@ -13,8 +13,10 @@ ruling of 2026-11-12 ([`owner.md`](owner.md#ruled)), a new finding is two things
 
 - **A reference issue on `lgse/strata`**, which is what the ledger, twins and the fuzz
   driver's files cite. It carries the code's label and `rune-parity`, and a short statement
-  in the form of the archived issues, and it is closed at once with a line pointing at this
-  file. It is a reference, not a tracker: nothing more is recorded on it.
+  in the form of the archived issues, and it may be closed at once with a line pointing at
+  this file. It is a reference, not a tracker: nothing more is recorded on it, and a ruling
+  on it is recorded in `owner.md`. Closing it as soon as its entry here exists is the
+  coordinating session's practice, not the owner's rule.
 - **An entry in this file**, added in the pull request that meets the finding, in the form
   of the entries below: its code, two lines on what was seen, the run, seed or test it
   concerns, and its state.

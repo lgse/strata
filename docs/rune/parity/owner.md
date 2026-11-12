@@ -25,6 +25,15 @@ session's notes, the item says so.
   waits for, and E1 closes whatever is left. Source: the review of A1's
   [#2199](https://github.com/lgse/strata/pull/2199), 2026-11-12.
 
+### E4: exit criterion 6
+
+- **`gdk-pixbuf` in the Rune binary through `strata-fs`.** Exit criterion 6 names
+  `gdk-pixbuf`, which `strata-fs` brings into `strata-rune` today, directly and through
+  `strata-preview`, before any thumbnail worker. Whether E4 removes it from `strata-fs`'s
+  path as well, or criterion 6 is narrowed, is the owner's to say. Meanwhile: criterion 6
+  stays as written and [E4](packages/E4.md) owns it. Source: A1's layering check,
+  2026-11-12, confirmed with `cargo tree -p strata-rune -i gdk-pixbuf`.
+
 ### The plan's copy
 
 - **The plan's copy and the owner's document.** From the pull request that moved tracking
@@ -78,8 +87,8 @@ are in force meanwhile. Source: the archived issue
   [#2123](https://github.com/lgse/strata/issues/2123).
 - **The reviewer opens a `deviation` twin's record** and confirms the owner's ruling is
   there before the twin merges, since no check reads it. A default of the orchestrating
-  session, in "Twins", in force. Source: [#2123](https://github.com/lgse/strata/issues/2123). The record is the twin's reference issue,
-  filed as the ruling on finding references says.
+  session, in "Twins", in force. Source: [#2123](https://github.com/lgse/strata/issues/2123). The record is the ruling in "Ruled"
+  below, which names the twin's reference issue.
 - **The ten decisions H2 made beyond the plan's text**: a twin's run has no ledger entry;
   `targets` only on a twin and only `["rune"]`; a Rune mutation patch for every twin; no
   `mutation` or `known_bug` on a twin; an optional `host` on a `parallel` entry; the form of
@@ -296,7 +305,12 @@ Rulings of the owner on the parity work, oldest first.
   binary has it, which brings `gdk-pixbuf` into the Rune binary through `strata-preview`.
   [E4](packages/E4.md) owns removing it, and exit criterion 6 is knowingly not met until
   then. The other two answers were a separate worker binary and a client crate split from
-  `strata-preview`.
+  `strata-preview`. In fact `gdk-pixbuf`, `poppler-rs`, `cairo-rs` and `pango` are in
+  `strata-rune`'s tree already, through `strata-app` → `strata-fs`, which depends on
+  `gdk-pixbuf` itself and on `strata-preview` (`cargo tree -p strata-rune -i gdk-pixbuf`). So
+  the ruling adds a direct edge from `strata-app` to `strata-preview`, not a new library,
+  and criterion 6 was not met before it either; E4 owns removing `gdk-pixbuf` from the
+  whole tree, of which the thumbnail worker's direct use is one part.
 
 ## Housekeeping
 

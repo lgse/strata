@@ -1098,8 +1098,8 @@ differs") is worked from the top, and the first step that fits is taken:
 
 The pull request that adds a twin says why steps 1 to 3 do not fit. When the
 difference is a bug in Strata itself, file the `oracle` issue and go straight
-to step 4. A parity finding's issue is its reference, closed at once, and
-`docs/rune/parity/findings.md` holds its state.
+to step 4. A parity finding's issue is its reference, and may be closed at
+once; `docs/rune/parity/findings.md` holds its state.
 
 **The two files.** The twin is a new file beside the original,
 `tests/qa/scenarios/<folder>/<scenario>-rune.jsonl`. A name that ends in
@@ -1232,7 +1232,7 @@ never does: the same file runs on the session host instead, so its run is
 | `rune` | Rune lacks the capability at the pinned revision, and a workaround reaches the same result by another route | The packet entry | That the entry is a file of `docs/rune/upstream/rune/` | That the entry's notes name the workaround, and that the twin and the workaround go when the pin moves past the fix: "Keeping the exceptions few", below |
 | `oracle` | Strata itself has the bug, the GTK run shows it or its scenario encodes it, and Rune behaves correctly. The twin asserts the correct behaviour | An issue | The form of the reference | That the issue has the `oracle` label and says why GTK's behaviour is the bug. If `main` later fixes it, the twin is deleted |
 | `toolkit` | A GTK-only check is the point of the scenario: a pixel predicate, `gtk_settings`, a GDK detail, a coordinate tied to GTK's row heights and fonts | An issue | The form of the reference | That targeting by name instead of offset could not absorb it. Visual baselines are not twinned: they are `excluded` |
-| `deviation` | The port behaves differently on purpose, and the twin asserts the new behaviour | The issue that records the owner's ruling | The form of the reference | That the ruling is there, and is the owner's: the reviewer opens the issue and reads it |
+| `deviation` | The port behaves differently on purpose, and the twin asserts the new behaviour | The finding's reference issue, which the owner's ruling in `docs/rune/parity/owner.md` names | The form of the reference | That `owner.md` records the ruling as the owner's and names this issue |
 
 **Who approves a twin**, as the owner ruled on 2026-11-11. The reviewer of the
 pull request approves `timing`, `a11y` and `toolkit` twins, on agreeing that
@@ -1241,8 +1241,8 @@ steps 1 to 3 do not fit, and `oracle` twins whose bug is clear-cut. A
 arguable, which is a deviation. A `rune` twin follows its packet entry.
 
 No check reads a `deviation` twin's issue, and it is the one code the reviewer
-may not approve. Until the owner says where rulings are recorded, the reviewer
-opens the issue and confirms that the ruling is there before the twin merges.
+may not approve. The reviewer reads the ruling in `owner.md` and confirms that
+it is there before the twin merges.
 (A default of the session that orchestrated wave 0, for the owner to confirm:
 lgse/strata#2123.)
 
@@ -1257,8 +1257,9 @@ lgse/strata#2123.)
   not its first wait. That the patch exists is checked, and that the twin
   catches it is proven once, alone, as `docs/rune/parity/README.md`, "When a
   mutation run is right", says;
-- that an issue exists, is open and has its label, and that the pair passed
-  three times running before the entry was flipped.
+- that the reference issue exists and has its label (it may be closed:
+  `findings.md` holds the state), and that the pair passed three times running
+  before the entry was flipped.
 
 **Keeping the exceptions few.** An exception is a counted, referenced record,
 and two commands keep the count honest:
