@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/pane.rs b/crates/strata-app/src/pane.rs
+index c4e17effb..384b94262 100644
+--- a/crates/strata-app/src/pane.rs
++++ b/crates/strata-app/src/pane.rs
+@@ -192,7 +192,7 @@ impl Pane {
+             }
+             Change::Hidden { show_hidden, marks } => {
+                 for column in &mut self.columns {
+-                    column.set_show_hidden(show_hidden);
++                    column.set_show_hidden(show_hidden && false);
+                 }
+                 if let Some(marks) = self.shown.and_then(|depth| marks.get(depth)) {
+                     self.settle(marks, tx);

@@ -3,9 +3,10 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [main, strata-next]
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    branches-ignore: [strata-next]
 
 permissions:
   contents: read

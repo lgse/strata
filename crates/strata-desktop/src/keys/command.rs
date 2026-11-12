@@ -14,6 +14,8 @@ use std::{
 
 use super::{Binding, KeyPress, Match, Modifiers, Shown, active::active, bindings};
 
+mod matcher;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Map {
     Default,
