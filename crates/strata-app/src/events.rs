@@ -11,7 +11,7 @@
 use std::ops::Range;
 
 use strata_components::contract::EntryId;
-use strata_core::model::{FileEntry, Location};
+use strata_core::model::{FileEntry, Location, ViewPreferences};
 use strata_fs::app::{Browser, BrowserEvent};
 
 use crate::{
@@ -37,6 +37,8 @@ pub(crate) struct Added {
     /// The browser made it the active column, as opening a folder does and mirroring one
     /// does not.
     pub(crate) active: bool,
+    /// Whether the browser groups its folder by file type, and under which preferences.
+    pub(crate) grouping: Option<ViewPreferences>,
 }
 
 /// A column whose folder moved, with everything it shows read again.
@@ -45,6 +47,7 @@ pub(crate) struct Moved {
     pub(crate) location: Location,
     pub(crate) rows: Vec<Row>,
     pub(crate) marks: Marks,
+    pub(crate) grouping: Option<ViewPreferences>,
 }
 
 /// Where the browser put the cursor, for the child column that follows it.
@@ -78,11 +81,14 @@ pub(crate) enum Change {
         edit: Edit,
         /// `None` when the edit changes neither which rows there are nor their order.
         marks: Option<Marks>,
+        /// How the browser groups the folder, read when the event came, as `marks` are.
+        grouping: Option<ViewPreferences>,
     },
     Loaded {
         depth: usize,
         load: Load,
         marks: Marks,
+        grouping: Option<ViewPreferences>,
     },
     Busy {
         depth: usize,
@@ -194,14 +200,34 @@ impl Reader<'_> {
             .show_hidden
     }
 
+    /// Whether the browser groups column `depth`'s folder by file type, and under which
+    /// preferences: read with the event, so a column never follows a later folder's.
+    fn grouping(&self, depth: usize) -> Option<ViewPreferences> {
+        let browser = self.browser;
+        let grouped = browser.shows_type_groups(depth);
+        grouped.then(|| browser.column_preferences(depth)).flatten()
+    }
+
     fn edited(&mut self, depth: usize, edit: Edit) {
         let marks = Some(self.marks(depth));
-        self.changes.push(Change::Rows { depth, edit, marks });
+        let grouping = self.grouping(depth);
+        self.changes.push(Change::Rows {
+            depth,
+            edit,
+            marks,
+            grouping,
+        });
     }
 
     fn loaded(&mut self, depth: usize, load: Load) {
         let marks = self.marks(depth);
-        self.changes.push(Change::Loaded { depth, load, marks });
+        let grouping = self.grouping(depth);
+        self.changes.push(Change::Loaded {
+            depth,
+            load,
+            marks,
+            grouping,
+        });
     }
 
     fn selection(&mut self, depth: usize, reveal: bool, landed: Option<Landed>) {
@@ -224,6 +250,7 @@ impl Reader<'_> {
                 location,
                 rows: self.column(depth),
                 marks: self.marks(depth),
+                grouping: self.grouping(depth),
             });
         }
         self.changes.push(Change::Relocated {
@@ -271,6 +298,7 @@ impl Reader<'_> {
                     location: location.clone(),
                     show_hidden: self.show_hidden(*depth),
                     active: self.browser.active_depth() == Some(*depth),
+                    grouping: self.grouping(*depth),
                 }));
             }
             BrowserEvent::ColumnsRelocated { from_depth } => self.relocated(*from_depth),
@@ -329,6 +357,7 @@ impl Reader<'_> {
                     depth: *depth,
                     edit: Edit::Refill(updates),
                     marks: None,
+                    grouping: self.grouping(*depth),
                 });
             }
             _ => return false,

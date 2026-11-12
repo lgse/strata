@@ -19,11 +19,22 @@ fn settings_file() -> PathBuf {
 
 /// Runs the test `name` of `module` in a window whose saved `browser_mode` is `mode`.
 pub(crate) fn hosted_in(module: &str, mode: &'static str, name: &str, run: impl FnOnce(Offscreen)) {
+    hosted_with(module, mode, String::new(), name, run);
+}
+
+/// [`hosted_in`], with `more` saved too: lines of `settings.toml`.
+pub(crate) fn hosted_with(
+    module: &str,
+    mode: &'static str,
+    more: String,
+    name: &str,
+    run: impl FnOnce(Offscreen),
+) {
     let prepare = move || {
         let file = settings_file();
         std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
         let saved =
-            format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n");
+            format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n{more}");
         std::fs::write(file, saved).expect("settings");
     };
     hosted_after(module, name, prepare, run);

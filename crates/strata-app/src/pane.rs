@@ -93,10 +93,6 @@ pub(crate) struct Pane {
     grouped: bool,
 }
 
-/// Whether the browser groups the folder of each of its columns by file type, and under
-/// which preferences: what [`Pane::apply`] reads of the browser.
-pub(crate) type Grouping<'a> = &'a dyn Fn(usize) -> Option<ViewPreferences>;
-
 /// The groups of `column`'s rows as it shows them: one for each run of a file type, headed by
 /// its description, translated once for the group.
 fn groups_of(column: &Column) -> Groups {
@@ -186,23 +182,18 @@ impl Pane {
         (index < column.len()).then(|| column.id_at(index))
     }
 
-    /// Applies one change the view's listener queued. `grouping` reads, for a column, whether
-    /// the browser groups its folder, which every column then follows.
-    pub(crate) fn apply(
-        &mut self,
-        change: Change,
-        grouping: Grouping<'_>,
-        tx: &mut rune::Tx,
-    ) -> Applied {
+    /// Applies one change the view's listener queued. A change to a column's rows or load
+    /// carries how the browser groups its folder, read when the event came, which the column
+    /// follows before the change applies.
+    pub(crate) fn apply(&mut self, change: Change, tx: &mut rune::Tx) -> Applied {
         let before = (self.shown, self.generation);
-        self.follow_grouping(grouping, tx);
         match change {
             Change::Reset => {
                 self.columns.clear();
                 self.show(None, tx);
             }
             Change::Truncated { len, active, .. } => self.truncate(len, active, tx),
-            Change::Added(added) => self.add(added, grouping, tx),
+            Change::Added(added) => self.add(added, tx),
             Change::Relocated {
                 from_depth,
                 columns,
@@ -220,16 +211,11 @@ impl Pane {
         }
     }
 
-    /// Every column follows the browser's grouping; the one shown is brought in step with its
-    /// new order at once.
-    fn follow_grouping(&mut self, grouping: Grouping<'_>, tx: &mut rune::Tx) {
-        let mut regrouped = false;
-        for (depth, column) in self.columns.iter_mut().enumerate() {
-            let changed = column.set_grouping(grouping(depth));
-            regrouped |= changed && self.shown == Some(depth);
-        }
-        if regrouped {
-            self.sync(tx);
+    /// Column `depth` follows how the browser groups its folder, before a change to it
+    /// applies.
+    fn follow_grouping(&mut self, depth: usize, grouping: Option<ViewPreferences>) {
+        if let Some(column) = self.columns.get_mut(depth) {
+            column.set_grouping(grouping);
         }
     }
 
@@ -253,7 +239,13 @@ impl Pane {
     fn apply_within(&mut self, change: Change, tx: &mut rune::Tx) {
         match change {
             rows @ Change::Rows { .. } => self.edit(rows, tx),
-            Change::Loaded { depth, load, marks } => {
+            Change::Loaded {
+                depth,
+                load,
+                marks,
+                grouping,
+            } => {
+                self.follow_grouping(depth, grouping);
                 if let Some(column) = self.columns.get_mut(depth) {
                     column.set_load(load);
                     column.set_busy(false);
@@ -308,12 +300,13 @@ impl Pane {
         }
     }
 
-    fn add(&mut self, added: Added, grouping: Grouping<'_>, tx: &mut rune::Tx) {
+    fn add(&mut self, added: Added, tx: &mut rune::Tx) {
         let Added {
             depth,
             location,
             show_hidden,
             active,
+            grouping,
         } = added;
         self.columns.truncate(depth);
         // The browser adds columns in order, each after the last.
@@ -321,7 +314,7 @@ impl Pane {
             return;
         }
         let mut column = Column::new(location, show_hidden, None);
-        column.set_grouping(grouping(depth));
+        column.set_grouping(grouping);
         self.columns.push(column);
         // Opening a folder in place makes the new root active, and history the column it
         // restores. A column opened with its parent kept active (`descend`) does not show.
@@ -341,15 +334,23 @@ impl Pane {
                 return;
             };
             column.relocate(moved.location, None);
+            column.set_grouping(moved.grouping);
             column.apply(Edit::Replace(moved.rows));
             self.settle_at(depth, &moved.marks, tx);
         }
     }
 
     fn edit(&mut self, rows: Change, tx: &mut rune::Tx) {
-        let Change::Rows { depth, edit, marks } = rows else {
+        let Change::Rows {
+            depth,
+            edit,
+            marks,
+            grouping,
+        } = rows
+        else {
             return;
         };
+        self.follow_grouping(depth, grouping);
         let Some(column) = self.columns.get_mut(depth) else {
             return;
         };
