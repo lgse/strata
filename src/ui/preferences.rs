@@ -23,7 +23,7 @@ pub(crate) use strata_desktop::settings::{
     FileIconColors, InterfaceRenderer, OmarchyVariant, UnitSystem, sanitize_list_column_order,
     sanitize_list_hidden_columns,
 };
-use strata_desktop::settings::{FinishedSave, PendingSave, SaveOutcome, SaveProblem, Saving};
+use strata_desktop::settings::{FinishedSave, PendingSave, SaveOutcome, Saving};
 use strata_desktop::settings::{
     KeymapOverrides, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE,
     configured_hardware_acceleration, configured_video_preview_backend, lock_saves,

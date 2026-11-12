@@ -28,7 +28,8 @@ fn isolated(name: &str, settings: Option<&str>, run: impl FnOnce()) {
     );
 }
 
-/// The result of a save the writer has finished, with no executor and no main context.
+/// The result of a save the writer has finished, polled by hand: delivering it needs no
+/// executor and no dispatch. (`writer::settle` itself iterates GLib's default context.)
 fn finished(save: PendingSave) -> FinishedSave {
     writer::settle();
     let mut finished = pin!(save.finished());
@@ -253,7 +254,7 @@ fn values_adopted_from_another_process_are_not_saved_back() {
 fn a_start_up_repair_is_no_change_and_is_saved_with_the_next_one() {
     isolated(
         "a_start_up_repair_is_no_change_and_is_saved_with_the_next_one",
-        None,
+        Some(COMPLETE),
         || {
             let (mut preferences, mut saving) = load();
             let before = saving.revision();
@@ -263,7 +264,12 @@ fn a_start_up_repair_is_no_change_and_is_saved_with_the_next_one() {
             assert_eq!(saving.revision(), before);
             let unchanged = saving.commit(&preferences);
             assert!(!unchanged.changed && unchanged.save.is_none());
-            assert_eq!(saved_file(), None, "a repair alone writes nothing");
+            writer::settle();
+            assert_eq!(
+                saved_file().as_deref(),
+                Some(COMPLETE),
+                "a repair alone writes nothing"
+            );
 
             preferences.show_hidden = true;
             let commit = saving.commit(&preferences);
@@ -275,6 +281,52 @@ fn a_start_up_repair_is_no_change_and_is_saved_with_the_next_one() {
                 Some("nord")
             );
             assert_eq!(table.get("show_hidden"), Some(&toml::Value::Boolean(true)));
+            assert_eq!(
+                table.get("sort_key"),
+                None,
+                "the file is merged into, so the theme is there because the repair was recorded"
+            );
+        },
+    );
+}
+
+/// A file without `mode` does not read whole: it is salvaged entry by entry, and what
+/// salvage filled in counts as repaired. The first change then saves every value the file
+/// lacked, beside the one that changed. The GTK application has always done so.
+#[test]
+fn a_salvaged_file_is_saved_with_every_value_loading_filled_in() {
+    isolated(
+        "a_salvaged_file_is_saved_with_every_value_loading_filled_in",
+        Some("theme = \"nord\"\ngroup_by_type = true\nfrom_a_later_strata = \"kept\"\n"),
+        || {
+            let (mut preferences, mut saving) = load();
+            assert!(saving.load_failure().is_none());
+            assert_eq!(preferences.theme, "nord");
+            assert!(saving.setting_unsaved("mode") && saving.setting_unsaved("sort_key"));
+            assert!(!saving.setting_unsaved("theme") && !saving.unsaved());
+
+            preferences.show_hidden = true;
+            let commit = saving.commit(&preferences);
+            let outcome = saving.saved(finished(commit.save.expect("a queued save")));
+            assert!(matches!(outcome, SaveOutcome::Saved));
+
+            let table = saved_table();
+            let every_default =
+                toml::Table::try_from(Preferences::default()).expect("the defaults as a table");
+            for (key, default) in &every_default {
+                let expected = match key.as_str() {
+                    "theme" => toml::Value::String("nord".to_owned()),
+                    "group_by_type" | "show_hidden" => toml::Value::Boolean(true),
+                    _ => default.clone(),
+                };
+                assert_eq!(table.get(key), Some(&expected), "{key}");
+            }
+            assert_eq!(
+                table
+                    .get("from_a_later_strata")
+                    .and_then(toml::Value::as_str),
+                Some("kept")
+            );
         },
     );
 }

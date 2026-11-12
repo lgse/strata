@@ -22,13 +22,14 @@ impl PreferenceManager {
         }
         // Reported after bindings apply, and whether or not anything changed,
         // because a retry with an unchanged value can fail too.
+        // Named in full: `save_notice` has a `SaveProblem` of its own.
         match commit.problem {
-            Some(SaveProblem::UnreadableAtStartup { path }) => {
+            Some(strata_desktop::settings::SaveProblem::UnreadableAtStartup { path }) => {
                 if let Some(error) = self.saving.borrow().load_failure() {
                     self.save_notices.unreadable_at_startup(&path, error);
                 }
             }
-            Some(SaveProblem::Snapshot { path, error }) => {
+            Some(strata_desktop::settings::SaveProblem::Snapshot { path, error }) => {
                 self.save_notices.write_failed(&path, &error);
             }
             None => {}

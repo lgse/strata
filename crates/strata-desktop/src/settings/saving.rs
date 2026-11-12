@@ -22,6 +22,11 @@ use crate::storage::{
 
 /// Reads the file, salvaged entry by entry and brought within range, and starts the
 /// bookkeeping from it: what loading repaired is saved with the first change.
+///
+/// It applies nothing process-wide. The caller makes [`Saving::startup_locale`] the
+/// process's language, and applies whatever else its interface takes from the values.
+///
+/// Call it once in a process. See [`Saving`].
 pub fn load() -> (Preferences, Saving) {
     writer::note(&settings_path(), file_stamp(&settings_path()));
     let (mut preferences, load_failure, salvaged) = read_loaded_preferences();
@@ -48,6 +53,11 @@ pub fn load() -> (Preferences, Saving) {
     (preferences, saving)
 }
 
+/// The bookkeeping of one process's saves of `settings.toml`.
+///
+/// **One for the file in a process.** The settings writer coalesces the saves queued for a
+/// path and gives every waiting save the result of the newest contents, so a second `Saving`
+/// would be told its save succeeded and forget keys that were never written.
 pub struct Saving {
     startup_interface_renderer: InterfaceRenderer,
     startup_locale: &'static str,
@@ -208,6 +218,10 @@ impl Saving {
     /// Takes `keys` of `preferences` as what the file holds, for values another Strata
     /// process saved and this one adopted: they are not saved again. Returns whether a value
     /// differs from the commit before.
+    ///
+    /// The caller adopts a key only while [`Self::setting_unsaved`] is false for it. A save
+    /// on its way has already taken this process's value for an unsaved key, and would write
+    /// it over the other process's.
     pub fn record_adopted(&mut self, preferences: &Preferences, keys: &[&str]) -> bool {
         if let Ok(current) = toml::Table::try_from(preferences) {
             for key in keys {
@@ -224,6 +238,10 @@ impl Saving {
     /// Makes `preferences` the values later commits compare with, without counting a change,
     /// so repairs made at start-up are not the next change. What they changed is saved with
     /// the next save.
+    ///
+    /// For start-up only, before the first commit. With a save on its way, that save's
+    /// success would clear the keys this marks, and the repair would not be written until
+    /// the value changed again.
     pub fn rebase(&mut self, preferences: &Preferences) {
         if let Ok(normalized) = toml::Table::try_from(preferences) {
             record_changes(&mut self.dirty_keys, &self.last_queued, &normalized);
