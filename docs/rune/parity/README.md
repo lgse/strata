@@ -285,12 +285,13 @@ ref = "lgse/strata#NNN"
 A gap goes into the existing filing packet, `docs/rune/upstream/rune/`, to be filed later by
 the owner.
 
-1. Search the packet's 98 entries and the `rune-gap` findings first.
+1. Search the packet's entries (100 on 2026-11-12: 98 from the component work and those
+   under "Added during parity work" in its README) and the `rune-gap` findings first.
 2. Write the entry as the packet's files are written: the notes table with `Checked` and
    `Status` rows, the line "Paste from here.", then the title and body, with a headless
    repro where one exists.
-3. Take the next free number; 99 is next. On a collision the later pull request renumbers at
-   rebase.
+3. Take the next free number: the one after the last row of "Added during parity work",
+   which is 101 on 2026-11-12. On a collision the later pull request renumbers at rebase.
 4. Add its row to a new README section, "Added during parity work", sorted by number. The
    owner ranks it at the filing pass.
 5. Cite the entry from the ledger blocker or the twin, and from the module docs of the shim

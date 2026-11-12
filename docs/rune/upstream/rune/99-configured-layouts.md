@@ -7,7 +7,7 @@
 | Affects | `strata-app`'s press builder (`crates/strata-app/src/commands/press.rs`), which reads every key Strata's shortcuts match |
 | Retires | The deviation recorded in `docs/rune/parity/owner.md` under B3: a non-Latin layout with a non-US Latin layout also configured |
 | Checked | By source only, at `2a44156` (2026-11-12). `window/keys.rs` gives a handler the active layout's unmodified character (`key_base`, from winit's `key_without_modifiers`) and the physical key, and `map_key_event` replaces a non-ASCII character typed with Ctrl by the US key at that position (`shortcuts::us_char`). `Chord::matches_tx` falls back the same way (`input/chord.rs:210`). Nothing reads another XKB group. |
-| Status | Drafted, not filed. It has no headless repro: the configured layouts are the window host's, and `Runtime::key` carries no layout. Workaround in force: the US position, in `press.rs` |
+| Status | Drafted, not filed. It has no headless repro and cannot have one: `Runtime::key` carries no layout. Run it in a window before filing: a session with two layouts configured (`ru,de`) under the headless sway harness that `mise run test-platform` uses would do, with a handler that prints the key, `Tx::physical_key()` and `Tx::key_base()`. Workaround in force: the US position, in `press.rs` |
 
 Paste from here.
 
@@ -26,8 +26,8 @@ configured group and level.
 Russian one is active. They press Ctrl and the key that is Z on their German layout (Y on a
 US keyboard).
 
-- In GTK, Qt and the GTK build of Strata, the shortcut is Ctrl+Z: the other configured
-  layout types `z` on that key.
+- In the GTK build of Strata the shortcut is Ctrl+Z: the other configured layout types `z`
+  on that key.
 - In a Rune window the handler gets `Key::Command('y')`: off macOS `map_key_event` has put
   the US key in the non-ASCII character's place. `Tx::physical_key()` says `KeyY` and
   `Tx::key_base()` says `н`. Nothing says `z`.

@@ -9,8 +9,8 @@ use rune::{Key as Logical, KeyEvent, Modifier, Mods, PhysicalKeyCode as At};
 use strata_desktop::keys::{
     Binding, Key, KeyPress, Map, Modifiers, SHORTCUT_MODIFIERS,
     bindings::{
-        CONTEXT_MENU, COPY, FILTER_SLASH, FOCUS_PREVIOUS, HIDDEN_FILES, NEW_FOLDER, PROPERTIES,
-        REFRESH, SELECT_ALL, SETTINGS, TAB_NUMBERS, TEXT_LARGER, UNDO, VIEW_COLUMNS,
+        ARROW_SCOPE, CONTEXT_MENU, COPY, FILTER_SLASH, FOCUS_PREVIOUS, HIDDEN_FILES, NEW_FOLDER,
+        PROPERTIES, REFRESH, SELECT_ALL, SETTINGS, TAB_NUMBERS, TEXT_LARGER, UNDO, VIEW_COLUMNS,
     },
 };
 
@@ -137,6 +137,17 @@ fn a_chord_on_a_layout_without_ascii_is_the_us_key_and_says_it_fell_back() {
     assert!(hebrew.is(Binding::ctrl_shift(Key::c)), "{hebrew:?}");
     let latin = chord('c', CTRL, at(At::KeyC, 'c'));
     assert!(!latin.used_fallback(), "{latin:?}");
+}
+
+/// The default in force for the eighth key case (`docs/rune/parity/owner.md`, B3): where
+/// only the level typed is not ASCII, Rune has dropped the character, the base says nothing
+/// was replaced, and the press is the US key's. GTK reads Ctrl+`|` and no shortcut.
+#[test]
+fn a_chord_whose_level_alone_is_not_ascii_reads_as_the_us_key_rune_names() {
+    let azerty_mu = chord('\\', CTRL_SHIFT, at(At::Backslash, '*'));
+    assert!(azerty_mu.is(ARROW_SCOPE), "{azerty_mu:?}");
+    let polish_ogonek = chord('a', CTRL, at(At::KeyA, 'a'));
+    assert!(polish_ogonek.is(SELECT_ALL), "{polish_ogonek:?}");
 }
 
 #[test]

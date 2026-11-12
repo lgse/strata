@@ -202,7 +202,8 @@ gaps"), by number. The owner ranks each at the filing pass.
 
 | # | Entry | Kind | Affects | Workaround it would retire | Status |
 | --- | --- | --- | --- | --- | --- |
-| 99 | [A key handler cannot learn what a key types in the other configured layouts](99-configured-layouts.md) | New issue | `strata-app`'s press builder (B3) | The US position standing in for the user's other Latin layout, a deviation recorded in `docs/rune/parity/owner.md` | Drafted, checked by source only; no headless repro |
+| 99 | [A key handler cannot learn what a key types in the other configured layouts](99-configured-layouts.md) | New issue | `strata-app`'s press builder (B3) | The US position standing in for the user's other Latin layout, a deviation recorded in `docs/rune/parity/owner.md` | Drafted, checked by source only; to run in a window before filing |
+| 100 | [A chord's handler gets the US key in place of the character typed, and the character is gone](100-chord-typed-character.md) | New issue | `strata-app`'s press builder (B3) | The builder's guess from `key_base` at whether the character was replaced, and the US key it reads where it cannot tell | Drafted, checked by source only; to run in a window before filing |
 
 ## Owner decisions (2026-11-10)
 

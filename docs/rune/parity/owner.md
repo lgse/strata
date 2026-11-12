@@ -250,9 +250,22 @@ Source for all of these: [B3](packages/B3.md), "Design", and the archived issue
      [H3](packages/H3.md)'s to take or leave.
   5. *Keys Rune's host never delivers* (dead keys, Compose, Caps Lock, AltGr, media keys,
      F25 to F35, the keypad's 5 with Num Lock off). Nothing arrives, so nothing is routed.
+     What a dead key or Compose goes on to compose does arrive, as text at the last key's
+     position: a dead key and then Space types `^` on Rune, where GTK's list hears Space.
   6. *A modifier's own press.* Built as GDK reports it, held without the key itself. Rune
      sends none unless a host asks, and neither host asks yet.
   7. *Character to keysym.* B2's one keysym for a character, `Key::from_char`.
+- **An eighth case, found in the review of the registry: a chord whose Shift or AltGr level
+  types no ASCII on a key whose base is ASCII.** With Ctrl held, Rune's window host
+  replaces a character that is not ASCII by the US key at that position and drops the
+  character typed. The press builder undoes that where the key's base character is not
+  ASCII either (a Russian or Greek key). Where the base is ASCII it cannot tell that
+  anything was replaced, and reads the US unshifted key: on AZERTY, Ctrl+Shift with the `*`
+  key (which types `µ`) reads as Ctrl+`\`, the arrow-scope key, where GTK reads Ctrl+`|`;
+  on a Polish layout Ctrl+AltGr+A (`ą`) reads as Ctrl+A, where GTK reads no shortcut. No
+  command with a registered key is reached by either today. Rune packet entry
+  [100](../upstream/rune/100-chord-typed-character.md) asks for the character back.
+  Meanwhile: the US key, as Rune names it.
 
 ### A6 and A18: keyboard settings
 

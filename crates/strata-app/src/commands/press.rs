@@ -22,8 +22,10 @@
 //! Where this cannot read a press as GDK does is listed in `docs/rune/parity/owner.md`, under
 //! B3: another Latin layout that is configured but not active, for which the US position
 //! stands in (Rune packet entry 99, `docs/rune/upstream/rune/99-configured-layouts.md`); a
-//! level above Shift's while Shift is held; and a press with no physical origin, which the
-//! QA target's all are (packet entry 97).
+//! level above Shift's while Shift is held; a chord whose level types no ASCII on a key
+//! whose base is ASCII, where Rune has dropped the character typed and the US key stands
+//! (packet entry 100, `100-chord-typed-character.md`); and a press with no physical origin,
+//! which the QA target's all are (packet entry 97).
 
 use rune::{Key as Logical, KeyEvent, Modifier, Mods, PhysicalKeyCode, Tx};
 use strata_desktop::keys::{Key, KeyPress, KeyPressParts, Modifiers, Typed};
@@ -253,9 +255,10 @@ fn same_letter(typed: char, base: char) -> bool {
     typed == base || typed.to_lowercase().eq(base.to_lowercase())
 }
 
-/// What the key typed, where Rune named another. With Ctrl held on a layout that types no
-/// ASCII, Rune's host puts the US key in the character's place; the base says what the key
-/// types, which is what GDK would have delivered.
+/// What the key typed, where Rune named another. With Ctrl held, Rune's host puts the US key
+/// in the place of a character that is not ASCII and drops the character. Where the key's
+/// base is not ASCII either, the base is what GDK would have delivered. Where the base is
+/// ASCII nothing says a character was replaced, and the US key stands.
 fn as_laid_out(named: char, command: bool, base: Option<char>) -> char {
     match base {
         Some(base) if command && named.is_ascii() && !base.is_ascii() => base,

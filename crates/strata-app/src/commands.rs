@@ -30,12 +30,28 @@ use crate::{App, shell, slots::At};
 mod browser;
 pub(crate) mod press;
 
-/// Where the GTK window reads a key: the tab strip's controller, the dispatcher's entry, the
-/// stages of its chain in their order (`handle_key`, `src/ui/window/keyboard.rs:421`), what
-/// follows a key the chain left (`after_yield`, line 531), and the Settings key, which hears
-/// what the focused widget did not take (`composition/settings.rs:71`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum Stage {
+/// Declares [`Stage`] and the order a press is offered to its variants from one list, so a
+/// stage cannot be declared and never walked.
+macro_rules! stages {
+    ($($(#[$note:meta])* $stage:ident,)*) => {
+        /// Where the GTK window reads a key: the tab strip's controller, the dispatcher's
+        /// entry, the stages of its chain in their order (`handle_key`,
+        /// `src/ui/window/keyboard.rs:421`), what follows a key the chain left (`after_yield`,
+        /// line 531), and the Settings key, which hears what the focused widget did not take
+        /// (`composition/settings.rs:71`).
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub(crate) enum Stage {
+            $($(#[$note])* $stage,)*
+        }
+
+        impl Stage {
+            /// Every stage, in the order a press is offered to them.
+            pub(crate) const ALL: &'static [Self] = &[$(Self::$stage,)*];
+        }
+    };
+}
+
+stages! {
     /// `TabWindow::handle_key` in `src/ui/window/composition/tabs.rs`.
     TabStrip,
     /// What the dispatcher does with every press before its chain: a pending bookmark, the
@@ -64,37 +80,6 @@ pub(crate) enum Stage {
     ItemNavigation,
     AfterYield,
     Unclaimed,
-}
-
-impl Stage {
-    /// Every stage, in the order a press is offered to them.
-    pub(crate) const ALL: [Self; 25] = [
-        Self::TabStrip,
-        Self::Entry,
-        Self::RenameTab,
-        Self::ZoomShortcut,
-        Self::InputOwner,
-        Self::TenxerKeys,
-        Self::WindowCommands,
-        Self::DirectCommands,
-        Self::DefaultTabNavigation,
-        Self::InlineEditing,
-        Self::FilterAndLocationCommands,
-        Self::VideoControls,
-        Self::SidebarCommands,
-        Self::ContextMenuCommand,
-        Self::PropertiesCommand,
-        Self::SearchResultKeys,
-        Self::PreviewPasswordEscape,
-        Self::TextInput,
-        Self::FileCommands,
-        Self::PreviewNavigation,
-        Self::FocusNavigation,
-        Self::Dismissal,
-        Self::ItemNavigation,
-        Self::AfterYield,
-        Self::Unclaimed,
-    ];
 }
 
 /// What a stage matches a press against.
@@ -151,7 +136,9 @@ pub(crate) struct Call<'a> {
 pub(crate) enum Outcome {
     /// It ran, and the press is taken.
     Ran,
-    /// Not for it after all: the next command that reads the press is asked.
+    /// Not for it after all: the next command that reads the press is asked. A command
+    /// answers this when it did nothing, never after it changed something: the next command
+    /// would then act on top of it.
     Declined,
     /// The focused element's: nothing else is asked, and Rune is told the key is not taken.
     #[expect(dead_code, reason = "no registered command leaves a key yet")]
@@ -300,13 +287,20 @@ pub(crate) fn bound(app: &App) -> impl Iterator<Item = Bound> {
     })
 }
 
+/// What a call did: the command's answer, and whether the view has to run for what the
+/// browser said while it ran.
+struct Called {
+    outcome: Outcome,
+    changed: bool,
+}
+
 /// One call, between the two halves of a handler that makes the browser act: the browser
 /// takes what the parts changed first, and what it answers at once is applied after.
-fn call(app: &mut App, action: &Action<App>, call: &Call<'_>, tx: &mut Tx) -> Outcome {
+fn call(app: &mut App, action: &Action<App>, call: &Call<'_>, tx: &mut Tx) -> Called {
     shell::publish(app);
     let outcome = (action.run)(app, call, tx);
-    shell::settle(app, tx);
-    outcome
+    let changed = shell::settle(app, tx);
+    Called { outcome, changed }
 }
 
 /// Runs the command `id` on `on`: a chosen menu row, a pressed header button, a palette's
@@ -316,29 +310,37 @@ pub(crate) fn run(app: &mut App, id: &str, on: On, tx: &mut Tx) -> Outcome {
         tracing::debug!(id, "a command no part of this interface has");
         return Outcome::Declined;
     };
-    call(app, action, &Call { on, press: None }, tx)
+    call(app, action, &Call { on, press: None }, tx).outcome
 }
 
 /// Offers `press` to each stage in the GTK chain's order, and within a stage to each command
 /// that reads it there, until one runs or leaves it.
-fn walk(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Outcome {
+fn walk(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Called {
     let key = Call {
         on: On::Focus,
         press: Some(press),
     };
+    let mut changed = false;
     for stage in Stage::ALL {
         let reading = actions(app).filter(|action| {
             let mut keys = action.keys.iter();
-            keys.any(|keys| keys.stage == stage && keys.reads.reads(press))
+            keys.any(|keys| keys.stage == *stage && keys.reads.reads(press))
         });
         for action in reading.collect::<Vec<_>>() {
-            match call(app, action, &key, tx) {
-                Outcome::Declined => {}
-                outcome => return outcome,
+            let called = call(app, action, &key, tx);
+            changed |= called.changed;
+            if called.outcome != Outcome::Declined {
+                return Called {
+                    outcome: called.outcome,
+                    changed,
+                };
             }
         }
     }
-    Outcome::Declined
+    Called {
+        outcome: Outcome::Declined,
+        changed,
+    }
 }
 
 /// The window's keys: what the focused element passed on. While a part's field has the
@@ -350,12 +352,17 @@ pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
     let typing = waiting || shell::live_keys(app).type_to_search_active();
     let press = press::read(event, press::Origin::of(tx));
     let press = keys::rewrite(press, Context { typing });
-    if !waiting && walk(app, &press, tx) == Outcome::Ran {
-        return true;
+    if waiting {
+        tx.live_only();
+        return false;
     }
-    // Nothing the view reads changed: no commit for a key that is not the window's.
-    tx.live_only();
-    false
+    let walked = walk(app, &press, tx);
+    if walked.outcome != Outcome::Ran && !walked.changed {
+        // Nothing the view reads changed: no commit for a key that is not the window's. A
+        // command that declined after the browser answered it still gets its frame.
+        tx.live_only();
+    }
+    walked.outcome == Outcome::Ran
 }
 
 #[cfg(test)]
