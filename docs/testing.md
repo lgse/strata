@@ -1690,7 +1690,12 @@ field. Then it replays the shortest sequence three more times: a divergence
 is confirmed when it shows **three times out of three**.
 
 One that does not confirm is noise. It goes to calibration (a longer rest, or a
-mask), never to an issue, and the command says so and fails. A confirmed one
+mask), never to an issue, and the command says so and fails. The exception is
+a race in the target itself, which the shrinker cannot tell from noise: when
+24 replays of the whole sequence go two ways from the same input, each at
+rest, it is the target's fault. It is filed as an `oracle` issue, recorded in
+`docs/rune/parity/findings.md`, and its sequence is parked unshrunk, as for
+lgse/strata#2177 and lgse/strata#2201. A confirmed one
 prints the steps, the first differing field and the title a `divergence` issue
 takes (`[fuzz <area>] <field> differs after <action>`), and with `--corpus` is
 written into the area's corpus.
@@ -1721,13 +1726,14 @@ is evidence of nothing else.
 #### The corpus and parked sequences
 
 `tests/qa/fuzz/corpus/<area>/` keeps the sequences of an area that showed a
-divergence, each a scenario file under its own name. While the issue of one is
-open it is parked: the file `parked` in the area's folder lists it as
+divergence, each a scenario file under its own name. While the finding of one
+is open it is parked: the file `parked` in the area's folder lists it as
 `v<version>-<seed> <code> <issue>`, which reads as the end of its file's name,
 sorted by version and seed. The code is an exception code, or `divergence`
-while the issue has none yet. Once the issue is fixed its line goes, and from
-then on `replay` holds the sequence to agreeing with itself, which is what the
-smoke tier adds to fresh seeds. A sequence becomes a named scenario only when
+while the finding has none yet. The issue is the finding's reference, and may
+be closed: the finding's state is in `docs/rune/parity/findings.md`. Once the
+finding is fixed its line goes, and from then on `replay` holds the sequence
+to agreeing with itself, which is what the smoke tier adds to fresh seeds. A sequence becomes a named scenario only when
 no scenario owns the behaviour, as the test-value rules in `AGENTS.md` ask.
 
 What a parked line stops:
@@ -1854,7 +1860,7 @@ wait. 250 ms was enough for these seeds, and the rule keeps a margin over it.
 | `app.field.caret`, `app.field.selection`: after Shift+click on the entry being renamed | A race in GTK, whatever the rest: the same input events clear the selection in 28 replays of 34 and select the whole name in the other 6 | An `oracle` issue, lgse/strata#2173, and its seed parked. The alphabet does not click an entry while a name is edited: where such a click puts the caret is a matter of pixels in any case |
 | `app.preview`: which file the preview shows after Move to Trash from a context menu on a filtered pane | A race in GTK, whatever the rest: a file that is neither focused nor selected in 23 replays of 24, the focused one in the other | An `oracle` issue, lgse/strata#2177, and its seed parked. The alphabet is left as it is, so another seed can meet it |
 | `app.focused`, `app.panes[].focused`: after a click that opens a folder's column, with 96 sequences at once | A race in GTK between the column's listing and focus moving into it: focus on the column in one replay, on its first entry in the other. Seen once, and not at one sequence to a core | An `oracle` issue, lgse/strata#2180, and its seed parked |
-| `app.matches`, `app.menu`: after Space in the sort menu, opened from the keyboard, once a right-click and Down have gone to it | A race in GTK, whatever the rest: from the same input events the menu closes and the folder is sorted by name in 16 replays of 24, and the menu stays open over another order in the other 8. Met by seed `0x1de` in the last run of seeds 1 to 1000; the shrinker took it from 40 steps to 10, which differed in two confirmations of three | Recorded in `docs/rune/parity/findings.md`, and not parked: a parked line cites an issue, and what a new finding is cited by is the owner's open question. Its sequence is not kept either; the seed and the alphabet's version write it again |
+| `app.matches`, `app.menu`: after Space in a column's sort menu, opened from the keyboard and left open, once a right-click and Down have gone to it | A race in GTK, whatever the rest: from the same input events Space puts the folder back in its default order in 16 replays of 24, and in another order in the other 8; the menu stays open either way. Met by seed `0x1de` in the last run of seeds 1 to 1000; the shrinker took it from 40 steps to 10, which differed in two confirmations of three | An `oracle` issue, lgse/strata#2201, and its seed parked, after that run |
 
 One more `oracle` issue is not a difference: GTK logs a critical, the same one
 at the same step in both replays (lgse/strata#2176). A GLib warning is a
@@ -1868,27 +1874,21 @@ itself races or warns:
 
 | Run | Seeds replayed | Agreed | The others |
 | --- | --- | --- | --- |
-| 40 actions, two replays, 24 at once: seeds 1 to 1000 | 1,000 | 999 | Seed `0x1de`, the sort menu race |
+| 40 actions, two replays, 24 at once: seeds 1 to 1000 | 1,000 | 999 | Seed `0x1de`, the sort menu race (lgse/strata#2201), parked since |
 | The same at 96 at once: seeds 1001 to 1300 | 299 | 299 | Seed `0x41c` is parked and was not replayed |
 | 120 actions, three replays, 24 at once: seeds 2001 to 2100 | 100 | 100 | |
 
 No step was left unsettled and no GLib warning was logged in any of them:
 139,867 observations in 2,898 replays. Five GTK faults were found in all, and
-four of them are parked.
-
-**Seed `0x1de` is not parked, so a run that includes it can fail.** Until it
-is parked, `./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..500`
-fails on that seed about 4 times in 9. The smoke tier, seeds 1 to 20, is
-unaffected. Read a range that includes `0x1de` with that in mind: a `DIFFER`
-on `app.matches` or `app.menu` after Space in the sort menu is this fault and
-not a new one.
+all five are parked: seed `0x1de` was parked after the run that met it, so a
+run of seeds 1 to 1000 now names it as parked and replays the other 999.
 
 These runs were made with `strata-next` at `682fa0e7f`. They were not repeated
 after #2192 and #2195 to #2197 merged application code: the driver is the
 same, and the smoke tier agrees at the head.
 
-`replay --parked --repeats 24` says what the parked sequences do on the same
-code: the critical of lgse/strata#2176 in every replay; the Shift+click of
+`replay --parked --repeats 24` says what the four sequences parked then do on
+the same code: the critical of lgse/strata#2176 in every replay; the Shift+click of
 lgse/strata#2173 one way in 23 replays and the other in 1; the preview of
 lgse/strata#2177 on one file in 19 and on another in 5; and the focus of
 lgse/strata#2180 the same in all 24, at four sequences at once and not the
@@ -1929,7 +1929,7 @@ sequence that agrees is not thereby fixed.
   agreed at 24 at once, 299 of 299 at 96 at once and 100 of 100 at 120
   actions with three replays, with nothing masked and no step unsettled; the
   one that differed is a race in GTK's own sort menu; five GTK faults were
-  found in all, four of them parked. That holds for one alphabet, Columns on
+  found in all, all parked. That holds for one alphabet, Columns on
   the canonical fixture, on a machine that is not starved of CPU; with an
   alphabet that keeps every click, Ctrl+click, Shift+click and right-click
   off the entries while a name is edited; and with a replay ending where it
@@ -1938,11 +1938,6 @@ sequence that agrees is not thereby fixed.
   `682fa0e7f` and was not repeated after #2192 and #2195 to #2197 merged
   application code: the driver is identical, and the smoke tier agrees at the
   head.
-- **One seed is not parked.** `0x1de` of `calibration` v3 meets the sort menu
-  race about 4 times in 9, so `run --alphabet calibration --seeds 1..500`
-  fails that often and the smoke tier, seeds 1 to 20, does not. It is recorded
-  in `docs/rune/parity/findings.md` and is parked once the owner has ruled
-  what a new finding is cited by, which is F2's to do.
 - **"Agree" is a rate.** Two replays catch a race that goes the rare way once
   in 24 about 8 % of the time, one that does so once in 6 about 28 %, and one
   that does so once in 3 about 44 %. Two of the races above agreed in a whole
