@@ -195,7 +195,7 @@ per-member compression selection matters for mixed inputs.
 ## Classification and limits
 
 The shared, case-insensitive extension heuristic is in
-`src/adapters/local_operations/archive/compression.rs`. It covers common compressed
+`crates/strata-fs/src/adapters/local_operations/archive/compression.rs`. It covers common compressed
 media, compressed archives and compressed document/package formats. Compound
 names such as `.tar.gz` and aliases such as `.tgz` are recognized. Raw containers
 such as `.tar`, `.bmp`, `.wav`, `.avi` and `.iso`, extensionless files and unknown

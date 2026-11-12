@@ -44,7 +44,7 @@ checks. Renew consent if the authorized scope changes, or run the required tests
 
 For native Rust selection, `scripts/test-headless.py` starts the private display
 and session buses, then appends its arguments to the fixed
-`cargo test --all-targets --all-features` command. Use module/name filters:
+`cargo test --workspace --all-targets --all-features` command. Use module/name filters:
 
 ```bash
 ./scripts/test-headless.py services::operations::tests
@@ -55,17 +55,23 @@ These select test execution across targets, not compilation to one target.
 Targeted runs can still incur a full test build; Cargo's cache helps subsequent
 iterations. There is no automatic changed-code dependency-to-test mapping.
 
-Controller regressions live under `src/app/browser/tests/`, grouped by navigation,
+The unit tests need the `test-support` feature, which `--all-features` turns on. It
+compiles the test hooks and test-only helpers of the workspace crates under `crates/`,
+because a crate's `#[cfg(test)]` code is invisible to another crate's tests. A plain
+`cargo test` stops with an error that says so. The QA runner builds without the
+feature, so the application the scenarios drive carries no test hooks.
+
+Controller regressions live under `crates/strata-fs/src/app/browser/tests/`, grouped by navigation,
 location input, selection, monitor updates, preferences, operations, undo, metadata,
 staging, event dispatch, and archive activation. Add cases to the matching owner
-rather than to `src/app/browser/tests.rs`, which holds shared source/provider
+rather than to `crates/strata-fs/src/app/browser/tests.rs`, which holds shared source/provider
 fixtures. Existing adjacent feature test modules retain their ownership. For
 example, `./scripts/test-headless.py app::browser::tests::undo::` selects undo
 history/claim regressions; `app::browser::tests::metadata::` selects metadata-fill
 and sort-terminal regressions. Keep distinct input routes and lifecycle cases
 separate even when they share fixtures.
 
-Local-operation regressions have owners under `src/adapters/local_operations/tests/`
+Local-operation regressions have owners under `crates/strata-fs/src/adapters/local_operations/tests/`
 for path resolution, copying, moving, replacement, conflicts, progress, naming,
 paste results, undo, deletion, and restore safety. Shared fixtures and the manual
 deletion benchmarks remain in the parent `tests.rs`; keep the benchmark names
@@ -124,7 +130,7 @@ STRATA_CONTAINER_ENGINE=podman python3 scripts/image_base.py build
 
 The recipe is `tests/container/Dockerfile`: a digest-pinned Arch Linux base, the
 dated 2026-09-11 Arch package snapshot, GTK 4.22.5, GLib 2.88.3, GStreamer
-1.28.7, and Rust 1.98.1. Pacman verifies the snapshot's signed packages. The
+1.28.7, and Rust 1.99.1. Pacman verifies the snapshot's signed packages. The
 image replaces only GTK's versioned shared library with a matching-source build
 carrying the accessibility-coordinate patch documented in
 [`tests/container/gtk/README.md`](../tests/container/gtk/README.md); an
@@ -173,7 +179,7 @@ environment change and requires reviewing the visual baselines.
 `./scripts/quality.sh` runs all three quality phases in the same verified build
 base. Use `./scripts/quality.sh fmt`, `clippy`, or `test` for an individual phase.
 No separate quality image is necessary: the published environment already has
-Rust 1.98.1, rustfmt, Clippy, native development libraries, and Xvfb. Quality now
+Rust 1.99.1, rustfmt, Clippy, native development libraries, and Xvfb. Quality now
 uses that pinned compiler rather than moving `stable`.
 
 CI resolves the public environment to a manifest digest, checks its input labels
@@ -196,7 +202,7 @@ the aggregate gate separately requires all test shards to pass. Cold quality
 compilation includes test-only and all-feature dependencies, so the published
 dependency layers are not a full quality hit.
 
-The Rust suite runs with `--all-targets --all-features --locked` inside private
+The Rust suite runs with `--workspace --all-targets --all-features --locked` inside private
 Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
 Each Xvfb server uses `-noreset` so consecutive test processes do not
 race a server reset when the last display client exits. GTK initialization
@@ -213,7 +219,7 @@ their existing runners rather than downloading a large GUI image unnecessarily.
 ### Rust quality shards
 
 CI's **Quality build and lint** job runs formatting and Clippy, then compiles
-`cargo test --locked --all-targets --all-features --no-run` once. It exports only
+`cargo test --locked --workspace --all-targets --all-features --no-run` once. It exports only
 test executables and a plan, not Cargo caches. `scripts/quality_ci.py` collects
 each libtest inventory, including the explicitly ignored tests, and assigns every
 entry to one of four shards. Tests are balanced longest-first across the shards

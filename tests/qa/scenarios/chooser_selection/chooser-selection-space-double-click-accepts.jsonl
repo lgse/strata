@@ -1,0 +1,6 @@
+{"scenario":"chooser-selection-space-double-click-accepts","modes":["columns","list"],"portal":true,"session_bus":true,"variants":[{"id":"name","vars":{"part":"label"}},{"id":"metadata","modes":["list"],"vars":{"part":"metadata"}}],"cost":{"columns-name":0.9,"list-metadata":0.9,"list-name":0.9},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"Double-click on a row's selection space accepts a multiple-file request; only surface-activation route in Columns, whose model items are not identity-stable"}}
+{"portal_open":"Selection space double-click","options":{"current_folder":"$fixture","multiple":true}}
+{"adopt":"Selection space double-click","message":"the multiple-file chooser to open"}
+{"wait":{"entries":{"contains":["readme.md","todo.txt"]},"dir":"$root"},"message":"the fixture files to be listed"}
+{"click":{"entry":"todo.txt","part":"$part","dir":"$root"},"at":["2/3","50%"],"count":2}
+{"portal_response":{"done":true,"status":0,"names":["todo.txt"]},"message":"a double-click on $part selection space to accept the file"}

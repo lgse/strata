@@ -254,7 +254,17 @@ fn tab(fixture: &KeyboardFixture, direction: gtk::DirectionType) {
     if !fixture.press(key, modifiers) {
         fixture.window.emit_move_focus(direction);
     }
+    settle_idles();
     pump(50);
+}
+
+/// A Tab into the listing hands focus to the cursor at idle, which a slow
+/// frame can hold back past a fixed wait.
+fn settle_idles() {
+    let settled = Rc::new(Cell::new(false));
+    let flag = settled.clone();
+    glib::idle_add_local_once(move || flag.set(true));
+    wait_until(|| settled.get());
 }
 
 fn focused_widget_shows(window: &gtk::ApplicationWindow, name: &str) -> bool {

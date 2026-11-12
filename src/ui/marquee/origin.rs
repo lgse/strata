@@ -70,8 +70,8 @@ fn is_custom_control(widget: &gtk::Widget) -> bool {
     )
 }
 
-/// Chrome that drags a file, such as the preview header handle, keeps its press.
-fn hosts_drag_source(widget: &gtk::Widget) -> bool {
+/// Chrome or item rows with a file drag source keep their presses for that source.
+pub(super) fn hosts_drag_source(widget: &gtk::Widget) -> bool {
     widget
         .observe_controllers()
         .iter::<glib::Object>()

@@ -466,10 +466,16 @@ pub(crate) fn file_drag_hover_target(
     target: &gtk::DropTarget,
 ) -> Option<Location> {
     let destination = drop_state.destination()?;
-    target.current_drop().map(|_| destination)
+    target.current_drop()?;
+    let sources = drop_state.sources(target);
+    if !sources.is_empty() && sources.iter().all(|source| destination.is_within(source)) {
+        return None;
+    }
+    Some(destination)
 }
 
-/// Ignore drop validity so the source folder can spring open even though a self-drop is forbidden.
+/// Same-parent no-op drops may open containers to reach their children, but a
+/// dragged folder and its descendants are not navigation destinations.
 pub(crate) fn arm_spring_load_navigation(
     drop_state: &Rc<FileDropState>,
     target: &gtk::DropTarget,

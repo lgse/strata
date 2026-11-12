@@ -1,0 +1,10 @@
+{"scenario":"selected-blank-space-follows-view-policy","modes":["columns","icons","list"],"prefs":{"single_click_previews":true},"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":1.1,"icons":1.1,"list":1.0},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"Selected List Name space selects without moving; selected Columns/Icons space still transfers; native ownership routes differ"}}
+{"click":{"entry":"todo.txt"}}
+{"wait":{"selected":{"contains":["todo.txt"]}},"message":"source selection"}
+{"drag":{"from":{"entry":"todo.txt","part":"icon"},"from_at":["start-6","50%"],"to":{"entry":"archive"}},"modes":["icons"]}
+{"drag":{"from":{"entry":"todo.txt","part":"label"},"from_at":["2/3","50%"],"to":{"entry":"archive"}},"modes":["columns","list"]}
+{"fs":{"path":"archive/todo.txt","exists":true},"message":"selected whitespace to retain file dragging outside List","modes":["columns","icons"]}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0,"modes":["columns","icons"]}
+{"wait":{"selected":{"contains":["archive","todo.txt"]}},"message":"selected List row whitespace to select a range instead of dragging files","modes":["list"],"timeout_ms":1500}
+{"fs":{"path":"todo.txt","exists":true},"timeout_ms":0,"message":"List whitespace must not move the source file","modes":["list"]}
+{"fs":{"path":"archive/todo.txt","exists":false},"timeout_ms":0,"modes":["list"]}

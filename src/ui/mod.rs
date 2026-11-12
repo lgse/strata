@@ -25,11 +25,13 @@ mod inline_search;
 mod input_ownership;
 mod jobs;
 mod keys;
+pub(crate) mod launch_context;
 mod loading_skeleton;
 mod marquee;
 mod media;
 mod missing_tools;
 mod modal;
+pub(crate) mod modified_date;
 mod motion;
 mod notice;
 mod open_with;
@@ -55,7 +57,7 @@ mod tenxer_mode;
 mod terminal;
 mod theme;
 mod thumbnail;
-pub(crate) mod thumbnail_cache;
+pub(crate) use crate::adapters::thumbnail_cache;
 mod top_bar_navigation;
 mod udiskie_preferences;
 mod virtual_preview;
@@ -81,7 +83,7 @@ pub use window::{UnlockTarget, present, present_open, present_reveal, present_un
 pub(crate) use {inline_search::SEARCH_RESULTS_LABEL, preview::PREVIEW_LABEL};
 
 pub(crate) fn prepare_portal_ui() {
-    let _theme = theme::ThemeManager::shared();
+    let _theme = theme::ThemeManager::shared_without_portal_wait();
 }
 
 pub(crate) fn read_install_facts() {

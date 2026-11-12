@@ -7,31 +7,23 @@ rust_i18n::i18n!(
     backend = crate::i18n::Catalogs::compiled()
 );
 
-mod adapters;
-mod app;
+#[cfg(all(test, not(feature = "test-support")))]
+compile_error!("the unit tests need the test-support feature: pass --all-features");
+
 mod assets;
-mod build_info;
-mod child_environment;
-mod i18n;
-mod logging;
-mod media;
-mod metrics;
-mod model;
 mod portal;
-mod portal_setup;
 #[cfg(feature = "qa")]
 mod qa;
-#[cfg(feature = "rar")]
-mod rar_extraction;
-mod sandbox;
-mod sandbox_helper;
 mod services;
-mod storage;
 #[cfg(test)]
 mod test_support;
-mod trusted_command;
 mod ui;
 mod util;
+
+use strata_core::{i18n, logging, metrics, model, storage, trusted_command};
+use strata_desktop::{build_info, portal_setup};
+use strata_fs::{adapters, app, child_environment};
+use strata_preview::{media, sandbox, sandbox_helper};
 
 use std::{
     cell::OnceCell, ffi::OsString, ops::ControlFlow, os::unix::process::CommandExt, process::Stdio,
@@ -222,7 +214,7 @@ fn main() -> gtk::glib::ExitCode {
     let mode = launch_mode(&arguments);
     match mode {
         LaunchMode::BrowserWorker => {
-            return match sandbox::browser::run() {
+            return match sandbox::browser::run(sandbox_helper::browser_render) {
                 Ok(()) => gtk::glib::ExitCode::SUCCESS,
                 Err(error) => {
                     eprintln!("Browser helper failed: {error}");
@@ -390,6 +382,7 @@ fn main() -> gtk::glib::ExitCode {
             .contains(gio::ApplicationFlags::IS_SERVICE)
         {
             leave_launch_folder();
+            ui::prepare_portal_ui();
         }
     });
     application.connect_startup(|_| install_x11_program_class());
@@ -573,6 +566,7 @@ fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
                 .ok_or_else(|| "Invalid UTF-8 in preview helper arguments".to_owned())
         })
         .collect::<Result<Vec<_>, _>>()?;
+    sandbox_helper::install_archive_lister(adapters::list_archive_entries_direct);
     sandbox_helper::run(&arguments)
 }
 

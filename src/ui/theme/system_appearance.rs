@@ -1,12 +1,28 @@
 // SPDX-License-Identifier: MIT
 
-//! Follows GNOME's day and night appearance by switching between paired themes.
+//! Follows the desktop day and night preference through the portal, with GNOME
+//! GSettings as a fallback.
 
 use std::{cell::Cell, rc::Rc};
 
+use ashpd::desktop::settings::ColorScheme;
+#[cfg(not(test))]
+use ashpd::desktop::settings::Settings;
+#[cfg(not(test))]
+use futures_lite::StreamExt as _;
+#[cfg(not(test))]
+use gtk::glib;
 use gtk::{gio, prelude::*};
+#[cfg(not(test))]
+use std::time::Duration;
 
 use super::ThemeManager;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PortalStartup {
+    WaitForInitialValue,
+    AsyncOnly,
+}
 
 pub(super) const GNOME_INTERFACE_SCHEMA: &str = "org.gnome.desktop.interface";
 pub(super) const GNOME_COLOR_SCHEME_KEY: &str = "color-scheme";
@@ -48,21 +64,88 @@ pub(super) const SYSTEM_THEME_PAIRS: &[(&str, &str)] = &[
 
 pub(super) struct SystemAppearance {
     settings: Option<gio::Settings>,
-    dark: Cell<bool>,
+    gnome_dark: Cell<bool>,
+    portal: Cell<PortalAvailability>,
+    portal_scheme: Cell<Option<ColorScheme>>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PortalAvailability {
+    Probing,
+    Available,
+    Unavailable,
+}
+
+#[cfg(not(test))]
+const PORTAL_STARTUP_TIMEOUT: Duration = Duration::from_millis(500);
+
 impl SystemAppearance {
-    pub(super) fn read() -> Self {
+    pub(super) fn read(startup: PortalStartup) -> Self {
         let settings = gnome_interface_settings();
-        let dark = settings.as_ref().is_some_and(gnome_prefers_dark);
+        let gnome_dark = settings.as_ref().is_some_and(gnome_prefers_dark);
+        let (portal, portal_scheme) = match startup {
+            PortalStartup::WaitForInitialValue => match initial_portal_scheme() {
+                Some(Ok(scheme)) => (PortalAvailability::Available, Some(scheme)),
+                Some(Err(_)) | None => (PortalAvailability::Probing, None),
+            },
+            PortalStartup::AsyncOnly => (PortalAvailability::Probing, None),
+        };
         Self {
             settings,
-            dark: Cell::new(dark),
+            gnome_dark: Cell::new(gnome_dark),
+            portal: Cell::new(portal),
+            portal_scheme: Cell::new(portal_scheme),
         }
     }
 
     pub(super) fn is_available(&self) -> bool {
-        self.settings.is_some()
+        self.portal.get() != PortalAvailability::Unavailable || self.settings.is_some()
+    }
+
+    fn dark(&self) -> bool {
+        match self.portal_scheme.get() {
+            Some(ColorScheme::PreferDark) => true,
+            Some(ColorScheme::PreferLight) => false,
+            Some(ColorScheme::NoPreference) | None => self.gnome_dark.get(),
+        }
+    }
+}
+
+#[cfg(not(test))]
+fn initial_portal_scheme() -> Option<Result<ColorScheme, ashpd::Error>> {
+    async_io::block_on(futures_lite::future::or(
+        async {
+            Some(match Settings::new().await {
+                Ok(settings) => settings.color_scheme().await,
+                Err(error) => Err(error),
+            })
+        },
+        async {
+            async_io::Timer::after(PORTAL_STARTUP_TIMEOUT).await;
+            None
+        },
+    ))
+}
+
+#[cfg(test)]
+fn initial_portal_scheme() -> Option<Result<ColorScheme, ashpd::Error>> {
+    None
+}
+
+#[cfg(test)]
+impl SystemAppearance {
+    pub(super) fn for_test(
+        settings: Option<gio::Settings>,
+        portal: PortalAvailability,
+        scheme: Option<ColorScheme>,
+    ) -> Self {
+        let gnome_dark = settings.as_ref().is_some_and(gnome_prefers_dark);
+        Self {
+            settings,
+            gnome_dark: Cell::new(gnome_dark),
+            portal: Cell::new(portal),
+            portal_scheme: Cell::new(scheme),
+        }
     }
 }
 
@@ -78,7 +161,7 @@ impl ThemeManager {
     pub fn effective_theme_id(&self) -> String {
         let selected = self.selected_id();
         if self.follows_system_appearance() {
-            system_theme_id(&selected, self.system_appearance.dark.get()).to_owned()
+            system_theme_id(&selected, self.system_appearance.dark()).to_owned()
         } else {
             selected
         }
@@ -98,6 +181,11 @@ impl ThemeManager {
     }
 
     pub(super) fn monitor_system_appearance(self: &Rc<Self>) {
+        self.monitor_gnome_appearance();
+        self.monitor_portal_appearance();
+    }
+
+    fn monitor_gnome_appearance(self: &Rc<Self>) {
         let Some(settings) = &self.system_appearance.settings else {
             return;
         };
@@ -106,13 +194,91 @@ impl ThemeManager {
             let Some(manager) = weak.upgrade() else {
                 return;
             };
-            let dark = gnome_prefers_dark(settings);
-            if manager.system_appearance.dark.replace(dark) != dark
-                && manager.follows_system_appearance()
-            {
-                manager.apply_selected();
+            manager.update_gnome_appearance(gnome_prefers_dark(settings));
+        });
+    }
+
+    fn monitor_portal_appearance(self: &Rc<Self>) {
+        #[cfg(not(test))]
+        self.follow_portal_appearance();
+    }
+
+    #[cfg(not(test))]
+    fn follow_portal_appearance(self: &Rc<Self>) {
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let Ok(settings) = Settings::new().await else {
+                if let Some(manager) = weak.upgrade() {
+                    manager.set_portal_unavailable();
+                }
+                return;
+            };
+            // Subscribed before the read so a change between the two is not lost.
+            let changes = settings.receive_color_scheme_changed().await;
+            // The proxy and the subscription succeed without a portal; only the read fails.
+            let scheme = settings.color_scheme().await;
+            let Some(manager) = weak.upgrade() else {
+                return;
+            };
+            match scheme {
+                Ok(scheme) => manager.set_portal_scheme(scheme),
+                Err(_) => manager.set_portal_unavailable(),
+            }
+            drop(manager);
+            let Ok(mut changes) = changes else {
+                return;
+            };
+            while let Some(scheme) = changes.next().await {
+                let Some(manager) = weak.upgrade() else {
+                    return;
+                };
+                manager.set_portal_scheme(scheme);
             }
         });
+    }
+
+    fn update_gnome_appearance(&self, dark: bool) {
+        let before = self.system_appearance.dark();
+        self.system_appearance.gnome_dark.set(dark);
+        self.reapply_system_appearance_if_changed(before);
+    }
+
+    pub(super) fn set_portal_scheme(&self, scheme: ColorScheme) {
+        let before = self.system_appearance.dark();
+        let availability_changed = self
+            .system_appearance
+            .portal
+            .replace(PortalAvailability::Available)
+            != PortalAvailability::Available;
+        self.system_appearance.portal_scheme.set(Some(scheme));
+        self.reapply_system_appearance_if_changed(before);
+        if availability_changed {
+            self.theme_listeners.notify(self);
+        }
+    }
+
+    pub(super) fn set_portal_unavailable(&self) {
+        let before = self.system_appearance.dark();
+        let availability_changed = self
+            .system_appearance
+            .portal
+            .replace(PortalAvailability::Unavailable)
+            != PortalAvailability::Unavailable;
+        self.system_appearance.portal_scheme.set(None);
+        self.reapply_system_appearance_if_changed(before);
+        if availability_changed {
+            if !self.system_appearance.is_available() && self.follows_system_appearance() {
+                self.preferences.set_theme_selection("theme", None);
+            } else {
+                self.theme_listeners.notify(self);
+            }
+        }
+    }
+
+    fn reapply_system_appearance_if_changed(&self, before: bool) {
+        if before != self.system_appearance.dark() && self.follows_system_appearance() {
+            self.apply_selected();
+        }
     }
 }
 
