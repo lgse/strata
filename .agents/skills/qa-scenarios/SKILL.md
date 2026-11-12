@@ -5,8 +5,9 @@ description: >
   (tests/qa/scenarios/*.jsonl, run by tests/qa.rs through ./scripts/qa.sh),
   and work with the `strata --qa` JSON-lines protocol behind them. Use for any
   task that writes or changes a scenario file or its header (modes, variants,
-  cost, quality, skip, known_bug), reads a QA failure or its artifacts in
-  target/qa-artifacts, or changes the QA runner.
+  cost, quality, skip, known_bug, parity, targets), writes a Rune twin of a
+  scenario, reads a QA failure or its artifacts in target/qa-artifacts, or
+  changes the QA runner.
 ---
 
 # QA scenarios
@@ -230,6 +231,7 @@ send the key that moves back one entry in each view.
 | `skip` | A reason; keeps the scenario out of the default run. |
 | `cost` | Measured start-order weights per run label. |
 | `quality` | The scenario's value rating. |
+| `parity`, `targets` | The label of a scenario and its Rune twin, and the twin's `["rune"]`. Only for a pair: see "Write a Rune twin". |
 
 Step modifiers: `"modes":[...]`, `"variants":[...]`, `"when":PREDICATE`,
 `"if"`/`"unless"` (flags kept by `expect`/`flag` with `"as"`),
@@ -271,6 +273,87 @@ Step modifiers: `"modes":[...]`, `"variants":[...]`, `"when":PREDICATE`,
   set the issue and the exact failing line. The run then passes only while
   that step fails; once the bug is fixed the run fails with "remove the
   marker". Never use it for a flake.
+
+## Write a Rune twin
+
+On `strata-next` the same files run on the GTK application and on
+`strata-rune`, and the parity ledger, `tests/qa/parity/<folder>.toml`, says
+how each run stands. A **twin** is a second scenario,
+`<scenario>-rune.jsonl` beside the original, that stands in on Rune for a run
+the shared file cannot pass there under a named exception. "Twins" in
+`docs/testing.md` has the rules, the exceptions and who approves each; this is
+the procedure.
+
+A twin is the fourth resort of five. First try, in order: fix the port
+(`crates/strata-app` or the component); absorb the difference in the Rune QA
+backend (key names, role maps, settle rules and field offsets never go in a
+scenario); reword the scenario on `main`, with its own reason, so one file
+passes on both targets. Write a twin only when none fits and one of the six
+exceptions does: `timing`, `a11y`, `rune`, `oracle`, `toolkit` or `deviation`.
+`platform` never has a twin (the same file runs on the session host), and
+`scope`, `harness` and `component` are pending reasons. With no exception, the
+run stays `pending` with a blocker.
+
+1. **Have the reference.** An issue on `lgse/strata` that says what differs
+   and why none of those three fits (label `exception`; `oracle` for a bug in
+   Strata itself). A `rune` twin cites its packet entry instead,
+   `docs/rune/upstream/rune/<number>-<name>.md`. A `deviation` twin needs the
+   owner's ruling on its issue before it is written.
+2. **Write the twin** beside the original. It holds only the modes or
+   variants that differ, and starts from the same `tree`, `images`,
+   `fixture_root`, `setup`, `teardown`, `prefs`, `layout`, `portal`, `env`,
+   `session_bus` and `input_method`. Only the steps the exception names
+   differ, and at least one does: a twin whose steps are its original's is
+   refused, since then the shared file passes and the run is `required` (a
+   `message` or a `timeout_ms` is no difference). It keeps the original's
+   intent and end-state checks: every `fs` step and every `wait` or `expect`
+   on a `pref` of the original's run stays, unchanged and in order, by a
+   check, and the rest by review. Its header:
+
+   ```json
+   {"scenario":"<scenario>-rune","modes":["columns"],"targets":["rune"],"parity":{"twin":"<scenario>","exception":"timing","ref":"lgse/strata#NNN","differs":"<one line: which steps differ and why>"}}
+   ```
+
+   Give it messages on its waits and, by convention, the original's `cost`
+   for the runs it holds and a `quality`. No `mutation` and no `known_bug`.
+3. **Label the original**, and change nothing else in it. Its steps stay:
+
+   ```json
+   "parity":{"twin":"<scenario>-rune","exception":"timing","ref":"lgse/strata#NNN"}
+   ```
+
+4. **Flip the ledger entry** of each run the twin holds, in the folder's
+   file. The twin's own runs get no entry. A run that is `required` today
+   goes `parallel` only with the owner's agreement:
+
+   ```toml
+   status = "parallel"
+   exception = "timing"
+   twin = "<scenario>-rune/columns"
+   ref = "lgse/strata#NNN"
+   ```
+
+5. **Prove the twin can fail.** Add
+   `tests/qa/parity/mutations/<scenario>-rune.patch`, which breaks the
+   behaviour the twin's own steps check in `crates/strata-app`, and run
+   `./scripts/qa-parity.sh mutations`. A scenario whose every run is
+   parallel has no patch of its own: `git mv` it to the twin's name.
+6. **Check and run the pair.** `./scripts/qa-parity.sh <folder> --twins`
+   reads the ledger, every label and both files, says what to do about a
+   pair that does not hold, and lists each twin with how many of its steps
+   are the original's, its own, and the original's it drops: put that
+   listing in the pull request. `./scripts/qa-parity.sh <folder> --scenario
+   <scenario>-rune` runs the original on GTK and the twin on Rune. A run is
+   `parallel` only once both passed three times running. `./scripts/qa.sh`
+   never runs a twin, its counts do not change, and naming a twin to it
+   fails the selection.
+7. **Look for twins that are no longer needed.** `./scripts/qa-parity.sh
+   <folder> --parallel` runs each parallel run's shared file on Rune. One
+   that passes has an exception that lapsed: remove the twin, its patch and
+   the label, and make the entry `required`.
+
+A labelled original's header is one line that `main` edits too. When a merge
+from `main` conflicts there, take `main`'s line and add the label back.
 
 ## Flakes and races
 
@@ -332,8 +415,9 @@ run.
 
 ## Change the runner
 
-Runner unit tests live in `tests/qa/scenario_tests.rs` and
-`tests/qa/step_tests.rs` and must be listed in the `unit_tests!` macro in
+Runner unit tests live in `tests/qa/scenario_tests.rs`,
+`tests/qa/step_tests.rs`, `tests/qa/parity_tests.rs` and
+`tests/qa/twin_tests.rs` and must be listed in the `unit_tests!` macro in
 `tests/qa/unit_tests.rs`: the custom harness ignores `#[test]` and
 `#[cfg(test)]`, and `no_test_attribute_hides_a_runner_test` rejects them.
 Unit tests run in every `./scripts/qa.sh` run that names no scenario. Script
@@ -364,6 +448,10 @@ traces still appear. See "Main-thread I/O audit" in `docs/testing.md`.
       issue and are listed in the guide.
 - [ ] A scenario with a `mutation` still catches it:
       `./scripts/qa-mutation.sh <scenario>`.
+- [ ] A twin, or a scenario that has one: both labels, the ledger entries,
+      the steps and the twin's patch are in order (`./scripts/qa-parity.sh
+      <folder> --twins`), and the pair passes
+      (`./scripts/qa-parity.sh <folder> --scenario <scenario>-rune`).
 - [ ] Renamed or removed names are gone from `docs/`, `tests/`, and the
       skills.
 - [ ] `git diff --check` is clean.

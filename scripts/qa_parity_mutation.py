@@ -4,11 +4,13 @@
 breaks one behaviour of strata-app, and the scenario it is named for must catch it.
 
 Checked the way scripts/qa_mutation.py checks the GTK application's patches: the scenario's
-required runs pass on the Rune target unpatched, and at least one fails a step with the patch
+runs pass on the Rune target unpatched, and at least one fails a step with the patch
 applied. A patch is `<scenario>.patch`.
 
-A patch may be named for a scenario of any folder: its required runs are looked up in the
-whole ledger, tests/qa/parity/<folder>.toml.
+A patch may be named for a scenario of any folder: its runs are looked up in the whole
+ledger, tests/qa/parity/<folder>.toml. They are its required runs. A twin's are the runs
+that stand in for its original's parallel ones, and `<scenario>-rune.patch` is the proof
+that the twin can fail, which every twin has.
 
 With `gtk` it runs the GTK application's own patches for the slice's exit check instead:
 every patch under tests/qa/mutations but the ones the parity ledger names as stale before
@@ -42,15 +44,23 @@ def patches(directory: Path | None = None) -> list[str]:
     return sorted(path.stem for path in (directory or MUTATIONS).glob("*.patch"))
 
 
-def unguarded(scenarios: list[str], ledger: dict) -> list[str]:
-    """The patches whose scenario has no required run: nothing would be run to catch them."""
+def guards(scenario: str, ledger: dict) -> list[str]:
+    """The scenario's own runs that the ledger runs on the Rune target: its required runs,
+    or, for a twin, the runs that stand in for parallel ones."""
 
-    return [scenario for scenario in scenarios
-            if not qa_parity.selected(ledger, qa_parity.EVERY, "required", scenario)]
+    on_rune = qa_parity.deciding(ledger, qa_parity.EVERY, "rune", scenario)
+    return [run for run in on_rune if run.split("/", 1)[0] == scenario]
+
+
+def unguarded(scenarios: list[str], ledger: dict) -> list[str]:
+    """The patches whose scenario has no run on the Rune target: nothing would be run to
+    catch them. A scenario whose runs are all parallel has none: the patch is its twin's."""
+
+    return [scenario for scenario in scenarios if not guards(scenario, ledger)]
 
 
 def run_rune(scenario: str, destination: Path) -> tuple[dict[str, str], int]:
-    """The scenario's required runs on the Rune target, in the pinned image."""
+    """The scenario's runs at parity on the Rune target, in the pinned image."""
 
     destination.mkdir(parents=True, exist_ok=True)
     log = destination / "qa-parity.log"
@@ -74,7 +84,8 @@ def check() -> int:
         print(f"No patch under {MUTATIONS.relative_to(REPOSITORY)}.", file=sys.stderr)
         return 2
     if missing := unguarded(scenarios, qa_parity.load()):
-        print(f"No required run in the ledger for: {', '.join(missing)}", file=sys.stderr)
+        print(f"No run on the Rune target in the ledger for: {', '.join(missing)}. A patch is "
+              "named for a scenario with a required run, or for a twin.", file=sys.stderr)
         return 2
     reports = []
     for scenario in scenarios:

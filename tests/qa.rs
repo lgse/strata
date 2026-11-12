@@ -75,6 +75,12 @@ mod parity;
 #[path = "qa/parity_tests.rs"]
 mod parity_tests;
 
+#[path = "qa/twins.rs"]
+mod twins;
+
+#[path = "qa/twin_tests.rs"]
+mod twin_tests;
+
 #[path = "qa/unit_tests.rs"]
 mod unit_tests;
 
@@ -238,7 +244,13 @@ fn main() -> std::process::ExitCode {
              This run is not validation evidence; use ./scripts/qa.sh."
         );
     }
-    let status = harness::run(planned_tests(), &arguments);
+    let plan = planned_tests();
+    if let Some(refusal) = plan.unrunnable(&arguments, Target::from_environment().ok()) {
+        eprintln!("error: {refusal}");
+        return std::process::ExitCode::from(harness::FAILED);
+    }
+    plan.announce(arguments.list || arguments.help);
+    let status = harness::run(plan.tests, &arguments);
     drop(
         SHADER_CACHE
             .lock()

@@ -11,8 +11,8 @@ use crate::{
     fixture::manifest,
     harness,
     scenario::{
-        Quality, Scenario, check_folder, check_quality, load_scenario, planned_tests,
-        scenario_files, scenario_name,
+        Quality, Scenario, check_folder, check_quality, load_scenario, plan, scenario_files,
+        scenario_name,
     },
     steps::run_steps,
     variables::{placeholders, run_name, runs, variables},
@@ -42,7 +42,9 @@ pub(crate) fn every_scenario_file_is_planned_and_well_formed() {
         })
         .collect();
     expected.sort();
-    let mut planned: Vec<String> = planned_tests()
+    // Every file's runs, whatever targets it lists: `twin_tests.rs` has what a target plans.
+    let mut planned: Vec<String> = plan(&files, None, false)
+        .tests
         .into_iter()
         .filter(|test| test.group.is_some())
         .map(|test| test.name)

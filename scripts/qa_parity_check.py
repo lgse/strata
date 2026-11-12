@@ -6,6 +6,9 @@ runner's own reader refuses, tests/qa/parity.rs, this one refuses too.
 Both readers are held to one table, tests/qa/parity_cases.toml, which the runner's tests and
 the scripts' tests read: a problem is reported in the same words by both. The runs the
 runner plans are worked out here from the scenario headers, as tests/qa/variables.rs does.
+
+This module has the rules an entry answers to alone. scripts/qa_parity_twins.py has the
+labelled twins: the `parity` and `targets` header keys, and each pair against the ledger.
 """
 
 from __future__ import annotations
@@ -14,13 +17,13 @@ import json
 import tomllib
 from pathlib import Path
 
-STATUSES = ("required", "pending", "excluded")
+STATUSES = ("required", "parallel", "pending", "excluded")
 HOSTS = ("offscreen", "session")
 REASONS = ("harness", "component", "rune", "platform", "toolkit", "deviation", "scope")
 GATES = ("G1", "G2", "G3")
 # Every field an entry may have; the first four are on every entry.
 MANDATORY = ("scenario", "run", "package", "status")
-FIELDS = (*MANDATORY, "gate", "host", "reason", "blocker", "ruling")
+FIELDS = (*MANDATORY, "gate", "host", "exception", "twin", "ref", "reason", "blocker", "ruling")
 VALUES = {"status": STATUSES, "host": HOSTS, "reason": REASONS, "gate": GATES}
 # The parity plan's packages by track letter, and the slice's with the gate each owns.
 TRACKS = {"H": range(0, 6), "B": range(1, 4), "F": range(1, 6), "A": range(1, 22), "E": range(1, 5)}
@@ -31,21 +34,37 @@ SET = {"keyboard_navigation": "G2", "selection": "G2", "escape_selection": "G2",
        "inline_renaming": "G3"}
 FIRST_LIGHT = ("arrow-keys-move-focus", "columns-arrows")
 COLUMNS = "columns"
+# What a twin's name adds to its original's, the exceptions that may carry one, and the
+# pending reasons that are no exception: tests/qa/twins.rs.
+SUFFIX = "-rune"
+EXCEPTIONS = ("timing", "a11y", "rune", "oracle", "toolkit", "deviation")
+PENDING_ONLY = ("scope", "harness", "component")
+# The Rune filing packet, whose entry a `rune` twin cites, and where every other one's issue is.
+PACKET = "docs/rune/upstream/rune"
+ISSUES = "lgse/strata#"
 # What to do about a run the ledger does not list; HELP in tests/qa/parity.rs.
 HELP = ("A run that is not listed goes into tests/qa/parity/<its folder>.toml, at its place in "
         "the runner's order, as pending on scope under its package: docs/testing.md, "
         "\"Who owns a run\", says which.")
 
 
-def runs(header: dict) -> list[tuple[str, str]]:
-    """A scenario's runs as `(mode, label)`, in the runner's order: `runs` in variables.rs."""
+def variant_runs(header: dict) -> list[tuple[str, str, dict]]:
+    """A scenario's runs as `(mode, label, variant)`, in the runner's order: `runs` in
+    variables.rs. A scenario without variants has an empty one."""
 
     variants = header.get("variants") or [None]
     planned = []
     for variant in variants:
         modes = header["modes"] if variant is None or variant.get("modes") is None else variant["modes"]
-        planned += [(mode, mode if variant is None else f"{mode}-{variant['id']}") for mode in modes]
+        planned += [(mode, mode if variant is None else f"{mode}-{variant['id']}", variant or {})
+                    for mode in modes]
     return planned
+
+
+def runs(header: dict) -> list[tuple[str, str]]:
+    """A scenario's runs as `(mode, label)`, in the runner's order."""
+
+    return [(mode, label) for mode, label, _ in variant_runs(header)]
 
 
 def gate(folder: str, scenario: str, mode: str, label: str) -> str | None:
@@ -56,19 +75,32 @@ def gate(folder: str, scenario: str, mode: str, label: str) -> str | None:
     return "G1" if (scenario, label) == FIRST_LIGHT else SET.get(folder)
 
 
-def header(path: Path) -> dict:
+def scenario_files(scenarios: Path) -> list[Path]:
+    """Every scenario file, in the runner's order."""
+
+    return sorted(path for folder in scenarios.iterdir() if folder.is_dir()
+                  for path in folder.glob("*.jsonl"))
+
+
+def header_line(path: Path) -> str:
+    """A scenario file's first line with anything on it: its header."""
+
     lines = path.read_text(encoding="utf-8").splitlines()
-    return json.loads(next(line for line in lines if line.strip()))
+    return next((line for line in lines if line.strip()), "")
+
+
+def header(path: Path) -> dict:
+    return json.loads(header_line(path))
 
 
 def planned(scenarios: Path) -> list[dict]:
-    """Every run of every scenario file, as the runner plans them and in its order."""
+    """Every run the ledger lists, as the runner plans them and in its order. A twin's runs
+    are not among them: each is listed once, as the `twin` of the run it stands in for."""
 
-    files = sorted(path for folder in scenarios.iterdir() if folder.is_dir()
-                   for path in folder.glob("*.jsonl"))
     return [{"folder": path.parent.name, "scenario": path.stem, "run": label,
              "gate": gate(path.parent.name, path.stem, mode, label)}
-            for path in files for mode, label in runs(header(path))]
+            for path in scenario_files(scenarios) if not path.stem.endswith(SUFFIX)
+            for mode, label in runs(header(path))]
 
 
 def name(entry: dict) -> str:
@@ -132,6 +164,9 @@ def misplaced(entry: dict, run: dict | None) -> str | None:
     """What is wrong with where the entry stands: no such run in its folder, or a gate that
     is not the run's."""
 
+    if run is None and entry["scenario"].endswith(SUFFIX):
+        return ("is a twin's run, which has no entry of its own: it is listed as the twin of the "
+                "parallel run it stands in for")
     if run is None:
         return "is no run of the folder"
     planned_gate = run.get("gate")
@@ -186,13 +221,86 @@ def excluded_without(entry: dict) -> str | None:
     return None
 
 
+def exception_problem(code: str) -> str | None:
+    """What is wrong with an exception code, for a header or a ledger entry."""
+
+    if code in EXCEPTIONS:
+        return None
+    if code == "platform":
+        why = ("never carries a twin: the same file runs on the session host, so its run is pending "
+               "or required with that host")
+    elif code in PENDING_ONLY:
+        why = "is a pending reason and no exception: the run stays pending until its blocker is gone"
+    else:
+        why = "is none: a twin is allowed under timing, a11y, rune, oracle, toolkit or deviation"
+    return f"names the exception {json.dumps(code)}, which {why}"
+
+
+def is_issue(reference: str) -> bool:
+    number = reference.removeprefix(ISSUES)
+    return reference.startswith(ISSUES) and number.isascii() and number.isdigit() \
+        and not number.startswith("0")
+
+
+def packet_entry(reference: str) -> str | None:
+    """The file a packet reference names: a numbered entry directly in the packet."""
+
+    file = reference.removeprefix(f"{PACKET}/")
+    numbered = reference.startswith(f"{PACKET}/") and file[:1].isascii() and file[:1].isdigit()
+    return file if numbered and file.endswith(".md") and "/" not in file else None
+
+
+def reference_problem(code: str, reference: str) -> str | None:
+    """What is wrong with the form of a reference. A `rune` twin cites its packet entry, and
+    every other one an issue."""
+
+    quoted = json.dumps(reference)
+    if code == "rune":
+        return None if packet_entry(reference) else (
+            f"cites {quoted}, which is no packet entry: a rune twin names the entry it expires "
+            f"with, {PACKET}/<number>-<name>.md")
+    return None if is_issue(reference) else (
+        f"cites {quoted}, which is no reference: it is the issue, {ISSUES}<number>")
+
+
+def parallel_without(entry: dict) -> str | None:
+    """A parallel entry names the exception, the twin's run and the reference. It may name the
+    host its twin needs, as a required one does; without one it is the offscreen host."""
+
+    for key, lacking in (("exception", "an exception"), ("twin", "a twin"), ("ref", "a ref")):
+        if key not in entry:
+            return f"is parallel without {lacking}"
+    if blocked(entry) or "ruling" in entry:
+        return "is parallel, so it has no reason, blocker or ruling"
+    stand_in = f"{entry['scenario']}{SUFFIX}/{entry['run']}"
+    misnamed = None if entry["twin"] == stand_in else (
+        f"names the twin {json.dumps(entry['twin'])}: the twin of {name(entry)} is {stand_in}")
+    return exception_problem(entry["exception"]) or misnamed \
+        or reference_problem(entry["exception"], entry["ref"])
+
+
+def twinned(entry: dict) -> str | None:
+    """Whether the entry names an exception, a twin or a reference, as only a parallel one does."""
+
+    named = any(key in entry for key in ("exception", "twin", "ref"))
+    return f"is {entry['status']}, so it has no exception, twin or ref" if named else None
+
+
 UNEXPLAINED = {"required": required_without, "pending": pending_without, "excluded": excluded_without}
+
+
+def unexplained(entry: dict) -> str | None:
+    """Each status carries its own fields and no other's."""
+
+    if entry["status"] == "parallel":
+        return parallel_without(entry)
+    return UNEXPLAINED[entry["status"]](entry) or twinned(entry)
 
 
 def standing(entry: dict, repeated: bool, run: dict | None) -> list[str]:
     """An entry's own problems: listed twice, and the first thing wrong with it."""
 
-    found = misplaced(entry, run) or unowned(entry) or UNEXPLAINED[entry["status"]](entry)
+    found = misplaced(entry, run) or unowned(entry) or unexplained(entry)
     twice = [f"{name(entry)} is listed twice"] if repeated else []
     return twice + ([f"{name(entry)} {found}"] if found else [])
 
@@ -225,7 +333,8 @@ def folder_problems(entries: list[dict], runs_of_folder: list[dict]) -> list[str
 
 
 def problems(files: dict[str, str], planned_runs: list[dict]) -> list[str]:
-    """Everything wrong with the ledger, one line each: `files` is each folder's file text.
+    """Everything wrong with the ledger's entries, one line each: `files` is each folder's
+    file text. scripts/qa_parity_twins.py adds the labelled pairs: its `faults` is both.
 
     A file that cannot be read is one problem, and the rest of it is not looked at.
     """
