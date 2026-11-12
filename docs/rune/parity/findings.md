@@ -254,3 +254,26 @@ sequence only together with the alphabet's version, so the version is part of th
   `./scripts/qa-fuzz.sh replay tests/qa/fuzz/corpus/calibration/fuzz-calibration-v3-00000000000001de.jsonl --repeats 24 --jobs 1`.
 - **State:** open, set aside, parked. Parked in `tests/qa/fuzz/corpus/calibration/parked`
   in [#2181](https://github.com/lgse/strata/pull/2181), with the seed's first 32 steps kept beside it.
+
+### #2218: `mise run test-platform` fails under load on a developer machine
+
+- **Code:** none of the plan's: a follow-up to the compositor tests' task, labelled
+  `testing`. [Issue](https://github.com/lgse/strata/issues/2218), filed on 2026-11-12 as the finding's reference; its state is
+  kept here.
+- On a 24-core machine with a load average of 30 to 39 from other builds, the whole task
+  failed in `strata-platform`'s own session tests and so never reached the gallery's or
+  `strata-rune`'s window tests: 34 of 177 with [B3](packages/B3.md)'s registry branch, and 22
+  of 177 on plain `strata-next` (20 of them `x11_*` tests). Each failure is a wait that
+  timed out (`waiting for attach`, `waiting for ready`, `waiting for the window`), and the
+  set differs from run to run. The sets that failed pass alone on the same machine
+  (`p0::` 26 of 26, `p2::x11` 22 of 22).
+- It is neither the machine's compositor nor a change on a branch. Every wait is 10 s times
+  `STRATA_TEST_TIMEOUT_SCALE` (`docs/rune/testing.md`); CI sets 3 and the `mise` task sets
+  nothing, so a local run has a third of CI's patience while it starts one sway and one
+  Xwayland for each test, as many at once as the machine has cores. With
+  `STRATA_TEST_TIMEOUT_SCALE=3` the whole task passed on the same loaded machine and
+  commit: 177, then the gallery's 23 and 14, then `strata-rune`'s 3.
+- **Concerns:** `mise run test-platform` (`mise.toml`), and every package that changes a
+  host, the shell or `strata-rune`, whose window tests are the last thing that task runs.
+- **State:** open, not taken up. [`working.md`](working.md#while-building) says how to run
+  it meanwhile. Whether the task takes CI's scale by default is for whoever owns it.
