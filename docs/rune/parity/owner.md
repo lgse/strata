@@ -276,7 +276,9 @@ Rulings of the owner on the parity work, oldest first.
   `docs/rune/slice/README.md`, "Approval".
 - **2026-11-11: the slice's flaky run is allowed outright** in `slice`'s whole-suite part,
   and `cut.patch`'s `[[stale_patch]]` entry is what "as before" means for the GTK patches
-  (slice decision 27). The merge gate keeps both allowances. Source:
+  (slice decision 27). `slice` keeps both allowances. Since the rule on mutation runs below,
+  the merge gate has no stale-patch step, and the flaky allowance applies there only by
+  reading a failure as the plan's "The merge gate" says. Source:
   `docs/rune/slice/README.md`, decision 27.
 - **2026-11-11: package agents merge their own pull requests.** The owner said that a
   package's agent merges its pull requests into `strata-next`, with a merge commit, once a
@@ -306,6 +308,9 @@ Rulings of the owner on the parity work, oldest first.
   verification" (recorded by the orchestrating session, 2026-11-12). So the routine checks
   and the merge gate run no mutation set; the plan's
   [When a mutation run is right](README.md#when-a-mutation-run-is-right) says when one is.
+  Two parts of that section are the orchestrating session's reading of "as a general rule",
+  for the owner to confirm: that the exit checks (E2's soak and exit criterion 3) stay as
+  written, and that a patch a package writes is still proven once.
 
 ## Housekeeping
 

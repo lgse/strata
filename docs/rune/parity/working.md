@@ -95,6 +95,13 @@ The checkpoint a package feeds is its wave's, in the plan's
   pull request's number, what it delivers and the runs it flips; what its dependents must
   know, if anything; the done-when items it completes, ticked; and what it leaves open. The
   validation and the evidence stay on the pull request, not in the file.
+- **Before opening, when `crates/strata-app`, `crates/strata-components` or `src/` changed:**
+  check that every mutation patch still applies, from the repository root:
+  `for p in tests/qa/parity/mutations/*.patch tests/qa/mutations/*.patch; do git apply --check "$p" 2>/dev/null || echo "does not apply: $p"; done`.
+  It takes seconds and starts no container; it is not a mutation run. Only `cut.patch`
+  (finding #2161) is known not to apply. A patch that no longer applies is refreshed and
+  proven once, as the plan's
+  [When a mutation run is right](README.md#when-a-mutation-run-is-right) says.
 - **Before opening:** the checks in the plan's
   ["Before a package's pull request"](README.md#before-a-packages-pull-request) table that the
   change reaches, risk-based as `AGENTS.md` sets out. CI builds the GTK lane only, so the

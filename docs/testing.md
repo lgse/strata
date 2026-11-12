@@ -1256,7 +1256,8 @@ lgse/strata#2123.)
 - that the exception fits the difference, and that steps 1 to 3 were tried;
 - that the twin's patch breaks the behaviour its differing steps check, and
   not its first wait. That the patch exists is checked, and that the twin
-  catches it is run by `./scripts/qa-parity.sh mutations` and by `slice`;
+  catches it is proven once, alone, as `docs/rune/parity/README.md`, "When a
+  mutation run is right", says;
 - that an issue exists, is open and has its label, and that the pair passed
   three times running before the entry was flipped.
 

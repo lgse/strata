@@ -553,8 +553,15 @@ checkpoints.
 | Rune-side unit and gallery tests | `mise run test-rune <filter>`, with a filter that matches at least one test |
 | The GTK side, when a shared crate or `src/` changed | `./scripts/qa.sh <scenario>` and `./scripts/test-headless.py <filter>` |
 | The fuzz smoke tier for its alphabet | F1's command |
+| That every mutation patch still applies, when `crates/strata-app`, `crates/strata-components` or `src/` changed: seconds, no container, and no mutation run | The `git apply --check` loop below. Only `cut.patch` (finding #2161) is known not to apply |
 | No GTK in the Rune binary | `cargo tree -p strata-rune -i gtk4` |
 | Formatting, lint and code health, at the pre-push checkpoint only | `./scripts/quality.sh fmt`, `./scripts/quality.sh clippy`, `scripts/code-health.sh --changed` |
+
+The patch check, from the repository root:
+
+```bash
+for p in tests/qa/parity/mutations/*.patch tests/qa/mutations/*.patch; do git apply --check "$p" 2>/dev/null || echo "does not apply: $p"; done
+```
 
 ### The merge gate
 
@@ -564,8 +571,10 @@ selection on both targets (`./scripts/qa-parity.sh <package>`). When the runner,
 `strata-qa`, a shared crate or `src/` changed, it is the full gate instead: every required
 and parallel run on both targets (`./scripts/qa-parity.sh all`), the whole GTK suite
 (`./scripts/qa.sh`) and `./scripts/quality.sh test`. Neither runs a mutation patch.
-`./scripts/qa.sh` does not read the slice's flaky allowance, so a failure there of
-`new-folder-with-selection-groups/columns` is finding #2162, not the change's.
+`./scripts/qa.sh` does not read the slice's flaky allowance. A failure there of
+`new-folder-with-selection-groups/columns` passes as finding #2162 only if it is the only
+failure, it fails as #2162 does (the opened folder's column does not take focus within
+15 s), and the change does not touch what the run exercises; otherwise it is the change's.
 
 ### When a mutation run is right
 
@@ -573,12 +582,17 @@ Mutation runs are too heavy on wall-clock time to be routine verification. By th
 rule of 2026-11-12 ([`owner.md`](owner.md#ruled)), one is run only when there is a question
 whether tests are effective:
 
-- **A Rune mutation patch a package wrote or changed** is proven once, alone: apply it in the
-  worktree (`git apply tests/qa/parity/mutations/<scenario>.patch`), run its one scenario on
-  Rune (`./scripts/qa-parity.sh <folder> --target rune --scenario <scenario>`) and see it
-  fail, then reverse it (`git apply -R …`). `./scripts/qa-parity.sh mutations` runs every
-  Rune patch and has no per-patch selection yet.
+- **A Rune mutation patch a package wrote or changed** is proven once, alone, by hand, since
+  `./scripts/qa-parity.sh mutations` runs every Rune patch and has no per-patch selection
+  yet. Start with the files the patch touches clean. Run its scenario on Rune unpatched
+  (`./scripts/qa-parity.sh <folder> --target rune --scenario <scenario>`) and see it pass.
+  Apply the patch (`git apply tests/qa/parity/mutations/<scenario>.patch`), run the same
+  selection and see a step fail: a build or launch failure, or a mutated tree that ran
+  nothing, is not a catch. Restore the files (`git restore -- <files>`, or `git apply -R`),
+  and see `git status --porcelain` empty before committing anything.
 - **A patch that stopped applying** because the code it breaks moved, once it is refreshed.
+  The check before a pull request finds one.
+- **A runner change to how a step is judged.**
 - **A run suspected of passing for the wrong reason.**
 - **A GTK scenario whose `mutation` changed**, or whose patch stopped applying:
   `./scripts/qa-mutation.sh <scenario>`, as `AGENTS.md`, "QA scenarios", says.
