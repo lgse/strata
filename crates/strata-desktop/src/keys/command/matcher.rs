@@ -4,6 +4,11 @@
 //! well as matching them: a palette's keys, a label, a conflict check. A matcher is built
 //! with `Command::in_map` and `Command::ignoring`; these say what was built.
 //!
+//! Not said: whether a structural matcher also reads its command's other keys as pressed
+//! (`Command::alternates`, `Command::or_alternates`). That choice is a private type of
+//! `command.rs`, so a reader that must tell **h** from ← for `left` cannot see it from here,
+//! and exposing it is a further change. Nothing reads it yet.
+//!
 //! New code beside `command.rs`, which is a moved file and takes none
 //! (`docs/rune/shared-state.md`).
 

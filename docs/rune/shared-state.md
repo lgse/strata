@@ -204,7 +204,7 @@ preference manager, which are the three seams below. Six new files hold what is 
 | `active.rs` | `Active`, `Fixed` and `set_active` |
 | `alias.rs` | `rewrite` and `Context`: the half of `src/ui/keys/alias.rs` that touches no widget, moved as text |
 | `parts.rs` | `KeyPress::from_parts`, for an interface whose events are not GDK's |
-| `command/matcher.rs` | What a `Matcher` reads (`command()`, `map()`, `ignored()`), for an interface that lists the keys its commands answer. `command.rs` declares the module and takes nothing else |
+| `command/matcher.rs` | What a `Matcher` reads (`command()`, `map()`, `ignored()`), for an interface that lists the keys its commands answer. `command.rs` declares the module and takes nothing else. Whether a structural matcher reads its command's alternates as pressed is not exposed: its type is private to `command.rs` |
 
 ### Keys and modifiers
 
