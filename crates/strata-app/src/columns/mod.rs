@@ -33,6 +33,7 @@ use crate::{
     handover::{self, Held, Moving},
     listing::{Column, Edit, Load, Row},
     slots::Ids,
+    surface::Surface,
 };
 
 mod editing;
@@ -75,6 +76,8 @@ pub(crate) struct Columns {
     /// The keys the view reads other than by its default, when the saved settings ask.
     keys: Option<KeySettings>,
     labels: view::Labels,
+    /// What a column says while it shows no entry.
+    surface: Surface,
 }
 
 /// With "Type to search" off a plain letter starts no search, so `h j k l` are the arrows:
@@ -108,6 +111,7 @@ impl Columns {
             ),
             keys: keys(typing),
             labels: view::Labels::translated(),
+            surface: Surface::translated(),
         }
     }
 
@@ -147,8 +151,12 @@ impl Columns {
     /// The changes inside a column: its rows, its load, its cursor and selection.
     fn apply_within(&mut self, change: Change, hands: &mut Hands<'_>) {
         match change {
-            Change::Rows { depth, edit, marks } => self.edit(depth, edit, marks, hands),
-            Change::Loaded { depth, load, marks } => self.loaded(depth, load, &marks, hands),
+            Change::Rows {
+                depth, edit, marks, ..
+            } => self.edit(depth, edit, marks, hands),
+            Change::Loaded {
+                depth, load, marks, ..
+            } => self.loaded(depth, load, &marks, hands),
             Change::Busy { depth, busy } => {
                 if let Some(column) = self.listings.columns.get_mut(depth) {
                     column.set_busy(busy);
@@ -207,6 +215,7 @@ impl Columns {
             location,
             show_hidden,
             active,
+            ..
         } = added;
         self.listings.columns.truncate(depth);
         self.held.truncate(depth);
@@ -313,6 +322,15 @@ impl Columns {
         if let Some(index) = state.collection.selection.cursor_index(column) {
             state.collection.reveal(&key, column, index, tx);
         }
+    }
+}
+
+impl Columns {
+    /// One poll of what each column says while it shows no entry: a read is announced once
+    /// it outlasts GTK's grace period. True when the view has to run.
+    pub(crate) fn watch_surface(&mut self, clock: f64, tx: &mut rune::Tx) -> bool {
+        let listings = self.listings.columns.iter().map(Some);
+        self.surface.watch(listings, clock, tx)
     }
 }
 

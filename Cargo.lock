@@ -4810,6 +4810,7 @@ version = "0.0.1"
 dependencies = [
  "gio",
  "glib",
+ "image",
  "rune",
  "rune-kit",
  "rust-i18n",
@@ -4820,6 +4821,7 @@ dependencies = [
  "strata-fs",
  "strata-kit",
  "strata-platform",
+ "strata-preview",
  "strata-qa",
  "strata-test-support",
  "tempfile",

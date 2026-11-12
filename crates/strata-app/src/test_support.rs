@@ -5,6 +5,7 @@
 
 use std::{path::Path, time::Duration};
 
+use rune::{KeyEvent, Mods, PhysicalInput};
 use strata_components::rename::Polled;
 
 #[cfg(feature = "qa")]
@@ -81,6 +82,7 @@ pub(crate) fn idle_view<S>(
         build,
         shows,
         focus: name,
+        supports_type_grouping: false,
         pointer_at: None,
         rows: Rows {
             position: |_, _| None,
@@ -103,6 +105,16 @@ pub(crate) fn idle_view<S>(
             lists: |_| Vec::new(),
         },
     }
+}
+
+/// Feeds the host one key with its modifiers held around it, as a keyboard sends one: the
+/// parts read the held modifiers to tell a Shift range from a move. The caller lets the
+/// window settle as its test needs.
+pub(crate) fn send_key(host: &mut Offscreen, event: KeyEvent) {
+    let runtime = host.runtime();
+    runtime.physical_input(PhysicalInput::Modifiers(event.mods));
+    runtime.key(event);
+    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
 }
 
 pub(crate) fn folder_of(names: &[&str]) -> tempfile::TempDir {

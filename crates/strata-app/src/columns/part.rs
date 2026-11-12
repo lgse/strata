@@ -23,6 +23,7 @@ impl Part for Columns {
         build: |app, _| Some(view(app).build(app)),
         shows: |mode| mode == MODE,
         focus: VIEW,
+        supports_type_grouping: false,
         pointer_at: Some(|app, at| app.columns.pointer_at(at)),
         rows: Rows {
             position: |app, (depth, id)| app.columns.position(depth, id),
@@ -82,6 +83,7 @@ impl Part for Columns {
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-        view(app).tick(app, clock, tx)
+        let said = app.columns.watch_surface(clock, tx);
+        view(app).tick(app, clock, tx) | said
     }
 }

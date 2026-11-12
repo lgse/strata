@@ -12,13 +12,18 @@
 
 use std::collections::HashMap;
 
-use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget};
+use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget, ThumbKey};
 use strata_core::{
     i18n::tr,
-    model::{EntryKind as Kind, FileEntry, Location},
+    model::{EntryKind as Kind, FileEntry, Location, ViewPreferences},
 };
+use strata_fs::app::compare_type_groups;
 
 use crate::slots::Ids;
+
+mod type_group;
+
+pub(crate) use type_group::TypeGroup;
 
 /// What a row is, as assistive technology hears it: `entry_kind_name` in
 /// `src/ui/accessibility.rs`.
@@ -97,6 +102,15 @@ pub(crate) struct Row {
     kind: EntryKind,
     described: Described,
     hidden: bool,
+    /// The key of the entry's thumbnail, for a file that gets one ([`crate::thumbnails`]): a
+    /// hash, so a row holds eight bytes for it and no path. A view finds the file again
+    /// through the browser.
+    thumbnail: Option<ThumbKey>,
+    /// The browser's kind of entry: what its file type is read from with its name.
+    entry_kind: Kind,
+    /// Its file type, as the List view groups by it: read only while its folder is grouped
+    /// ([`Column::group`]), as a MIME lookup for every row would cost every view.
+    group: Option<TypeGroup>,
 }
 
 impl Row {
@@ -108,6 +122,9 @@ impl Row {
             kind,
             described,
             hidden: entry.is_hidden,
+            thumbnail: crate::thumbnails::key_of(entry),
+            entry_kind: entry.kind,
+            group: None,
         }
     }
 
@@ -144,8 +161,13 @@ pub(crate) struct Column {
     title: String,
     /// The browser's entries, each at the browser's position.
     rows: Vec<Row>,
-    /// The positions the view shows, in order: a view index is an index into this.
+    /// The positions the view shows, in order: a view index is an index into this. In the
+    /// browser's order, or in file-type groups while [`Column::grouping`] says so.
     shown: Vec<usize>,
+    /// While the rows are grouped, the view index of each position the view shows
+    /// (`usize::MAX` for one it does not). Empty otherwise, when `shown` is in the browser's
+    /// order and a binary search finds an index.
+    back: Vec<usize>,
     positions: HashMap<EntryId, usize>,
     show_hidden: bool,
     version: u64,
@@ -154,6 +176,9 @@ pub(crate) struct Column {
     busy: bool,
     /// The row of the column before this one whose folder this is.
     from: Option<EntryId>,
+    /// The browser's preferences for this folder when it groups its rows by file type
+    /// (`Browser::shows_type_groups`), and nothing when it does not.
+    grouping: Option<ViewPreferences>,
 }
 
 impl Column {
@@ -164,12 +189,14 @@ impl Column {
             location,
             rows: Vec::new(),
             shown: Vec::new(),
+            back: Vec::new(),
             positions: HashMap::new(),
             show_hidden,
             version: 0,
             load: Load::Loading,
             busy: false,
             from,
+            grouping: None,
         }
     }
 
@@ -182,6 +209,27 @@ impl Column {
 
     pub(crate) fn title(&self) -> &str {
         &self.title
+    }
+
+    pub(crate) fn location(&self) -> &Location {
+        &self.location
+    }
+
+    /// Whether the browser groups this folder's rows by file type, and under which
+    /// preferences: what a view that groups orders them by.
+    pub(crate) fn grouping(&self) -> Option<ViewPreferences> {
+        self.grouping
+    }
+
+    /// The browser now groups this folder's rows under `grouping`, or does not. True when the
+    /// order the view shows changed.
+    pub(crate) fn set_grouping(&mut self, grouping: Option<ViewPreferences>) -> bool {
+        if self.grouping == grouping {
+            return false;
+        }
+        self.grouping = grouping;
+        self.index();
+        true
     }
 
     pub(crate) fn load(&self) -> &Load {
@@ -234,7 +282,8 @@ impl Column {
     /// Rows on the end join the index as they are, which is how a folder still loading
     /// publishes them; rows anywhere else move the ones after them.
     fn insert(&mut self, position: usize, rows: Vec<Row>) {
-        if position < self.rows.len() {
+        // A grouped listing places a row by its type, not at the end.
+        if position < self.rows.len() || self.grouping.is_some() {
             self.rows.splice(position..position, rows);
             self.index();
             return;
@@ -256,7 +305,10 @@ impl Column {
         let Some(current) = self.rows.get_mut(position) else {
             return;
         };
-        let moved = current.id != row.id || current.hidden != row.hidden;
+        // A row that changed its name or its kind may have changed its type.
+        let retyped = current.name != row.name || current.entry_kind != row.entry_kind;
+        let regroup = self.grouping.is_some() && retyped;
+        let moved = current.id != row.id || current.hidden != row.hidden || regroup;
         *current = row;
         if moved {
             self.index();
@@ -272,7 +324,56 @@ impl Column {
                 self.shown.push(position);
             }
         }
+        self.group();
         self.version += 1;
+    }
+
+    /// Puts the rows shown in file-type groups, as GTK's grouped List shows them: by
+    /// strata-fs's own rule (`compare_type_groups`, under the folder's preferences), each
+    /// group keeping the browser's order inside it. Ungrouped, it leaves the browser's order
+    /// and allocates nothing.
+    fn group(&mut self) {
+        self.back.clear();
+        let Some(preferences) = self.grouping else {
+            return;
+        };
+        let folder = self.location.clone();
+        let mut types: Vec<TypeGroup> = Vec::new();
+        let mut known: HashMap<TypeGroup, usize> = HashMap::new();
+        for position in &self.shown {
+            let row = &mut self.rows[*position];
+            let group = *row
+                .group
+                .get_or_insert_with(|| TypeGroup::of_row(&folder, row.entry_kind, &row.name));
+            known.entry(group).or_insert_with(|| {
+                types.push(group);
+                types.len() - 1
+            });
+        }
+        let names: Vec<_> = types.iter().map(|group| group.description()).collect();
+        let mut ranked: Vec<usize> = (0..types.len()).collect();
+        ranked.sort_by(|a, b| compare_type_groups(&names[*a], &names[*b], preferences));
+        let rank: HashMap<TypeGroup, usize> = ranked
+            .into_iter()
+            .enumerate()
+            .map(|(place, kind)| (types[kind], place))
+            .collect();
+        // One pass into a bucket for each group, in the browser's order: linear in the rows,
+        // so a folder that arrives in many batches costs one pass a batch, not a sort.
+        let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); types.len()];
+        for position in &self.shown {
+            let group = self.rows[*position].group;
+            let place = group
+                .and_then(|group| rank.get(&group))
+                .copied()
+                .unwrap_or(0);
+            buckets[place].push(*position);
+        }
+        self.shown = buckets.concat();
+        self.back = vec![usize::MAX; self.rows.len()];
+        for (index, position) in self.shown.iter().enumerate() {
+            self.back[*position] = index;
+        }
     }
 
     /// The browser's position of the row the view shows at `index`.
@@ -305,6 +406,11 @@ impl Column {
         self.from
     }
 
+    /// The file type of the row shown at `index`.
+    pub(crate) fn group_at(&self, index: usize) -> Option<TypeGroup> {
+        self.rows.get(self.position_at(index)?)?.group
+    }
+
     /// What the row the view shows at `index` is, as assistive technology hears it.
     pub(crate) fn description<'a>(&self, index: usize, words: &'a Words) -> Option<&'a str> {
         let row = self.rows.get(self.position_at(index)?)?;
@@ -322,13 +428,25 @@ impl EntrySource for Column {
     }
 
     fn index_of(&self, id: EntryId) -> Option<usize> {
-        self.shown.binary_search(self.positions.get(&id)?).ok()
+        let position = *self.positions.get(&id)?;
+        if self.grouping.is_some() {
+            return self
+                .back
+                .get(position)
+                .copied()
+                .filter(|index| *index != usize::MAX);
+        }
+        self.shown.binary_search(&position).ok()
     }
 
     fn entry(&self, index: usize) -> Entry<'_> {
         let row = &self.rows[self.shown[index]];
         // No icon name: the view falls back to its folder and file icons.
-        Entry::new(row.id, &row.name, row.kind, "")
+        let entry = Entry::new(row.id, &row.name, row.kind, "");
+        match row.thumbnail {
+            Some(key) => entry.thumbnail(key),
+            None => entry,
+        }
     }
 }
 

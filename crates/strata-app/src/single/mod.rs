@@ -34,7 +34,6 @@ use strata_components::{
 };
 use strata_core::i18n::tr;
 
-use self::status::Surface;
 use crate::{
     App, events,
     listing::{Column, Load, Words},
@@ -42,6 +41,7 @@ use crate::{
     pane::{Applied, Pane},
     rename, shell,
     slots::{At, Editing, Listener, Rows, Setup},
+    surface::Surface,
 };
 
 /// A single-pane view's state that is not its component's.
@@ -129,7 +129,7 @@ pub(crate) fn title<V: SinglePane>(app: &App) -> String {
 /// draws it.
 fn status<V: SinglePane>(app: &App) -> Option<(&str, bool)> {
     let single = V::single(app);
-    single.surface.status(single.pane.listing()?)
+    single.surface.status(0, single.pane.listing()?)
 }
 
 /// What the entry list is described as: what it is, or, while it shows no entry, what the
@@ -212,7 +212,7 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El) -> El {
 pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let single = V::single_mut(app);
     let Single { pane, surface, .. } = single;
-    surface.watch(pane.listing(), clock, tx)
+    surface.watch(std::iter::once(pane.listing()), clock, tx)
 }
 
 /// What reads the view's share of each event out of the browser.
@@ -304,10 +304,10 @@ pub(crate) const fn rows<V: SinglePane>() -> Rows<App> {
         // What the context menu's Open asks (`open_context_entry` in
         // `src/ui/browser/context_menu/item_menu.rs`): what a click on the row does.
         activate: |app, (depth, id)| open_in_place::<V>(app, depth, id, Activation::Click),
-        select_only: |app, (depth, id), tx| {
-            V::single_mut(app).pane.select_only(depth, id);
-            tx.focus(V::KEY, false);
-        },
+        // The keyboard is the editor's that opens next (Tab's `advance` and the menu's Rename
+        // both open one on the row): focusing the list here would take it from the field, as
+        // the Columns view does not either.
+        select_only: |app, (depth, id), _| V::single_mut(app).pane.select_only(depth, id),
         // Select All in a single pane is the browser's (`select_all` in
         // `src/ui/browser/view_state.rs`): the view adopts it.
         select_all: |app, depth| app.browser.select_all(depth),
@@ -364,8 +364,6 @@ pub(crate) fn lists<V: SinglePane>(app: &App) -> Vec<String> {
         None => Vec::new(),
     }
 }
-
-mod status;
 
 #[cfg(test)]
 mod tests;

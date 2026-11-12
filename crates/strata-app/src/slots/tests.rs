@@ -16,7 +16,10 @@ use strata_fs::{
 use super::{
     Entry, Frame, Ids, Inbox, Listener, Place, Registry, Setup, Sidebar, Slot, registry::Fault,
 };
-use crate::test_support::idle_view;
+use crate::{
+    commands::{Action, Call, Outcome},
+    test_support::idle_view,
+};
 
 /// What the made-up parts did, in order.
 type Log = Vec<String>;
@@ -76,7 +79,8 @@ fn part<P: Made>(place: Place<Log>) -> Entry<Log> {
         publish: |_| {},
         caught_up: |_| {},
         poll: |_, _, _| false,
-        holds_keyboard: |_| false,
+        commands: &[],
+        keyboard: |_| None,
     }
 }
 
@@ -104,6 +108,60 @@ fn names(parts: impl Iterator<Item = &'static Entry<Log>>) -> Vec<&'static str> 
 /// `entries`, for as long as the test process lives: a registry borrows its table.
 fn table(entries: Vec<Entry<Log>>) -> &'static [Entry<Log>] {
     entries.leak()
+}
+
+fn nothing_done(_: &mut Log, _: &Call<'_>, _: &mut rune::Tx) -> Outcome {
+    Outcome::Declined
+}
+
+const OPEN: &[Action<Log>] = &[Action::new("open", nothing_done)];
+const OPEN_TWICE: &[Action<Log>] = &[
+    Action::new("open", nothing_done),
+    Action::new("close", nothing_done),
+    Action::new("open", nothing_done),
+];
+
+/// A menu row or a button runs the first command of its name, so a second one registered
+/// where both parts are active would never run. Two views are shown one at a time.
+#[test]
+fn a_command_registered_twice_is_refused_unless_by_two_views() {
+    let with = |entry: Entry<Log>, commands| Entry { commands, ..entry };
+    let cases = [
+        (
+            vec![with(view::<Columns>(), OPEN), with(view::<Icons>(), OPEN)],
+            &[][..],
+            Ok(()),
+        ),
+        (
+            vec![
+                with(overlay::<Editor>(), OPEN),
+                with(overlay::<Menu>(), OPEN),
+            ],
+            &[][..],
+            Err(Fault::CommandTwice("open", "editor", "menu")),
+        ),
+        (
+            vec![with(view::<Columns>(), OPEN), with(overlay::<Menu>(), OPEN)],
+            &[][..],
+            Err(Fault::CommandTwice("open", "columns", "menu")),
+        ),
+        (
+            vec![with(overlay::<Menu>(), OPEN_TWICE)],
+            &[][..],
+            Err(Fault::CommandTwice("open", "menu", "menu")),
+        ),
+        (
+            vec![with(overlay::<Menu>(), OPEN)],
+            OPEN,
+            Err(Fault::CommandTwice("open", "menu", "window")),
+        ),
+    ];
+
+    for (entries, own, expected) in cases {
+        let entries = table(entries);
+        let registered = names(entries.iter());
+        assert_eq!(Registry::check(entries, own), expected, "{registered:?}");
+    }
 }
 
 #[test]
@@ -142,13 +200,16 @@ fn a_part_registered_twice_is_refused_and_so_is_a_second_part_in_a_slot_for_one(
     for (entries, expected) in cases {
         let entries = table(entries);
         let registered = names(entries.iter());
-        assert_eq!(Registry::check(entries), expected, "{registered:?}");
+        assert_eq!(Registry::check(entries, &[]), expected, "{registered:?}");
     }
 }
 
 #[test]
 fn the_parts_this_crate_registers_can_be_a_window() {
-    assert_eq!(Registry::check(crate::PARTS), Ok(()));
+    assert_eq!(
+        Registry::check(crate::PARTS, crate::commands::own()),
+        Ok(())
+    );
 }
 
 #[test]

@@ -5,12 +5,12 @@
 
 use std::path::{Path, PathBuf};
 
-use rune::{Key, KeyEvent, Mods, PhysicalInput};
+use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
 use strata_components::{collection::element::row_key, contract::EntryId};
 use strata_core::model::Location;
 
-use super::{PATIENCE, hosted_after};
+use super::{PATIENCE, hosted_after, send_key};
 use crate::host::offscreen::Offscreen;
 
 fn settings_file() -> PathBuf {
@@ -19,11 +19,22 @@ fn settings_file() -> PathBuf {
 
 /// Runs the test `name` of `module` in a window whose saved `browser_mode` is `mode`.
 pub(crate) fn hosted_in(module: &str, mode: &'static str, name: &str, run: impl FnOnce(Offscreen)) {
+    hosted_with(module, mode, String::new(), name, run);
+}
+
+/// [`hosted_in`], with `more` saved too: lines of `settings.toml`.
+pub(crate) fn hosted_with(
+    module: &str,
+    mode: &'static str,
+    more: String,
+    name: &str,
+    run: impl FnOnce(Offscreen),
+) {
     let prepare = move || {
         let file = settings_file();
         std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
         let saved =
-            format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n");
+            format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n{more}");
         std::fs::write(file, saved).expect("settings");
     };
     hosted_after(module, name, prepare, run);
@@ -169,22 +180,31 @@ pub(crate) fn wait(
     seen
 }
 
-/// Opens `folder` and waits for its entries.
+/// How many entries `folder` lists with hidden files hidden: what a view shows once it has
+/// it all.
+fn shown_in(folder: &Path) -> usize {
+    let entries = std::fs::read_dir(folder).expect("a folder to read");
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
+        .count()
+}
+
+/// Opens `folder` and waits for all its entries: a listing can arrive over several turns,
+/// so a first look may show only part of it.
 pub(crate) fn open(host: &mut Offscreen, shape: Shape, folder: &Path) -> Seen {
     host.app().open(Location::local(folder));
-    let listed = wait(host, shape, "the folder's listing", |seen| {
-        !seen.entries.is_empty()
+    let count = shown_in(folder);
+    wait(host, shape, "the folder's whole listing", |seen| {
+        seen.entries.len() == count
     });
     idle(host);
-    listed
+    seen(host, shape)
 }
 
 /// Feeds the host a key with its modifiers held, as a keyboard sends one.
 pub(crate) fn press(host: &mut Offscreen, key: Key, mods: Mods) {
-    let runtime = host.runtime();
-    runtime.physical_input(PhysicalInput::Modifiers(mods));
-    runtime.key(KeyEvent { key, mods });
-    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
+    send_key(host, KeyEvent { key, mods });
     idle(host);
 }
 
@@ -270,4 +290,24 @@ pub(crate) fn right_click(host: &mut Offscreen, shape: Shape, name: &str) -> Opt
 pub(crate) fn right_click_blank(host: &mut Offscreen, shape: Shape) -> Option<String> {
     let at = blank_of(host, shape);
     right_click_at(host, at)
+}
+
+/// A click on the open menu's item named `name`.
+pub(crate) fn choose(host: &mut Offscreen, name: &str) {
+    let tree = host.tree();
+    let items = all(&tree, &|node| {
+        node["role"]
+            .as_str()
+            .is_some_and(|role| role.starts_with("menu-item"))
+            && node["name"] == name
+    });
+    let bounds = &items.first().expect("the menu item")["bounds"];
+    let at = |index: usize| bounds[index].as_f64().expect("a bound");
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let (x, y) = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) / 2.0) as f32);
+    let runtime = host.runtime();
+    runtime.pointer_move(x, y);
+    runtime.pointer_down(x, y);
+    runtime.pointer_up(x, y);
+    idle(host);
 }

@@ -8,14 +8,14 @@ use std::{
     time::Instant,
 };
 
-use rune::{Key, KeyEvent, Mods, PhysicalInput};
+use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
 use strata_core::model::Location;
 
 use super::{Load, mirror};
 use crate::{
     host::offscreen::Offscreen,
-    test_support::{PATIENCE, fixture, folder_of},
+    test_support::{PATIENCE, fixture, folder_of, send_key},
 };
 
 mod history;
@@ -245,11 +245,7 @@ fn key_event(chord: &str) -> KeyEvent {
 
 /// Feeds the host a key with its modifiers held, as a keyboard sends one.
 fn send(host: &mut Offscreen, chord: &str) {
-    let event = key_event(chord);
-    let runtime = host.runtime();
-    runtime.physical_input(PhysicalInput::Modifiers(event.mods));
-    runtime.key(event);
-    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
+    send_key(host, key_event(chord));
 }
 
 fn press(host: &mut Offscreen, chord: &str) {
@@ -668,4 +664,27 @@ fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
             assert_eq!(seen.focused.as_deref(), Some("pictures"));
         },
     );
+}
+
+/// An empty folder's column is described as GTK's directory surface on a column is then, and
+/// draws what it says (`show_empty` in `src/ui/browser/presentation.rs`): the mirrored
+/// `archive`, the fixture's empty folder.
+#[test]
+fn an_empty_column_says_so() {
+    hosted("an_empty_column_says_so", |mut host| {
+        let folder = fixture();
+        open(&mut host, folder.path());
+        press(&mut host, "Down");
+        press(&mut host, "Up");
+        let empty = "This directory is empty";
+
+        let seen = wait(&mut host, "the empty column's status", |seen| {
+            seen.panes.get(1).is_some_and(|pane| pane.list[2] == empty)
+        });
+
+        assert_eq!(seen.panes[1].list[1], "archive");
+        assert!(seen.panes[1].rows.is_empty());
+        let tree = host.tree().to_string();
+        assert!(tree.matches(empty).count() >= 2, "drawn and heard: {tree}");
+    });
 }

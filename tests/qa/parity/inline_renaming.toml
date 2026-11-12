@@ -89,9 +89,8 @@ host = "offscreen"
 scenario = "long-rename-keeps-caret"
 run = "list"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A2"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
@@ -108,7 +107,7 @@ run = "icons-file"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4. Then A2: the background context menu in the single-pane views, B3's opener wired by A2, at the right-click on line 9. Then A7: New File, which names a new item (slice decisions 23 to 25)"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
@@ -116,7 +115,7 @@ run = "list-file"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A2"
+blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4. Then A7: New File, which names a new item (slice decisions 23 to 25)"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
@@ -133,7 +132,7 @@ run = "icons-folder"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4. Then A2: the background context menu in the single-pane views, B3's opener wired by A2, at the right-click on line 9. Then A7: New Folder, which names a new item (slice decisions 23 to 25)"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
@@ -141,7 +140,7 @@ run = "list-folder"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A2"
+blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4. Then A7: New Folder, which names a new item (slice decisions 23 to 25)"
 
 [[run]]
 scenario = "new-item-first-free-number"
@@ -167,7 +166,7 @@ run = "list-nested-file"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A2"
+blocker = "A7: New File, which names a new item (slice decisions 23 to 25), at the wait for its editor on line 10"
 
 [[run]]
 scenario = "new-item-named-with-path"
@@ -254,7 +253,7 @@ run = "list-file"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A2"
+blocker = "A7: undo, at Ctrl+Z on line 25. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
 
 [[run]]
 scenario = "rename-moves-into-path"
@@ -331,7 +330,7 @@ run = "list"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A2"
+blocker = "A8: the view switch, at Ctrl+2 on line 38, whose chord is B3's. Every List step before it passes"
 
 [[run]]
 scenario = "window-accelerators-leave-rename"
@@ -352,9 +351,8 @@ host = "offscreen"
 scenario = "window-accelerators-leave-rename"
 run = "list-f5"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A2"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "window-accelerators-leave-rename"

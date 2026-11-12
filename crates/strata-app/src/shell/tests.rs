@@ -6,16 +6,17 @@
 
 use std::cell::{Cell, RefCell};
 
-use rune::{El, Key, KeyEvent, Mods, PhysicalInput, Tx, el};
+use rune::{El, Key, KeyEvent, Mods, Tx, el};
 use serde_json::Value;
 use strata_fs::app::BrowserEvent;
 
 use crate::{
     App,
+    commands::Holds,
     host::offscreen::Offscreen,
     shell,
     slots::{Entry, Frame, Listener, Place, Setup, Sidebar},
-    test_support::idle_view,
+    test_support::{idle_view, send_key},
 };
 
 const MODULE: &str = "shell::tests";
@@ -116,7 +117,8 @@ fn part<P: Made>(place: Place<App>) -> Entry<App> {
             }
             false
         },
-        holds_keyboard: |_| TYPING.get(),
+        commands: &[],
+        keyboard: |_| TYPING.get().then_some(Holds::Edit),
     }
 }
 
@@ -179,10 +181,7 @@ fn made(node: &Value, inside: &[String], found: &mut Vec<String>) {
 }
 
 fn press(host: &mut Offscreen, key: Key, mods: Mods) {
-    let runtime = host.runtime();
-    runtime.physical_input(PhysicalInput::Modifiers(mods));
-    runtime.key(KeyEvent { key, mods });
-    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
+    send_key(host, KeyEvent { key, mods });
     while host.turn() {}
 }
 

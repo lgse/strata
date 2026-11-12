@@ -37,7 +37,7 @@ use strata_core::{
 
 use crate::{
     App,
-    commands::{self, On},
+    commands::{self, Holds, On},
     rename, shell,
     slots::{Frame, Part, Place, Setup},
 };
@@ -173,6 +173,10 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
 
 impl Part for Menu {
     const PLACE: Place<App> = Place::Overlays(build);
+
+    fn keyboard(app: &App) -> Option<Holds> {
+        app.menu.state.is_open().then_some(Holds::Menu)
+    }
 
     fn new(setup: &Setup<'_>) -> Self {
         let settings = setup.settings;
