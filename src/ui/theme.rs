@@ -74,7 +74,7 @@ const STYLE_PRIORITY: u32 = FONT_STYLE_PRIORITY + 1;
 const RESET_CSS: &str = "* { all: unset; }";
 /// Above the static stylesheet so generated density spacing wins over its presets.
 const DENSITY_STYLE_PRIORITY: u32 = STYLE_PRIORITY + 1;
-const TOKEN_STYLE_PRIORITY: u32 = DENSITY_STYLE_PRIORITY + 1;
+pub(in crate::ui) const TOKEN_STYLE_PRIORITY: u32 = DENSITY_STYLE_PRIORITY + 1;
 /// Above the token and roundness styles so the uncomposited fallback wins over them.
 const UNCOMPOSITED_STYLE_PRIORITY: u32 = TOKEN_STYLE_PRIORITY + 1;
 /// Above every Strata stylesheet, so `~/.config/strata/style.css` has the final word.

@@ -23,6 +23,20 @@ resizes when the window changes size, so the preview keeps its width and the
 file views absorb the difference. The file chooser builds the same split and
 shares the drawer code in `src/ui/preview.rs` and `src/ui/preview/layout.rs`.
 
+## Preview zoom
+
+Text, rendered documents, images and PDFs have a zoom slider beneath the preview
+header. It ranges from 25% to 400%; 100% uses the normal text size or the fitted
+image/page size. Large images scroll within the preview and keep their aspect ratio.
+Ctrl+wheel over the preview adjusts this zoom. The reset button, or Ctrl+0 while
+focus is inside the preview, restores 100%. These controls also work in the file chooser.
+
+Each preview drawer keeps its own zoom while browsing files, including switching
+between source and rendered documents. A new window starts at 100%; zoom is not a
+saved application preference. It does not change filenames, sidebars, header
+controls or the interface text-size preference. Ctrl+wheel outside the preview
+continues to resize interface text. Ordinary wheel scrolling remains available.
+
 `sync_split` runs once per frame while the drawer is enabled or reserving space.
 It owns the slot's visibility, minimum width, and divider position; nothing else
 should position the divider except the user's drag and `animate_reveal`, which
@@ -57,7 +71,7 @@ Constants live in `src/ui/preview/layout.rs` and `src/ui/preview.rs`.
 | Narrow-window hide threshold | 240 px (`MIN_SPLIT_PREVIEW_WIDTH`) |
 | Manual width minimum | one standard column, 300 px |
 | Icons and List automatic maximum | 3000 px (`MAX_WIDTH`) |
-| Image, 3D model, video, PDF, and rendered document content maximum | 1280 px (`media_layout::MAX_CONTENT_WIDTH`), centered in wider previews; PDF zoom scales from it |
+| Image, 3D model, video, PDF, and rendered document content maximum | 1280 px (`media_layout::MAX_CONTENT_WIDTH`), centered in wider previews; image and PDF zoom scale from it |
 | Sidebar rail hysteresis | 24 px (`RAIL_RELEASE_MARGIN`) |
 | Peek sliver of earlier columns | never reserved; whatever the focused column and preview leave |
 

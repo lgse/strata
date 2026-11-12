@@ -241,7 +241,7 @@ fn document_zoom_reset_follows_its_own_keys() {
             fixture
                 .preview
                 .pane_widget()
-                .insert_action_group("pdf", Some(&actions));
+                .insert_action_group("preview", Some(&actions));
             select_named(&fixture, "long.txt");
             assert!(fixture.press(Key::space, ModifierType::empty()));
             let document = || {

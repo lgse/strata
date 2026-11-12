@@ -462,7 +462,7 @@ impl Dispatcher {
     /// Text-size shortcuts and a focused document's zoom reset run before the
     /// chord consumer. Drop the mark first, matching Ctrl+, opening Settings.
     fn zoom_shortcut(&self, press: &KeyPress) -> Option<Propagation> {
-        if self.preview.reset_pdf_zoom(press) {
+        if self.preview.reset_preview_zoom(press) {
             self.shortcuts.cancel_chord();
             return Some(Propagation::Stop);
         }

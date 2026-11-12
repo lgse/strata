@@ -17,7 +17,7 @@ type Stage = fn(&ChooserShortcuts, &KeyContext<'_>) -> Option<glib::Propagation>
 /// Stages that read the key as pressed, before type-to-search untypes it.
 const PRESSED_STAGES: &[Stage] = &[
     ChooserShortcuts::tenxer_text_keeps_key,
-    ChooserShortcuts::reset_pdf_zoom,
+    ChooserShortcuts::reset_preview_zoom,
     ChooserShortcuts::tenxer_key,
     ChooserShortcuts::text_size,
     ChooserShortcuts::resize_thumbnails,

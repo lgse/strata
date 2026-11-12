@@ -16,8 +16,8 @@ use super::accepts_input;
 
 /// Ctrl+wheel mirrors the Ctrl +/- text-size shortcut, and Ctrl+Shift+wheel
 /// the Ctrl+Alt +/- thumbnail one. Capture phase so scrolled windows cannot
-/// consume it first; the PDF preview's own zoom is left alone by passing
-/// through scrolls inside its scroll container. DISCRETE is avoided: it
+/// consume it first; preview zoom is left alone by passing through scrolls
+/// inside its pane. DISCRETE is avoided: it
 /// swallows sub-step smooth deltas before they reach descendant scrolled
 /// windows, killing touchpad scrolling.
 pub(super) fn zoom_controller(
@@ -138,7 +138,7 @@ impl WheelZoom {
 }
 
 /// Only Ctrl alone (with Shift for thumbnails, in Icons) zooms, and never over
-/// the PDF preview, which zooms itself.
+/// the preview pane, which zooms itself.
 fn claims_zoom(
     view: &BrowserView,
     modifiers: Modifiers,
@@ -151,7 +151,7 @@ fn claims_zoom(
     if modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK) {
         return false;
     }
-    if target.is_some_and(inside_pdf_scroll) {
+    if target.is_some_and(inside_preview) {
         return false;
     }
     !thumbnails || view.view_mode() == BrowserMode::Icons
@@ -165,7 +165,7 @@ fn zoom_by(preferences: &PreferenceManager, view: &BrowserView, thumbnails: bool
     }
 }
 
-fn inside_pdf_scroll(widget: &gtk::Widget) -> bool {
+fn inside_preview(widget: &gtk::Widget) -> bool {
     std::iter::successors(Some(widget.clone()), gtk::Widget::parent)
-        .any(|widget| widget.has_css_class("preview-pdf-scroll"))
+        .any(|widget| widget.has_css_class("preview-pane"))
 }

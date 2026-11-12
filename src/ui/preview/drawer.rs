@@ -23,6 +23,9 @@ impl PreviewDrawer {
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.add_css_class("preview-content");
         content.set_vexpand(true);
+        let zoom = zoom::PreviewZoom::new(&content);
+        zoom.install(&pane);
+        pane.append(&zoom.row);
         pane.append(&content);
 
         let (raw_details, raw_details_scroll) = raw_details_section();
@@ -36,6 +39,7 @@ impl PreviewDrawer {
             header: &header,
             find,
             content,
+            zoom,
             raw_details,
             raw_details_scroll,
             revealer,
@@ -258,6 +262,7 @@ struct DrawerParts<'a> {
     header: &'a Header,
     find: find::PreviewFind,
     content: gtk::Box,
+    zoom: Rc<zoom::PreviewZoom>,
     raw_details: super::super::raw_details::RawDetails,
     raw_details_scroll: gtk::ScrolledWindow,
     revealer: gtk::Revealer,
@@ -285,6 +290,7 @@ impl PreviewState {
             modified: header.metadata.modified.clone(),
             content_type: header.metadata.content_type.clone(),
             content: parts.content,
+            zoom: parts.zoom,
             document_view_button: header.document_view_button.clone(),
             document_view_icon: header.document_view_icon.clone(),
             document_view: Cell::new(DocumentView::Rendered),

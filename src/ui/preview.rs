@@ -76,6 +76,7 @@ mod route;
 mod session;
 pub(super) mod video;
 mod waveform;
+mod zoom;
 
 pub(in crate::ui) const DEFAULT_WIDTH: i32 = 520;
 pub(in crate::ui) const MIN_WIDTH: i32 = 240;
@@ -88,8 +89,6 @@ const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
 const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
 const HANDOFF_MARGIN_US: u64 = 1_000_000;
-const PDF_MIN_ZOOM: f64 = 1.0;
-const PDF_MAX_ZOOM: f64 = 4.0;
 const MEDIA_PLUGIN_INSTALL_COMMAND: &str =
     "sudo pacman -S --needed gst-plugins-base gst-plugins-good";
 const MEDIA_SEEK_STEP_US: i64 = 5_000_000;
@@ -161,6 +160,7 @@ struct PreviewState {
     modified: gtk::Label,
     content_type: gtk::Label,
     content: gtk::Box,
+    zoom: Rc<zoom::PreviewZoom>,
     document_view_button: gtk::Button,
     document_view_icon: gtk::Image,
     document_view: Cell<DocumentView>,

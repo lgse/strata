@@ -15,10 +15,6 @@ pub(super) fn set_pdf_page_texture(
     resize_pdf_page(overlay, picture, target_width);
 }
 
-pub(super) fn pdf_zoom_after_scroll(current: f64, dy: f64) -> f64 {
-    (current * (-dy * 0.14).exp()).clamp(PDF_MIN_ZOOM, PDF_MAX_ZOOM)
-}
-
 pub(super) fn pdf_page_width(scroll: &gtk::ScrolledWindow, zoom: f64) -> i32 {
     let fit_width = scroll
         .width()

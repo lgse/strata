@@ -22,9 +22,9 @@ impl ChooserShortcuts {
         (typing && !reaches_chooser && !name_tab).then_some(glib::Propagation::Proceed)
     }
 
-    pub(super) fn reset_pdf_zoom(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
+    pub(super) fn reset_preview_zoom(&self, context: &KeyContext<'_>) -> Option<glib::Propagation> {
         self.preview
-            .reset_pdf_zoom(&context.press)
+            .reset_preview_zoom(&context.press)
             .then_some(glib::Propagation::Stop)
     }
 

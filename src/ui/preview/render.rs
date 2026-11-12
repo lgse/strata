@@ -24,6 +24,14 @@ impl PreviewState {
             content_type,
             content,
         } = preview;
+        self.zoom.set_enabled(matches!(
+            content,
+            PreviewContent::Text { .. }
+                | PreviewContent::Document { .. }
+                | PreviewContent::Rendered { .. }
+                | PreviewContent::Rasterized { .. }
+                | PreviewContent::Pdf { .. }
+        ));
         match content {
             PreviewContent::Text { content, truncated } => self.render_text(PendingSourcePreview {
                 entry,
@@ -156,9 +164,9 @@ impl PreviewState {
         match gtk::gdk::Texture::from_bytes(&bytes) {
             Ok(texture) => {
                 let picture = gtk::Picture::for_paintable(&texture);
-                if let Some(label) = rasterized_label(entry) {
-                    super::super::accessibility::set_label(&picture, &label);
-                }
+                let label =
+                    rasterized_label(entry).unwrap_or_else(|| crate::i18n::tr("Image preview"));
+                super::super::accessibility::set_label(&picture, &label);
                 picture.add_css_class("preview-image");
                 picture.set_can_shrink(true);
                 picture.set_content_fit(gtk::ContentFit::Contain);
@@ -166,8 +174,7 @@ impl PreviewState {
                 picture.set_vexpand(true);
                 picture.set_cursor_from_name(Some("grab"));
                 install_preview_drag(&picture, self);
-                self.content
-                    .append(&media_layout::section(&picture, &texture));
+                self.content.append(&self.zoom.image(&picture, &texture));
             }
             Err(error) => {
                 self.show_message(&crate::i18n::tr("Preview unavailable"), &error.to_string())
@@ -186,6 +193,7 @@ impl PreviewState {
     }
 
     pub(super) fn reset_content(&self, keep: Option<MediaFamily>) {
+        self.zoom.clear();
         if let Some(route) = self.route.borrow_mut().take() {
             route.pause();
         }

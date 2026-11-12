@@ -161,17 +161,18 @@ pub(super) fn step_preview_volume(delta: f64) {
 }
 
 impl PreviewDrawer {
-    pub(in crate::ui) fn reset_pdf_zoom(&self, press: &KeyPress) -> bool {
-        press.is(PDF_ZOOM_RESET)
-            && self
-                .state
-                .pane
-                .root()
-                .and_then(|root| root.focus())
-                .is_some_and(|focused| {
-                    self.owns_focus(Some(&focused))
-                        && focused.activate_action("pdf.reset-zoom", None).is_ok()
-                })
+    pub(in crate::ui) fn reset_preview_zoom(&self, press: &KeyPress) -> bool {
+        let focused = self.state.pane.root().and_then(|root| root.focus());
+        if !press.is(PDF_ZOOM_RESET)
+            || !self.owns_focus(focused.as_ref())
+            || !self.state.zoom.row.is_visible()
+        {
+            return false;
+        }
+        self.state
+            .pane
+            .activate_action("preview.reset-zoom", None)
+            .is_ok()
     }
 
     /// The browser whose Miller columns yield their keyboard-destination bar

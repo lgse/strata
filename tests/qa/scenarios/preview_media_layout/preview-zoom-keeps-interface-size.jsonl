@@ -1,0 +1,40 @@
+{"scenario":"preview-zoom-keeps-interface-size","modes":["columns"],"prefs":{"single_click_previews":false,"text_size":17},"layout":"us","mutation":null,"known_bug":null,"tree":{"notes.txt":"Preview text stays selectable while magnified.\n","heading.md":"# Preview heading\n\nReadable rendered text.\n","other.txt":"Another preview keeps the same zoom.\n"},"images":{"picture.png":{"width":320,"height":200,"rgb":[255,126,112]}},"variants":[{"id":"source","vars":{"filename":"notes.txt","text_role":"text"}},{"id":"rendered","vars":{"filename":"heading.md","text_role":"heading"}},{"id":"image","vars":{"filename":"picture.png"}},{"id":"pdf","vars":{"filename":"page.pdf"}}],"setup":[{"fs":{"path":"page.pdf","from_repository":"tests/fixtures/documents/text.pdf"}}],"quality":{"impact":2,"coverage":4,"criticality":4,"diagnostic":3,"score":38,"note":"Preview-only wheel/slider/reset and selection lifetime across source, rendered, image and PDF; PDF wheel overlaps pdf-zoom-keeps-text-size, chooser context is chooser-pdf-zoom-keeps-text-size"},"cost":{"columns-rendered":0.9,"columns-pdf":1.0,"columns-image":1.0,"columns-source":1.2}}
+{"select_with_keyboard":"$filename"}
+{"key":"space"}
+{"wait":{"present":{"role":"slider","name":"Preview zoom","within":{"preview":true}}},"message":"preview zoom slider"}
+{"wait":{"present":{"role":"$text_role","within":{"preview":true},"nth":0}},"message":"preview content","variants":["source","rendered"]}
+{"wait":{"present":{"role":"image","name":"Image preview","within":{"preview":true}}},"message":"preview content","variants":["image"]}
+{"wait":{"present":{"role":"image","name":"PDF page text","within":{"preview":true}}},"message":"preview content","variants":["pdf"]}
+{"wheel":{"role":"$text_role","within":{"preview":true},"nth":0},"clicks":2,"direction":"up","mods":["ctrl"],"variants":["source","rendered"]}
+{"wheel":{"role":"image","name":"Image preview","within":{"preview":true}},"clicks":2,"direction":"up","mods":["ctrl"],"variants":["image"]}
+{"wheel":{"role":"image","name":"PDF page text","within":{"preview":true}},"clicks":2,"direction":"up","mods":["ctrl"],"variants":["pdf"]}
+{"wait":{"present":{"role":"label","name":"132%","within":{"preview":true}}},"message":"Ctrl+wheel enlarges only the preview"}
+{"click":{"role":"text","within":{"preview":true}},"variants":["source"]}
+{"key":"ctrl+Home","variants":["source"]}
+{"key":"shift+Right","repeat":7,"variants":["source"]}
+{"key":"ctrl+c","variants":["source"]}
+{"clipboard":"Preview","variants":["source"]}
+{"click":{"entry":"$filename"}}
+{"select_with_keyboard":"other.txt"}
+{"wait":{"preview":"Another preview keeps the same zoom."},"message":"selection change replaces preview content"}
+{"expect":{"present":{"role":"label","name":"132%","within":{"preview":true}}}}
+{"select_with_keyboard":"$filename"}
+{"wait":{"present":{"role":"label","name":"132%","within":{"preview":true}}},"message":"zoom survives replacing preview content"}
+{"expect":{"pref":{"key":"text_size","value":17}}}
+{"click":{"role":"slider","name":"Preview zoom","within":{"preview":true}}}
+{"key":"Home"}
+{"wait":{"present":{"role":"label","name":"25%","within":{"preview":true}}},"message":"slider shrinks the preview below fitted size"}
+{"key":"End"}
+{"wait":{"present":{"role":"label","name":"400%","within":{"preview":true}}},"message":"slider enlarges the preview to its limit"}
+{"key":"ctrl+0"}
+{"wait":{"present":{"role":"label","name":"100%","within":{"preview":true}}},"message":"focused preview reset"}
+{"wheel":{"role":"$text_role","within":{"preview":true},"nth":0},"clicks":2,"direction":"down","mods":["ctrl"],"variants":["source","rendered"]}
+{"wheel":{"role":"image","name":"Image preview","within":{"preview":true}},"clicks":2,"direction":"down","mods":["ctrl"],"variants":["image"]}
+{"wheel":{"role":"image","name":"PDF page text","within":{"preview":true}},"clicks":2,"direction":"down","mods":["ctrl"],"variants":["pdf"]}
+{"wait":{"present":{"role":"label","name":"76%","within":{"preview":true}}},"message":"Ctrl+wheel shrinks the preview"}
+{"click":{"role":"button","name":"Reset zoom","within":{"preview":true}}}
+{"wait":{"present":{"role":"label","name":"100%","within":{"preview":true}}},"message":"reset button restores preview zoom"}
+{"expect":{"pref":{"key":"text_size","value":17}}}
+{"wheel":{"entry":"$filename"},"clicks":2,"direction":"up","mods":["ctrl"]}
+{"wait":{"pref":{"key":"text_size","value":19}},"message":"wheel outside the preview still resizes interface text"}
+{"expect":{"present":{"role":"label","name":"100%","within":{"preview":true}}}}

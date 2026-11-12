@@ -304,8 +304,11 @@ and reset, including while an inline editor or Settings is open; **Ctrl+wheel**
 does the same. Each briefly shows the new size in the bottom-right corner; changes
 made in Settings do not. **Ctrl+Shift+wheel** resizes Icons thumbnails instead (see
 [Per-folder sort and thumbnail size](#per-folder-sort-and-thumbnail-size)).
-Over a PDF preview, **Ctrl+wheel** zooms the pages instead. With the PDF page
-focused, **Ctrl+0** resets page zoom without changing the saved text size.
+Over a text, document, image or PDF preview, **Ctrl+wheel** adjusts preview zoom
+instead. The preview slider spans 25–400%, independently of interface text size.
+With focus inside the preview, **Ctrl+0** restores 100% without changing the saved
+text size. Each drawer keeps its zoom while browsing files; a new window starts
+at 100%. See [Preview zoom](preview-panel-layout.md#preview-zoom).
 
 The size is saved numerically, for example `text_size = 27`. Existing `"small"`,
 `"medium"`, and `"large"` settings still load as 11, 13, and 15 px. Out-of-range
@@ -319,7 +322,7 @@ column widths follow typography. Grid captions reserve their measured space,
 Settings compacts its navigation relative to text size, and oversized dialogs
 and settings content remain scrollable within the available window.
 
-Thumbnail zoom, image/PDF zoom, media decode resolution, volume, and playback
+Thumbnail zoom, preview zoom, media decode resolution, volume, and playback
 position remain independent of interface text size. At extreme sizes on small
 logical displays, scrolling or resizing panes may be necessary. Physical
 mixed-DPI monitor transitions still need compositor-specific manual testing.
