@@ -13,7 +13,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 use strata_desktop::settings::Preferences;
 
-use crate::single::Single;
+use crate::{App, single::Single, slots::Later, thumbnails::Viewer};
 
 mod part;
 mod view;
@@ -27,6 +27,8 @@ pub(crate) struct Icons {
     grid: IconsGridState,
     /// The tile size in points, from 32 to 256.
     size: f32,
+    /// The grid's viewer in the window's thumbnails.
+    thumbs: Viewer,
 }
 
 /// The keys of an Icons grid: Left and Right cross the ends of rows, as GTK's GridView moves.
@@ -41,7 +43,7 @@ fn keys(typing: bool) -> KeySettings {
 }
 
 impl Icons {
-    fn with_settings(settings: &Preferences) -> Self {
+    fn with_settings(settings: &Preferences, later: Later<App>) -> Self {
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
         let clicks = (settings.icons_file_clicks, settings.icons_folder_clicks);
@@ -51,6 +53,7 @@ impl Icons {
             // The saved size, which loading holds between 32 and 256 (`stored.rs` in
             // `strata_desktop::settings`). The size a folder remembers is B2's store's.
             size: f32::from(u16::try_from(settings.icons_thumbnail_size).unwrap_or(64)),
+            thumbs: Viewer::new(later),
         }
     }
 }
