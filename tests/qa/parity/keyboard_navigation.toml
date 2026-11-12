@@ -28,9 +28,8 @@ host = "offscreen"
 scenario = "arrow-keys-move-focus-remaining"
 run = "list-arrows"
 package = "A2"
-status = "pending"
-reason = "harness"
-blocker = "the QA backend takes the List table's headings row for an entry (`mark_column` in `crates/strata-app/src/qa/tree.rs` marks every `row` in the grid), so `expect entries` on line 2 reads `Name` first: a `contract` change to the harness, which A2 brings"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "arrow-keys-move-focus-remaining"
@@ -51,9 +50,8 @@ host = "offscreen"
 scenario = "arrow-keys-move-focus-remaining"
 run = "list-hjkl"
 package = "A2"
-status = "pending"
-reason = "harness"
-blocker = "the QA backend takes the List table's headings row for an entry (`mark_column` in `crates/strata-app/src/qa/tree.rs` marks every `row` in the grid), so `expect entries` on line 2 reads `Name` first: a `contract` change to the harness, which A2 brings"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "arrow-keys-move-focus"
