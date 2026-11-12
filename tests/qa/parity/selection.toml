@@ -14,9 +14,8 @@ host = "offscreen"
 scenario = "control-click-sets-shift-anchor"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "control-click-sets-shift-anchor"
@@ -41,7 +40,7 @@ run = "icons"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 2, whose command is B3's"
 
 [[run]]
 scenario = "control-click-toggles"
@@ -63,9 +62,8 @@ host = "offscreen"
 scenario = "home-end-page-move-shift-anchor"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "home-end-page-move-shift-anchor"
@@ -106,7 +104,7 @@ run = "icons-file"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "B3: the view-generic context-menu opener in `menus.rs`, at `menu_items` on line 5"
 
 [[run]]
 scenario = "right-click-selects-entry"
@@ -130,7 +128,7 @@ run = "icons-folder"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "B3: the view-generic context-menu opener in `menus.rs`, at `menu_items` on line 5"
 
 [[run]]
 scenario = "right-click-selects-entry"
@@ -152,9 +150,8 @@ host = "offscreen"
 scenario = "shift-click-range"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "shift-click-range"
@@ -197,7 +194,7 @@ run = "icons"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A3: the sidebar, at `click` on `sidebar` Home on line 5"
 
 [[run]]
 scenario = "sidebar-navigation-range-anchor"
