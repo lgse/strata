@@ -38,6 +38,7 @@ use strata_components::list_table::{
     Cell, Column, ColumnId, ColumnLayout, ColumnWidths, DropSite, LayoutChange, ListParts,
     ListTable, ListTableState, MenuAt, SortDir, SortIntent, SortShown, groups_from_runs,
 };
+use strata_components::rename::{Initial, RenameEditor, RenameState};
 use strata_components::scroll::{
     Autoscroll, AutoscrollPointer, AutoscrollSettings, BarMode, Shield,
 };
@@ -318,6 +319,8 @@ pub struct Demo {
     pub polls: u32,
     /// The window's autoscroll (C24), on the table's rows and its sideways scroll.
     pub auto: Autoscroll,
+    /// The rename editor (C5's own), in the Name cell of the row it renames.
+    pub rename: RenameState,
 }
 
 /// The page as the index opens it: Documents, as the default scene shows.
@@ -355,6 +358,7 @@ impl Demo {
             last_layout: String::new(),
             intent: String::new(),
             polls: 0,
+            rename: RenameState::new(),
         }
     }
 }
@@ -493,7 +497,20 @@ impl Demo {
         self.last_layout = format!("{:?}", change.why);
     }
 
+    /// Opens C5's editor on `id`, the stem selected and the keyboard in it, as Strata opens it.
+    pub fn begin_rename(&mut self, id: EntryId) {
+        let Some(index) = self.listing.index_of(id) else {
+            return;
+        };
+        let entry = self.listing.entry(index);
+        let (name, kind) = (entry.name.to_owned(), entry.kind);
+        let _ = self.rename.begin(SCOPE, id, &name, kind, Initial::Stem);
+    }
+
     fn heard(&mut self, intent: Intent) {
+        if let Intent::BeginRename { id } = intent {
+            self.begin_rename(id);
+        }
         self.intent = match intent {
             Intent::Clicked { id } => format!("Clicked {}", self.name_of(id)),
             Intent::Activate { id, .. } => format!("Opened {}", self.name_of(id)),
@@ -576,6 +593,16 @@ fn sorted_selection(g: &mut Gallery, dark: bool) {
     d.coll.note_selection(&d.listing);
 }
 
+/// A row renaming, as F2 and a slow second click rename: the selected cursor entry, with C5's
+/// editor in its Name cell, the stem selected and the keyboard in the field.
+fn renaming(g: &mut Gallery, dark: bool) {
+    let d = scene(g, dark, Folder::Documents);
+    let _ = d.coll.selection.select_only(&d.listing, 4);
+    d.coll.note_selection(&d.listing);
+    let id = d.listing.id_at(4);
+    d.begin_rename(id);
+}
+
 fn hidden(g: &mut Gallery, dark: bool) {
     let d = scene(g, dark, Folder::Documents);
     d.layout = ColumnLayout::normalize(
@@ -648,6 +675,8 @@ pub const SCENES: &[Scene] = &[
     ("c4-default-dark", |g| default_scene(g, true)),
     ("c4-sorted-selection-light", |g| sorted_selection(g, false)),
     ("c4-sorted-selection-dark", |g| sorted_selection(g, true)),
+    ("c4-renaming-light", |g| renaming(g, false)),
+    ("c4-renaming-dark", |g| renaming(g, true)),
     ("c4-hidden-light", |g| hidden(g, false)),
     ("c4-hidden-dark", |g| hidden(g, true)),
     ("c4-columns-menu-light", |g| columns_menu(g, false)),
@@ -702,6 +731,14 @@ pub fn collection() -> Collection<Gallery> {
         |g: &Gallery| g.c4.version,
     )
     .on_intent(|g: &mut Gallery, intent, _| g.c4.heard(intent))
+    .rename(
+        |g: &Gallery| g.c4.rename.renaming_in(SCOPE),
+        RenameEditor::new(
+            |g: &Gallery| &g.c4.rename,
+            |g: &mut Gallery| &mut g.c4.rename,
+        )
+        .slot(),
+    )
     .settings(marquee_settings())
     .empty(|g: &Gallery| {
         let kit = g.kit();

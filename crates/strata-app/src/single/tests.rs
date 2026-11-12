@@ -11,8 +11,8 @@ use strata_core::model::Location;
 use crate::test_support::{
     PATIENCE, fixture,
     view::{
-        Shape, assert_browser_agrees, browser_holds, field, hosted_in, open, press, right_click,
-        right_click_blank, seen, shift, wait,
+        Shape, assert_browser_agrees, browser_holds, choose, field, hosted_in, open, press,
+        right_click, right_click_blank, seen, shift, wait,
     },
 };
 
@@ -324,4 +324,70 @@ fn an_unreadable_folder_says_why_in_icons() {
 #[test]
 fn an_unreadable_folder_says_why_in_list() {
     an_unreadable_folder_says_why(&LIST, "an_unreadable_folder_says_why_in_list");
+}
+
+/// `inline_renaming`'s Tab: the edit goes on to the next entry, with the keyboard in its field
+/// (`advance_rename`).
+fn tab_moves_the_edit_on_with_the_keyboard(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, Key::End, Mods::default());
+        press(&mut host, case.previous.clone(), Mods::default());
+        press(&mut host, Key::Function(2), Mods::default());
+        let editing = host.run_until(PATIENCE, |host| {
+            field(host).is_some_and(|(text, focused)| focused && text == "readme.md")
+        });
+        assert!(editing, "the field: {:?}", field(&host));
+
+        press(&mut host, Key::Tab, Mods::default());
+
+        let moved = host.run_until(PATIENCE, |host| {
+            field(host).is_some_and(|(text, focused)| focused && text == "todo.txt")
+        });
+        assert!(moved, "the field after Tab: {:?}", field(&host));
+    });
+}
+
+#[test]
+fn tab_moves_the_edit_on_with_the_keyboard_in_icons() {
+    let name = "tab_moves_the_edit_on_with_the_keyboard_in_icons";
+    tab_moves_the_edit_on_with_the_keyboard(&ICONS, name);
+}
+
+#[test]
+fn tab_moves_the_edit_on_with_the_keyboard_in_list() {
+    let name = "tab_moves_the_edit_on_with_the_keyboard_in_list";
+    tab_moves_the_edit_on_with_the_keyboard(&LIST, name);
+}
+
+/// The context menu's Rename on an entry the cursor is not on: the entry alone is selected,
+/// and its editor opens with the keyboard (`rename_context_entry` in
+/// `src/ui/browser/context_menu/focus.rs`).
+fn the_menus_rename_opens_the_editor_with_the_keyboard(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+        right_click(&mut host, case.shape, "readme.md");
+
+        choose(&mut host, "Rename");
+
+        let editing = host.run_until(PATIENCE, |host| {
+            field(host).is_some_and(|(text, focused)| focused && text == "readme.md")
+        });
+        assert!(editing, "the field: {:?}", field(&host));
+        assert_eq!(browser_holds(&host).0, ["readme.md"]);
+    });
+}
+
+#[test]
+fn the_menus_rename_opens_the_editor_with_the_keyboard_in_icons() {
+    let name = "the_menus_rename_opens_the_editor_with_the_keyboard_in_icons";
+    the_menus_rename_opens_the_editor_with_the_keyboard(&ICONS, name);
+}
+
+#[test]
+fn the_menus_rename_opens_the_editor_with_the_keyboard_in_list() {
+    let name = "the_menus_rename_opens_the_editor_with_the_keyboard_in_list";
+    the_menus_rename_opens_the_editor_with_the_keyboard(&LIST, name);
 }

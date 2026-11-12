@@ -57,6 +57,16 @@ mod c4 {
         })
     }
 
+    /// rename: the editor in a row's Name cell takes the keyboard. Rune gives the keyboard to
+    /// no field it cannot show, so a field that grows from no width of its own, as C5's does,
+    /// must get one from the cell.
+    #[test]
+    fn a_rename_field_in_a_row_takes_the_keyboard() {
+        let rt = mount("c4-renaming-light");
+        let focused = rt.elements().into_iter().find(|e| e.focused);
+        assert_eq!(focused.and_then(|e| e.key).as_deref(), Some("rename-field"));
+    }
+
     /// Presses and releases at the middle of `path`'s visible part, with `mods` held.
     fn click(rt: &mut Runtime<Gallery>, path: &str, mods: Mods) {
         let [x, y, w, h] = element(rt, path)
