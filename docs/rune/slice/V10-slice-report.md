@@ -2,11 +2,11 @@
 
 | | |
 | --- | --- |
-| Status | Not started |
-| Depends on | V9 |
+| Status | Done. [The report](slice-report.md) is written, and the exit command exits 0 at `d4f086f25` |
+| Depends on | V9, V9b |
 | Unblocks | The owner's decision on the slice, and on `strata-next` becoming an integration branch |
 | Owns | `docs/rune/slice/slice-report.md` |
-| Lands as | One documentation commit |
+| Lands as | One documentation commit, and one more that closes the slice's index |
 
 ## Goal
 
@@ -59,13 +59,13 @@ Also record:
   `target/v9-61a7d6224/` and V9b's three `target/v9b-…/`, each named in its package's
   record;
 - each stop condition and whether it was hit;
-- a slot for the hand check of the windowed binary on Hyprland (decision 7). The owner
-  does the check, not the package: the report leaves the slot empty, and gives the exact
-  command that builds and opens the window on a directory, checked to work
-  (`cargo run --locked -p strata-rune -- <directory>` is the Rune lane's own cargo run),
-  and the things to try: the listing, the keys of gate G2, a rename, the context menus and
-  their inert rows, a covered and uncovered window. What the owner sees goes in the slot.
-  It will be the only evidence in the slice from a real compositor;
+- the hand check of the windowed binary on Hyprland (decision 7). The owner does the
+  check, not the package, and did it on 2026-11-11: a real directory in the Columns view,
+  keyboard navigation and selection, and inline rename, all behaving correctly.
+  [The report](slice-report.md#the-hand-check) records it as the owner stated it, with the
+  command that builds and opens the window on a directory,
+  `cargo run --locked -p strata-rune -- <directory>`. It is the only evidence in the slice
+  from a real compositor, and no other compositor was checked;
 - what the slice does not prove, in the report's first screen: input never crossed winit
   or a compositor.
 
@@ -136,6 +136,57 @@ numbers come from runs that are named in the report with their artifact director
 - The report is committed.
 - `./scripts/qa-parity.sh slice` exits 0, and the report names that run.
 - The slice index marks every package done or says what is left.
+
+## Where the work departs from this plan
+
+- **The exit command ran before the report was written,** at `d4f086f25`. Every commit
+  after it changes documents only, so the report names that run.
+- **The matrix reads a survey as well.** The exit command does not start a pending run on
+  Rune, so `./scripts/qa-parity.sh slice --pending` was run at the same commit: the matrix
+  has each pending run's result on Rune and the line it stops at.
+- **Harness reach is counted against the engine.** Most of the protocol is the shared
+  engine's, not a backend's, so an item counts as implemented when the engine can run it
+  from what the Rune backend answers. The report says what the count of scenario files
+  cannot see.
+- **Cost has a fourth group,** for V8, V9 and V9b, and no elapsed time: no record states
+  any.
+- **The measurements are three, not two.** A 10,000-entry listing is timed at launch, as
+  V0 timed it, and again in a running process. All three are read at `Browser`'s own log
+  lines, which both binaries write. Release binaries were built for it, in a directory of
+  their own. The GTK figures include a window on Xvfb and the Rune figures do not, which
+  the report says beside them.
+- **The hand check was done,** so the report records it in place of the slot.
+- **The generators are outside the tree,** in `target/v10-d4f086f25/` of the verification
+  worktree, with their output.
+
+## Done when, and the evidence
+
+All on 2026-11-11, from the worktree at `~/dev/strata-next-verify`, in the pinned image,
+with Docker. Logs and kept files are in its `target/v10-d4f086f25/`.
+
+- **The report is committed:** [slice-report.md](slice-report.md).
+- **The exit command exits 0, and the report names the run.** `./scripts/qa-parity.sh slice`
+  at `d4f086f25`, in 13 min 43 s: 36 of 36 required runs on GTK and on Rune, the whole suite
+  with 793 passed, none failed and 2 ignored, 3 of 3 Rune patches and 21 of 21 GTK patches
+  caught, and one allowance used, `cut.patch`'s. The flaky run passed in this run
+  (`qa-parity-slice.log`).
+- **The slice index marks every package done** in the commit after the report's.
+
+Also run: `./scripts/qa-parity.sh slice --pending`, where none of the 39 pending runs
+passes on Rune (`qa-parity-pending-survey.log`); the measurements, in a
+`./scripts/qa-drive.sh` session (`measure.sh`); `./scripts/qa.sh` once with the index as
+its commit leaves it, since the runner's ledger test reads that file: 793 passed, none
+failed and 2 ignored (`target/v10-index/qa-full.log`); and on the host, with no display
+variable set, `cargo run --locked -p strata-rune -- --help`
+(`hand-check-command-help.log`).
+
+Checked for the documents: the complete diff was read, every link and every command in the
+report was held against the files and the scripts, and `typos` and `git diff --check` are
+clean.
+
+Not run, and why: `./scripts/quality.sh`, `mise run test-rune` and the compositor tests,
+because no file outside `docs/` and `AGENTS.md` changed; a host QA run, for which there is
+no consent and no need.
 
 ## After the slice
 

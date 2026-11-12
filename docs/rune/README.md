@@ -9,6 +9,7 @@ the plans for that work, split out of two planning documents so they live beside
 | [slice/README.md](slice/README.md) | The vertical slice: one view, one read path and one write path on Rune, passing the same QA scenarios as the GTK app |
 | [slice/V0-findings.md](slice/V0-findings.md) | What the slice's assumption checks found |
 | `slice/V3-…` to `slice/V10-…` | One file per work package of the slice, linked from the slice index |
+| [slice/slice-report.md](slice/slice-report.md) | What the slice proved and did not, what it cost, its gaps and measurements, and what is open after it |
 | [plan.md](plan.md) | The component plan: which Strata area each Rune component covers, and the phases |
 | [work/](work/README.md) | The component work packages and [their status](work/STATUS.md) |
 | [decisions/](decisions/) | The component spikes S1 to S5, with the owner's rulings |
