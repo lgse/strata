@@ -11,8 +11,12 @@ pin offers before probing them. Its sidebar visibility/compact choice remains
 local to the dialog; pin and place-order changes use the shared saved state.
 
 Multiple-selection requests support marquee selection from blank file-area and sidebar
-space beside the divider; only the divider itself resizes the sidebar. Single-selection
-and Save requests do not enable marquee selection. Double-click acceptance waits for
+space beside the divider; only the divider itself resizes the sidebar. List uses the browser's
+shared icon/filename hit test: unused Name space, row padding, and metadata columns are
+selection space even on selected rows. In Columns, unused name space also remains a marquee
+origin in the chooser. Drags work in either direction and after a repeated tap, without a
+chooser-specific gesture implementation. Single-selection and Save requests do not enable
+marquee selection. Double-click acceptance waits for
 release: holding and moving the second tap keeps the chooser open instead of accepting
 the file. Chooser rows remain selection controls, not outgoing file-transfer drag sources.
 

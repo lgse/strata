@@ -320,7 +320,7 @@ pub(super) fn collection_with_marquee(
     } else {
         Rc::new(crate::ui::pointer::hits_item_content)
     };
-    let is_item = marquee::item_content_predicate(targets.clone(), content);
+    let is_item = marquee::item_content_predicate(targets.clone(), content, !list_rows);
     let clear_targets = targets.clone();
     let marquee = marquee::install(marquee::MarqueeSetup {
         view: view.clone(),

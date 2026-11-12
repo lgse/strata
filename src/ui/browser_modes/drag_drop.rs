@@ -366,8 +366,8 @@ impl ItemDragSource {
         browser::file_drag_content(source, &entries)
     }
 
-    /// A drag starts on an item's content, or anywhere on an already selected item,
-    /// but never on a rename field.
+    /// List keeps the same icon/name hit region before and after selection.
+    /// Icons retains its selected-card drag region. Editors keep their own drags.
     fn grabs_item(&self, row: &gtk::Widget, x: f64, y: f64) -> bool {
         let on_editable = row
             .pick(x, y, gtk::PickFlags::DEFAULT)
@@ -375,7 +375,7 @@ impl ItemDragSource {
         if on_editable {
             return false;
         }
-        self.intent.was_selected() || self.hits_content(row, x, y)
+        (!self.list_rows && self.intent.was_selected()) || self.hits_content(row, x, y)
     }
 
     fn hits_content(&self, row: &gtk::Widget, x: f64, y: f64) -> bool {

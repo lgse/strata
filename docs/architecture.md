@@ -113,20 +113,25 @@ parent listings and unrelated metadata work stay intact. Missing
 bindings retain the existing fallback path. Pane assembly, headers, grouping/filtering, and Icons factories
 remain in the composition module rather than changing alongside this lifecycle boundary.
 
-Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
-thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets.
-Columns view treats the whole visible `.file-row`, including unused label allocation and row
-padding, as a drag origin. List uses content-only hits throughout its Name column, including
-row padding: unused space starts a marquee, while filenames and icons still drag files.
-List metadata columns retain row dragging. Row drag/drop controllers stay on the
-application-owned row so they can coexist with GTK's native list-item selection gesture.
-Icons keeps content-only drag behavior. Marquee ownership mirrors these policies: Columns
-uses allocated bounds; List applies its Name-column policy in each mapped row's coordinates;
+Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. List file drags start
+only on the icon or rendered filename, before and after selection. Unused Name space, row
+padding, and metadata columns remain marquee origins. Both List drag sources and marquee
+ownership reuse `hits_list_item_content`; reordered columns retain the same policy.
+Columns and Icons keep their existing content hits and reserve an already-selected row/card's
+allocation for dragging when it hosts a file drag source. Row drag/drop controllers stay on
+the application-owned row so they can coexist with GTK's native list-item selection gesture.
+Marquee ownership mirrors these policies: Columns uses content hits on unselected rows; List
+applies its Name-column policy in each mapped row's coordinates;
 Icons keeps `hits_item_content` and treats card gutters as marquee origins. Pane background
 and surrounding chrome remain marquee origins, and Alt-drag can force a marquee from an item
 in any mode. Both paths use GTK's configured drag threshold. Within collection viewports,
-marquees claim the sequence only after that threshold, leaving simple clicks and
-modifier-clicks intact. Chrome-origin drags transfer focus to a visible item in the target
+origins defer claiming until that threshold, so single presses on item selection space
+still reach the row's selection, preview, and single-click activation. A repeated press on
+non-item space keeps the pending marquee in the surface gesture group, which cancels the row's
+release activation; when that press is released within the threshold on the same item, the
+surface activates it through GTK's `list.activate-item`, as the row's own double-click would.
+Modifier-clicks still reach the row selection handlers. Chrome-origin drags transfer focus
+to a visible item in the target
 collection after crossing the threshold, giving active selection feedback without scrolling
 to an old cursor. Sidebar origins also switch browser input ownership to the pointer, so
 keyboard actions use the selected pane rather than stale hover state. A plain press on pane
@@ -143,6 +148,11 @@ activation and automatic preview wait for release and reject cancelled gestures,
 and recycled items. `PointerSequence::claim_double_press` keeps the second press in the
 application-owned row's gesture group, shared with its drag source and release activation;
 GTK's item widget must not activate or claim that press before drag intent is known.
+Outside List, selected-row whitespace is reserved for file dragging only when the row hosts a
+drag source. Otherwise it remains marquee space, and a repeated tap there stays in the surface's
+gesture group.
+Returning a folder drag to that same folder does not spring-open it; other destination folders
+retain hover navigation.
 Browser and chooser sidebar splits share the same confined handle configuration, including
 in compact rail mode. Marquees anchor and cache mapped item geometry in scroll-content
 coordinates, independent of native GtkScrollable or GtkViewport layout. Edge and wheel scrolling
