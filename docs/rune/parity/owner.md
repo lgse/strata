@@ -201,6 +201,59 @@ comments of 2026-11-12, unless another is named.
   `src/ui`, and the Rune side has no conflict check. Source: the archived issues
   [#2133](https://github.com/lgse/strata/issues/2133) and [#2150](https://github.com/lgse/strata/issues/2150).
 
+### A1: Icons view and thumbnails
+
+Found in the review of [#2192](https://github.com/lgse/strata/pull/2192) and by the
+package's agent. Source: the package's agent, 2026-11-12; first written on the archived
+issue [#2128](https://github.com/lgse/strata/issues/2128).
+
+1. **Down on the last row when every row is full.** GTK moves to the last tile (GtkGridView's
+   `n_items / n_columns` test in `gtk_grid_view_move_focus_along`). Rune's `IconsGrid` treats
+   it as an edge, on purpose (`crates/strata-components/src/icons_grid/mod.rs`, "Decisions
+   and deviations", first bullet). A deviation for the owner to rule. Meanwhile: the
+   component's edge; no run pins it.
+2. **Left with no cursor.** GTK sends it to the sidebar when the pane is at its left edge
+   and the sidebar shows (`single_pane_arrow_action`, `src/ui/window/key_routing.rs:96`;
+   `at_left_edge`, `src/ui/browser_modes/focus.rs:133`). Rune's keyboard controller lands
+   on the last tile. Meanwhile: Rune's, until there is a sidebar ([A3](packages/A3.md)) to
+   go to; then the Icons part matches GTK.
+3. **Up from the first row.** GTK focuses the pane header (`focus_header_from_top`,
+   `src/ui/window/keyboard/items.rs:166-180`). Rune ignores `Edge(Up)`. No package owns the
+   pane header. Meanwhile: nothing happens.
+4. **Focus after Back, Forward and Up.** GTK focuses the new listing on an explicit
+   navigation, and leaves focus on a header button or the sidebar for history unless it was
+   in the pane (`on_navigation_starting`, `src/ui/browser_modes/events.rs:58-66`). The Rune
+   views focus the listing whenever another folder shows. Meanwhile: the Rune views', until
+   the header buttons ([B3](packages/B3.md)) and the sidebar exist to keep focus.
+5. **"Arrows scoped to content"** (`arrow_navigation_scoped`) keeps Left and Up inside the
+   content in GTK (`src/ui/window/keyboard/items.rs:152, 180`). Neither Rune view honours
+   it. Meanwhile: not honoured; it goes with items 2 and 3.
+6. **How the Rune binary gets thumbnail workers, which today means `gdk-pixbuf`.** The
+   worker pool in `strata-preview` re-runs the current executable as `--browser-worker`
+   (`sandbox/browser.rs`), and the GTK binary answers it in `src/main.rs`
+   (`LaunchMode::BrowserWorker`, which calls
+   `strata_preview::sandbox::browser::run(sandbox_helper::browser_render)`). `strata-preview`
+   depends on `gdk-pixbuf`, `poppler`, `cairo` and `pango`, and `strata-app` does not depend
+   on it today. So the same entry point in `strata-rune` would bring `gdk-pixbuf` into the
+   Rune binary, which the plan's exit criterion 6 bans. The three answers:
+   1. **Accept `strata-preview` in `strata-rune` until [E4](packages/E4.md),** which then
+      owns removing it. Cheapest now: the entry point is a few lines. But exit criterion 6
+      would fail until E4 replaces the image path.
+   2. **A separate worker binary**, which `strata-rune`'s pool runs instead of itself. That
+      keeps `strata-rune`'s tree clean. It costs a second binary to build, ship and point
+      the pool at (the pool's `/app/strata` path and the sandbox's command line), and the
+      packaging that goes with it.
+   3. **A client crate split from `strata-preview`, free of gdk:** the pool, the wire
+      protocol and the thumbnail request in one crate; the renderers (`browser_render` and
+      what it decodes with) in another that only the worker links. The design stays right
+      at exit, at the cost of a refactor of a shared crate both binaries use, as a
+      `contract` change of its own.
+
+   What waits on it: the thumbnail service, which `strata-app` would need anyway, and A1's
+   `browser_workers` and `thumbnail_worker_settings` runs. Meanwhile: no thumbnail service is
+   started, and those runs stay `pending`. Source: the orchestrating session, on the review
+   of A1's proposal, 2026-11-12.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
