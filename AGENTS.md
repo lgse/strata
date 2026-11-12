@@ -271,9 +271,9 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
   work on `strata-next` follows the issue and pull request rules above, with pull requests
   targeting `strata-next`. The exception, by the owner's instruction of 2026-11-12: the
   parity plan's packages and findings are tracked in `docs/rune/parity/` instead of GitHub
-  issues. A parity pull request links its package's file where the template asks for the
-  issue, and its branch keeps the package's archived issue number. The rules for `main` are
-  unchanged.
+  issues; a new finding still gets an issue, as its reference only. A parity pull request
+  links its package's file where the template asks for the issue, and its branch keeps the
+  package's archived issue number. The rules for `main` are unchanged.
 - Work package documents are the exception to keeping task records out of the tree: the
   plans, their status, the parity plan's findings and the owner's decisions under
   `docs/rune/` stay in the repository as Markdown.
