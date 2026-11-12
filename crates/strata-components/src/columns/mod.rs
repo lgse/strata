@@ -354,6 +354,10 @@
 //!   Preview), Back and Forward, deletion, the click on a file, saving the column width, the area
 //!   that caps it, 10xer's Escape, the paste destination, the badge's words and its setting
 //!   (and asking for folder counts only while it is on), the Appearance menu's item.
+//! - The host: what a column with no rows shows and is described as (Strata's "This directory
+//!   is empty", a read's failure, "Loading" after its grace period). The view describes each
+//!   column's list as [`ColumnsLabels::list`] first, so a host's [`ColumnsView::collection`]
+//!   hook may describe it otherwise and draw its status in `Collection::empty`.
 //! - C9 (follow-up): whether `El::hold_landing_width` helps the List and Icons side beside the
 //!   drawer, where rows wrap as the drawer's spring moves the edge (C2b's probe `ph1` shows it
 //!   lands the content at once and leaves a gap the drawer closes; untried there).
