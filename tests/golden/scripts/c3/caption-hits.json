@@ -122,9 +122,27 @@
                                   "actions": [
                                     "scroll-into-view"
                                   ],
+                                  "children": [
+                                    {
+                                      "actions": [
+                                        "click",
+                                        "focus",
+                                        "set-value",
+                                        "replace-selected-text",
+                                        "set-text-selection",
+                                        "scroll-into-view"
+                                      ],
+                                      "key": "c3-rename-field",
+                                      "name": "Rename",
+                                      "role": "text-input",
+                                      "states": [
+                                        "focused"
+                                      ],
+                                      "value": "beach.jpg"
+                                    }
+                                  ],
                                   "key": "c3-rename",
-                                  "name": "beach.jpg",
-                                  "role": "label"
+                                  "role": "group"
                                 }
                               ],
                               "description": "Image",
@@ -544,10 +562,7 @@
               ],
               "key": "c3-grid",
               "name": "Pictures",
-              "role": "grid",
-              "states": [
-                "focused"
-              ]
+              "role": "grid"
             }
           ],
           "key": "c3-page",
