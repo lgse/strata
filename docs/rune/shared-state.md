@@ -260,7 +260,7 @@ writes the same whatever library a user has installed:
 | | The table | Not yet |
 | --- | --- | --- |
 | Names | Every declared constant, read by its own name. Three keys are written by the other X name GDK writes them by, and read by both: `dead_perispomeni` for `dead_tilde`, `Arabic_switch` for `Mode_switch`, `KP_Next` for `KP_Page_Down`. `VoidSymbol` has no name, and its name reads as no key | Any key the code does not declare has no name, where GDK names it or writes a number |
-| Characters | A printable Latin-1 character is its own key, and any other character its Unicode keysym (`0x0100_0000` plus the code point), as the X protocol defines both. The eighteen keypad keys that type a character (the digits, space, `=`, `*`, `+`, `,`, `-`, `.`, `/`) type it, so a keypad digit's text is its digit, as on GTK | No other named key types anything, such as a Cyrillic or Greek key given by its legacy keysym. So `normalize` and `KeyPress::from_signal`, which read a non-Latin key's character to find its Latin fallback, find none: an interface on the table builds its presses with `from_parts` and gives what was typed as `Typed::Character` |
+| Characters | A printable Latin-1 character is its own key, and any other character its Unicode keysym (`0x0100_0000` plus the code point), as the X protocol defines both. The eighteen keypad keys that type a character (the digits, space, `=`, `*`, `+`, `,`, `-`, `.`, `/`) type it, so a keypad digit's text is its digit, as on GTK | No other named key types anything, such as a Cyrillic or Greek key given by its legacy keysym. So `normalize` and `KeyPress::from_signal`, which read a non-Latin key's character to find its Latin fallback, find none: an interface on the table gives what was typed as a character (`Typed::Character`, or `Key::from_char`), never as such a keysym |
 | Case | The ASCII letters | Every other key is its own lower and upper case |
 | Accelerator strings | None is read: `Binding::parse` answers `None`, so `Keymap` reports a saved entry as one it cannot read and the shipped keys apply | `Binding::accelerator` panics, because a made-up string would be saved over a user's binding. Reading and writing arrive with the `xkbcommon` backend's reader and writer |
 
@@ -304,6 +304,19 @@ is one that holds them as plain fields.
 
 `KeyPress::unclaimed_alias()` gives the canonical key of an alias nothing claimed, for an
 interface that then wants its toolkit's own effect for that key, as GTK does.
+
+**How the Rune interface builds its presses** (`crates/strata-app/src/commands/press.rs`,
+the only place that does). A named key and a keypad key go through `from_parts`. A
+character goes through `KeyPress::from_signal(Key::from_char(c), keycode, held)`, the
+reading `ui::keys` uses for a press with no GDK event: it holds the US table, the digit
+row by position and the Shift a symbol consumes, so the Rune side writes no layout table of
+its own. That is right on the table backend because the character is always given as
+`Key::from_char` gives it, never as a legacy keysym, which is the one key the table has no
+character for. The keycode is the X keycode of the physical key Rune reports, from a map
+of positions in that file; Caps Lock and a level above Shift's, which Rune's modifiers do
+not carry, are worked out from the character and the key's base character. Where that
+cannot read a press as GDK does is in
+[`parity/owner.md`](parity/owner.md#b3-commands-and-key-dispatch).
 
 ### What stayed in `src/ui/keys/`
 

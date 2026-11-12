@@ -9,13 +9,13 @@ use strata_components::{
 };
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 
-use super::{EntryTarget, FolderTarget, Menu, ROWS, Request, entry, folder, wired};
+use super::{EntryTarget, FolderTarget, Menu, ROWS, Request, entry, folder};
 use crate::{
-    App,
+    App, commands,
     host::offscreen::Offscreen,
     shell,
     slots::{Entry, Place, View},
-    test_support::{PATIENCE, fixture, hosted_over, idle_view},
+    test_support::{PATIENCE, fixture, hosted, hosted_over, idle_view},
 };
 
 fn file(name: &str) -> FileEntry {
@@ -289,7 +289,7 @@ fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
 }
 
 #[test]
-fn every_row_is_in_the_catalogs_and_only_five_actions_are_wired() {
+fn every_row_is_in_the_catalogs() {
     // Asked of the German catalog by name: the process's language is other tests' too.
     let untranslated: Vec<&str> = ROWS
         .iter()
@@ -297,11 +297,22 @@ fn every_row_is_in_the_catalogs_and_only_five_actions_are_wired() {
         .map(|row| row.label)
         .collect();
     assert_eq!(untranslated, Vec::<&str>::new());
+}
 
-    let mut live: Vec<&str> = ROWS.iter().map(|row| row.id).collect();
-    live.dedup();
-    live.retain(|id| wired(id).is_some());
-    assert_eq!(live, ["open", "rename", "select-all", "refresh", "hidden"]);
+/// A row runs the command registered under its id, and is inert while no part has one. The
+/// list of rows that act grows as the parts that own the others land.
+#[test]
+fn five_rows_have_a_command_and_the_rest_are_inert() {
+    hosted(
+        "menus::tests",
+        "five_rows_have_a_command_and_the_rest_are_inert",
+        |host| {
+            let mut live: Vec<&str> = ROWS.iter().map(|row| row.id).collect();
+            live.dedup();
+            live.retain(|id| commands::has(host.app(), id));
+            assert_eq!(live, ["open", "rename", "select-all", "refresh", "hidden"]);
+        },
+    );
 }
 
 /// A view the opener has never heard of: it draws one element and answers only what

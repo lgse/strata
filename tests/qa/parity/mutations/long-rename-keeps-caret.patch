@@ -1,12 +1,11 @@
-diff --git a/crates/strata-app/src/icons/view.rs b/crates/strata-app/src/icons/view.rs
-index 8446af58f..ae65b3888 100644
---- a/crates/strata-app/src/icons/view.rs
-+++ b/crates/strata-app/src/icons/view.rs
-@@ -94,7 +94,7 @@ fn collection(app: &App) -> Collection<App> {
-     .on_selection(intents::moved);
-     // The editor answers in this grid only while its edit names it.
+diff --git a/crates/strata-app/src/single/mod.rs b/crates/strata-app/src/single/mod.rs
+--- a/crates/strata-app/src/single/mod.rs
++++ b/crates/strata-app/src/single/mod.rs
+@@ -169,7 +169,7 @@
+     .on_selection(moved);
+     // The editor answers in this view only while its edit names it.
      collection.rename(
--        |app: &App| app.rename.state.renaming_in(VIEW),
+-        |app: &App| app.rename.state.renaming_in(V::KEY),
 +        |app: &App| app.rename.state.renaming_in("columns"),
          rename::editor(app).slot(),
      )

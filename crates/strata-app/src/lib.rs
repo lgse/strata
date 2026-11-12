@@ -24,6 +24,8 @@ mod pane;
 mod qa;
 mod settings;
 mod shell;
+// What the single-pane views, Icons and List, share beside their pane.
+mod single;
 mod slots;
 mod startup;
 #[cfg(test)]
@@ -39,6 +41,7 @@ mod columns;
 mod menus;
 mod rename;
 // B3 Commands and key dispatch
+mod commands;
 // A1 Icons view and thumbnails
 mod icons;
 // A2 List view

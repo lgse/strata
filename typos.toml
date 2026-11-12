@@ -73,3 +73,13 @@ ags = "ags"
 tese = "tese"
 # The `--qa` reply field for captured GLib warnings and criticals.
 criticals = "criticals"
+
+# Patch files (the QA mutation patches and the toolkit patches): `git diff` writes an `index`
+# line of abbreviated hashes and copies the hunk's enclosing line, cut, after each `@@` header.
+# Both are read as words; the patch's own lines are still checked.
+[type.patch]
+extend-glob = ["*.patch"]
+extend-ignore-re = [
+  '(?m)^index [0-9a-f]+\.\.[0-9a-f]+( [0-7]+)?$',
+  '(?m)^@@ [^@]* @@.*$',
+]
