@@ -318,6 +318,8 @@ fn mark_follows_tenxer_mode(
     wait_footer(fixture, &format!("{mode:?}: 10xer shows the mark"), || {
         fixture.shortcuts.filter_mark().as_deref() == Some("filter: zzz")
     });
+    // The hidden field drops focus; its blur check must run while still in 10xer.
+    pump(40);
     preferences.set_tenxer_mode(false);
     wait_footer(
         fixture,
