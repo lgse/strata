@@ -10,6 +10,7 @@ the plans for that work, split out of two planning documents so they live beside
 | [slice/V0-findings.md](slice/V0-findings.md) | What the slice's assumption checks found |
 | `slice/V3-…` to `slice/V10-…` | One file per work package of the slice, linked from the slice index |
 | [slice/slice-report.md](slice/slice-report.md) | What the slice proved and did not, what it cost, its gaps and measurements, and what is open after it |
+| [parity/README.md](parity/README.md) | The parity plan: the 39 work packages that take the whole application to parity with the GTK app by scenario and by fuzzing, and the issue of each |
 | [plan.md](plan.md) | The component plan: which Strata area each Rune component covers, and the phases |
 | [work/](work/README.md) | The component work packages and [their status](work/STATUS.md) |
 | [decisions/](decisions/) | The component spikes S1 to S5, with the owner's rulings |
@@ -25,6 +26,11 @@ the plans for that work, split out of two planning documents so they live beside
 
 The files here replace both as the working copy. Where the two disagreed, the owner's
 rulings of 2026-11-10 decide, and each file says where it departs from its source.
+
+The parity plan is a third document, and it is not replaced: "Strata Rune migration: parity
+QA and fuzzing strategy" (<https://claude.ai/artifact/XSdySkE6Zs1d2jvHWox9JM>) stays the
+owner's, and [parity/README.md](parity/README.md) is a copy of its revision 57 of 2026-11-11
+that follows it.
 
 ## The component documents
 
