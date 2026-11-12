@@ -80,8 +80,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2173).
 - With the inline rename open on `todo.txt`, a Shift+click on that row clears the field's
   selection in 28 of 34 replays and selects the whole name in 6, from identical input.
-- **Concerns:** fuzz seed `0x67` of the `calibration` alphabet, found while F1 calibrated
-  the driver; step 34 of its sequence.
+- **Concerns:** fuzz seed `0x67` of version 1 of the `calibration` alphabet, found while F1
+  calibrated the driver; step 34 of its sequence.
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181),
   and the `calibration` alphabet no longer clicks an entry while a name is edited.
 
@@ -117,6 +117,18 @@ closed issue is not a fixed finding: the state given here is the finding's.
   and, in `strata-fs`,
   `services::search::tests::folder_path_search_leads_with_a_folder_the_query_names_outright`
   (`crates/strata-fs/src/services/search/tests.rs:819`).
+- **On [#2181](https://github.com/lgse/strata/pull/2181):** the second failed in CI's shard 1 at `7963d110f` and again in the one
+  rerun of the whole workflow, and the third failed in the first of those two runs. That
+  change is to the QA runner, its scripts and documentation, and touches no `src/` and no
+  crate; `./scripts/quality.sh test` passed at that commit in the pinned image. With
+  `strata-next` merged at `734d67f6c`, a sixth,
+  `ui::window::tests::keyboard_dispatch::icon_motion::tenxer_icons_move_spatially_open_explicitly_and_peek`,
+  failed once in `./scripts/quality.sh test` on a loaded host (`Key(104) landed on ["empty",
+  "tile-03.txt", "tile-03.txt"]`) and then passed 6 times of 6 alone.
+  At `6f1605908` a seventh,
+  `ui::preview::tests::audio::audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request`
+  (`src/ui/preview/tests/audio.rs:27`, "rendered stream"), failed in CI's shard 2, where
+  `./scripts/quality.sh test` had passed at the same commit in the pinned image.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -130,8 +142,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2176).
 - Seven steps (a multiple selection, F2, a file written into the folder, Return, Up, Return)
   make GTK log `gtk_selection_model_selection_changed: assertion … failed`, every time.
-- **Concerns:** fuzz seed `0x19b` of the `calibration` alphabet, shrunk from 40 steps to 7
-  and confirmed 3 of 3.
+- **Concerns:** fuzz seed `0x19b` of version 2 of the `calibration` alphabet, shrunk from 40
+  steps to 7 and confirmed 3 of 3.
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181).
 
 ### #2177: after Move to Trash on a filtered pane, the preview shows another file
@@ -140,8 +152,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - With the drawer open and the pane filtered, moving `report.md` to the trash from its
   context menu leaves the preview on `todo.txt`, neither focused nor selected, in 23 of 24
   replays, and on the focused entry in the other.
-- **Concerns:** fuzz seed `0xb1` of the `calibration` alphabet; step 35 of its sequence,
-  which did not shrink.
+- **Concerns:** fuzz seed `0xb1` of version 2 of the `calibration` alphabet; step 35 of its
+  sequence, which did not shrink.
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181).
 
 ### #2179: the windowed Rune host does not pump GLib again after a queued update
@@ -161,14 +173,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2180).
 - A click on the folder `pictures` left focus on its column in one replay and on its first
   entry in the other, with the machine loaded four times over. Seen once, in 300 seeds.
-- **Concerns:** fuzz seed `0x41c` of the `calibration` alphabet; step 2 of its sequence. It
-  may share a cause with [#2162](https://github.com/lgse/strata/issues/2162).
+- **Concerns:** fuzz seed `0x41c` of version 3 of the `calibration` alphabet; step 2 of its
+  sequence. It may share a cause with [#2162](https://github.com/lgse/strata/issues/2162).
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181).
 
-The four fuzz issues name their sequence files with the alphabet's version
-(`fuzz-calibration-v1-0000000000000067.jsonl` and the like); in [#2181](https://github.com/lgse/strata/pull/2181) as it stands the files
-are `tests/qa/fuzz/corpus/calibration/fuzz-calibration-<seed>.jsonl`, with no version. Use
-the names [#2181](https://github.com/lgse/strata/pull/2181) merges with.
+The fuzz issues name their sequence files with the alphabet's version, and those are
+the names [#2181](https://github.com/lgse/strata/pull/2181) merges with:
+`tests/qa/fuzz/corpus/calibration/fuzz-calibration-v<version>-<seed>.jsonl`, the seed as
+sixteen hex digits (`fuzz-calibration-v1-0000000000000067.jsonl` for [#2173](https://github.com/lgse/strata/issues/2173)). A seed names a
+sequence only together with the alphabet's version, so the version is part of the name.
 
 ### #2193: a GTK test whose name string is stale passes without running
 
@@ -207,3 +220,19 @@ the names [#2181](https://github.com/lgse/strata/pull/2181) merges with.
 - **State:** open, not taken up, and not to be fixed on `strata-next`. Until it is fixed on
   `main`, the same test can fail a shard; whoever meets it reads the failure, and it is this
   entry and not a new flaky test.
+
+### #2201: Space in a column's sort menu does two different things
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2201), filed on 2026-11-12 as the finding's reference and
+  closed at once: its state is kept here.
+- With a column's sort menu opened from the keyboard (Up, Right, Right, Return) and left
+  open, after a right-click and Down, Space puts the folder back in its default order, by
+  name, in 16 of 24 replays, and in another order in the other 8. The menu stays open
+  either way. The input logs are identical and every step is at rest.
+- **Concerns:** fuzz seed `0x1de` of version 3 of the `calibration` alphabet; step 32 of its
+  sequence, `{"key":"space"}`, where `app.matches` and `app.menu` differ. The shrinker takes
+  the seed from 40 steps to 10 and calls it noise, since the shortest sequence differed in 2
+  confirmations of 3. To reproduce:
+  `./scripts/qa-fuzz.sh replay tests/qa/fuzz/corpus/calibration/fuzz-calibration-v3-00000000000001de.jsonl --repeats 24 --jobs 1`.
+- **State:** open, set aside, parked. Parked in `tests/qa/fuzz/corpus/calibration/parked`
+  in [#2181](https://github.com/lgse/strata/pull/2181), with the seed's first 32 steps kept beside it.
