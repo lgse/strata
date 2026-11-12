@@ -153,6 +153,8 @@ def main(arguments: list[str] | None = None) -> int:
         return 2
     try:
         return check_gtk(options.notes) if options.target == "gtk" else check()
+    except qa_parity.BadLedger as error:
+        return qa_parity.refuse(qa_parity.LEDGER, error)
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
         return 130

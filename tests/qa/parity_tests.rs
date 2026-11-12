@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+use std::{collections::BTreeMap, fs, path::Path};
+
+use serde::Deserialize;
+
 use crate::{
-    parity::{Gate, Ledger, Planned, Status, planned},
+    REPOSITORY,
+    parity::{Gate, HELP, Ledger, Planned, Status, planned},
     target::{RUNE_BINARY_VARIABLE, TARGET_VARIABLE, Target},
 };
 
@@ -14,7 +19,7 @@ pub(crate) fn the_parity_ledger_accounts_for_every_run_of_every_scenario_folder(
     let problems = ledger.problems(&planned);
     assert!(
         problems.is_empty(),
-        "tests/qa/parity:\n  {}",
+        "tests/qa/parity:\n  {}\n{HELP}",
         problems.join("\n  ")
     );
     let gate = |gate: Gate| planned.iter().filter(|run| run.gate == Some(gate)).count();
@@ -46,261 +51,99 @@ pub(crate) fn the_ledger_excludes_only_the_runs_the_owner_ruled_out() {
     }
 }
 
-pub(crate) const PENDING: &str = "status = \"pending\"\nreason = \"scope\"\nblocker = \"A7\"";
-pub(crate) const REQUIRED: &str = "status = \"required\"\nhost = \"offscreen\"";
-const EXCLUDING: &str = "status = \"excluded\"\nruling = \"the owner, 2026-11-11\"";
+/// What both of the ledger's readers accept and refuse. The scripts' tests read the same
+/// table for theirs (`scripts/test_qa_parity.py`), so the two cannot drift apart.
+const CASES: &str = "tests/qa/parity_cases.toml";
 
-/// A run of the ledger these tests make up: where the runner plans it, and who owns it.
-#[derive(Clone, Copy)]
-pub(crate) struct Row {
-    pub(crate) folder: &'static str,
-    pub(crate) scenario: &'static str,
-    pub(crate) run: &'static str,
-    pub(crate) package: &'static str,
-    pub(crate) gate: Option<Gate>,
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Cases {
+    planned: Vec<Planned>,
+    ledger: BTreeMap<String, String>,
+    #[serde(rename = "case")]
+    refused: Vec<Case>,
+    accepted: Vec<Case>,
 }
 
-/// Folder `keys` has three runs, two of them of the slice's set; folder `pictures` has one.
-const ARROWS: Row = Row {
-    folder: "keys",
-    scenario: "moves",
-    run: "columns-arrows",
-    package: "V7",
-    gate: Some(Gate::G1),
-};
-pub(crate) const KEYS: Row = Row {
-    run: "columns-keys",
-    package: "A7",
-    gate: Some(Gate::G2),
-    ..ARROWS
-};
-pub(crate) const RENAMES: Row = Row {
-    scenario: "renames",
-    run: "list",
-    gate: None,
-    ..KEYS
-};
-const LOOKS: Row = Row {
-    folder: "pictures",
-    scenario: "looks",
-    run: "icons",
-    package: "E1",
-    gate: None,
-};
+/// An edit to the table's ledger, and what a reader makes of the result.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Case {
+    name: String,
+    file: String,
+    find: Option<String>,
+    put: Option<String>,
+    append: Option<String>,
+    text: Option<String>,
+    #[serde(default)]
+    remove: bool,
+    /// The one problem the readers report, word for word.
+    problem: Option<String>,
+    /// What a reader's refusal to read the file says, in its own words.
+    refused: Option<String>,
+}
 
-impl Row {
-    fn planned(self) -> Planned {
-        Planned {
-            folder: self.folder.to_owned(),
-            scenario: self.scenario.to_owned(),
-            run: self.run.to_owned(),
-            gate: self.gate,
+impl Case {
+    /// The file's text after the edit; nothing when the edit removes the file.
+    fn edited(&self, before: &str) -> Option<String> {
+        let after = match (&self.text, &self.find) {
+            (Some(text), _) => text.clone(),
+            (None, Some(find)) => {
+                let found = before.matches(find.as_str()).count();
+                assert_eq!(found, 1, "{}: `find` occurs once in the file", self.name);
+                before.replace(find.as_str(), self.put.as_deref().unwrap_or_default())
+            }
+            (None, None) => format!("{before}{}", self.append.as_deref().unwrap_or_default()),
+        };
+        (!self.remove).then_some(after)
+    }
+}
+
+impl Cases {
+    fn load() -> Self {
+        let text = fs::read_to_string(Path::new(REPOSITORY).join(CASES))
+            .unwrap_or_else(|error| panic!("{CASES}: {error}"));
+        toml::from_str(&text).unwrap_or_else(|error| panic!("{CASES}: {error}"))
+    }
+
+    /// What the reader makes of the table's ledger after an edit: its problems, or why it
+    /// could not read a file.
+    fn outcome(&self, case: Option<&Case>) -> Result<Vec<String>, String> {
+        let mut files = self.ledger.clone();
+        if let Some(case) = case {
+            let before = files.remove(&case.file).unwrap_or_default();
+            files.extend(case.edited(&before).map(|after| (case.file.clone(), after)));
         }
-    }
-
-    /// The run's entry as a ledger file writes it, ending with the lines of its status.
-    pub(crate) fn entry(self, status: &str) -> String {
-        let Self {
-            scenario,
-            run,
-            package,
-            ..
-        } = self;
-        let gate = self
-            .gate
-            .map(|gate| format!("gate = \"{gate:?}\"\n"))
-            .unwrap_or_default();
-        format!(
-            "[[run]]\nscenario = \"{scenario}\"\nrun = \"{run}\"\npackage = \"{package}\"\n\
-             {gate}{status}\n"
-        )
+        let mut ledger = Ledger::default();
+        for (folder, text) in &files {
+            ledger.add(folder, text)?;
+        }
+        Ok(ledger.problems(&self.planned))
     }
 }
 
-/// The file of folder `keys`, in order but for its last entry, `renames/list`, which is
-/// `last`.
-fn keys_ending(last: &str) -> String {
-    let first = ARROWS.entry(REQUIRED);
-    let second = KEYS.entry(PENDING);
-    format!("{first}{second}{last}")
-}
-
-/// The problems of the ledger of `keys` and `pictures`, given their files.
-fn problems(files: &[(&str, &str)]) -> Vec<String> {
-    let planned = [ARROWS, KEYS, RENAMES, LOOKS].map(Row::planned);
-    let mut ledger = Ledger::default();
-    for (folder, text) in files {
-        ledger
-            .add(folder, text)
-            .unwrap_or_else(|error| panic!("{error}"));
-    }
-    ledger.problems(&planned)
-}
-
-/// The problems of the two folders when `keys`' file ends with `last`.
-fn problems_ending(last: &str) -> Vec<String> {
-    let pictures = LOOKS.entry(EXCLUDING);
-    problems(&[("keys", &keys_ending(last)), ("pictures", &pictures)])
-}
-
-pub(crate) fn a_ledger_that_misses_repeats_or_misplaces_a_run_is_refused() {
-    let third = RENAMES.entry(PENDING);
-    let pictures = LOOKS.entry(EXCLUDING);
-    assert_eq!(problems_ending(&third), Vec::<String>::new());
-
-    let twice = KEYS.entry(PENDING);
-    let gone = Row {
-        run: "icons",
-        gate: None,
-        ..KEYS
-    };
-    let elsewhere = LOOKS.entry(PENDING);
-    let ungated = keys_ending(&third).replace("gate = \"G2\"\n", "");
-    let gated = Row {
-        gate: Some(Gate::G3),
-        ..RENAMES
-    };
-    let stranger = Row {
-        package: "A22",
-        ..RENAMES
-    };
-    for (case, found, expected) in [
-        (
-            "a run of the folder is missing",
-            problems_ending(""),
-            "keys.toml: renames/list is not listed",
-        ),
-        (
-            "a run is listed twice",
-            problems_ending(&format!("{twice}{third}")),
-            "keys.toml: moves/columns-keys is listed twice",
-        ),
-        (
-            "a run no longer exists",
-            problems_ending(&format!("{third}{}", gone.entry(PENDING))),
-            "keys.toml: moves/icons is no run of the folder",
-        ),
-        (
-            "a run is another folder's",
-            problems_ending(&format!("{third}{elsewhere}")),
-            "keys.toml: looks/icons is no run of the folder",
-        ),
-        (
-            "a run of the set has no gate",
-            problems(&[("keys", &ungated), ("pictures", &pictures)]),
-            "keys.toml: moves/columns-keys belongs to gate G2",
-        ),
-        (
-            "a run outside the set has a gate",
-            problems_ending(&gated.entry(PENDING)),
-            "keys.toml: renames/list has a gate, and is no Columns run of the slice's set",
-        ),
-        (
-            "a run names no package of the plan",
-            problems_ending(&stranger.entry(PENDING)),
-            "keys.toml: renames/list names \"A22\", which is no package of the parity plan",
-        ),
-    ] {
-        assert_eq!(found, [expected], "{case}");
-    }
-}
-
-pub(crate) fn a_folder_without_a_ledger_file_or_a_file_without_a_folder_is_refused() {
-    let keys = keys_ending(&RENAMES.entry(PENDING));
-    let pictures = LOOKS.entry(EXCLUDING);
+pub(crate) fn the_ledger_reader_accepts_and_refuses_what_the_shared_table_says() {
+    let cases = Cases::load();
     assert_eq!(
-        problems(&[("keys", &keys)]),
-        ["pictures.toml is missing: tests/qa/scenarios/pictures has no ledger"]
+        cases.outcome(None),
+        Ok(Vec::new()),
+        "the table's own ledger"
     );
-    assert_eq!(
-        problems(&[("keys", &keys), ("pictures", &pictures), ("sounds", "")]),
-        ["sounds.toml names no folder of tests/qa/scenarios"]
-    );
-}
-
-pub(crate) fn a_ledger_entry_with_a_field_missing_or_a_field_of_another_status_is_refused() {
-    let renames = |status: &str| problems_ending(&RENAMES.entry(status));
-    for (case, status, expected) in [
-        (
-            "a pending run gives no reason",
-            "status = \"pending\"\nblocker = \"x\"".to_owned(),
-            "is pending without a reason",
-        ),
-        (
-            "a pending run names no blocker",
-            "status = \"pending\"\nreason = \"rune\"\nblocker = \" \"".to_owned(),
-            "is pending without a blocker",
-        ),
-        (
-            "a pending run cites a ruling",
-            format!("{PENDING}\nruling = \"x\""),
-            "is pending, so it has no ruling",
-        ),
-        (
-            "a run that needs a real window names no session host",
-            "status = \"pending\"\nreason = \"platform\"\nblocker = \"x\"".to_owned(),
-            "is pending on platform, so its host is session",
-        ),
-        (
-            "a required run names no host",
-            "status = \"required\"".to_owned(),
-            "is required without a host",
-        ),
-        (
-            "a required run keeps its old excuse",
-            format!("{REQUIRED}\nreason = \"harness\"\nblocker = \"x\""),
-            "is required, so it has no reason, blocker or ruling",
-        ),
-        (
-            "an excluded run cites no ruling",
-            "status = \"excluded\"\nruling = \"\"".to_owned(),
-            "is excluded without a ruling",
-        ),
-        (
-            "an excluded run is also blocked",
-            format!("{EXCLUDING}\nreason = \"scope\"\nblocker = \"A7\""),
-            "is excluded, so it has no host, reason or blocker",
-        ),
-    ] {
-        let expected = format!("keys.toml: renames/list {expected}");
-        assert_eq!(renames(&status), [expected], "{case}");
+    for case in &cases.accepted {
+        assert_eq!(cases.outcome(Some(case)), Ok(Vec::new()), "{}", case.name);
     }
-    let on_session =
-        "status = \"pending\"\nhost = \"session\"\nreason = \"platform\"\nblocker = \"x\"";
-    assert_eq!(renames(on_session), Vec::<String>::new());
-}
-
-pub(crate) fn a_ledger_entry_with_an_unknown_value_or_field_or_no_package_does_not_parse() {
-    let parse = |text: &str| Ledger::default().add("keys", text);
-    for status in [
-        "status = \"done\"",
-        "status = \"pending\"\nreason = \"flaky\"\nblocker = \"x\"",
-        "status = \"required\"\nhost = \"window\"",
-        "status = \"required\"\nhost = \"offscreen\"\nnote = \"x\"",
-    ] {
-        let malformed = ARROWS.entry(status);
-        assert!(parse(&malformed).is_err(), "{malformed}");
-    }
-    let unknown_gate = ARROWS.entry(REQUIRED).replace("\"G1\"", "\"G4\"");
-    assert!(parse(&unknown_gate).is_err(), "{unknown_gate}");
-    let unowned = ARROWS.entry(REQUIRED).replace("package = \"V7\"\n", "");
-    assert!(parse(&unowned).is_err(), "{unowned}");
-    let allowance = "[[flaky]]\nscenario = \"moves\"\nrun = \"columns-arrows\"\n";
-    assert!(parse(allowance).is_err(), "{allowance}");
-    for reason in [
-        "harness",
-        "component",
-        "rune",
-        "platform",
-        "toolkit",
-        "deviation",
-        "scope",
-    ] {
-        let coded = format!("status = \"pending\"\nreason = \"{reason}\"\nblocker = \"x\"");
-        assert!(parse(&ARROWS.entry(&coded)).is_ok(), "{coded}");
-    }
-    for status in [REQUIRED, PENDING, EXCLUDING] {
-        assert!(parse(&RENAMES.entry(status)).is_ok(), "{status}");
+    for case in &cases.refused {
+        let outcome = cases.outcome(Some(case));
+        match (&case.problem, &case.refused) {
+            (Some(problem), None) => {
+                assert_eq!(outcome, Ok(vec![problem.clone()]), "{}", case.name);
+            }
+            (None, Some(refused)) => {
+                let error = outcome.expect_err(&case.name);
+                assert!(error.contains(refused.as_str()), "{}: {error}", case.name);
+            }
+            _ => panic!("{}: a case has a problem or is refused", case.name),
+        }
     }
 }
 

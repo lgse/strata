@@ -1,6 +1,6 @@
 # The parity ledger of tests/qa/scenarios/dialogs_and_menus: every run of the folder, once, with the
-# package that owns it. A package edits only the rows that name it. The fields and the
-# checks are in docs/testing.md, "The Rune target and the parity ledger".
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
 
 [[run]]
 scenario = "background-customize-ancestor-column"

@@ -55,20 +55,24 @@ status=required
 scenario=()
 whole=1
 counts=0
+narrowed=0
 while (($#)); do
   case "$1" in
     --target)
       case "${2:-}" in gtk|rune) targets="$2" ;; *) echo "$usage" >&2; exit 2 ;; esac
+      narrowed=1
       shift 2
       ;;
     --pending)
       status=pending
+      narrowed=1
       shift
       ;;
     --scenario)
       [[ -n "${2:-}" ]] || { echo "$usage" >&2; exit 2; }
       scenario=(--scenario "$2")
       whole=0
+      narrowed=1
       shift 2
       ;;
     --counts)
@@ -79,6 +83,10 @@ while (($#)); do
   esac
 done
 if ((counts)); then
+  if ((narrowed)); then
+    echo "--counts counts the whole selection: it takes no --target, --pending or --scenario." >&2
+    exit 2
+  fi
   # The ledger alone answers: no image, no build.
   exec python3 "$repository/scripts/qa_parity.py" "$selection" --counts
 fi
@@ -88,7 +96,8 @@ if [[ "$status" == pending ]]; then
 fi
 
 if [[ "$targets" != "gtk rune" || "$status" != required ]]; then whole=0; fi
-# The ledger refuses a selection it does not have, and a required run it cannot start here.
+# The reader checks the whole ledger first and refuses one with a fault, as the runner's
+# tests would; then a selection it does not have, and a required run it cannot start here.
 listed="$(python3 "$repository/scripts/qa_parity.py" "$selection" --status "$status" "${scenario[@]}")" \
   || exit 2
 runs=()

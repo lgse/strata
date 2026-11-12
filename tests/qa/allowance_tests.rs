@@ -3,7 +3,6 @@
 use crate::{
     allowances::{Allowances, Suite, document},
     parity::Ledger,
-    parity_tests::{KEYS, PENDING, RENAMES, REQUIRED, Row},
 };
 
 /// The allowances are the two the slice was given, and each stands on something real: a
@@ -32,22 +31,46 @@ pub(crate) fn the_ledger_allows_only_the_flaky_run_and_the_stale_patch_it_was_gi
     assert_eq!(stale, ["cut"], "one patch was stale before the slice");
 }
 
-/// A ledger of one folder, `keys`, whose runs the allowance cases name.
+/// The file of one folder, `keys`: a pending run of the slice's set, two pending runs
+/// outside it and a required one.
+const DECIDED: &str = r#"
+[[run]]
+scenario = "moves"
+run = "columns-keys"
+package = "A7"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "opens"
+run = "columns"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "opens"
+run = "list"
+package = "A7"
+status = "pending"
+reason = "scope"
+blocker = "A7"
+
+[[run]]
+scenario = "opens"
+run = "icons-passing"
+package = "A7"
+status = "required"
+host = "offscreen"
+"#;
+
 fn decided() -> Ledger {
     let mut ledger = Ledger::default();
-    let opens = |run: &'static str| Row {
-        scenario: "opens",
-        run,
-        ..RENAMES
-    };
-    let rows = [
-        KEYS.entry(PENDING),
-        opens("columns").entry(PENDING),
-        opens("list").entry(PENDING),
-        opens("icons-passing").entry(REQUIRED),
-    ];
     ledger
-        .add("keys", &rows.concat())
+        .add("keys", DECIDED)
         .unwrap_or_else(|error| panic!("{error}"));
     ledger
 }
@@ -150,7 +173,7 @@ pub(crate) fn an_allowance_with_a_missing_or_an_unknown_field_does_not_parse() {
         format!("{FLAKY}\nreason = \"x\"\nrecorded = \"notes.md\"\n"),
         format!("{FLAKY}\n{FOUNDED}\nuntil = \"V10\"\n"),
         format!("{STALE}\nrecorded = \"notes.md\"\nissue = \"x\"\n"),
-        KEYS.entry(PENDING),
+        DECIDED.to_owned(),
     ] {
         assert!(Allowances::parse(&malformed).is_err(), "{malformed}");
     }

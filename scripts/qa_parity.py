@@ -6,6 +6,8 @@ counts by status and reason, and the failures of the whole GTK suite its allowan
 
 The ledger is the directory tests/qa/parity: <folder>.toml lists the runs of one folder
 under tests/qa/scenarios, and slice.toml holds the slice's allowances (docs/testing.md).
+It is checked before anything is selected from it, by scripts/qa_parity_check.py: a ledger
+the runner's tests would refuse selects nothing.
 """
 
 from __future__ import annotations
@@ -17,17 +19,19 @@ import tomllib
 from collections import Counter
 from pathlib import Path
 
+import qa_parity_check
+from qa_parity_check import HOSTS, STATUSES
+
 REPOSITORY = Path(__file__).resolve().parents[1]
 LEDGER = REPOSITORY / "tests/qa/parity"
+SCENARIOS = REPOSITORY / "tests/qa/scenarios"
 # The one file of the directory that lists no runs: the slice's allowances.
 ALLOWANCES = "slice.toml"
 GATES = {"g1": ("G1",), "g2": ("G2",), "g3": ("G3",), "slice": ("G1", "G2", "G3")}
 EVERY = "all"
-STATUSES = ("required", "pending", "excluded")
 MODES = ("columns", "icons", "list")
 # The host this command can start. A `session` run needs a real window in a compositor.
 OFFSCREEN = "offscreen"
-HOSTS = (OFFSCREEN, "session")
 # The runner's line for a failed test and its closing count of them, tests/qa/harness.rs.
 FAILED = re.compile(r"^test (\S+) \.\.\. FAILED\b")
 RESULT = re.compile(r"^test result: FAILED\. \d+ passed; (\d+) failed;")
@@ -35,6 +39,14 @@ RESULT = re.compile(r"^test result: FAILED\. \d+ passed; (\d+) failed;")
 
 class UnknownSelection(ValueError):
     """A selection that is no gate, folder or package of the ledger."""
+
+
+class BadLedger(ValueError):
+    """A ledger the runner's tests would refuse; `problems` has one line for each fault."""
+
+    def __init__(self, problems: list[str]):
+        super().__init__("\n".join(problems))
+        self.problems = problems
 
 
 def name(run: dict) -> str:
@@ -213,14 +225,37 @@ def read(path: Path) -> dict:
         return tomllib.load(stream)
 
 
-def load(ledger: Path = LEDGER) -> dict:
+def load(ledger: Path = LEDGER, scenarios: Path = SCENARIOS) -> dict:
     """Every folder's runs, each with its `folder`, in file and then ledger order; and the
-    allowances, when the directory has them."""
+    allowances, when the directory has them.
+
+    The ledger is checked first against the runs the scenario files under `scenarios` plan,
+    and one with a fault is refused whole.
+    """
 
     files = sorted(path for path in ledger.glob("*.toml") if path.name != ALLOWANCES)
-    runs = [{**run, "folder": path.stem} for path in files for run in read(path).get("run", [])]
+    texts = {path.stem: path.read_text(encoding="utf-8") for path in files}
+    if problems := qa_parity_check.problems(texts, qa_parity_check.planned(scenarios)):
+        raise BadLedger(problems)
+    runs = [{**run, "folder": folder} for folder, text in texts.items()
+            for run in tomllib.loads(text).get("run", [])]
     allowances = read(ledger / ALLOWANCES) if (ledger / ALLOWANCES).is_file() else {}
     return {"run": runs, **{key: allowances.get(key, []) for key in ("flaky", "stale_patch")}}
+
+
+def refuse(ledger: Path, error: BadLedger) -> int:
+    """Says what is wrong with the ledger and what to do about an unlisted run; exits 2."""
+
+    print(f"{display(ledger)} is not in order, so nothing is selected from it:", file=sys.stderr)
+    for problem in error.problems:
+        print(f"  {problem}", file=sys.stderr)
+    if any(problem.endswith("is not listed") for problem in error.problems):
+        print(qa_parity_check.HELP, file=sys.stderr)
+    return 2
+
+
+def display(path: Path) -> str:
+    return str(path.relative_to(REPOSITORY)) if path.is_relative_to(REPOSITORY) else str(path)
 
 
 def report_selected(ledger: dict, args: argparse.Namespace) -> int:
@@ -244,11 +279,16 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("--counts", action="store_true",
                         help="instead of the runs: the selection's counts by status and reason")
     parser.add_argument("--ledger", type=Path, default=LEDGER, help="the ledger's directory")
+    parser.add_argument("--scenarios", type=Path, default=SCENARIOS,
+                        help="the scenario folders whose runs the ledger lists")
     parser.add_argument("--failed-in", type=Path, metavar="LOG",
                         help="instead of a selection's runs: the flaky runs that failed in this "
                              "log of the whole GTK suite, or exit 1 if it failed any other way")
     args = parser.parse_args(arguments)
-    ledger = load(args.ledger)
+    try:
+        ledger = load(args.ledger, args.scenarios)
+    except BadLedger as error:
+        return refuse(args.ledger, error)
     if args.failed_in:
         return report_excused(ledger, args.failed_in)
     try:

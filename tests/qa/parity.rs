@@ -38,9 +38,13 @@ const SET: [(&str, Gate); 7] = [
     ("startup_arguments", Gate::G2),
     ("inline_renaming", Gate::G3),
 ];
-/// The slice's packages that own the runs they took to `required`: V7 gate G1's, V8 gate
-/// G2's and V9 gate G3's (`docs/rune/slice/README.md`).
-const SLICE: [&str; 3] = ["V7", "V8", "V9"];
+/// The slice's packages, which own the runs they took to `required` and no other: V7 gate
+/// G1's, V8 gate G2's and V9 gate G3's (`docs/rune/slice/README.md`).
+const SLICE: [(&str, Gate); 3] = [("V7", Gate::G1), ("V8", Gate::G2), ("V9", Gate::G3)];
+/// What to do about a run the ledger does not list, for whoever meets the failure.
+pub(crate) const HELP: &str = "A run that is not listed goes into tests/qa/parity/<its \
+    folder>.toml, at its place in the runner's order, as pending on scope under its package: \
+    docs/testing.md, \"Who owns a run\", says which.";
 /// The parity plan's work packages, by track letter: `H0` to `H5`, `B1` to `B3`, `F1` to
 /// `F5`, `A1` to `A21` and `E1` to `E4`.
 const TRACKS: [(char, RangeInclusive<u8>); 5] = [
@@ -119,7 +123,8 @@ pub(crate) struct Ledger {
 }
 
 /// A run as the runner plans it. Only a Columns run of the slice's set has a gate.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Planned {
     pub(crate) folder: String,
     pub(crate) scenario: String,
@@ -203,20 +208,26 @@ fn file_name(path: &Path) -> &str {
         .unwrap_or_default()
 }
 
-/// Everything wrong with one folder's file against the folder's runs.
+/// Everything wrong with one folder's file against the folder's runs, which are in the
+/// runner's order.
 fn folder_problems(entries: &[Entry], planned: &[&Planned]) -> Vec<String> {
     let mut problems = Vec::new();
     let mut listed = BTreeSet::new();
+    let mut previous = None;
     for entry in entries {
         let name = format!("{}/{}", entry.scenario, entry.run);
+        let place = planned
+            .iter()
+            .position(|run| run.scenario == entry.scenario && run.run == entry.run);
         if !listed.insert((entry.scenario.as_str(), entry.run.as_str())) {
             problems.push(format!("{name} is listed twice"));
         }
         let found = entry
-            .misplaced(planned)
+            .misplaced(place.map(|place| planned[place]))
             .or_else(|| entry.unowned())
             .or_else(|| entry.unexplained());
         problems.extend(found.map(|problem| format!("{name} {problem}")));
+        problems.extend(disordered(&name, place, &mut previous));
     }
     let unlisted = planned
         .iter()
@@ -225,14 +236,28 @@ fn folder_problems(entries: &[Entry], planned: &[&Planned]) -> Vec<String> {
     problems
 }
 
-/// Whether the plan has a package of that id, or it is one of the slice's.
+/// What is wrong with an entry that follows one the runner plans after it. `previous` is
+/// the last entry that named a run, and where the runner plans it; a file kept in the
+/// runner's order gives a new entry one place to go.
+fn disordered(
+    name: &str,
+    place: Option<usize>,
+    previous: &mut Option<(usize, String)>,
+) -> Option<String> {
+    let place = place?;
+    let (before, earlier) = previous.replace((place, name.to_owned()))?;
+    (place < before)
+        .then(|| format!("{name} is out of the runner's order: it belongs before {earlier}"))
+}
+
+/// Whether the plan has a package of that id.
 fn is_package(id: &str) -> bool {
     let planned = |(letter, numbers): &(char, RangeInclusive<u8>)| {
         numbers
             .clone()
             .any(|number| id == format!("{letter}{number}"))
     };
-    SLICE.contains(&id) || TRACKS.iter().any(planned)
+    TRACKS.iter().any(planned)
 }
 
 fn said(text: Option<&str>) -> bool {
@@ -240,12 +265,9 @@ fn said(text: Option<&str>) -> bool {
 }
 
 impl Entry {
-    /// What is wrong with where the entry stands: no such run in its folder, or a gate that
-    /// is not the run's.
-    fn misplaced(&self, planned: &[&Planned]) -> Option<String> {
-        let run = planned
-            .iter()
-            .find(|run| run.scenario == self.scenario && run.run == self.run);
+    /// What is wrong with where the entry stands: `run` is the run it names, if the folder
+    /// has it. No such run, or a gate that is not the run's.
+    fn misplaced(&self, run: Option<&Planned>) -> Option<String> {
         match (run.map(|run| run.gate), self.gate) {
             (None, _) => Some("is no run of the folder".to_owned()),
             (Some(planned), listed) if planned == listed => None,
@@ -256,13 +278,24 @@ impl Entry {
         }
     }
 
+    /// What is wrong with the owner: no package of the plan, or one of the slice's on a
+    /// run it did not take to `required`. So a slice package's entry cannot be demoted.
     fn unowned(&self) -> Option<String> {
-        (!is_package(&self.package)).then(|| {
-            format!(
-                "names {:?}, which is no package of the parity plan",
-                self.package
-            )
-        })
+        let package = &self.package;
+        let slice = SLICE.iter().find(|(id, _)| id == package);
+        match slice {
+            Some((_, gate)) if !self.required_under(*gate) => Some(format!(
+                "names {package:?}, which owns only the required runs of gate {gate:?}"
+            )),
+            None if !is_package(package) => Some(format!(
+                "names {package:?}, which is no package of the parity plan"
+            )),
+            _ => None,
+        }
+    }
+
+    fn required_under(&self, gate: Gate) -> bool {
+        self.status == Status::Required && self.gate == Some(gate)
     }
 
     /// Each status carries its own fields and no other's.
@@ -290,16 +323,14 @@ impl Entry {
         }
     }
 
+    /// A pending entry may name the host its run will need; nothing asks it to.
     fn pending_without(&self) -> Option<&'static str> {
-        let on_platform = self.reason == Some(Reason::Platform);
         if self.reason.is_none() {
             Some("is pending without a reason")
         } else if !said(self.blocker.as_deref()) {
             Some("is pending without a blocker")
         } else if self.ruling.is_some() {
             Some("is pending, so it has no ruling")
-        } else if on_platform && self.host != Some(Host::Session) {
-            Some("is pending on platform, so its host is session")
         } else {
             None
         }

@@ -2,22 +2,35 @@
 
 import contextlib
 import io
+import json
 import re
 import subprocess
 import tempfile
+import tomllib
 import unittest
 import unittest.mock
 from pathlib import Path
 
 import qa_mutation
 import qa_parity
+import qa_parity_check
 import qa_parity_mutation
 from qa_parity import selected
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
-# The ledger of two folders. `keyboard_navigation` and `inline_renaming` are of the slice's
-# set, so their Columns runs have a gate.
+# A corpus of three folders: each scenario's header, as tests/qa/scenarios holds them.
+# `keyboard_navigation` and `inline_renaming` are of the slice's set, so their Columns runs
+# have a gate.
+SCENARIOS = {
+    "keyboard_navigation/arrow-keys-move-focus": {"modes": ["columns"], "variants": [{"id": "arrows"}]},
+    "keyboard_navigation/context-menu-keeps-selection": {"modes": ["columns"]},
+    "keyboard_navigation/escape-clears-selection": {"modes": ["columns", "icons"]},
+    "inline_renaming/rename-with-f2": {"modes": ["columns", "list"], "variants": [{"id": "keyboard"}]},
+    "visual_baselines/columns-view-baseline": {"modes": ["columns"]},
+}
+
+# Its ledger, each file in the runner's order.
 FOLDERS = {
     "keyboard_navigation": """
 [[run]]
@@ -27,6 +40,15 @@ package = "V7"
 gate = "G1"
 status = "required"
 host = "offscreen"
+
+[[run]]
+scenario = "context-menu-keeps-selection"
+run = "columns"
+package = "A6"
+gate = "G2"
+status = "pending"
+reason = "component"
+blocker = "the menu work package"
 
 [[run]]
 scenario = "escape-clears-selection"
@@ -42,15 +64,6 @@ run = "icons"
 package = "A1"
 status = "required"
 host = "offscreen"
-
-[[run]]
-scenario = "context-menu-keeps-selection"
-run = "columns"
-package = "A6"
-gate = "G2"
-status = "pending"
-reason = "component"
-blocker = "the menu work package"
 """,
     "inline_renaming": """
 [[run]]
@@ -82,30 +95,45 @@ ruling = "the owner, 2026-11-11"
 
 
 @contextlib.contextmanager
-def ledger_directory(allowances=""):
-    """A ledger directory holding FOLDERS, and slice.toml when there are allowances."""
+def corpus(allowances=""):
+    """A directory holding SCENARIOS under `scenarios` and FOLDERS under `ledger`, with
+    slice.toml when there are allowances."""
 
     with tempfile.TemporaryDirectory() as directory:
+        ledger, scenarios = Path(directory) / "ledger", Path(directory) / "scenarios"
+        ledger.mkdir()
+        for path, header in SCENARIOS.items():
+            file = scenarios / f"{path}.jsonl"
+            file.parent.mkdir(parents=True, exist_ok=True)
+            header = {"scenario": file.stem, **header}
+            file.write_text(f'{json.dumps(header)}\n{{"key":"Escape"}}\n', encoding="utf-8")
         for folder, text in FOLDERS.items():
-            (Path(directory) / f"{folder}.toml").write_text(text, encoding="utf-8")
+            (ledger / f"{folder}.toml").write_text(text, encoding="utf-8")
         if allowances:
-            (Path(directory) / qa_parity.ALLOWANCES).write_text(allowances, encoding="utf-8")
-        yield Path(directory)
+            (ledger / qa_parity.ALLOWANCES).write_text(allowances, encoding="utf-8")
+        yield ledger, scenarios
 
 
 def load(allowances=""):
-    with ledger_directory(allowances) as directory:
-        return qa_parity.load(directory)
+    with corpus(allowances) as (ledger, scenarios):
+        return qa_parity.load(ledger, scenarios)
 
 
 def run_main(*arguments, allowances=""):
     """The command's exit status, output and errors over the ledger of FOLDERS."""
 
     printed, errors = io.StringIO(), io.StringIO()
-    with ledger_directory(allowances) as directory:
+    with corpus(allowances) as (ledger, scenarios):
         with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(errors):
-            status = qa_parity.main([*arguments, "--ledger", str(directory)])
+            status = qa_parity.main([*arguments, "--ledger", str(ledger), "--scenarios", str(scenarios)])
     return status, printed.getvalue(), errors.getvalue()
+
+
+def edited(folder, find, put):
+    """FOLDERS with one file changed: `find`, which occurs once in it, becomes `put`."""
+
+    assert FOLDERS[folder].count(find) == 1, find
+    return unittest.mock.patch.dict(FOLDERS, {folder: FOLDERS[folder].replace(find, put)})
 
 
 class SelectionTests(unittest.TestCase):
@@ -152,10 +180,8 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(run_main("A2", "--status", "pending"), (0, "rename-with-f2/list-keyboard\n", ""))
 
     def test_a_required_run_on_the_session_host_is_refused_and_not_run_offscreen(self):
-        session = FOLDERS["keyboard_navigation"].replace(
-            'package = "A1"\nstatus = "required"\nhost = "offscreen"',
-            'package = "A1"\nstatus = "required"\nhost = "session"')
-        with unittest.mock.patch.dict(FOLDERS, {"keyboard_navigation": session}):
+        with edited("keyboard_navigation", 'package = "A1"\nstatus = "required"\nhost = "offscreen"',
+                    'package = "A1"\nstatus = "required"\nhost = "session"'):
             self.assertEqual(qa_parity.needs_session(load(), "A1"), ["escape-clears-selection/icons"])
             status, printed, errors = run_main("keyboard_navigation")
             self.assertEqual((status, printed), (3, ""))
@@ -206,6 +232,117 @@ class ScenarioFilterTests(unittest.TestCase):
                          ["escape-clears-selection/columns", "escape-clears-selection/icons"])
         self.assertEqual(selected(ledger, "g1", "required", "escape-clears-selection"), [])
         self.assertEqual(selected(ledger, "slice", "required", "rename-with-f2"), [])
+
+
+class CheckTests(unittest.TestCase):
+    """The reader every selection goes through refuses what the runner's own does."""
+
+    def edit(self, case, files):
+        files = dict(files)
+        before = files.pop(case["file"], "")
+        if case.get("remove"):
+            return files
+        if "find" in case:
+            self.assertEqual(before.count(case["find"]), 1, case["name"])
+        after = before.replace(case["find"], case.get("put", "")) if "find" in case else before + case.get("append", "")
+        files[case["file"]] = case.get("text", after)
+        return files
+
+    def test_both_readers_accept_and_refuse_what_their_shared_table_says(self):
+        table = tomllib.loads((REPOSITORY / "tests/qa/parity_cases.toml").read_text(encoding="utf-8"))
+        check = lambda case: qa_parity_check.problems(self.edit(case, table["ledger"]), table["planned"])
+        self.assertEqual(qa_parity_check.problems(table["ledger"], table["planned"]), [])
+        for case in table["accepted"]:
+            with self.subTest(case["name"]):
+                self.assertEqual(check(case), [])
+        self.assertGreaterEqual(len(table["case"]), 29)
+        for case in table["case"]:
+            with self.subTest(case["name"]):
+                found = check(case)
+                self.assertEqual(len(found), 1, found)
+                # A problem is the runner's line, word for word; a refusal to read says why.
+                self.assertEqual(("problem" in case, "refused" in case).count(True), 1)
+                if "problem" in case:
+                    self.assertEqual(found[0], case["problem"])
+                else:
+                    self.assertIn(case["refused"], found[0])
+                    self.assertTrue(found[0].startswith(f"{case['file']}.toml: "), found[0])
+
+    def test_the_runners_tests_read_the_same_table_and_spell_the_same_help(self):
+        tests = (REPOSITORY / "tests/qa/parity_tests.rs").read_text(encoding="utf-8")
+        self.assertIn('const CASES: &str = "tests/qa/parity_cases.toml";', tests)
+        reader = (REPOSITORY / "tests/qa/parity.rs").read_text(encoding="utf-8")
+        spelt = re.search(r'pub\(crate\) const HELP: &str = "((?:[^"\\]|\\.)*)";', reader, re.S).group(1)
+        spelt = re.sub(r"\\\n\s*", "", spelt).replace('\\"', '"')
+        self.assertEqual(spelt, qa_parity_check.HELP)
+
+    def test_the_runs_of_a_header_are_the_ones_the_runner_plans(self):
+        plain = {"modes": ["columns", "list"]}
+        named = {**plain, "variants": [{"id": "us"}, {"id": "ru", "modes": ["icons"]}, {"id": "none", "modes": []}]}
+        self.assertEqual(qa_parity_check.runs(plain), [("columns", "columns"), ("list", "list")])
+        self.assertEqual(qa_parity_check.runs(named),
+                         [("columns", "columns-us"), ("list", "list-us"), ("icons", "icons-ru")])
+        with corpus() as (_, scenarios):
+            planned = qa_parity_check.planned(scenarios)
+        self.assertEqual([(run["folder"], f"{run['scenario']}/{run['run']}", run["gate"]) for run in planned], [
+            ("inline_renaming", "rename-with-f2/columns-keyboard", "G3"),
+            ("inline_renaming", "rename-with-f2/list-keyboard", None),
+            ("keyboard_navigation", "arrow-keys-move-focus/columns-arrows", "G1"),
+            ("keyboard_navigation", "context-menu-keeps-selection/columns", "G2"),
+            ("keyboard_navigation", "escape-clears-selection/columns", "G2"),
+            ("keyboard_navigation", "escape-clears-selection/icons", None),
+            ("visual_baselines", "columns-view-baseline/columns", None),
+        ])
+
+    def test_a_ledger_with_a_fault_selects_nothing_and_says_which_file_and_row(self):
+        required = 'package = "A1"\nstatus = "required"\nhost = "offscreen"\n'
+        first = FOLDERS["keyboard_navigation"].split("\n\n")[0]
+        swapped = FOLDERS["inline_renaming"].strip().split("\n\n")
+        for case, folder, find, put, problem in (
+            ("a misspelt status", "keyboard_navigation", required, required.replace("required", "done"),
+             "keyboard_navigation.toml: escape-clears-selection/icons has the unknown status 'done'"),
+            ("an unknown field", "keyboard_navigation", required, required + 'note = "x"\n',
+             "keyboard_navigation.toml: escape-clears-selection/icons has the unknown field note"),
+            ("an entry repeated", "keyboard_navigation", first, first + "\n" + first,
+             "keyboard_navigation.toml: arrow-keys-move-focus/columns-arrows is listed twice"),
+            ("an entry of another folder", "inline_renaming", 'blocker = "A2"\n', 'blocker = "A2"\n' + first + "\n",
+             "inline_renaming.toml: arrow-keys-move-focus/columns-arrows is no run of the folder"),
+            ("a required run without its host", "keyboard_navigation", required, required.replace('host = "offscreen"\n', ""),
+             "keyboard_navigation.toml: escape-clears-selection/icons is required without a host"),
+            ("an unknown host", "keyboard_navigation", required, required.replace("offscreen", "window"),
+             "keyboard_navigation.toml: escape-clears-selection/icons has the unknown host 'window'"),
+            ("no package", "keyboard_navigation", required, required.replace('package = "A1"\n', ""),
+             "keyboard_navigation.toml: escape-clears-selection/icons has no package"),
+            ("a package the plan does not have", "keyboard_navigation", required, required.replace("A1", "Z9"),
+             'keyboard_navigation.toml: escape-clears-selection/icons names "Z9", which is no package of the parity plan'),
+            ("a slice package on a pending run", "keyboard_navigation", 'package = "A6"', 'package = "V8"',
+             'keyboard_navigation.toml: context-menu-keeps-selection/columns names "V8", which owns only the '
+             "required runs of gate G2"),
+            ("a required run of the slice demoted", "keyboard_navigation",
+             'package = "V8"\ngate = "G2"\nstatus = "required"\nhost = "offscreen"',
+             'package = "V8"\ngate = "G2"\nstatus = "pending"\nreason = "scope"\nblocker = "A3"',
+             'keyboard_navigation.toml: escape-clears-selection/columns names "V8", which owns only the '
+             "required runs of gate G2"),
+            ("an entry out of the runner's order", "inline_renaming", FOLDERS["inline_renaming"],
+             "\n" + "\n\n".join(reversed(swapped)) + "\n",
+             "inline_renaming.toml: rename-with-f2/columns-keyboard is out of the runner's order: it belongs "
+             "before rename-with-f2/list-keyboard"),
+        ):
+            with self.subTest(case), edited(folder, find, put):
+                for arguments in ((folder,), (folder, "--counts"), ("all", "--status", "pending"), ("slice",)):
+                    status, printed, errors = run_main(*arguments)
+                    self.assertEqual((status, printed), (2, ""), arguments)
+                    self.assertEqual(errors.splitlines()[1:], [f"  {problem}"], arguments)
+
+    def test_an_unlisted_run_is_refused_with_what_to_do_about_it(self):
+        with edited("inline_renaming", FOLDERS["inline_renaming"].strip().split("\n\n")[1], ""):
+            status, printed, errors = run_main("all")
+        self.assertEqual((status, printed), (2, ""))
+        self.assertEqual(errors.splitlines()[1:],
+                         ["  inline_renaming.toml: rename-with-f2/list-keyboard is not listed", qa_parity_check.HELP])
+        self.assertIn("tests/qa/parity/<its folder>.toml", qa_parity_check.HELP)
+        self.assertIn('docs/testing.md, "Who owns a run"', qa_parity_check.HELP)
+        self.assertIn("#### Who owns a run", (REPOSITORY / "docs/testing.md").read_text(encoding="utf-8"))
 
 
 ALLOWANCES = """
@@ -393,6 +530,14 @@ class RepositoryTests(unittest.TestCase):
     def test_every_required_run_of_the_committed_ledger_runs_on_the_offscreen_host(self):
         self.assertEqual(qa_parity.needs_session(qa_parity.load(), "all"), [])
 
+    def test_the_committed_ledger_passes_this_reader_as_it_passes_the_runners(self):
+        ledger = qa_parity.load()
+        planned = qa_parity_check.planned(qa_parity.SCENARIOS)
+        self.assertEqual([(run["folder"], run["scenario"], run["run"], run["gate"]) for run in planned],
+                         [(run["folder"], run["scenario"], run["run"], run.get("gate")) for run in ledger["run"]])
+        slice_owned = [run for run in ledger["run"] if run["package"] in qa_parity_check.SLICE]
+        self.assertEqual(len(slice_owned), 36, "the runs the slice took to required stay required")
+
     def test_the_script_takes_any_selection_and_counts_without_the_image(self):
         script = (REPOSITORY / "scripts/qa-parity.sh").read_text(encoding="utf-8")
         counted = script.index('qa_parity.py" "$selection" --counts')
@@ -404,6 +549,12 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn("'no_such_folder' is no selection", refused.stderr)
         counts = subprocess.run([*command, "slice", "--counts"], capture_output=True, text=True, check=True)
         self.assertEqual(counts.stdout, qa_parity.counts(qa_parity.load(), "slice") + "\n")
+        # The counts are the whole selection's: an option that narrows a run is refused.
+        for narrowed in (["--scenario", "shift-click-range"], ["--pending"], ["--target", "rune"]):
+            for arguments in (["slice", "--counts", *narrowed], ["slice", *narrowed, "--counts"]):
+                refused = subprocess.run([*command, *arguments], capture_output=True, text=True, check=False)
+                self.assertEqual((refused.returncode, refused.stdout), (2, ""), arguments)
+                self.assertIn("--counts", refused.stderr)
 
     def test_the_script_names_the_runners_variables_and_artifact_folders(self):
         script = (REPOSITORY / "scripts/qa-parity.sh").read_text(encoding="utf-8")

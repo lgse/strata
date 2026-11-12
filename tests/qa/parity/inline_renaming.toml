@@ -1,6 +1,6 @@
 # The parity ledger of tests/qa/scenarios/inline_renaming: every run of the folder, once, with the
-# package that owns it. A package edits only the rows that name it. The fields and the
-# checks are in docs/testing.md, "The Rune target and the parity ledger".
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
 
 [[run]]
 scenario = "escape-preserves-name-remaining"
@@ -42,7 +42,6 @@ run = "columns-selected-stem"
 package = "A7"
 gate = "G3"
 status = "pending"
-host = "session"
 reason = "platform"
 blocker = "An input method: fcitx5-chewing on a session bus, which the pinned image lacks. The scenario's own `skip` keeps the runner from starting it on either target. On Rune it also needs a host that takes input-method events: the offscreen host has `Runtime::ime` and no daemon to drive it"
 
@@ -52,7 +51,6 @@ run = "columns-caret-at-end"
 package = "A7"
 gate = "G3"
 status = "pending"
-host = "session"
 reason = "platform"
 blocker = "An input method: fcitx5-chewing on a session bus, which the pinned image lacks. The scenario's own `skip` keeps the runner from starting it on either target. On Rune it also needs a host that takes input-method events: the offscreen host has `Runtime::ime` and no daemon to drive it"
 

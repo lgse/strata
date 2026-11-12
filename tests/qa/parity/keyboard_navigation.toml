@@ -1,6 +1,6 @@
 # The parity ledger of tests/qa/scenarios/keyboard_navigation: every run of the folder, once, with the
-# package that owns it. A package edits only the rows that name it. The fields and the
-# checks are in docs/testing.md, "The Rune target and the parity ledger".
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
 
 [[run]]
 scenario = "alt-up-and-history"
@@ -120,7 +120,7 @@ blocker = "C6: the location bar's crumbs, at `click` on the `documents` breadcru
 [[run]]
 scenario = "focus-usable-after-view-change"
 run = "columns"
-package = "A2"
+package = "A8"
 gate = "G2"
 status = "pending"
 reason = "scope"
