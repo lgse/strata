@@ -65,17 +65,21 @@ qa_container_mounts
 exec "$engine" run "${options[@]}" "${mounts[@]}" \
   --env "STRATA_QA_TARGET=$target" \
   "$image" bash -euc '
-    mkdir -p "$HOME" "$CARGO_HOME"
-    # An empty cache takes the crates the image holds; a used one is left alone.
-    python3 scripts/dependency_seed.py
-    # The tmpfs hides the X socket directory of the image; the xvfb.log owner warning is harmless.
-    mkdir -p -m 1777 /tmp/.X11-unix
-    rustc --version
-    if [[ "$STRATA_QA_TARGET" == rune ]]; then
-      # The Rune side builds in a cargo run of its own (docs/workspace.md).
-      cargo build --locked -p strata-rune --features qa
-      export STRATA_QA_RUNE_BINARY="$CARGO_TARGET_DIR/debug/strata-rune"
-    fi
+    # Stdout belongs to the runner alone, so that `generate` redirected to a file gives
+    # the sequence: everything before the runner goes to stderr.
+    {
+      mkdir -p "$HOME" "$CARGO_HOME"
+      # An empty cache takes the crates the image holds; a used one is left alone.
+      python3 scripts/dependency_seed.py
+      # The tmpfs hides the X socket directory of the image; the xvfb.log owner warning is harmless.
+      mkdir -p -m 1777 /tmp/.X11-unix
+      rustc --version
+      if [[ "$STRATA_QA_TARGET" == rune ]]; then
+        # The Rune side builds in a cargo run of its own (docs/workspace.md).
+        cargo build --locked -p strata-rune --features qa
+        export STRATA_QA_RUNE_BINARY="$CARGO_TARGET_DIR/debug/strata-rune"
+      fi
+    } >&2
     # --fuzz first sends the runner to the fuzz driver; it is an option, so that no test
     # filter can be taken for it.
     cargo test --locked --features qa,invariant-checks --test qa -- --fuzz "$@"
