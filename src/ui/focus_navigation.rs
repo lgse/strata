@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{glib, prelude::*};
 
 use super::keys::{
     self, Binding, Command, KeyPress,
@@ -11,8 +11,8 @@ use super::keys::{
 mod tests;
 
 /// Shift and Super ride along with keys that move focus or the cursor.
-pub(super) const FOCUS_MODIFIERS: gdk::ModifierType =
-    gdk::ModifierType::SHIFT_MASK.union(gdk::ModifierType::SUPER_MASK);
+pub(super) const FOCUS_MODIFIERS: keys::Modifiers =
+    keys::Modifiers::SHIFT_MASK.union(keys::Modifiers::SUPER_MASK);
 
 const ARROWS: [(Command, gtk::DirectionType); 4] = [
     (LEFT, gtk::DirectionType::Left),
@@ -29,16 +29,17 @@ pub(super) fn spatial_arrow(press: &KeyPress) -> Option<Binding> {
         .and_then(|(arrow, _)| arrow.canonical())
 }
 
-pub(super) fn activate_native_arrow(scope: &impl IsA<gtk::Widget>, key: gdk::Key) -> bool {
-    activate_native_binding(scope, key, gdk::ModifierType::empty())
+pub(super) fn activate_native_arrow(scope: &impl IsA<gtk::Widget>, key: keys::Key) -> bool {
+    activate_native_binding(scope, key, keys::Modifiers::empty())
 }
 
 /// Runs the focused file list's own GTK binding for `key` with exactly `modifiers`.
 pub(super) fn activate_native_binding(
     scope: &impl IsA<gtk::Widget>,
-    key: gdk::Key,
-    modifiers: gdk::ModifierType,
+    key: keys::Key,
+    modifiers: keys::Modifiers,
 ) -> bool {
+    let (key, modifiers) = (keys::gdk_key(key), keys::gdk_modifiers(modifiers));
     let Some(focused) = scope.root().and_then(|root| root.focus()) else {
         return false;
     };
@@ -78,7 +79,7 @@ pub(super) fn activate_native_binding(
 
 pub(super) fn arrow_direction(
     press: &KeyPress,
-    tolerated: gdk::ModifierType,
+    tolerated: keys::Modifiers,
 ) -> Option<gtk::DirectionType> {
     ARROWS
         .into_iter()
@@ -411,7 +412,7 @@ pub(super) fn install(scope: &impl IsA<gtk::Widget>) {
             return glib::Propagation::Proceed;
         };
         let press = &press.untyped();
-        let handled = if let Some(direction) = arrow_direction(press, gdk::ModifierType::empty()) {
+        let handled = if let Some(direction) = arrow_direction(press, keys::Modifiers::empty()) {
             move_focus(&scope, direction)
         } else if press.is(ENTER) {
             activate(&scope)

@@ -210,6 +210,7 @@ fn run_udiskie_hook(arguments: &[OsString]) -> gtk::glib::ExitCode {
 }
 
 fn main() -> gtk::glib::ExitCode {
+    ui::install_key_backend();
     let arguments: Vec<OsString> = std::env::args_os().collect();
     let mode = launch_mode(&arguments);
     match mode {

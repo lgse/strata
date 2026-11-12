@@ -405,9 +405,9 @@ fn reference_follows_keymap_overrides_without_reopening() {
                 Map::Default,
                 TAB_NEXT,
                 vec![
-                    Binding::ctrl(gdk::Key::Tab),
-                    Binding::ctrl(gdk::Key::Page_Down),
-                    Binding::alt(gdk::Key::n),
+                    Binding::ctrl(crate::ui::keys::Key::Tab),
+                    Binding::ctrl(crate::ui::keys::Key::Page_Down),
+                    Binding::alt(crate::ui::keys::Key::n),
                 ],
             );
             let labels = reference_labels(&footer);
@@ -432,7 +432,10 @@ fn reference_follows_keymap_overrides_without_reopening() {
             manager.set_bindings(
                 Map::Default,
                 SEARCH,
-                vec![Binding::ctrl(gdk::Key::k), Binding::plain(gdk::Key::e)],
+                vec![
+                    Binding::ctrl(crate::ui::keys::Key::k),
+                    Binding::plain(crate::ui::keys::Key::e),
+                ],
             );
             let labels = reference_labels(&footer);
             assert!(

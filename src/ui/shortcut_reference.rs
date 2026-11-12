@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::{gdk::ModifierType as Modifiers, prelude::*};
+use crate::ui::keys::Modifiers;
+use gtk::prelude::*;
 
 use super::{
     browser_modes::BrowserMode,

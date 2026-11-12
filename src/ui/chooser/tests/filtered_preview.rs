@@ -547,7 +547,7 @@ fn modified_down_alternate_moves_through_search_results() {
         || {
             use crate::ui::keys::{Binding, Keymap, Map, bindings::DOWN, use_keymap};
             let mut down = DOWN.defaults(Map::Default).to_vec();
-            down.push(Binding::ctrl(gtk::gdk::Key::j));
+            down.push(Binding::ctrl(crate::ui::keys::Key::j));
             let _keymap = use_keymap(Keymap::defaults().with(Map::Default, DOWN, down));
             crate::ui::prepare_portal_ui();
             let root = tempfile::tempdir().expect("fixture");

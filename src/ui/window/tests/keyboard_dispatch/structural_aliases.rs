@@ -50,8 +50,14 @@ fn aliased_tab_and_enter_synthesize() {
             let native = install_native_aliases(&fixture.window);
             let press = |key: Key| {
                 fixture.press(key, ModifierType::empty())
-                    || native
-                        .emit_by_name::<bool>("key-pressed", &[&key, &0u32, &ModifierType::empty()])
+                    || native.emit_by_name::<bool>(
+                        "key-pressed",
+                        &[
+                            &crate::ui::keys::gdk_key(key),
+                            &0u32,
+                            &crate::ui::keys::gdk_modifiers(ModifierType::empty()),
+                        ],
+                    )
             };
             let sidebar_focused = || {
                 crate::ui::focus_navigation::contains_widget(

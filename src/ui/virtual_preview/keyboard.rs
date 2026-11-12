@@ -2,7 +2,8 @@
 
 use std::rc::Rc;
 
-use gtk::{gdk::ModifierType as Modifiers, glib, prelude::*};
+use crate::ui::keys::Modifiers;
+use gtk::{glib, prelude::*};
 
 use super::highlight::{selection_text, update_all_bound_selection};
 use super::selection::{self, Motion};

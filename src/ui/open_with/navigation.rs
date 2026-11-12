@@ -243,7 +243,7 @@ fn list_key(list: &gtk::ListBox, search: &gtk::SearchEntry, press: &KeyPress) ->
     if !search.is_visible() {
         return glib::Propagation::Proceed;
     }
-    if press.is(BACKSPACE.ignoring(gtk::gdk::ModifierType::SHIFT_MASK)) {
+    if press.is(BACKSPACE.ignoring(crate::ui::keys::Modifiers::SHIFT_MASK)) {
         edit_search(search, |text| {
             text.pop();
         });

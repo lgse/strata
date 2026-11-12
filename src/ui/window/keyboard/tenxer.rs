@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use gtk::gdk::ModifierType as Modifiers;
+use crate::ui::keys::Modifiers;
 use gtk::{glib::Propagation, prelude::*};
 
 use crate::{

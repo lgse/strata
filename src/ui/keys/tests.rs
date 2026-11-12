@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::gdk::{Key, ModifierType as Modifiers};
-
-use super::{Binding, Digits, Event, KeyPress, normalize};
+use super::{Binding, Digits, Event, Key, KeyPress, Modifiers, normalize};
 
 mod catalog;
 mod composition;
+mod constants;
 mod digits;
 mod labels;
 mod letters;
 mod modifiers;
+mod parts;
 
 const NONE: Modifiers = Modifiers::empty();
 const SHIFT: Modifiers = Modifiers::SHIFT_MASK;

@@ -379,6 +379,12 @@ the files changed against `origin/main`. It needs `CS_ACCESS_TOKEN`.
 - Define every shortcut as a constant in the `ui::keys::bindings` catalog and
   match it with `press.is(…)` or `press.digit_in(…)`. Never compare raw keyvals or
   typed text to recognize a command.
+- On `strata-next` the catalog, `KeyPress` and the labels are `strata_desktop::keys`, which
+  `ui::keys` re-exports at the same names. Name a key or a modifier of a binding or a press
+  as `ui::keys::Key` and `ui::keys::Modifiers`, never as `gdk::Key` or `gdk::ModifierType`,
+  and convert with `keys::gdk_key` and `keys::gdk_modifiers` where one goes to GTK. A key
+  constant that is missing goes in `crates/strata-desktop/src/keys/key_constants.rs`.
+  `docs/rune/shared-state.md` has the seams and where a change from `main` goes.
 - Never type a key label by hand. F1 rows, hints, tooltips, and menus render
   catalog bindings with `keys::label`. Follow `docs/keyboard-shortcuts.md`.
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::gdk::Key;
+use crate::ui::keys::Key;
 
 use super::super::*;
 use crate::{

@@ -2,11 +2,11 @@
 
 use std::mem::discriminant;
 
-use gtk::gdk::{Key, ModifierType as Modifiers};
+use crate::ui::keys::{Key, Modifiers};
 
 use super::{
     super::{
-        Binding, Command, Keymap, Map,
+        Binding, Command, Group, Keymap, Map,
         bindings::{
             ACTIONS_FOLDER, ACTIONS_NUMBERS, ACTIONS_TERMINAL, BOOKMARK_SET, CHOOSE_FOLDER, COPY,
             COPY_AS_NAME, COPY_PATH, DELETE_PERMANENTLY, DOWN, DUPLICATE, ENTER, ESCAPE, FILTER,
@@ -19,7 +19,6 @@ use super::{
             TENXER_DELETE_CONFIRM, TENXER_MEDIA_MUTE, TENXER_MEDIA_PREVIOUS, TENXER_MODE, TERMINAL,
             TEXT_LARGER, TEXT_RESET, THUMBNAILS_LARGER, THUMBNAILS_SMALLER, UP, YANK,
         },
-        command::Group,
     },
     FieldLimit, Finding, Fixed, Kind, Policy, Severity, audit, check,
 };

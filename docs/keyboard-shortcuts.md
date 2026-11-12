@@ -178,7 +178,11 @@ such bindings, struck through, with the reason beside them.
 
 ### One entry point
 
-`ui::keys` (`src/ui/keys.rs`) is the only module that reads GDK key events.
+`ui::keys` (`src/ui/keys/mod.rs`) is the only module that reads GDK key events.
+The catalog, `KeyPress` and the labels it hands out are `strata_desktop::keys`,
+shared with the Rune interface and re-exported by `ui::keys` at the same names;
+[rune/shared-state.md](rune/shared-state.md#the-key-catalog) says what is
+shared and how it reaches GDK.
 Install handlers with `keys::on_press(&controller, |controller, press| …)`,
 which returns a `Propagation`, and `keys::on_release(&controller,
 |controller, press| …)`. Each event is normalized once into a `KeyPress` and
@@ -304,7 +308,7 @@ nothing runs and the footer says **No action N** for an empty slot or
 there.
 
 Every shortcut is a named constant in the catalog, `ui::keys::bindings`, with
-one file per area under `src/ui/keys/bindings/`. The `catalog!` macro declares
+one file per area under `crates/strata-desktop/src/keys/bindings/`. The `catalog!` macro declares
 each area's constants, such as `COPY: Command "copy" = Binding::ctrl(Key::c);`
 or `SPACE: Binding = Binding::plain(Key::space);`, in a block that says which
 F1 maps list them: `listed` (both), `default_only`, `tenxer_only`, or

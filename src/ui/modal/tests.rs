@@ -130,7 +130,7 @@ fn escape_closes_with_any_modifiers_held_and_other_keys_pass_through() {
                     use_keymap(Keymap::defaults().with(
                         Map::Default,
                         ESCAPE,
-                        vec![Binding::ctrl(gdk::Key::bracketleft)],
+                        vec![Binding::ctrl(crate::ui::keys::Key::bracketleft)],
                     ))
                 });
                 for (key, modifiers, closes) in [

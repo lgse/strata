@@ -5,7 +5,8 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gdk::ModifierType as Modifiers, glib::Propagation, prelude::*};
+use crate::ui::keys::Modifiers;
+use gtk::{glib::Propagation, prelude::*};
 
 use crate::{
     app::Browser,
@@ -276,7 +277,7 @@ impl KeyEvent {
     }
 
     /// The arrow an alias reads as, which GTK's list bindings never see.
-    fn vim_arrow(&self) -> Option<gtk::gdk::Key> {
+    fn vim_arrow(&self) -> Option<crate::ui::keys::Key> {
         self.press
             .aliased()
             .then(|| crate::ui::focus_navigation::spatial_arrow(&self.press))
