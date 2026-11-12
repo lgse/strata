@@ -56,7 +56,6 @@ pub(crate) fn directory() -> PathBuf {
     Path::new(REPOSITORY).join(DATA).join("alphabets")
 }
 
-/// The areas that have an alphabet, in name order.
 pub(crate) fn areas() -> Vec<String> {
     let mut areas: Vec<String> = fs::read_dir(directory())
         .into_iter()
@@ -173,7 +172,6 @@ impl Alphabet {
             .sum()
     }
 
-    /// The header line of a sequence called `name`.
     pub(crate) fn header_line(&self, name: &str) -> String {
         let rest = self.header.trim().trim_start_matches('{').trim_start();
         let separator = if rest.starts_with('}') { "" } else { "," };
@@ -211,7 +209,6 @@ impl Alphabet {
         .map(|_| ())
     }
 
-    /// The keys that say what the alphabet is, before its actions.
     fn check_head(&self) -> Result<(), String> {
         if !is_area(&self.area) {
             return Err(format!(

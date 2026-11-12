@@ -58,7 +58,9 @@ done
 # shellcheck source=lib/qa-container.sh
 source "$repository/scripts/lib/qa-container.sh"
 qa_container_prepare
-qa_container_options --rm
+# Podman caps a container at 2048 tasks by default; a replay to a core exceeds that on a
+# large machine, and the targets then abort at launch with EAGAIN.
+qa_container_options --rm --pids-limit=-1
 qa_container_mounts
 exec "$engine" run "${options[@]}" "${mounts[@]}" \
   --env "STRATA_QA_TARGET=$target" \

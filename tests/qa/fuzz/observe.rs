@@ -29,7 +29,6 @@ use super::project::{APP, CRITICALS, FS, RESULT, SETTINGS};
 pub(crate) struct Rest {
     /// Equal samples in a row that count as rest.
     pub(crate) samples: u32,
-    /// The pause between two samples.
     pub(crate) poll: Duration,
     /// How long a step may take to come to rest before it is recorded as unsettled.
     pub(crate) budget: Duration,
@@ -50,7 +49,6 @@ pub(crate) const REST: Rest = Rest {
 /// How a step ended, as far as two targets can be held to the same word.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Outcome {
-    /// The target took the step.
     Ok,
     /// The step's `when` did not hold, so it was not sent.
     Skipped,
@@ -209,7 +207,6 @@ impl Observation {
         self.value[RESULT].as_str().unwrap_or_default()
     }
 
-    /// Whether the replay ended with this observation.
     pub(crate) fn ends_the_replay(&self) -> bool {
         Outcome::ALL
             .into_iter()

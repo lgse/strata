@@ -360,7 +360,6 @@ struct Session<'a> {
 }
 
 impl<'a> Session<'a> {
-    /// Starts the target and waits for it to say it is ready.
     fn start(launch: &Launch, ground: &'a Ground, rest: Rest) -> Result<Self, String> {
         let mut session = Self {
             application: launch.start()?,
@@ -388,8 +387,6 @@ impl<'a> Session<'a> {
         }
     }
 
-    /// Observes the launch, then takes each step and observes after it, until the steps
-    /// are done or the target is gone.
     fn run(
         &mut self,
         steps: &[Step],
@@ -560,7 +557,6 @@ impl<'a> Session<'a> {
     }
 }
 
-/// What a reply says of the step it answers.
 pub(crate) fn answered(reply: &Value) -> (Outcome, Option<String>) {
     let error = reply["error"].as_str();
     match error {

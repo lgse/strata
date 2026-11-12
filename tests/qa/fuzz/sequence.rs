@@ -38,7 +38,6 @@ pub(crate) struct Sequence {
     pub(crate) steps: Vec<String>,
 }
 
-/// A sequence the loader accepted, ready to replay.
 pub(crate) struct Loaded {
     pub(crate) scenario: Scenario,
     pub(crate) run: Run,
@@ -55,7 +54,6 @@ impl Sequence {
         text
     }
 
-    /// Reads a sequence from a scenario file's text. The name is the header's.
     pub(crate) fn parse(text: &str) -> Result<Self, String> {
         let mut lines = text.lines().filter(|line| !line.trim().is_empty());
         let header = lines.next().ok_or("the sequence is empty")?.to_owned();
@@ -88,7 +86,6 @@ impl Sequence {
         Ok(sequence)
     }
 
-    /// The same sequence with other steps, as the shrinker tries them.
     pub(crate) fn with_steps(&self, steps: Vec<String>) -> Self {
         Self {
             name: self.name.clone(),
@@ -186,7 +183,6 @@ pub(crate) fn check_step(step: &Value) -> Result<(), String> {
     Ok(())
 }
 
-/// The step without one of its keys.
 pub(crate) fn strip(step: &Value, key: &str) -> Value {
     let mut object = step.as_object().cloned().unwrap_or_default();
     object.remove(key);
