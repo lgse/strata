@@ -1,0 +1,111 @@
+# The parity ledger of tests/qa/scenarios/background_selection: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "background-click-clears-selection"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "background-click-clears-selection"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "background-click-clears-selection"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "background-press-clears-before-drag"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "background-press-clears-before-drag"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "background-press-clears-before-drag"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "beside-last-column-clears"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "disabled-transport-click"
+run = "columns-audio"
+package = "A16"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C9 and C13: the preview drawer and its media transport (`preview`)"
+
+[[run]]
+scenario = "disabled-transport-click"
+run = "columns-video"
+package = "A16"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C9 and C13: the preview drawer and its media transport (`preview`)"
+
+[[run]]
+scenario = "empty-column-clears-other-columns"
+run = "columns"
+package = "A8"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
+
+[[run]]
+scenario = "preview-blank-click-keeps-selection"
+run = "columns"
+package = "A15"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C9 and C14: the preview drawer and the image viewer (`preview`)"
+
+[[run]]
+scenario = "preview-blank-click-keeps-selection"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "preview-blank-click-keeps-selection"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"

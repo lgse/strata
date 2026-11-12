@@ -1,0 +1,208 @@
+# The parity ledger of tests/qa/scenarios/selection: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "control-click-sets-shift-anchor"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "control-click-sets-shift-anchor"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "control-click-sets-shift-anchor"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "control-click-toggles"
+run = "columns"
+package = "A8"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
+
+[[run]]
+scenario = "control-click-toggles"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "control-click-toggles"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "home-end-page-move-shift-anchor"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "home-end-page-move-shift-anchor"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "home-end-page-move-shift-anchor"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "leftover-click-honors-modifiers"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "parent-pane-anchors-first-entry"
+run = "columns"
+package = "A8"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
+
+[[run]]
+scenario = "right-click-selects-entry"
+run = "columns-file"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "right-click-selects-entry"
+run = "icons-file"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "right-click-selects-entry"
+run = "list-file"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "right-click-selects-entry"
+run = "columns-folder"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "right-click-selects-entry"
+run = "icons-folder"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "right-click-selects-entry"
+run = "list-folder"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "shift-click-range"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "shift-click-range"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "shift-click-range"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "shift-click-revisits-after-folder"
+run = "columns-name"
+package = "A8"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
+
+[[run]]
+scenario = "shift-click-revisits-after-folder"
+run = "columns-row-space"
+package = "A8"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
+
+[[run]]
+scenario = "sidebar-navigation-range-anchor"
+run = "columns"
+package = "A3"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C8: the sidebar, at `click` on `sidebar` Home"
+
+[[run]]
+scenario = "sidebar-navigation-range-anchor"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "sidebar-navigation-range-anchor"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"

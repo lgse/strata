@@ -1,0 +1,35 @@
+# The parity ledger of tests/qa/scenarios/preferences: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "enabled-tenxer-survives-restart"
+run = "columns"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "language-selection-after-relaunch"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"
+
+[[run]]
+scenario = "preferences-sync-windows-restart"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"
+
+[[run]]
+scenario = "unsaved-changes-one-notice"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"

@@ -1,0 +1,491 @@
+# The parity ledger of tests/qa/scenarios/quick_preview: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "column-preview-fills-free-space"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "columns-keyboard-opens-preview"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "columns-keyboard-respects-disabled-previews"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "columns-keyboard-stays-without-mirror"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "columns-preview-reopens-after-closing"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "markdown-equations-keep-prose"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "markdown-preview-renders-media"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "marquee-keeps-preview-closed"
+run = "list"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "model-preview-reports-limits"
+run = "list"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "narrow-window-keeps-last-column"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "password-protected-pdf-reports-reason"
+run = "columns"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "pdf-preview-copies-text"
+run = "columns"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "pdf-zoom-keeps-text-size"
+run = "columns-wheel"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "pdf-zoom-keeps-text-size"
+run = "columns-reset"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "pdf-zoom-keeps-text-size"
+run = "columns-reset-tenxer"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "preview-boundary-resizes-grabbed-side"
+run = "columns-column"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-boundary-resizes-grabbed-side"
+run = "columns-preview-on-line"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-boundary-resizes-grabbed-side"
+run = "columns-preview-inside"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-find-navigates-content"
+run = "columns-default"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-find-navigates-content"
+run = "columns-tenxer"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "preview-focus-ignores-file-commands"
+run = "columns-md"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-focus-ignores-file-commands"
+run = "list-md"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-focus-ignores-file-commands"
+run = "columns-pdf"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "preview-focus-ignores-file-commands"
+run = "columns-docx"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-focus-ignores-file-commands"
+run = "columns-csv"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-follows-extended-selection"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-follows-extended-selection"
+run = "icons"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-follows-extended-selection"
+run = "list"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-follows-selection"
+run = "columns-keyboard"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-follows-selection"
+run = "icons-keyboard"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-follows-selection"
+run = "list-keyboard"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-follows-selection"
+run = "columns-pointer"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-follows-selection"
+run = "icons-pointer"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-follows-selection"
+run = "list-pointer"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-hides-on-folder"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-hides-on-folder"
+run = "icons"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-hides-on-folder"
+run = "list"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-hides-on-shift-range-folder"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "preview-source-text-copies"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "rendered-document-word-selection"
+run = "columns-md"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "rendered-document-word-selection"
+run = "columns-rtf"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "rendered-document-word-selection"
+run = "columns-docx"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "route-preview-shows-offline-track-and-elevation"
+run = "list"
+package = "A16"
+status = "pending"
+reason = "scope"
+blocker = "A16"
+
+[[run]]
+scenario = "sandboxed-office-shared-preview"
+run = "columns-xls"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "sandboxed-office-shared-preview"
+run = "columns-xlsx"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "sandboxed-office-shared-preview"
+run = "columns-ods"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "sandboxed-office-shared-preview"
+run = "columns-docx"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "sandboxed-office-shared-preview"
+run = "columns-odt"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-enters-folder-without-preview"
+run = "columns-keyboard"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-enters-folder-without-preview"
+run = "icons-keyboard"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-enters-folder-without-preview"
+run = "list-keyboard"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-enters-folder-without-preview"
+run = "columns-click"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-previews-filtered-result-pointer"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-previews-filtered-result-pointer"
+run = "icons"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-previews-filtered-result-pointer"
+run = "list"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-previews-filtered-result"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-previews-filtered-result"
+run = "icons"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "space-previews-filtered-result"
+run = "list"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "table-preview-keeps-secondary-sorts"
+run = "columns"
+package = "A15"
+status = "pending"
+reason = "scope"
+blocker = "A15"
+
+[[run]]
+scenario = "tenxer-l-enters-preview"
+run = "list-list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-l-enters-preview"
+run = "columns-columns"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"

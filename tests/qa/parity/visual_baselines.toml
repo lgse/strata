@@ -1,0 +1,66 @@
+# The parity ledger of tests/qa/scenarios/visual_baselines: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "columns-overflow-baseline"
+run = "columns"
+package = "E1"
+status = "excluded"
+ruling = "2026-11-11, golden images on Rune: not in scope. The visual baselines run on GTK only (the parity plan, Decided)."
+
+[[run]]
+scenario = "columns-view-baseline"
+run = "columns"
+package = "E1"
+status = "excluded"
+ruling = "2026-11-11, golden images on Rune: not in scope. The visual baselines run on GTK only (the parity plan, Decided)."
+
+[[run]]
+scenario = "context-menu-baseline"
+run = "list"
+package = "E1"
+status = "excluded"
+ruling = "2026-11-11, golden images on Rune: not in scope. The visual baselines run on GTK only (the parity plan, Decided)."
+
+[[run]]
+scenario = "delete-confirmation-baseline"
+run = "list"
+package = "E1"
+status = "excluded"
+ruling = "2026-11-11, golden images on Rune: not in scope. The visual baselines run on GTK only (the parity plan, Decided)."
+
+[[run]]
+scenario = "icons-airy-view-baseline"
+run = "icons"
+package = "E1"
+status = "excluded"
+ruling = "2026-11-11, golden images on Rune: not in scope. The visual baselines run on GTK only (the parity plan, Decided)."
+
+[[run]]
+scenario = "icons-hover-baseline"
+run = "icons"
+package = "E1"
+status = "excluded"
+ruling = "2026-11-11, golden images on Rune: not in scope. The visual baselines run on GTK only (the parity plan, Decided)."
+
+[[run]]
+scenario = "icons-view-baseline"
+run = "icons"
+package = "E1"
+status = "excluded"
+ruling = "2026-11-11, golden images on Rune: not in scope. The visual baselines run on GTK only (the parity plan, Decided)."
+
+[[run]]
+scenario = "list-view-baseline"
+run = "list"
+package = "E1"
+status = "excluded"
+ruling = "2026-11-11, golden images on Rune: not in scope. The visual baselines run on GTK only (the parity plan, Decided)."
+
+[[run]]
+scenario = "selection-and-focus-baseline"
+run = "list"
+package = "E1"
+status = "excluded"
+ruling = "2026-11-11, golden images on Rune: not in scope. The visual baselines run on GTK only (the parity plan, Decided)."

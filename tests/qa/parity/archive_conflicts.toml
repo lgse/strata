@@ -1,0 +1,43 @@
+# The parity ledger of tests/qa/scenarios/archive_conflicts: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "archive-conflict-keyboard-choices"
+run = "columns-cancel"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "archive-conflict-keyboard-choices"
+run = "columns-escape"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "archive-conflict-keyboard-choices"
+run = "columns-replace"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "keep-both-numbered-archives"
+run = "list"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "undo-compression-trashes-archive"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"

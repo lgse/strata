@@ -1,0 +1,211 @@
+# The parity ledger of tests/qa/scenarios/dialogs_and_menus: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "background-customize-ancestor-column"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "compress-then-chooser-extracts"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "customization-follows-move-and-trash"
+run = "list"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "customize-takes-focus-single-escape"
+run = "columns-item-menu"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "customize-takes-focus-single-escape"
+run = "columns-background-menu"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "dismissed-overlays-return-focus"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "entry-menu-named-actions"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "executable-menu-confirmed-run"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "executable-requires-confirmation"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "floating-chooser-transfers-files"
+run = "columns-copy"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "floating-chooser-transfers-files"
+run = "columns-move"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "invalid-archive-name-keeps-dialog"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "modal-dialog-blocks-window-shortcuts"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "pane-menu-directory-actions"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "properties-copy-path-slashes-only-folders"
+run = "columns-file"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "properties-copy-path-slashes-only-folders"
+run = "columns-directory"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "properties-pins-and-unpins-folder"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "rename-onto-existing-rejected"
+run = "columns-enter"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "rename-onto-existing-rejected"
+run = "columns-tab"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "rename-onto-existing-rejected"
+run = "list-tab"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "secondary-click-retargets-menu"
+run = "list"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "settings-closes-on-an-outside-click"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"
+
+[[run]]
+scenario = "shortcut-reference-search-keeps-editing-chords"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "submenu-arrows-return-to-parent"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "submenu-arrows-return-to-parent"
+run = "icons"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "submenu-arrows-return-to-parent"
+run = "list"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"

@@ -1,0 +1,487 @@
+# What the parity ledger's two readers accept and refuse. The runner's tests read this table
+# (tests/qa/parity_tests.rs) and so do the scripts' (scripts/test_qa_parity.py), so the
+# reader that checks the ledger in the runner's tests (tests/qa/parity.rs) and the one every
+# ./scripts/qa-parity.sh selection goes through (scripts/qa_parity_check.py) cannot drift
+# apart. A change to the schema adds its rows here first: a good one to `ledger` or
+# `accepted`, and a `case` for each thing it refuses.
+#
+#   planned    the runs the runner plans in a made-up corpus of two folders, in its order.
+#   ledger     a ledger both readers accept for it: a file's text for each folder.
+#   case       an edit to that ledger which both refuse. `problem` is the one line both
+#              report, word for word. `refused` is for what a reader cannot read at all, an
+#              unknown field or value or a missing one: each reader says it in its own
+#              words, which contain this text.
+#   accepted   an edit both still accept.
+#
+# An edit names a `file`, and either `find` and `put` (text of the file that occurs once,
+# and what takes its place), `append` (text added at its end), `text` (the whole file, which
+# need not exist yet) or `remove = true` (the file is gone).
+
+[[planned]]
+folder = "keys"
+scenario = "moves"
+run = "columns-arrows"
+gate = "G1"
+
+[[planned]]
+folder = "keys"
+scenario = "moves"
+run = "columns-keys"
+gate = "G2"
+
+[[planned]]
+folder = "keys"
+scenario = "renames"
+run = "list"
+
+[[planned]]
+folder = "pictures"
+scenario = "looks"
+run = "icons"
+
+[ledger]
+keys = '''
+[[run]]
+scenario = "moves"
+run = "columns-arrows"
+package = "V7"
+gate = "G1"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "moves"
+run = "columns-keys"
+package = "A7"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "A7: undo"
+
+[[run]]
+scenario = "renames"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+pictures = '''
+[[run]]
+scenario = "looks"
+run = "icons"
+package = "E1"
+status = "excluded"
+ruling = "the owner, 2026-11-11"
+'''
+
+# Where an entry stands.
+
+[[case]]
+name = "a run of the folder is missing"
+file = "keys"
+find = '''
+[[run]]
+scenario = "renames"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = ""
+problem = "keys.toml: renames/list is not listed"
+
+[[case]]
+name = "a run is listed twice"
+file = "keys"
+find = '''blocker = "A7: undo"
+'''
+put = '''blocker = "A7: undo"
+
+[[run]]
+scenario = "moves"
+run = "columns-keys"
+package = "A7"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "A7: undo"
+'''
+problem = "keys.toml: moves/columns-keys is listed twice"
+
+[[case]]
+name = "a run no longer exists"
+file = "keys"
+append = '''
+[[run]]
+scenario = "moves"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+'''
+problem = "keys.toml: moves/icons is no run of the folder"
+
+[[case]]
+name = "a run is another folder's"
+file = "keys"
+append = '''
+[[run]]
+scenario = "looks"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+'''
+problem = "keys.toml: looks/icons is no run of the folder"
+
+[[case]]
+name = "a run stands before one the runner plans earlier"
+file = "keys"
+text = '''
+[[run]]
+scenario = "moves"
+run = "columns-arrows"
+package = "V7"
+gate = "G1"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "renames"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "moves"
+run = "columns-keys"
+package = "A7"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "A7: undo"
+'''
+problem = "keys.toml: moves/columns-keys is out of the runner's order: it belongs before renames/list"
+
+[[case]]
+name = "a folder has no file"
+file = "pictures"
+remove = true
+problem = "pictures.toml is missing: tests/qa/scenarios/pictures has no ledger"
+
+[[case]]
+name = "a file is named for no folder"
+file = "sounds"
+text = ""
+problem = "sounds.toml names no folder of tests/qa/scenarios"
+
+# The gate.
+
+[[case]]
+name = "a run of the slice's set has no gate"
+file = "keys"
+find = '''package = "A7"
+gate = "G2"
+'''
+put = '''package = "A7"
+'''
+problem = "keys.toml: moves/columns-keys belongs to gate G2"
+
+[[case]]
+name = "a run of the slice's set is under another gate"
+file = "keys"
+find = '''package = "A7"
+gate = "G2"
+'''
+put = '''package = "A7"
+gate = "G3"
+'''
+problem = "keys.toml: moves/columns-keys belongs to gate G2"
+
+[[case]]
+name = "a run outside the slice's set has a gate"
+file = "keys"
+find = '''package = "A2"
+'''
+put = '''package = "A2"
+gate = "G3"
+'''
+problem = "keys.toml: renames/list has a gate, and is no Columns run of the slice's set"
+
+# The owner.
+
+[[case]]
+name = "a run names no package of the plan"
+file = "keys"
+find = 'package = "A2"'
+put = 'package = "A22"'
+problem = 'keys.toml: renames/list names "A22", which is no package of the parity plan'
+
+[[case]]
+name = "a run of the slice's own is no longer required"
+file = "keys"
+find = '''status = "required"
+host = "offscreen"
+'''
+put = '''status = "pending"
+reason = "scope"
+blocker = "A7"
+'''
+problem = 'keys.toml: moves/columns-arrows names "V7", which owns only the required runs of gate G1'
+
+[[case]]
+name = "a pending run of the slice's set takes a slice package"
+file = "keys"
+find = 'package = "A7"'
+put = 'package = "V8"'
+problem = 'keys.toml: moves/columns-keys names "V8", which owns only the required runs of gate G2'
+
+[[case]]
+name = "a slice package owns a run of another gate"
+file = "keys"
+find = 'package = "V7"'
+put = 'package = "V9"'
+problem = 'keys.toml: moves/columns-arrows names "V9", which owns only the required runs of gate G3'
+
+[[case]]
+name = "a slice package owns a run outside the set"
+file = "keys"
+find = 'package = "A2"'
+put = 'package = "V8"'
+problem = 'keys.toml: renames/list names "V8", which owns only the required runs of gate G2'
+
+# The fields of each status.
+
+[[case]]
+name = "a pending run gives no reason"
+file = "keys"
+find = '''reason = "scope"
+blocker = "A2"
+'''
+put = '''blocker = "A2"
+'''
+problem = "keys.toml: renames/list is pending without a reason"
+
+[[case]]
+name = "a pending run names no blocker"
+file = "keys"
+find = 'blocker = "A2"'
+put = 'blocker = " "'
+problem = "keys.toml: renames/list is pending without a blocker"
+
+[[case]]
+name = "a pending run cites a ruling"
+file = "keys"
+find = '''blocker = "A2"
+'''
+put = '''blocker = "A2"
+ruling = "the owner, 2026-11-11"
+'''
+problem = "keys.toml: renames/list is pending, so it has no ruling"
+
+[[case]]
+name = "a required run names no host"
+file = "keys"
+find = '''status = "required"
+host = "offscreen"
+'''
+put = '''status = "required"
+'''
+problem = "keys.toml: moves/columns-arrows is required without a host"
+
+[[case]]
+name = "a required run keeps its old excuse"
+file = "keys"
+find = '''host = "offscreen"
+'''
+put = '''host = "offscreen"
+reason = "harness"
+blocker = "field"
+'''
+problem = "keys.toml: moves/columns-arrows is required, so it has no reason, blocker or ruling"
+
+[[case]]
+name = "an excluded run cites no ruling"
+file = "pictures"
+find = 'ruling = "the owner, 2026-11-11"'
+put = 'ruling = ""'
+problem = "pictures.toml: looks/icons is excluded without a ruling"
+
+[[case]]
+name = "an excluded run is also blocked"
+file = "pictures"
+append = '''reason = "scope"
+blocker = "A1"
+'''
+problem = "pictures.toml: looks/icons is excluded, so it has no host, reason or blocker"
+
+# What a reader cannot read.
+
+[[case]]
+name = "an unknown status"
+file = "keys"
+find = 'status = "required"'
+put = 'status = "done"'
+refused = "done"
+
+[[case]]
+name = "an unknown reason"
+file = "keys"
+find = '''reason = "scope"
+blocker = "A2"'''
+put = '''reason = "flaky"
+blocker = "A2"'''
+refused = "flaky"
+
+[[case]]
+name = "an unknown host"
+file = "keys"
+find = 'host = "offscreen"'
+put = 'host = "window"'
+refused = "window"
+
+[[case]]
+name = "an unknown gate"
+file = "keys"
+find = 'gate = "G1"'
+put = 'gate = "G4"'
+refused = "G4"
+
+[[case]]
+name = "an unknown field"
+file = "keys"
+append = '''note = "x"
+'''
+refused = "note"
+
+[[case]]
+name = "a run with no package"
+file = "keys"
+find = '''package = "A2"
+'''
+put = ""
+refused = "package"
+
+[[case]]
+name = "an allowance among the runs"
+file = "keys"
+append = '''
+[[flaky]]
+scenario = "renames"
+run = "list"
+'''
+refused = "flaky"
+
+# What both still accept.
+
+[[accepted]]
+name = "a pending run that names the host it will need"
+file = "keys"
+find = '''package = "A2"
+status = "pending"
+'''
+put = '''package = "A2"
+status = "pending"
+host = "session"
+'''
+
+[[accepted]]
+name = "a run pending on platform that names no host"
+file = "keys"
+find = '''reason = "scope"
+blocker = "A2"'''
+put = '''reason = "platform"
+blocker = "an input method the image lacks"'''
+
+[[accepted]]
+name = "a required run on the session host, under an area package"
+file = "keys"
+find = '''package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+'''
+put = '''package = "A2"
+status = "required"
+host = "session"
+'''
+
+[[accepted]]
+name = "a run of the slice's set that an area package took to required"
+file = "keys"
+find = '''status = "pending"
+reason = "scope"
+blocker = "A7: undo"
+'''
+put = '''status = "required"
+host = "offscreen"
+'''
+
+[[accepted]]
+name = "each of the other reasons"
+file = "keys"
+text = '''
+[[run]]
+scenario = "moves"
+run = "columns-arrows"
+package = "A6"
+gate = "G1"
+status = "pending"
+reason = "harness"
+blocker = "open_menu"
+
+[[run]]
+scenario = "moves"
+run = "columns-keys"
+package = "A7"
+gate = "G2"
+status = "pending"
+reason = "component"
+blocker = "C2"
+
+[[run]]
+scenario = "renames"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "rune"
+blocker = "docs/rune/upstream/rune/98-escape-after-a-dead-key.md"
+'''
+
+[[accepted]]
+name = "and the last three"
+file = "keys"
+text = '''
+[[run]]
+scenario = "moves"
+run = "columns-arrows"
+package = "H4"
+gate = "G1"
+status = "pending"
+reason = "toolkit"
+blocker = "a pixel predicate"
+
+[[run]]
+scenario = "moves"
+run = "columns-keys"
+package = "A7"
+gate = "G2"
+status = "pending"
+reason = "deviation"
+blocker = "an owner ruling"
+
+[[run]]
+scenario = "renames"
+run = "list"
+package = "A2"
+status = "pending"
+host = "session"
+reason = "platform"
+blocker = "the clipboard"
+'''

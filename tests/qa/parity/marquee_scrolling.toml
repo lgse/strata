@@ -1,0 +1,27 @@
+# The parity ledger of tests/qa/scenarios/marquee_scrolling: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "scrolling-extends-marquee"
+run = "columns-edge"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "scrolling-extends-marquee"
+run = "list-wheel"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "sidebar-marquee-keeps-scrolled-list"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"

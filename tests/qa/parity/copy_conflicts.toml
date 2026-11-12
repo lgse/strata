@@ -1,0 +1,91 @@
+# The parity ledger of tests/qa/scenarios/copy_conflicts: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "dismissing-conflict-preserves-both"
+run = "columns-copy-cancel"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "dismissing-conflict-preserves-both"
+run = "columns-copy-escape"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "dismissing-conflict-preserves-both"
+run = "columns-copy-close"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "dismissing-conflict-preserves-both"
+run = "columns-move-cancel"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "keep-both-applies-to-all-mixed-paste"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "keep-both-then-undo-remaining"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "keep-both-then-undo"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "merge-combines-folder-contents"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "replace-restores-original-on-undo"
+run = "columns-copy"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "replace-restores-original-on-undo"
+run = "columns-move"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "replace-without-trash-keeps-row"
+run = "list"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"

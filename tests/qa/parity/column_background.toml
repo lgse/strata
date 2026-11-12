@@ -1,0 +1,67 @@
+# The parity ledger of tests/qa/scenarios/column_background: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "column-background-click-focuses-parent"
+run = "columns-content"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "column-background-click-focuses-parent"
+run = "columns-header"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "context-menu-keeps-column-target"
+run = "columns-root-item"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "context-menu-keeps-column-target"
+run = "columns-root-background"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "context-menu-keeps-column-target"
+run = "columns-nested-item"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "context-menu-keeps-column-target"
+run = "columns-nested-background"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "context-menu-keeps-column-target"
+run = "columns-root-header"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"
+
+[[run]]
+scenario = "context-menu-keeps-column-target"
+run = "columns-nested-header"
+package = "A8"
+status = "pending"
+reason = "scope"
+blocker = "A8"

@@ -1,0 +1,187 @@
+# The parity ledger of tests/qa/scenarios/clipboard: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "copy-leaves-source"
+run = "columns-us"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "copy-leaves-source"
+run = "icons-us"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "copy-leaves-source"
+run = "list-us"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "copy-leaves-source"
+run = "columns-ru"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "copy-leaves-source"
+run = "columns-caps-lock"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "copy-offers-file-manager-formats"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "copying-directory-copies-contents"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "cut-moves-only-after-paste"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "cut-moves-only-after-paste"
+run = "icons"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "cut-moves-only-after-paste"
+run = "list"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-availability-follows-clipboard"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-honors-foreign-cut-markers"
+run = "columns-gnome-cut"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-honors-foreign-cut-markers"
+run = "columns-gnome-copy"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-honors-foreign-cut-markers"
+run = "columns-kde-cut"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-honors-foreign-cut-markers"
+run = "columns-kde-copy"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-into-parent-current-directory"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-into-parent-current-directory"
+run = "icons"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-into-parent-current-directory"
+run = "list"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-targets-selected-directory"
+run = "columns"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-targets-selected-directory"
+run = "icons"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "paste-targets-selected-directory"
+run = "list"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "same-folder-copy-numbered-duplicate"
+run = "columns-file"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"
+
+[[run]]
+scenario = "same-folder-copy-numbered-duplicate"
+run = "columns-folder"
+package = "A12"
+status = "pending"
+reason = "scope"
+blocker = "A12"

@@ -1,0 +1,36 @@
+# The parity ledger of tests/qa/scenarios/startup_arguments: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "multiple-arguments-non-utf8"
+run = "columns"
+package = "A21"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "P8 and the shell: `launch` with five arguments needs a window for each, a revealed file argument and the session bus; strata-rune takes one directory"
+
+[[run]]
+scenario = "startup-with-closed-pipes"
+run = "columns-stdout"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "startup-with-closed-pipes"
+run = "columns-stderr"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "startup-with-closed-pipes"
+run = "columns-both"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"

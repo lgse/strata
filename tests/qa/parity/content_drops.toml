@@ -1,0 +1,123 @@
+# The parity ledger of tests/qa/scenarios/content_drops: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "foreign-content-reaches-every-drop-target"
+run = "columns-background"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-reaches-every-drop-target"
+run = "columns-sidebar"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-reaches-every-drop-target"
+run = "columns-tab"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-reaches-every-drop-target"
+run = "columns-breadcrumb"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "columns-text"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "icons-text"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "list-text"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "columns-image"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "columns-contents"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "columns-link"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "columns-image_file"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "columns-contents_fallback"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "columns-contents_unreadable"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "columns-open"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "foreign-content-saves-new-files"
+run = "columns-unwritable"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"

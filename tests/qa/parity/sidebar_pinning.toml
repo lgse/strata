@@ -1,0 +1,67 @@
+# The parity ledger of tests/qa/scenarios/sidebar_pinning: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "empty-pinned-section-stays-hidden"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "folder-pins-order-and-bookmarks"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "foreign-folder-drags-validate"
+run = "columns-False-False"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "foreign-folder-drags-validate"
+run = "columns-True-False"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "foreign-folder-drags-validate"
+run = "columns-False-True"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "pinned-rows-transfer-and-remote-gaps"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "spring-loaded-rows-keep-pin-intent"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "tenxer-pin-feedback-identifies-slot"
+run = "list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"

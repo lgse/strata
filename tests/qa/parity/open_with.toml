@@ -1,0 +1,147 @@
+# The parity ledger of tests/qa/scenarios/open_with: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "activation-without-application-empty-state"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "activation-without-default-opens-visible-app"
+run = "columns-false"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "activation-without-default-opens-visible-app"
+run = "columns-true"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-always-use-updates-default"
+run = "columns-todo"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-always-use-updates-default"
+run = "columns-mixed"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-always-use-updates-default"
+run = "columns-documents"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-always-use-updates-default"
+run = "columns-background"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-broken-link-disabled"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-cancel-keeps-default"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-common-handlers-no-default"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-incompatible-types-other-apps"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-launch-failure-error"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-mixed-types-hidden-default"
+run = "columns-open"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-mixed-types-hidden-default"
+run = "columns-open-with"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-names-rows-tabs-out"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-search-filters-escape-clears"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "open-with-unknown-type-other-apps"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "tenxer-open-with-fill-launches-on-accept"
+run = "columns"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"

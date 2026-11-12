@@ -1,0 +1,27 @@
+# The parity ledger of tests/qa/scenarios/recent: every run of the folder, once, with the
+# package that owns it, in the runner's order. A package edits only the rows that name it.
+# The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
+
+[[run]]
+scenario = "recent-absent-from-sidebar"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "recent-preference-adds-no-place"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "recent-uri-spellings-refused"
+run = "columns"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
