@@ -113,7 +113,11 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **On [#2181](https://github.com/lgse/strata/pull/2181):** the second failed in CI's shard 1 at `7963d110f` and again in the one
   rerun of the whole workflow, and the third failed in the first of those two runs. That
   change is to the QA runner, its scripts and documentation, and touches no `src/` and no
-  crate; `./scripts/quality.sh test` passed at that commit in the pinned image.
+  crate; `./scripts/quality.sh test` passed at that commit in the pinned image. With
+  `strata-next` merged at `734d67f6c`, a sixth,
+  `ui::window::tests::keyboard_dispatch::icon_motion::tenxer_icons_move_spatially_open_explicitly_and_peek`,
+  failed once in `./scripts/quality.sh test` on a loaded host (`Key(104) landed on ["empty",
+  "tile-03.txt", "tile-03.txt"]`) and then passed 6 times of 6 alone.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
