@@ -2157,6 +2157,10 @@ format, the PNG tolerance, blessing and the compositor tests.
 
 ## In CI
 
+On `strata-next` the CI workflow does not run for pushes or pull requests, by the owner's
+instruction of 2026-11-12; it can still be started by hand. What an agent runs there instead
+is in `docs/rune/parity/README.md`, "Checks in place of CI".
+
 ### QA in CI
 
 The **QA scenarios** job in `ci.yml` runs every QA scenario only when CI is

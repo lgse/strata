@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/list/intents.rs b/crates/strata-app/src/list/intents.rs
+index 676f7fd5c..fe73ee265 100644
+--- a/crates/strata-app/src/list/intents.rs
++++ b/crates/strata-app/src/list/intents.rs
+@@ -25,7 +25,7 @@ impl App {
+             .is_some_and(|(at, focused, _)| (at, focused) == (depth, position));
+         match how {
+             Activation::Key if focused => self.browser.activate_focused_in_place(),
+-            _ => self.browser.activate_in_place(depth, position),
++            _ => {}
+         }
+     }
+ }

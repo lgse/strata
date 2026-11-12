@@ -3,7 +3,7 @@
 use super::{DECLARED, Table, UNICODE, WRITTEN_AS, name_of};
 use crate::keys::{
     Backend, Binding, Command, Context, Key, KeyPress, KeyPressParts, Keys, Map, Modifiers, Typed,
-    bindings::{COPY, FOCUS_PREVIOUS},
+    bindings::{COPY, FOCUS_PREVIOUS, HIDDEN_FILES},
     install, label_in_map, rewrite,
 };
 
@@ -57,7 +57,13 @@ fn a_character_is_its_latin_1_or_unicode_keysym_and_only_keypad_keys_type_by_nam
         assert_eq!(key.keysym(), UNICODE + u32::from(character));
         assert_eq!(Table.key_to_unicode(key), Some(character));
     }
-    for (keypad, character) in [(Key::KP_5, '5'), (Key::KP_Add, '+'), (Key::KP_Space, ' ')] {
+    for (keypad, character) in [
+        (Key::KP_5, '5'),
+        (Key::KP_Add, '+'),
+        (Key::KP_Space, ' '),
+        (Key::KP_Decimal, '.'),
+        (Key::KP_Separator, ','),
+    ] {
         assert_eq!(Table.key_to_unicode(keypad), Some(character), "{keypad:?}");
         assert_ne!(Table.key_from_unicode(character), keypad, "{character:?}");
     }
@@ -181,6 +187,14 @@ fn the_first_install_decides_and_the_catalog_then_works_without_a_library() {
             );
             let keypad = pressed(Key::KP_5, NONE, Typed::Key(Key::KP_5));
             assert_eq!(keypad.text(), Some('5'), "a keypad digit types its digit");
+            // The keypad's decimal key types a period and is not the period key: GDK does not
+            // fold it onto the main block, so Ctrl with it is not Ctrl+period.
+            let decimal = pressed(Key::KP_Decimal, CTRL, Typed::Key(Key::KP_Decimal));
+            assert!(!decimal.is(HIDDEN_FILES.in_map(Map::Default)));
+            let period = pressed(Key::period, CTRL, Typed::Character('.'));
+            assert!(period.is(HIDDEN_FILES.in_map(Map::Default)));
+            let decimal = pressed(Key::KP_Decimal, NONE, Typed::Key(Key::KP_Decimal));
+            assert_eq!(decimal.text(), Some('.'));
 
             assert_eq!(
                 label_in_map("en", &Keys::One(COPY.shown()), Map::Default),

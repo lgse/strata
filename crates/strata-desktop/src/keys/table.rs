@@ -9,7 +9,7 @@
 //!   key. `VoidSymbol`, which is no key, has no name and its name reads as none.
 //! - **Characters:** a printable Latin-1 character is its own keysym, and any other character
 //!   is its Unicode keysym, `0x0100_0000` plus the code point, as the X protocol defines
-//!   both. The sixteen keypad keys that type a character type it ([`KEYPAD`]). No other
+//!   both. The eighteen keypad keys that type a character type it ([`KEYPAD`]). No other
 //!   named key types anything here.
 //! - **Case:** the ASCII letters. Every other key is its own lower and upper case.
 //! - **Accelerator strings:** not read and not written. See [`Table`].
@@ -56,7 +56,9 @@ const KEYPAD: &[(Key, char)] = &[
     (Key::KP_Equal, '='),
     (Key::KP_Multiply, '*'),
     (Key::KP_Add, '+'),
+    (Key::KP_Separator, ','),
     (Key::KP_Subtract, '-'),
+    (Key::KP_Decimal, '.'),
     (Key::KP_Divide, '/'),
     (Key::KP_0, '0'),
     (Key::KP_1, '1'),
