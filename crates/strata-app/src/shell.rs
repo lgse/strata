@@ -111,14 +111,15 @@ impl App {
         parts: &'static [Entry<App>],
         _ui: &UiThread,
         csd: Csd,
-        settings: Saved,
+        mut settings: Saved,
     ) -> Self {
+        let events = Inbox::new();
+        let later = events.later();
+        settings.report_to(later.clone());
         let saved = settings.preferences();
         let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
         browser.set_operation_provider(Rc::new(LocalOperationProvider));
         let ids = Ids::default();
-        let events = Inbox::new();
-        let later = events.later();
         let setup = Setup {
             settings: saved,
             ids: &ids,
@@ -216,6 +217,20 @@ impl App {
     pub(crate) fn later(&self) -> crate::slots::Later<Self> {
         self.window.events.later()
     }
+}
+
+/// The saved settings as they are now, and the way to change one:
+/// `shell::saved(app).change(|settings| …)` changes the values and queues the save of what
+/// changed. Call it from a handler or a queued update, never from a listener. A part calls
+/// `change` and `preferences` and nothing else of [`Saved`].
+///
+/// The save's result is heard when GLib is next pumped and the queue applied. After a change
+/// made in a handler that is the `poll` that follows. After one made in a queued update it
+/// is the next pump, whenever that comes: the update ran after its pump had asked GLib what
+/// to wait for. Nothing is lost on disk; until the result is heard the keys count as
+/// unsaved, and a change made meanwhile writes them again.
+pub(crate) fn saved(app: &mut App) -> &mut Saved {
+    &mut app.window.settings
 }
 
 /// The GTK window's rule (`src/ui/window/composition/tabs.rs`): the folder, then the name.
