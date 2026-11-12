@@ -597,8 +597,9 @@ the catalogue. The parsers are in `tests/qa/fuzz/`: `alphabet.rs`,
 | Path | Holds |
 | --- | --- |
 | `tests/qa/fuzz/alphabets/<area>.toml` | An area's alphabet: the actions a seed picks from. |
-| `tests/qa/fuzz/corpus/<area>/fuzz-<area>-<seed>.jsonl` | A kept sequence, a scenario file; the seed is sixteen hex digits. |
-| `tests/qa/fuzz/corpus/<area>/parked` | Seeds parked against an issue: `<seed> <code> <issue>`, sorted by seed. |
+| `tests/qa/fuzz/alphabets/pins` | `<area> v<version> <digest>` for each alphabet, sorted by area: what its version is pinned to. |
+| `tests/qa/fuzz/corpus/<area>/fuzz-<area>-v<version>-<seed>.jsonl` | A kept sequence, a scenario file; the seed is sixteen hex digits. |
+| `tests/qa/fuzz/corpus/<area>/parked` | Kept sequences parked against an issue: `v<version>-<seed> <code> <issue>`, sorted by version and seed. |
 | `tests/qa/fuzz/normalisation.map` | Fields the two targets may differ on: `<field> <exception code> <issue>`, sorted by field. |
 | `tests/qa/fuzz/calibration.mask` | Fields two replays on one target differ on: `<field> <cause> <issue>`, sorted by field. |
 | `target/qa-fuzz/<area>/<sequence>/` | A sequence's artifacts. |
@@ -610,8 +611,8 @@ Unknown keys are rejected.
 | Key | Required | Meaning and validation |
 | --- | --- | --- |
 | `area` | yes | Equals the file stem. Lowercase words of `a-z0-9` joined by `-`. |
-| `version` | yes | At least 1. Raise it with every change that makes a seed write another sequence. |
-| `about` | yes | One non-empty line. |
+| `version` | yes | At least 1, and pinned in `pins` to a digest of the generator's version, the header and the actions. Raise it, and write the line the runner then names, with every change that makes a seed write another sequence. |
+| `about` | yes | One non-empty line. Not part of the digest. |
 | `header` | yes | A JSON object in a string: the scenario header without `scenario`. One mode, no variants, and none of `session_bus`, `portal`, `input_method`, `fixture_root`, `layout`, `teardown`, `images`, `mutation`, `known_bug`, `skip`, `parity`, `targets`. |
 | `[[action]]` `name` | yes | Unique; lowercase words joined by `-`. |
 | `[[action]]` `weight` | yes | At least 1: the action's share of the sum of the weights. |
@@ -639,8 +640,16 @@ fields the same way:
 | `result` | `ok`, `skipped` (the `when` did not hold), `refused` (the target or the runner answered with an error), `failed` (a check in the step did not hold), `crashed`, `closed` (the window was closed) or `left` (the application went outside the fixture). The last three end the replay. |
 | `criticals` | The GLib warnings and criticals logged since the last observation, addresses removed. |
 | `app.<key>` | One of the ten snapshot keys. `app.panes[1].selected` is a field; `app.panes[].selected` names it in every pane. `app.field.caret`, `.text`, `.selection`, `.name`, `.focused`. |
-| `fs.<path>` | A fixture path: `dir <mode>`, `file <mode> <size> <digest>` or `link <target>`. `fs` is the whole tree. |
-| `settings.<key>` | A key of `settings.toml`, nested tables by dots. `settings` is the whole file. |
+| `fs.<path>` | A fixture path, whole, whatever dots and brackets its names have: `dir <mode>`, `file <mode> <size> <digest>` or `link <target>`. |
+| `settings.<key>` | A key of `settings.toml`, nested tables by dots: `settings.keymap.default.rename`. |
+
+An entry covers its field and what is below it at a boundary of the path:
+`app.field` covers `app.field.caret`, `fs.documents` covers
+`fs.documents/notes.txt`, and `fs.documents/notes` covers nothing. An entry
+names a key of `app`, a path of `fs` or a key of `settings`; a bare `app`,
+`fs` or `settings`, `result` and `criticals` are refused, and so is a numbered
+place in a list. A `--perturb` field names one value, so it takes `[1]` and
+not `[]`.
 
 Codes: the map takes `timing`, `a11y`, `rune`, `oracle`, `toolkit`,
 `deviation`, `platform`; the mask takes `unsettled`, `clock`, `environment`;
@@ -653,4 +662,5 @@ Codes: the map takes `timing`, `a11y`, `rune`, `oracle`, `toolkit`,
 after the step `after` (compared without its `when`), when the observation
 before it held every `while` field, the last replay's observation gets `value`
 at `field`. `while` may be left out. A perturbed run proves the comparator and
-the shrinker and is evidence of nothing else.
+the shrinker and is evidence of nothing else, and says `PERTURBED` on its
+lines and in its files.

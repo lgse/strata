@@ -423,7 +423,8 @@ step between replays. "Fuzzing" in `docs/testing.md` has the method;
 
 ```bash
 ./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..20   # generate, replay twice, compare
-./scripts/qa-fuzz.sh replay                                     # every kept sequence
+./scripts/qa-fuzz.sh replay                                     # every kept sequence that is not parked
+./scripts/qa-fuzz.sh replay --parked --repeats 24               # the parked ones, on purpose
 ./scripts/qa-fuzz.sh shrink --alphabet calibration --seeds 7    # the fewest steps that still differ
 ./scripts/qa-fuzz.sh scenario <file>                            # a sequence file, as the scenario it is
 ./scripts/qa-fuzz.sh check                                      # load everything; print the rule and mask counts
@@ -433,9 +434,10 @@ step between replays. "Fuzzing" in `docs/testing.md` has the method;
   with weights, each one or more scenario steps copied as they are. Name
   targets by role and name, give a step a `when` wherever its target may not
   be there (an unguarded miss waits 15 seconds), and keep the sequence inside
-  the fixture. Raise `version` when a change makes a seed write another
-  sequence.
-- **A sequence is a scenario file** named `fuzz-<area>-<seed>`. It holds
+  the fixture. When a change makes a seed write another sequence, raise
+  `version` and write the line the runner names in
+  `tests/qa/fuzz/alphabets/pins`: a seed means nothing across versions.
+- **A sequence is a scenario file** named `fuzz-<area>-v<version>-<seed>`. It holds
   steps that act and `fs` actions, and no checks: every step is followed by
   an observation at rest. A `wait` belongs only where the area knows what the
   application shows when a slow action is done.
@@ -447,8 +449,10 @@ step between replays. "Fuzzing" in `docs/testing.md` has the method;
   each line says what can no longer be seen. An exception between the two
   targets goes in `tests/qa/fuzz/normalisation.map` with its code and issue.
   Both counts are printed in every summary.
-- **A GTK bug the fuzzer finds** is an `oracle` issue: file it, park the seed
-  in `tests/qa/fuzz/corpus/<area>/parked`, and go on.
+- **A GTK bug the fuzzer finds** is an `oracle` issue: file it, keep its
+  sequence in `tests/qa/fuzz/corpus/<area>/` and park it in that folder's
+  `parked`, and go on. Before blaming one target for a difference, replay it
+  on the other alone many times: a race agrees with itself most of the time.
 - It shares `target/qa-container` with the other QA scripts: one at a time.
 
 ## Change the runner

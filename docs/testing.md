@@ -1403,10 +1403,11 @@ the GTK target with the Rune target is package F2's (lgse/strata#2138).
 ```bash
 ./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..20   # the smoke tier: generate, replay twice, compare
 ./scripts/qa-fuzz.sh run --alphabet calibration --seeds 7 --length 80 --repeats 3
-./scripts/qa-fuzz.sh replay                                     # every kept sequence of tests/qa/fuzz/corpus
+./scripts/qa-fuzz.sh replay                                     # every kept sequence that is not parked
 ./scripts/qa-fuzz.sh replay --alphabet calibration              # one area's
+./scripts/qa-fuzz.sh replay --parked --repeats 24               # a survey: the parked sequences, on purpose
 ./scripts/qa-fuzz.sh shrink --alphabet calibration --seeds 7    # shrink one seed's divergence and confirm it
-./scripts/qa-fuzz.sh shrink tests/qa/fuzz/corpus/calibration/fuzz-calibration-0000000000000007.jsonl
+./scripts/qa-fuzz.sh shrink tests/qa/fuzz/corpus/calibration/fuzz-calibration-v3-0000000000000007.jsonl
 ./scripts/qa-fuzz.sh generate --alphabet calibration --seeds 7  # print the sequence; replay nothing
 ./scripts/qa-fuzz.sh scenario <file>                            # run a sequence file as the scenario it is
 ./scripts/qa-fuzz.sh compare <stream> <stream>                  # compare two kept streams
@@ -1415,27 +1416,39 @@ the GTK target with the Rune target is package F2's (lgse/strata#2138).
 
 `scripts/qa-fuzz.sh` runs in the pinned image with the plumbing and the
 `target/qa-container` cache of `scripts/qa.sh`, so it is one more QA script to
-run one at a time. It builds the runner as `qa.sh` does and passes it `fuzz` and
-the command: the driver is part of `tests/qa.rs`, in `tests/qa/fuzz.rs` and
-`tests/qa/fuzz/`. It does not run in CI, by the owner's ruling that parity and
-fuzzing are run by the agent before merging.
+run one at a time. It takes no lock of its own: on a machine several sessions
+share, the caller holds theirs, as for `qa.sh`. It builds the runner as `qa.sh`
+does and passes it `--fuzz` and the command: the driver is part of
+`tests/qa.rs`, in `tests/qa/fuzz.rs` and `tests/qa/fuzz/`. `--fuzz` is an
+option and never a word, so no test filter can be taken for it. A host run is
+refused and labelled as a scenario's is. It does not run in CI, by the owner's
+ruling that parity and fuzzing are run by the agent before merging.
 
 | Selection | Meaning |
 | --- | --- |
 | `--alphabet <area>` | An alphabet of `tests/qa/fuzz/alphabets`. `run`, `shrink` and `generate` need one; `replay` takes one to replay that area's corpus only. |
-| `--seeds <seeds>` | `7`, `1..200` with both ends, or `3,9,0x2a`. A seed is a 64-bit number. |
+| `--seeds <seeds>` | `7`, `1..200` with both ends, or `3,9,0x2a`. A seed is a 64-bit number, and names a sequence only together with the alphabet's version. |
 | `--length <n>` | Actions in a generated sequence; 40 by default. An action can be several steps. |
 | `--repeats <n>` | Replays of each sequence; 2 by default. Every replay is compared with the first. |
-| `--jobs <n>` | Sequences replayed at once; one per CPU by default. A sequence's own replays run one after another. |
+| `--jobs <n>` | Sequences replayed at once; one per CPU by default, 256 at most. A sequence's own replays run one after another. |
 | `--target gtk\|rune` | The target every replay starts; `gtk` by default. `rune` builds `strata-rune` first, as `qa-parity.sh` does. |
 | `--keep` | Keep the artifacts of sequences that agree too. |
+| `--parked` | `replay`: the parked sequences and no other, as a survey. |
 | `--corpus` | `shrink`: write a confirmed sequence into the area's corpus. |
 | `--limit <n>` | `shrink`: how many shorter sequences to try before the confirmations; 200 by default. |
 | `--perturb <json>` | Change one observation on purpose: see "Proving the comparator and the shrinker". |
 | `--rest-samples`, `--rest-poll-ms`, `--rest-budget-ms` | How rest is told. Calibration set the defaults; a run that changes them is not evidence. |
 
-A command exits 0 only when every sequence agreed, none failed to replay and
-none showed a finding.
+What a command's exit status says:
+
+| Command | Exits 0 when |
+| --- | --- |
+| `run`, `replay` | It replayed at least one sequence, every one agreed and came to rest at every step, none failed to replay and none showed a finding. A selection that replays nothing fails, as `qa.sh` fails one that runs no scenario. |
+| `replay --parked` | Every parked sequence could be replayed. What each does now is in its line. |
+| `shrink` | It found a divergence and the shortest sequence confirmed it three times out of three. It fails when there is nothing to shrink, and when the divergence does not confirm. |
+| `compare` | The two streams agree. |
+| `scenario` | The ordinary runner passes the file. |
+| `generate`, `check` | The alphabet, and for `check` everything else the driver reads from the tree, loads. |
 
 #### Alphabets
 
@@ -1444,7 +1457,7 @@ each area package adds its own with its first required runs.
 
 ```toml
 area = "calibration"
-version = 1
+version = 3
 about = "one line on what it reaches and what it leaves out"
 header = '{"modes":["columns"]}'
 
@@ -1463,12 +1476,21 @@ choose.entry = ["archive", "documents", "readme.md"]
 | Key | Meaning |
 | --- | --- |
 | `area` | The file's stem: lowercase words joined by hyphens. |
-| `version` | Raised by every change that makes a seed write another sequence. Summaries print it. |
+| `version` | Raised by every change that makes a seed write another sequence. It is part of every sequence's name. |
 | `about` | One line. |
 | `header` | The scenario header of every sequence, as JSON, without `scenario`: the mode, and the tree and preferences when they are not the defaults. |
 | `action.name`, `action.weight` | A unique name, and how often the action is picked against the sum of the weights. |
 | `action.steps` | One or more scenario steps, each a line of JSON exactly as a scenario file has it, in TOML's single quotes. |
 | `action.choose.<name>` | The values `<name>` in the steps may take. One is drawn for each name, in name order, every time the action is picked. |
+
+**A seed means nothing across versions of an alphabet.** Seed 7 of version 2
+and seed 7 of version 3 are two sequences. So `version` is held to what seeds
+write: `tests/qa/fuzz/alphabets/pins` has one line for each alphabet,
+`<area> v<version> <digest>`, where the digest is of the generator's version,
+the header and every action's name, weight, steps and choices. The runner
+refuses an alphabet whose line does not match, and says what the line should
+be. Changing what seeds write means raising `version` and writing the new
+line; changing a comment or `about` means neither.
 
 The rules an alphabet keeps, the first three checked when it loads:
 
@@ -1505,10 +1527,14 @@ observation moves sometimes. The Columns pilot alphabet is F2's.
 #### Sequences
 
 A sequence is a scenario file: the header line, then one step to a line. It is
-named `fuzz-<area>-<seed>`, the seed as sixteen hex digits, and the ordinary
-loader checks it as it checks every scenario. `generate` prints one, and
-`scenario <file>` runs one through the ordinary runner, where the first step
-the target refuses ends the run as in any scenario.
+named for where it came from, `fuzz-<area>-v<version>-<seed>`, the alphabet's
+version and the seed as sixteen hex digits, and the ordinary loader checks it
+as it checks every scenario. `generate` prints one.
+
+`scenario <file>` runs one through the ordinary runner, to read a transcript
+or a screenshot of it. That run is not a verdict: the ordinary runner stops at
+the first step the target refuses, and a generated sequence has about one such
+step in forty actions, usually before whatever it was kept for.
 
 The same seed, alphabet version and generator version (`GENERATOR` in
 `tests/qa/fuzz/generate.rs`) write the same bytes on every machine: the
@@ -1530,7 +1556,7 @@ step is sent.
 | `refused` | The target answered with an error: a target that is not there, a step it cannot run. An `fs` action the runner could not do is refused too. |
 | `failed` | A check inside the step did not hold. |
 | `crashed` | The target panicked, exited with an error or stopped answering. The stream ends here. |
-| `closed` | The target exited as it does when its window is closed. The stream ends here. |
+| `closed` | The target exited as it does when its window is closed. The stream ends here, and the tree and the settings it left are compared. |
 | `left` | The step took the application to a folder outside the fixture. The stream ends here. |
 
 A replay that leaves the fixture ends because what is listed out there is the
@@ -1538,7 +1564,10 @@ machine's, not the sequence's: `/tmp` holds every other run's folders. The
 application has left once its first pane is neither the fixture's own nor a
 folder of the fixture's tree, and that observation keeps the tree and the
 settings and no `app`. Two replays must agree on the step that left, as on a
-step that closed the window.
+step that closed the window. So an area whose behaviour is out there (the
+trash, Recent, Home, search across folders) cannot be fuzzed past that step
+yet, and `fixture_root`, which would give such a place a fixed name, is among
+the header keys a sequence may not have.
 
 A GLib warning or critical is recorded on the step that logged it, with its
 addresses taken out. A crash and a GLib warning are findings: the command
@@ -1553,7 +1582,7 @@ is a fixed projection, and nothing else of a reply is kept:
 | --- | --- |
 | `result` | The step's outcome. |
 | `criticals` | What GLib logged since the last observation. |
-| `app.*` | The ten keys of the reply's `app` snapshot: `view_mode`, `directory`, `panes` (each pane's `name`, `selected` and `focused`), `focused`, `focused_pane`, `dialog`, `menu`, `preview`, `field` and `matches`. |
+| `app.*` | The ten keys of the reply's `app` snapshot: `view_mode`, `directory`, `panes` (each pane's `name`, `selected` and `focused`), `focused`, `focused_pane`, `dialog`, `menu`, `preview`, `field` and `matches`. A runner unit test holds the list to the snapshot's own keys, so a key added there is not left uncompared by oversight. |
 | `fs.<path>` | The fixture tree: `dir <mode>`, `file <mode> <size> <digest of its bytes>` or `link <target>` for each path. |
 | `settings.<key>` | `settings.toml`, parsed, so two files that say the same in another order are equal. |
 
@@ -1585,8 +1614,10 @@ tree and the settings again and again, and the step is at rest once
 
 The wait is a budget, never an assertion. A step that has not come to rest
 after 10 seconds is recorded as unsettled, and the comparator then compares
-its outcome and its criticals only. The summary counts unsettled steps; a
-sequence is not failed for one.
+its outcome and its criticals only. That is not agreement: a target that
+never rests would agree on everything. So a sequence with an unsettled step
+is reported as `UNSETTLED` and fails the command, as a difference does.
+Calibration saw none on GTK.
 
 #### Comparison, the map and the mask
 
@@ -1597,7 +1628,8 @@ above and then by name. A list of names (`selected`, `matches`, `menu`,
 `preview`) is one value; `panes` is compared pane by pane while both sides
 have as many. A stream that ends early differs from the other at the step
 that ended it. A GLib warning and a crash are divergences in themselves,
-reported at their step even when both replays show the same one.
+reported at their step even when both replays show the same one, and no map
+or mask entry covers them.
 
 Two files say which fields a comparison leaves out, and they are kept apart on
 purpose:
@@ -1615,11 +1647,21 @@ Both have one entry to a line, `<field> <code> <issue>`, sorted by field, with
 app.preview unsettled lgse/strata#NNNN
 ```
 
-A field is named as an observation names it, with `[]` for every element of a
-list: `app.focused`, `app.panes[].selected`, `fs`, `settings.show_hidden`. An
-entry covers the field and everything below it. The issue is written
-`lgse/strata#<number>`. A mask is not an exception and cannot carry an
-exception's code, nor the reverse: the runner refuses the file.
+A field is named as an observation names it: `app.focused`,
+`app.panes[].selected` with `[]` for every element of a list,
+`fs.documents/notes.txt`, `settings.show_hidden`, `settings.keymap.default`.
+An entry covers its field and what is below it at a boundary of the path, and
+no more: `app.focused` does not cover `app.focused_pane`, `fs.documents`
+covers every file of the folder, and `fs.documents/notes` does not cover
+`fs.documents/notes.txt`. What is below `fs.` is a path, taken whole with
+whatever dots and brackets its names have.
+
+An entry names a key of `app`, a path of `fs` or a key of `settings`. A whole
+root (`app`, `fs`, `settings`), `result` and `criticals` are refused: one line
+must not blind a run. The issue is written `lgse/strata#<number>`. A mask is
+not an exception and cannot carry an exception's code, nor the reverse. The
+exception codes are the ones a twin's label takes, from one list in
+`tests/qa/twins.rs`, with `platform`.
 
 The map starts with no rule. **A mask grows only when two GTK replays of a
 seed differ**, and the comment above it says what the differential mode can no
@@ -1627,13 +1669,21 @@ longer see. Every summary prints both counts, by code, and `check` prints them
 without replaying anything: they are the "normalisation rules by code" of a
 checkpoint report.
 
+`compare` takes two kept streams. Each stream's first line says what it is a
+stream of: the target, the sequence, the alphabet and its version, the rest
+rule, and whether the harness perturbed it. `compare` refuses two streams of
+another sequence, alphabet version or rest rule, and applies the map when
+their targets differ.
+
 #### Shrinking
 
 `shrink` replays the sequence twice, at once, and takes the divergence it
 finds. It drops the steps after the divergence, then takes runs of steps out,
 halves first and single steps last, keeping each removal after which the same
-field still differs first. Then it replays the shortest sequence three more
-times: a divergence is confirmed when it shows **three times out of three**.
+divergence still shows first: the same field, after the same action, between
+the same two values, so that it cannot slide to some other difference on that
+field. Then it replays the shortest sequence three more times: a divergence
+is confirmed when it shows **three times out of three**.
 
 One that does not confirm is noise. It goes to calibration (a longer rest, or a
 mask), never to an issue, and the command says so and fails. A confirmed one
@@ -1655,61 +1705,87 @@ leaves the application alone:
 The change is made after the step `after` (compared without its `when`), and
 only when the observation before that step held every `while` field. So the
 divergence depends on what the application really did, and the shrunk sequence
-has to keep the steps that bring it there. Every line of a perturbed run says
-`PERTURBED`, and `--corpus` refuses it: a perturbed divergence is the
-harness's and is evidence of nothing else.
+has to keep the steps that bring it there.
 
-#### The corpus and parked seeds
+A perturbed run says so wherever it leaves a trace: a `FUZZ PERTURBED` line at
+the start and the end, `PERTURBED` in front of every `DIFFER` and `SHRUNK`
+line, `"perturbed": true` in `divergence.json` and in the stream's first line,
+and `-perturbed` in the names of the changed replay's files. It prints no issue
+title, and `--corpus` refuses it: a perturbed divergence is the harness's and
+is evidence of nothing else.
 
-`tests/qa/fuzz/corpus/<area>/` keeps an area's shrunk sequences, each a
-scenario file named for its seed. A kept sequence is one that diverged and was
-fixed: `replay` runs it and it must agree, which is what the smoke tier adds to
-fresh seeds. A sequence becomes a named scenario only when no scenario owns the
-behaviour, as the test-value rules in `AGENTS.md` ask.
+#### The corpus and parked sequences
 
-A seed whose divergence has an open issue is parked: the file `parked` in the
-area's folder lists it as `<seed> <code> <issue>`, the seed as sixteen hex
-digits, sorted by seed. The code is an exception code, or `divergence` while
-the issue has none yet. `run` and `replay` name a parked seed and do not replay
-it, so one finding is reported once.
+`tests/qa/fuzz/corpus/<area>/` keeps the sequences of an area that showed a
+divergence, each a scenario file under its own name. While the issue of one is
+open it is parked: the file `parked` in the area's folder lists it as
+`v<version>-<seed> <code> <issue>`, which reads as the end of its file's name,
+sorted by version and seed. The code is an exception code, or `divergence`
+while the issue has none yet. Once the issue is fixed its line goes, and from
+then on `replay` holds the sequence to agreeing with itself, which is what the
+smoke tier adds to fresh seeds. A sequence becomes a named scenario only when
+no scenario owns the behaviour, as the test-value rules in `AGENTS.md` ask.
+
+What a parked line stops:
+
+- **`run`** names and skips a seed only when it is parked on the alphabet's
+  own version, where the seed writes what was parked. A line for another
+  version stops nothing: that seed writes another sequence now, and it runs
+  like any other.
+- **`replay`** names and skips every parked file, whatever version it is of.
+- **`replay --parked`** replays the parked files and no other, on purpose,
+  and says of each whether it `STILL DIFFERS` or `AGREES IN <n> REPLAYS, STILL
+  PARKED`. One that agrees is not thereby fixed: a race agrees most of the
+  time. Give the survey as many `--repeats` as the issue says the race needs.
+
+The runner holds the corpus to this when it loads it: every file's name says a
+version the alphabet has had, every parked line has its file, and a file
+parked on the alphabet's own version is made of steps its seed still writes,
+in their order.
 
 #### Summaries and artifacts
 
 Each sequence prints one line, and the command ends with a summary:
 
 ```text
-FUZZ run: alphabet calibration v1, generator 1, 40 actions; 300 sequences
+FUZZ run: alphabet calibration v3, generator 1, 40 actions; 300 sequences
 FUZZ replays: target gtk, 2 of each sequence, 24 sequences at once
 FUZZ rest: 8 equal samples 50 ms apart, budget 10000 ms
 FUZZ rules: 0 normalisation rules (tests/qa/fuzz/normalisation.map); 0 calibration masks (tests/qa/fuzz/calibration.mask)
-AGREE fuzz-calibration-0000000000000001: 40 steps, 2 replays
-DIFFER fuzz-calibration-000000000000002a at step 14 {"key":"Right"}: app.matches (["a"] | ["a","b"]); kept target/qa-fuzz/calibration/fuzz-calibration-000000000000002a
-FUZZ result: 300 sequences: 299 agree, 0 agree under a mask, 1 differ, 0 could not be replayed; 0 parked; 0 with a finding
+AGREE fuzz-calibration-v3-0000000000000001: 40 steps, 2 replays
+DIFFER fuzz-calibration-v3-000000000000002a at step 14 {"key":"Right"}: app.matches (["a"] | ["a","b"]); kept target/qa-fuzz/calibration/fuzz-calibration-v3-000000000000002a
+FUZZ result: 300 sequences: 299 agree, 0 agree under a mask, 1 differ, 0 unsettled, 0 could not be replayed; 0 parked; 0 with a finding
 FUZZ steps: 24600 observations in 600 replays, 12300 compared; 270 refused, 1800 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse
 FUZZ replays that ended early: 4 left the fixture, 0 closed the window
+FUZZ late changes: 2890 of 24600 observations changed after their step's reply; quiet before a late change: median 60 ms, 99th percentile 170 ms, longest 215 ms
 FUZZ fields that differed first, with nothing masked, by sequence: app.matches 1
 FUZZ load average: 2.10 at the start, 21.30 at the end
 FUZZ artifacts: target/qa-fuzz/calibration/
 ```
 
-`MASKED` is a sequence whose replays differ only on masked fields: it counts as
-agreeing under a mask, and the "fields that differed first" line counts it with
-nothing masked, which is how calibration sees what a mask is hiding.
-`FINDING` is a crash or a GLib warning, and comes with a `DIFFER` line that
-names its step. `ERROR` is a sequence the harness could not replay, `PARKED` a
-seed that was not replayed.
+| Line | Is |
+| --- | --- |
+| `AGREE` | A sequence whose replays agree on every field. |
+| `MASKED` | One whose replays differ only on masked fields. It counts as agreeing under a mask, and the "fields that differed first" line counts it with nothing masked, which is how calibration sees what a mask is hiding. |
+| `DIFFER` | One whose replays differ: the step, the action, the first field and its two values. |
+| `UNSETTLED` | One with a step that did not come to rest within the budget. |
+| `FINDING` | A crash or a GLib warning. It comes with a `DIFFER` line that names its step. |
+| `ERROR` | One the harness could not replay. |
+| `PARKED` | One that is parked, and was not replayed. |
+| `FUZZ late changes` | How many observations changed after their step's reply, and how long each such change was in coming after the read before it. A change is seen only while the rest wait still runs, so the default window sees up to 350 ms and `--rest-samples 40 --rest-poll-ms 25` up to a second. |
 
-A sequence that differed, showed a finding or could not be replayed (every
-sequence, with `--keep`) leaves `target/qa-fuzz/<area>/<sequence>/`:
+A sequence that differed, did not come to rest, showed a finding or could not
+be replayed (every sequence, with `--keep`) leaves
+`target/qa-fuzz/<area>/<sequence>/`:
 
 | File | Holds |
 | --- | --- |
 | `sequence.jsonl` | The sequence, a scenario file. |
-| `<target>-<n>.stream.jsonl` | Replay n's observations, one to a line: `step`, `action`, `settled`, `polls`, `waited_ms`, `changed_ms` (when, into the rest wait, a read differed from the one before), the two digests and `observed`. A last `{"gone":…}` line says why the target was lost. |
+| `<target>-<n>.stream.jsonl` | Replay n's stream. Its first line is `{"stream":…}`: the target, the sequence, the alphabet and its version, the rest rule, and `perturbed`. Then one observation to a line: `step`, `action`, `settled`, `polls`, `waited_ms`, `changed_ms` (when, into the rest wait, a read differed from the one before), the two digests and `observed`. A last `{"gone":…}` line says why the target was lost. |
 | `<target>-<n>.transcript.jsonl` | Every command and reply of the replay, the rest wait's reads included. |
 | `<target>-<n>.strata.log` | The application's log. |
 | `<target>-<n>.input.log` | Every synthetic key, motion and button of the replay, as a scenario run's `input.log` has them. |
-| `divergence.json` | The first differing step and fields, with and without the mask, and the issue title. |
+| `divergence.json` | The first differing step and fields, with and without the mask, the issue title, and `perturbed`. |
 | `shrunk.jsonl` | After `shrink`: the shortest sequence. |
 
 #### Calibration
@@ -1797,16 +1873,36 @@ now.
 - **The machine.** 24 cores. "96 at once" loads it four times over; a slower
   machine under the same load was not measured.
 
-#### What the driver does not do yet
+#### What the next packages build on
 
+- **"Agree" is a rate.** Two replays catch a race that goes the rare way once
+  in 24 about 8 % of the time, and one that does so once in 6 about 28 %. Two
+  of the races above agreed in a whole batch before they were seen. So a
+  difference between GTK and Rune is replayed GTK against GTK many times, 24
+  and not 2, before Rune is blamed for it.
 - **Two targets.** A replay starts the target `STRATA_QA_TARGET` names, which
-  is one for the whole process (`Launch::binary` in `tests/qa.rs`). Comparing
-  GTK with Rune, applying the map to that comparison, and the Columns pilot
-  alphabet are F2's.
+  is one for the whole process: `Launch::binary` in `tests/qa.rs` is the only
+  place the replay path reads the target. Comparing GTK with Rune needs
+  `Launch` to take the target, or two processes and `compare` over their kept
+  streams, which already applies the map when the targets differ. That, the
+  map's first rules and the Columns pilot alphabet are F2's.
+- **The rename guard is not for copying.** `calibration` skips every click,
+  Ctrl+click, Shift+click and right-click on any entry while a name is being
+  edited. That is far wider than the race of lgse/strata#2173, which is a
+  Shift+click on the entry being renamed, and it keeps the pointer out of
+  rename altogether. Rename is in the Columns pilot's scope, so the pilot
+  needs a narrower guard of its own.
+- **Outside the fixture.** `left` ends a replay at any visit to the trash,
+  Recent, Home or a search across folders, as above.
 - **Runner steps other than `fs`.** `restart`, `layout`, the session bus and
   its peers, portals and input methods are refused when a sequence loads.
 - **Invariants.** Properties of one target with no GTK peer to compare are
-  F3's (lgse/strata#2139).
+  F3's (lgse/strata#2139). `Stream` and `Observation` in
+  `tests/qa/fuzz/replay.rs` and `observe.rs` are what a check of one stream
+  reads.
+- **`scenario` is for reading.** A sequence with a refused step fails under
+  the ordinary runner before it reaches what it was kept for, so a sequence
+  file is not something to hand to `qa.sh`.
 
 ### Skipped scenarios
 
