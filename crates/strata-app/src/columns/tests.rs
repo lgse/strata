@@ -8,14 +8,14 @@ use std::{
     time::Instant,
 };
 
-use rune::{Key, KeyEvent, Mods, PhysicalInput};
+use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
 use strata_core::model::Location;
 
 use super::{Load, mirror};
 use crate::{
     host::offscreen::Offscreen,
-    test_support::{PATIENCE, fixture, folder_of},
+    test_support::{PATIENCE, fixture, folder_of, send_key},
 };
 
 mod history;
@@ -245,11 +245,7 @@ fn key_event(chord: &str) -> KeyEvent {
 
 /// Feeds the host a key with its modifiers held, as a keyboard sends one.
 fn send(host: &mut Offscreen, chord: &str) {
-    let event = key_event(chord);
-    let runtime = host.runtime();
-    runtime.physical_input(PhysicalInput::Modifiers(event.mods));
-    runtime.key(event);
-    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
+    send_key(host, key_event(chord));
 }
 
 fn press(host: &mut Offscreen, chord: &str) {

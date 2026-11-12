@@ -28,7 +28,11 @@ use strata_desktop::{
 use crate::{App, shell, slots::At};
 
 mod browser;
+mod owners;
 pub(crate) mod press;
+
+pub(crate) use owners::{Holds, Situation};
+use owners::{Reach, reach};
 
 /// Declares [`Stage`] and the order a press is offered to its variants from one list, so a
 /// stage cannot be declared and never walked.
@@ -88,10 +92,16 @@ pub(crate) enum Reads {
     Commands(&'static [Matcher]),
     /// A digit range of the catalog, such as the tab numbers. Which digit is the command's
     /// to read from the call's press.
-    #[expect(dead_code, reason = "no registered command reads a digit range yet")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "no registered command reads a digit range yet")
+    )]
     Digits(Digits),
     /// What neither says: a key that types, for type-to-search. Nothing can list it.
-    #[expect(dead_code, reason = "no registered command reads a press that way yet")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "no registered command reads a press that way yet")
+    )]
     Press(fn(&KeyPress) -> bool),
 }
 
@@ -106,9 +116,31 @@ impl Reads {
 }
 
 /// One stage's reading of a command's keys.
-pub(crate) struct Keys {
+pub(crate) struct Keys<S: 'static> {
     pub(crate) stage: Stage,
     pub(crate) reads: Reads,
+    /// The stage's guard, as GTK has it: whether it reads the key where the press lands.
+    pub(crate) when: fn(&S, &Situation) -> bool,
+}
+
+fn always<S>(_: &S, _: &Situation) -> bool {
+    true
+}
+
+impl<S> Keys<S> {
+    /// The catalog commands `matchers` at `stage`, wherever the press lands.
+    pub(crate) const fn at(stage: Stage, matchers: &'static [Matcher]) -> Self {
+        Self {
+            stage,
+            reads: Reads::Commands(matchers),
+            when: always,
+        }
+    }
+
+    pub(crate) const fn when(mut self, when: fn(&S, &Situation) -> bool) -> Self {
+        self.when = when;
+        self
+    }
 }
 
 /// Where a command acts.
@@ -127,7 +159,10 @@ pub(crate) struct Call<'a> {
     pub(crate) on: On,
     /// The press, when a key made the call: its digit and what it typed are the command's
     /// to read.
-    #[expect(dead_code, reason = "no registered command reads its press yet")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "no registered command reads its press yet")
+    )]
     pub(crate) press: Option<&'a KeyPress>,
 }
 
@@ -141,7 +176,10 @@ pub(crate) enum Outcome {
     /// would then act on top of it.
     Declined,
     /// The focused element's: nothing else is asked, and Rune is told the key is not taken.
-    #[expect(dead_code, reason = "no registered command leaves a key yet")]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "no registered command leaves a key yet")
+    )]
     Left,
 }
 
@@ -152,7 +190,7 @@ pub(crate) struct Action<S: 'static> {
     /// The catalog's command this is, when the catalog has it.
     pub(crate) command: Option<Command>,
     /// Where the GTK window's stages read its keys. Empty for a command no key runs.
-    pub(crate) keys: &'static [Keys],
+    pub(crate) keys: &'static [Keys<S>],
     pub(crate) run: fn(&mut S, &Call<'_>, &mut Tx) -> Outcome,
 }
 
@@ -174,7 +212,7 @@ impl<S> Action<S> {
         self
     }
 
-    pub(crate) const fn keys(mut self, keys: &'static [Keys]) -> Self {
+    pub(crate) const fn keys(mut self, keys: &'static [Keys<S>]) -> Self {
         self.keys = keys;
         self
     }
@@ -231,14 +269,26 @@ impl Active for Live {
     }
 }
 
-/// Every command an active part of the window has.
-fn actions(_app: &App) -> impl Iterator<Item = &'static Action<App>> {
-    browser::ACTIONS.iter()
+/// The name the window's own commands go by where a part's go by the part's.
+const WINDOW: &str = "window";
+
+/// Every command the window has now, each with the part that registered it: the active
+/// parts' in the order they are registered, then the window's own.
+fn actions(app: &App) -> impl Iterator<Item = (&'static str, &'static Action<App>)> {
+    let parts = shell::parts(app).active();
+    let of_parts = parts.flat_map(|part| part.commands.iter().map(|action| (part.name, action)));
+    of_parts.chain(browser::ACTIONS.iter().map(|action| (WINDOW, action)))
+}
+
+/// The window's own commands, for the check that no part registers one of them again.
+pub(crate) fn own() -> &'static [Action<App>] {
+    browser::ACTIONS
 }
 
 /// The command a menu row or a button names.
 fn find(app: &App, id: &str) -> Option<&'static Action<App>> {
-    actions(app).find(|action| action.id == id)
+    let mut actions = actions(app).map(|(_, action)| action);
+    actions.find(|action| action.id == id)
 }
 
 /// Whether the window has the command `id`: a menu row or a button that names it is not
@@ -277,7 +327,7 @@ pub(crate) struct Bound {
     expect(dead_code, reason = "nothing on this interface lists keys yet")
 )]
 pub(crate) fn bound(app: &App) -> impl Iterator<Item = Bound> {
-    actions(app).flat_map(|action| {
+    actions(app).flat_map(|(_, action)| {
         action.keys.iter().map(|keys| Bound {
             id: action.id,
             command: action.command,
@@ -313,27 +363,42 @@ pub(crate) fn run(app: &mut App, id: &str, on: On, tx: &mut Tx) -> Outcome {
     call(app, action, &Call { on, press: None }, tx).outcome
 }
 
+/// The commands that read `press` at `stage` where it lands, in the order they are asked.
+fn reading(
+    app: &App,
+    press: &KeyPress,
+    at: &Situation,
+    stage: Stage,
+) -> Vec<(&'static str, &'static Action<App>)> {
+    let reads =
+        |keys: &Keys<App>| keys.stage == stage && keys.reads.reads(press) && (keys.when)(app, at);
+    actions(app)
+        .filter(|(_, action)| action.keys.iter().any(reads))
+        .collect()
+}
+
 /// Offers `press` to each stage in the GTK chain's order, and within a stage to each command
-/// that reads it there, until one runs or leaves it.
-fn walk(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Called {
+/// that reads it there, until one runs or leaves it. Who has the keyboard decides which
+/// stages are left ([`owners::reach`]).
+fn walk(app: &mut App, press: &KeyPress, at: &Situation, tx: &mut Tx) -> Called {
     let key = Call {
         on: On::Focus,
         press: Some(press),
     };
     let mut changed = false;
     for stage in Stage::ALL {
-        let reading = actions(app).filter(|action| {
-            let mut keys = action.keys.iter();
-            keys.any(|keys| keys.stage == *stage && keys.reads.reads(press))
-        });
-        for action in reading.collect::<Vec<_>>() {
-            let called = call(app, action, &key, tx);
-            changed |= called.changed;
-            if called.outcome != Outcome::Declined {
-                return Called {
-                    outcome: called.outcome,
-                    changed,
-                };
+        for (part, action) in reading(app, press, at, *stage) {
+            let outcome = match reach(at, *stage, part) {
+                Reach::Cut => Outcome::Declined,
+                Reach::Taken => Outcome::Ran,
+                Reach::Runs => {
+                    let called = call(app, action, &key, tx);
+                    changed |= called.changed;
+                    called.outcome
+                }
+            };
+            if outcome != Outcome::Declined {
+                return Called { outcome, changed };
             }
         }
     }
@@ -343,20 +408,22 @@ fn walk(app: &mut App, press: &KeyPress, tx: &mut Tx) -> Called {
     }
 }
 
-/// The window's keys: what the focused element passed on. While a part's field has the
-/// keyboard they wait, as the GTK window's do: a key the field passes on is not a shortcut.
-pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
-    let waiting = shell::holds_keyboard(app);
-    // What owns typing where the press lands: a field, or type-to-search (`context_of` in
-    // `src/ui/keys/alias.rs`). A plain key that stands for an arrow is typing there.
-    let typing = waiting || shell::live_keys(app).type_to_search_active();
+/// The press `event` is where it lands, as every reader of a key on this interface reads
+/// one: built from Rune's event with the settings as they are now, and through the aliases
+/// with what owns typing there (a field, a menu, or type-to-search). A part that hears a key
+/// in its own element and wants the catalog's answer for it calls this.
+pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyPress {
+    let typing = at.typing() || shell::live_keys(app).type_to_search_active();
     let press = press::read(event, press::Origin::of(tx));
-    let press = keys::rewrite(press, Context { typing });
-    if waiting {
-        tx.live_only();
-        return false;
-    }
-    let walked = walk(app, &press, tx);
+    keys::rewrite(press, Context { typing })
+}
+
+/// The window's keys: what the focused element passed on, or every key when nothing has the
+/// keyboard.
+pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
+    let at = Situation::of(app, tx);
+    let press = read(app, event, &at, tx);
+    let walked = walk(app, &press, &at, tx);
     if walked.outcome != Outcome::Ran && !walked.changed {
         // Nothing the view reads changed: no commit for a key that is not the window's. A
         // command that declined after the browser answered it still gets its frame.

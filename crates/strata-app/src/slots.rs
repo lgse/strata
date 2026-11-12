@@ -55,7 +55,8 @@
 //! | The view, whichever is shown | `shell::shown_view(app)`. A part never names a view's module. The rename editor opens and polls through the shown view's [`Editing`]; a chosen menu row runs a command of the registry ([`crate::commands`]), which asks the view's [`Rows`] only for what differs from view to view; the QA backend reads its panes by the view's [`Probe`] |
 //! | The id of an entry | `shell::id_of(app, &location)`: the window's one table, which [`Setup::ids`] also hands a part for its listener |
 //! | A context menu on one of its rows, or on its folder | A view's handler calls `menus::open(app, Request { depth, entry, anchor }, tx)` for the collection's `Intent::ContextMenu`, with no entry for the folder. The opener decides what the menu is for and lists, once for every view, and asks the view only for a row's position ([`Rows`]) |
-//! | The window's shortcuts to wait | [`Part::holds_keyboard`], true while the part has a text field open |
+//! | Its commands: a window chord, a menu row, a header button | [`Part::COMMANDS`], a table of [`Action`]s. Each has the name a menu row or a header button asks for it by, the shared catalog's command it is, the stage of the GTK window's dispatcher that reads its keys with that stage's matcher and guard, and what it does. `rename.rs` is the example. Two parts that are active together may not register one name: the window does not start |
+//! | The window's commands to wait while it has the keyboard | [`Part::keyboard`] says which of the GTK window's owners of input the part is now ([`Holds`]): an inline edit, a menu, a modal layer, the location bar, the filter, another text field. `commands/owners.rs` holds what each leaves of the stages. A part whose element takes text or is a Rune modal answers it |
 //!
 //! # Rules for a part
 //!
@@ -127,7 +128,7 @@
 //!
 //! | A part that needs | Waits on |
 //! | --- | --- |
-//! | A window chord (Ctrl+T, Ctrl+L, the sidebar's key), one of the header's five buttons, or a menu row that runs its command | Its own table of commands, which is the next change to this contract (`docs/rune/parity/packages/B3.md`, "The part hooks"). The registry is [`crate::commands`]: a key, a chosen row and a pressed button each run the command registered under a name, and a row or a button whose name nothing registered is drawn and inert. Until a part can register, the window's own table (`commands/browser.rs`) is the only one, and neither it nor `shell::bar` nor `menus.rs` is an area's to add to. Even then, a key the shown view's own controller takes (Escape, Delete, Space, Ctrl+A) does not reach a registered command from the view until the entry points land ("What Rune gives" there) |
+//! | A key the shown view's own controller takes (Escape, Delete, Space, Ctrl+A), as a command | The entry points (`docs/rune/parity/packages/B3.md`, "What Rune gives"). A part can register the command today, and its menu row and its button run it; from the view the key does not reach it yet, because the view's controller hears the key first and takes it. A header button's or a menu row's command with no such key waits on nothing: register it under the button's name (`shell.rs`) or the row's id (`menus.rs`) |
 //! | To save a setting | Nothing: `shell::saved(app).change(…)`, by the rules under [Saving a setting](#saving-a-setting) |
 //! | A `Browser` and a state for each tab | lgse/strata#2131, which opens with a `contract` change. There is one `Browser`, and one state for each part, made once in `App::new` |
 //! | To change the shown view while the window is open | lgse/strata#2140, with a `contract` change: a setter, and a listener and a rebuild from the browser for a view that starts hidden |
@@ -181,7 +182,10 @@ use rune::{Cx, El, Tx};
 use strata_components::{contract::EntryId, rename::Polled};
 use strata_desktop::settings::Preferences;
 
-use crate::App;
+use crate::{
+    App,
+    commands::{Action, Holds},
+};
 
 mod ids;
 mod inbox;
@@ -412,9 +416,16 @@ pub(crate) trait Part: Sized + 'static {
         false
     }
 
-    /// The part has a text field open, so a key the field passes on is not a shortcut.
-    fn holds_keyboard(_app: &App) -> bool {
-        false
+    /// What this part's commands do, by any route: a key, a menu row, a header button
+    /// ([`crate::commands`]). A menu row runs the command whose id is the row's, and a
+    /// header button the one named for it, so a part lights either by registering it here.
+    const COMMANDS: &'static [Action<App>] = &[];
+
+    /// What this part has of the keyboard now, as one of the GTK window's owners of input:
+    /// a text field, an inline edit, a menu, a modal layer. The window's commands that the
+    /// owner keeps from running wait. `None` while the part has none of it.
+    fn keyboard(_app: &App) -> Option<Holds> {
+        None
     }
 }
 

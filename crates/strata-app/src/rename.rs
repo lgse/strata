@@ -31,13 +31,16 @@ use strata_core::{
     i18n::tr,
     model::{FileEntry, Location},
 };
+use strata_desktop::keys::{Map, bindings::RENAME};
 use strata_fs::{
     app::BrowserEvent,
     services::{Naming, OperationRequestId, TypedPath, name_field_error, validate_basename},
 };
 
 use crate::{
-    App, shell,
+    App,
+    commands::{Action, Call, Holds, Keys, On, Outcome, Stage},
+    shell,
     slots::{Frame, Listener, Part, Place, Setup, View},
 };
 
@@ -160,8 +163,37 @@ impl Part for Rename {
         tick(app, tx)
     }
 
-    fn holds_keyboard(app: &App) -> bool {
-        app.rename.state.has_keyboard()
+    const COMMANDS: &'static [Action<App>] =
+        &[Action::new("rename", renamed).command(RENAME).keys(&[
+            // `inline_editing` in `src/ui/window/keyboard/commands.rs`: not from a text field,
+            // but for the filter's.
+            Keys::at(Stage::InlineEditing, &[RENAME.in_map(Map::Default)])
+                .when(|_, at| at.filter() || !at.text()),
+        ])];
+
+    fn keyboard(app: &App) -> Option<Holds> {
+        app.rename.state.has_keyboard().then_some(Holds::Edit)
+    }
+}
+
+/// The command: F2 and Ctrl+R rename the item the keyboard is on, and a stage that opened
+/// no editor has not taken the key (`begin_rename`). The menu's row selects its entry alone
+/// first, and then renames it as the key does (`rename_context_entry` in
+/// `src/ui/browser/context_menu/focus.rs`).
+fn renamed(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
+    match call.on {
+        On::Focus if begin_focused(app, tx) => Outcome::Ran,
+        On::Row((depth, id)) => {
+            let Some(view) = host(app) else {
+                return Outcome::Declined;
+            };
+            (view.rows.select_only)(app, (depth, id), tx);
+            shell::publish(app);
+            begin_on(app, depth, id, tx);
+            Outcome::Ran
+        }
+        // No editor opened; and a menu with no entry has no Rename row.
+        On::Focus | On::Column(_) => Outcome::Declined,
     }
 }
 
@@ -227,13 +259,15 @@ fn open(app: &mut App, depth: usize, entry: FileEntry, tx: &mut Tx) -> bool {
     true
 }
 
-/// F2 and Ctrl+R: the focused item, or the folder the keyboard has entered.
-pub(crate) fn begin_focused(app: &mut App, tx: &mut Tx) {
+/// F2 and Ctrl+R: the focused item, or the folder the keyboard has entered. False when no
+/// editor opened.
+fn begin_focused(app: &mut App, tx: &mut Tx) -> bool {
     if app.rename.pending() {
-        return;
+        return false;
     }
-    if let Some((depth, _, entry)) = app.browser.rename_item() {
-        open(app, depth, entry, tx);
+    match app.browser.rename_item() {
+        Some((depth, _, entry)) => open(app, depth, entry, tx),
+        None => false,
     }
 }
 
