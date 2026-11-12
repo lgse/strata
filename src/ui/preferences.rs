@@ -15,6 +15,7 @@ use std::{collections::HashMap, fs};
 use gtk::{glib, prelude::*};
 // The schema, its defaults and stored forms, and the reading of the file live in
 // strata-desktop, where the Rune interface reads them too. This module keeps what needs GTK.
+use strata_desktop::settings::folder_views;
 #[cfg(test)]
 use strata_desktop::settings::read_preferences;
 pub use strata_desktop::settings::{
@@ -58,7 +59,6 @@ mod file_settings;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
 mod folder_view_settings;
-mod folder_views;
 mod input_settings;
 mod item_customizations;
 mod keymap;

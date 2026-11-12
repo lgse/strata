@@ -11,7 +11,10 @@ use super::{FolderKey, local_path};
 
 /// `None` for non-native locations, network shares, and paths that cannot be stored.
 /// Local FUSE overlays such as mergerfs are remembered like the drives under them.
-pub(in crate::ui) fn key_for_location(location: &Location) -> Option<FolderKey> {
+///
+/// Call it on the interface thread only: it reads `strata-fs`'s mount snapshot, which is
+/// thread-local and kept current by a volume monitor's signals on that thread.
+pub fn key_for_location(location: &Location) -> Option<FolderKey> {
     let path = location.native_path()?;
     with_mount_snapshot(|snapshot| {
         if snapshot.table.is_remote_share(path) {
@@ -22,7 +25,7 @@ pub(in crate::ui) fn key_for_location(location: &Location) -> Option<FolderKey> 
 }
 
 /// The innermost removable root wins, so a drive mounted inside another keeps its own key.
-pub(in crate::ui) fn key_for_path(path: &Path, removable: &[RemovableRoot]) -> Option<FolderKey> {
+pub(super) fn key_for_path(path: &Path, removable: &[RemovableRoot]) -> Option<FolderKey> {
     let path = local_path(path)?;
     match removable
         .iter()
