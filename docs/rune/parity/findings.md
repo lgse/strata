@@ -117,6 +117,11 @@ closed issue is not a fixed finding: the state given here is the finding's.
   change cannot reach, as on [#2197](https://github.com/lgse/strata/pull/2197), the orchestrating session's ruling of 2026-11-12 is: record
   the sighting and rerun the whole workflow once more; a test that fails a second time on the
   same pull request stops the agent again.
+- **Sightings on [#2202](https://github.com/lgse/strata/pull/2202)**, which changes ledger
+  rows, Rune patches and docs only: `shipped_keys_never_reach_the_direct_stage` failed in
+  shard 1 (the assertion at `direct_commands.rs:509`, Shift+O's `open_with`); on the
+  workflow's rerun, `default_map_tab_leaves_the_listing_in_one_press` failed in shard 1
+  instead. Both are already listed above.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
