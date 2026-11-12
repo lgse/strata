@@ -1,0 +1,10 @@
+# The calibration mask: the fields on which two replays of one sequence on one target
+# differ, so that no comparison can read them. One mask to a line, sorted by field:
+#
+#   <field> <cause> <issue>
+#
+# The causes are unsettled (the application is still working when the reply is written and
+# shows nothing to wait on), clock (the value follows the time) and environment (the value
+# follows the machine). A mask grows only when two GTK replays of a seed differ, and the
+# line above it says what the differential mode can no longer see. Every fuzz summary
+# prints how many there are. See docs/testing.md, "Calibration".

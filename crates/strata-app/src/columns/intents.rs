@@ -6,14 +6,13 @@ use rune::Tx;
 use strata_components::{
     collection::element::{Activation, Intent},
     columns::ColumnsIntent,
-    context_menu::MenuTarget,
-    contract::{EntryId, Point, Rect},
+    contract::EntryId,
 };
 
 use super::Input;
 use crate::{
     App,
-    menus::{self, EntryTarget, FolderTarget, Opening},
+    menus::{self, Request},
     rename, shell,
     slots::At,
 };
@@ -69,78 +68,19 @@ impl App {
         }
     }
 
-    /// The menu of entry `id` in column `depth`, or of the selection it is part of
-    /// (`context_entries` in `src/ui/browser/context_menu.rs`).
-    fn entry_menu(&mut self, depth: usize, id: EntryId, at: Point) {
-        let position = self.columns.position(depth, id);
-        let Some(entry) = position.and_then(|position| self.browser.entry_at(depth, position))
-        else {
-            return;
-        };
-        let selected = self.browser.selected_entries();
-        let within = selected
-            .iter()
-            .any(|other| other.location == entry.location);
-        let entries = if within {
-            selected
-        } else {
-            vec![entry.clone()]
-        };
-        let model = menus::entry(&EntryTarget {
-            entry: &entry,
-            entries: &entries,
-            can_trash: self.browser.can_trash_at(depth),
-            can_delete: self.browser.can_delete_at(depth),
-            typing: self.columns.typing(),
-        });
-        let opening = Opening {
-            depth,
-            name: entry.display_name,
-            target: MenuTarget::Entry(id),
-            at,
-        };
-        self.menu.show(opening, model);
-    }
-
-    /// The menu of column `depth`'s folder: a press on its empty space or its header.
-    fn folder_menu(&mut self, depth: usize, at: Point) {
-        let Some(title) = self.columns.title(depth).map(str::to_owned) else {
-            return;
-        };
-        let model = menus::folder(&FolderTarget {
-            has_entries: self.columns.rows_shown(depth) > 0,
-            hidden_shown: self.browser.preferences().show_hidden,
-            typing: self.columns.typing(),
-        });
-        let opening = Opening {
-            depth,
-            name: title,
-            target: MenuTarget::Background,
-            at,
-        };
-        self.menu.show(opening, model);
-    }
-
-    fn context_menu(&mut self, depth: usize, target: Option<EntryId>, anchor: Rect) {
-        let at = Point::new(anchor.x, anchor.y);
-        match target {
-            Some(id) => self.entry_menu(depth, id, at),
-            None => self.folder_menu(depth, at),
-        }
-    }
-
     fn collection(&mut self, depth: usize, intent: Intent, tx: &mut Tx) {
         match intent {
             Intent::Activate { id, how } => self.activate(depth, id, how),
             Intent::Clicked { id } => self.clicked(depth, id),
             // A slow second click on the entry.
             Intent::BeginRename { id } => rename::begin_on(self, depth, id, tx),
-            // A press with any button outside the field commits an open rename in the GTK
-            // view. The press that opens a menu leaves Rune's field the keyboard, so the edit
-            // is ended here.
             Intent::ContextMenu { target, anchor } => {
-                rename::commit(self, tx);
-                self.context_menu(depth, target, anchor);
+                let menu = Request {
+                    depth,
+                    entry: target,
+                    anchor,
+                };
+                menus::open(self, menu, tx);
             }
             // Drags and new tabs are interface the slice leaves out. Up and
             // Down at a column's edge have nowhere to go without a header to focus: the view
@@ -170,8 +110,12 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
         | ColumnsIntent::Selection { .. }
         | ColumnsIntent::Active { .. } => {}
         ColumnsIntent::HeaderMenu { depth, anchor } => {
-            rename::commit(app, tx);
-            app.folder_menu(depth, Point::new(anchor.x, anchor.y));
+            let folder = Request {
+                depth,
+                entry: None,
+                anchor,
+            };
+            menus::open(app, folder, tx);
         }
         // The sidebar takes the keyboard, when there is one.
         ColumnsIntent::LeftOfRoot => {

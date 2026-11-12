@@ -1,0 +1,12 @@
+# What each alphabet's version is pinned to: a digest of everything a seed's sequence
+# depends on (the generator, the header and the actions), one alphabet to a line, sorted:
+#
+#   <area> v<version> <digest>
+#
+# A seed means nothing across versions of an alphabet, so a change to what seeds write
+# raises `version` in the alphabet and the line here; the runner refuses the alphabet
+# otherwise, and says what the line should be. See docs/testing.md, "Fuzzing".
+#
+# calibration: versions 1 and 2 were its states while the driver was calibrated (before
+# the click guard, and before the hidden-files action). Three parked sequences are theirs.
+calibration v3 d06627cec8c47f93
