@@ -13,8 +13,9 @@ use std::{
 use std::{collections::HashMap, fs};
 
 use gtk::{glib, prelude::*};
-// The schema, its defaults and stored forms, and the reading of the file live in
-// strata-desktop, where the Rune interface reads them too. This module keeps what needs GTK.
+// The schema, its defaults and stored forms, the reading of the file and the per-folder
+// views' model live in strata-desktop, where the Rune interface reads them too. This module
+// keeps what needs GTK.
 #[cfg(test)]
 use strata_desktop::settings::read_preferences;
 pub use strata_desktop::settings::{
@@ -26,10 +27,10 @@ pub(crate) use strata_desktop::settings::{
 };
 use strata_desktop::settings::{
     KeymapOverrides, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, RETIRED_SETTINGS,
-    SettingKey, configured_hardware_acceleration, configured_video_preview_backend, lock_saves,
-    merged_settings, normalized_font_family, normalized_search_limit, normalized_video_start,
-    normalized_volume, parse_preferences, read_loaded_preferences, read_state_file, record_changes,
-    settings_path, sort_preferences, store_sort,
+    SettingKey, configured_hardware_acceleration, configured_video_preview_backend, folder_views,
+    lock_saves, merged_settings, normalized_font_family, normalized_search_limit,
+    normalized_video_start, normalized_volume, parse_preferences, read_loaded_preferences,
+    read_state_file, record_changes, settings_path, sort_preferences, store_sort, trashed,
 };
 pub(in crate::ui) use strata_desktop::settings::{
     MAX_PREVIEW_VIDEO_START, Preferences, SEARCH_ENTRY_LIMIT_CHOICES, SEARCH_TIME_LIMIT_CHOICES,
@@ -58,7 +59,6 @@ mod file_settings;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
 mod folder_view_settings;
-mod folder_views;
 mod input_settings;
 mod item_customizations;
 mod keymap;
@@ -69,7 +69,6 @@ mod save_notice;
 mod sidebar_settings;
 mod stored;
 mod text_size;
-mod trashed;
 pub(in crate::ui) use bindings::notify_live;
 #[cfg(test)]
 use desktop_scale::text_scale_factor_from_xft_dpi;

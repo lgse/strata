@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+//! The per-folder views: what `folder-views.toml` holds, how a folder is keyed, and how
+//! changes merge over what another Strata process saved. `docs/preferences.md` describes the
+//! behaviour.
+
 use std::{
     collections::{BTreeMap, HashMap},
     io,
@@ -10,14 +14,14 @@ use serde::Serialize;
 
 use crate::model::{SortDirection, SortKey, rebase_path};
 
-use super::super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
+use super::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
 
 mod keys;
-pub(in crate::ui) use keys::key_for_location;
+pub use keys::key_for_location;
 #[cfg(test)]
-pub(in crate::ui) use keys::key_for_path;
+use keys::key_for_path;
 
-pub(in crate::ui) const FOLDER_VIEWS_LIMIT: usize = 5_000;
+const FOLDER_VIEWS_LIMIT: usize = 5_000;
 const VERSION: i64 = 1;
 /// TOML integers are signed, so use times stop here rather than fail to save.
 const MAX_USED: u64 = i64::MAX as u64;
@@ -25,17 +29,17 @@ const MAX_USED: u64 = i64::MAX as u64;
 /// A local folder by absolute path, or a folder on a removable drive by its
 /// filesystem UUID and path inside the drive, so it survives remounting.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub(in crate::ui) enum FolderKey {
+pub enum FolderKey {
     Path(PathBuf),
     Volume { uuid: String, relative: PathBuf },
 }
 
 impl FolderKey {
-    pub(in crate::ui) fn local(path: &Path) -> Option<Self> {
+    fn local(path: &Path) -> Option<Self> {
         local_path(path).map(Self::Path)
     }
 
-    pub(in crate::ui) fn on_volume(uuid: &str, relative: &Path) -> Option<Self> {
+    fn on_volume(uuid: &str, relative: &Path) -> Option<Self> {
         let uuid = uuid.trim();
         (!uuid.is_empty() && plain_names(relative.components()))
             .then(|| Self::with_path(Some(uuid), relative.components().collect()))
@@ -90,9 +94,9 @@ fn local_path(path: &Path) -> Option<PathBuf> {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(in crate::ui) struct FolderView {
-    pub(in crate::ui) sort: Option<crate::model::SortOptions>,
-    pub(in crate::ui) icons_size: Option<i32>,
+pub struct FolderView {
+    pub sort: Option<crate::model::SortOptions>,
+    pub icons_size: Option<i32>,
 }
 
 impl FolderView {
@@ -108,10 +112,14 @@ struct Entry {
 }
 
 /// Values taken out with a trashed folder, to put back if it is restored.
-pub(in crate::ui) struct TakenViews(Vec<(FolderKey, Entry)>);
+pub struct TakenViews(Vec<(FolderKey, Entry)>);
 
 impl TakenViews {
-    pub(in crate::ui) fn len(&self) -> usize {
+    #[expect(
+        clippy::len_without_is_empty,
+        reason = "counts towards the trashed-values limit; nothing asks whether it is empty"
+    )]
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 }
@@ -119,7 +127,7 @@ impl TakenViews {
 /// Per-folder values that differ from the defaults, with a logical use clock
 /// for evicting the least recently used folders.
 #[derive(Clone, Debug, Default)]
-pub(in crate::ui) struct FolderViews {
+pub struct FolderViews {
     entries: BTreeMap<FolderKey, Entry>,
     clock: u64,
     /// Unsaved changes, kept so a save can merge them over what another Strata
@@ -131,7 +139,7 @@ pub(in crate::ui) struct FolderViews {
 }
 
 impl FolderViews {
-    pub(in crate::ui) fn view(&self, key: &FolderKey) -> FolderView {
+    pub fn view(&self, key: &FolderKey) -> FolderView {
         self.entries
             .get(key)
             .map(|entry| entry.view)
@@ -139,22 +147,22 @@ impl FolderViews {
     }
 
     #[cfg(test)]
-    pub(in crate::ui) fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.entries.len()
     }
 
-    pub(in crate::ui) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
-    pub(in crate::ui) fn has_within(&self, root: &FolderKey) -> bool {
+    fn has_within(&self, root: &FolderKey) -> bool {
         self.entries
             .range(root..)
             .next()
             .is_some_and(|(key, _)| root.contains(key))
     }
 
-    pub(in crate::ui) fn may_forget(&self, root: &FolderKey) -> bool {
+    pub fn may_forget(&self, root: &FolderKey) -> bool {
         let drive_root =
             matches!(root, FolderKey::Volume { relative, .. } if relative.as_os_str().is_empty());
         !drive_root && self.has_within(root)
@@ -179,11 +187,11 @@ impl FolderViews {
         self.changed.insert(key, self.edits);
     }
 
-    pub(in crate::ui) fn edits(&self) -> u64 {
+    pub fn edits(&self) -> u64 {
         self.edits
     }
 
-    pub(in crate::ui) fn touch(&mut self, key: &FolderKey) -> bool {
+    pub fn touch(&mut self, key: &FolderKey) -> bool {
         if !self.entries.contains_key(key) {
             return false;
         }
@@ -196,11 +204,7 @@ impl FolderViews {
         true
     }
 
-    pub(in crate::ui) fn update(
-        &mut self,
-        key: &FolderKey,
-        change: impl FnOnce(&mut FolderView),
-    ) -> bool {
+    pub fn update(&mut self, key: &FolderKey, change: impl FnOnce(&mut FolderView)) -> bool {
         let previous = self.view(key);
         let mut view = previous;
         change(&mut view);
@@ -218,7 +222,7 @@ impl FolderViews {
         true
     }
 
-    pub(in crate::ui) fn prune_default_sort(&mut self, sort: crate::model::SortOptions) -> bool {
+    pub fn prune_default_sort(&mut self, sort: crate::model::SortOptions) -> bool {
         self.update_all(|view| {
             if view.sort == Some(sort) {
                 view.sort = None;
@@ -226,7 +230,7 @@ impl FolderViews {
         })
     }
 
-    pub(in crate::ui) fn prune_default_icons_size(&mut self, size: i32) -> bool {
+    pub fn prune_default_icons_size(&mut self, size: i32) -> bool {
         self.update_all(|view| {
             if view.icons_size == Some(size) {
                 view.icons_size = None;
@@ -251,7 +255,7 @@ impl FolderViews {
         any
     }
 
-    pub(in crate::ui) fn clear(&mut self) -> bool {
+    pub fn clear(&mut self) -> bool {
         let changed = !self.entries.is_empty();
         self.entries.clear();
         self.changed.clear();
@@ -265,12 +269,7 @@ impl FolderViews {
     /// them for `None`. Like folder colors, a move drops stale values at and
     /// under its destination, while a merge into an existing folder keeps that
     /// folder's own values and carries the ones inside `from` over its contents.
-    pub(in crate::ui) fn relocate(
-        &mut self,
-        from: &FolderKey,
-        to: Option<&FolderKey>,
-        merged: bool,
-    ) -> bool {
+    pub fn relocate(&mut self, from: &FolderKey, to: Option<&FolderKey>, merged: bool) -> bool {
         if to == Some(from) {
             return false;
         }
@@ -304,7 +303,7 @@ impl FolderViews {
         true
     }
 
-    pub(in crate::ui) fn take_within(&mut self, root: &FolderKey) -> TakenViews {
+    pub fn take_within(&mut self, root: &FolderKey) -> TakenViews {
         let taken = self
             .keys_within(root)
             .into_iter()
@@ -318,7 +317,7 @@ impl FolderViews {
     }
 
     /// A restore counts as the latest use, so restoring cannot evict what it restored.
-    pub(in crate::ui) fn put_back(&mut self, mut taken: TakenViews) -> bool {
+    pub fn put_back(&mut self, mut taken: TakenViews) -> bool {
         if taken.0.is_empty() {
             return false;
         }
@@ -336,7 +335,7 @@ impl FolderViews {
     /// changes applied on top. Folders changed or opened here become the latest
     /// used, since the other process's clock may have run ahead of this one's,
     /// and the changes stay unsaved until a write succeeds.
-    pub(in crate::ui) fn merged_over(&self, saved: Self) -> Self {
+    pub fn merged_over(&self, saved: Self) -> Self {
         let mut merged = if self.cleared.is_some() {
             Self::default()
         } else {
@@ -378,17 +377,17 @@ impl FolderViews {
         merged
     }
 
-    pub(in crate::ui) fn has_unsaved(&self) -> bool {
+    pub fn has_unsaved(&self) -> bool {
         self.cleared.is_some() || !self.changed.is_empty() || !self.touched.is_empty()
     }
 
-    pub(in crate::ui) fn mark_saved_through(&mut self, edits: u64) {
+    pub fn mark_saved_through(&mut self, edits: u64) {
         self.changed.retain(|_, edit| *edit > edits);
         self.touched.retain(|_, edit| *edit > edits);
         self.cleared = self.cleared.filter(|edit| *edit > edits);
     }
 
-    pub(in crate::ui) fn same_views(&self, other: &Self) -> bool {
+    pub fn same_views(&self, other: &Self) -> bool {
         self.entries.len() == other.entries.len()
             && self.entries.iter().all(|(key, entry)| {
                 other
@@ -417,7 +416,7 @@ impl FolderViews {
     /// Fails only for invalid TOML or an unknown version, which saving must not
     /// overwrite. Invalid entries and fields are skipped individually, and the
     /// returned flag says whether anything was dropped or repaired.
-    pub(in crate::ui) fn parse(contents: &str) -> io::Result<(Self, bool)> {
+    pub fn parse(contents: &str) -> io::Result<(Self, bool)> {
         let table: toml::Table = toml::from_str(contents)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         match table.get("version") {
@@ -466,7 +465,7 @@ impl FolderViews {
         Ok((views, repaired))
     }
 
-    pub(in crate::ui) fn to_toml(&self) -> io::Result<String> {
+    pub fn to_toml(&self) -> io::Result<String> {
         let mut entries: Vec<(&FolderKey, &Entry)> = self.entries.iter().collect();
         entries.sort_by(|(left_key, left), (right_key, right)| {
             right

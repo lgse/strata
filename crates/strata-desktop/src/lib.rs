@@ -11,6 +11,7 @@ rust_i18n::i18n!(
 );
 
 use strata_core::{i18n, model, storage, trusted_command, util};
+use strata_fs::adapters;
 use strata_preview::sandbox;
 
 pub mod build_info;
