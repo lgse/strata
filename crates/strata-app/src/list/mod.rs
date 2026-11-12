@@ -14,6 +14,7 @@ use strata_components::{
     collection::keyboard::{KeySettings, Letters},
     list_table::{ColumnLayout, ColumnWidths, ListTableState},
 };
+use strata_core::i18n::tr;
 use strata_desktop::settings::Preferences;
 
 use crate::single::Single;
@@ -56,7 +57,7 @@ impl List {
         // `explorer_file_clicks` and `explorer_folder_clicks`: the List view's.
         let clicks = (settings.list_file_clicks, settings.list_folder_clicks);
         Self {
-            single: Single::new(VIEW, clicks, keys(typing), "List view"),
+            single: Single::new(VIEW, clicks, keys(typing), tr("List view")),
             table: ListTableState::new(),
             layout: view::layout(),
             widths: ColumnWidths::default(),

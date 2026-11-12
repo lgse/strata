@@ -73,19 +73,19 @@ fn controlled() -> CollectionState {
 
 impl Single {
     /// The state of the view keyed `key`, opening a file and a folder with `(file, folder)`
-    /// clicks, reading `keys`, and described as `view` (its `view_name`, in English).
+    /// clicks, reading `keys`, and described as `described`, its translated `view_name`.
     pub(crate) fn new(
         key: &'static str,
         (file, folder): (u8, u8),
         keys: KeySettings,
-        view: &str,
+        described: String,
     ) -> Self {
         Self {
             pane: Pane::new(key, controlled()),
             clicks: ClickModes::new(clicks(file), clicks(folder)),
             keys,
             words: Words::translated(),
-            described: tr(view),
+            described,
             entries: tr("Files"),
         }
     }
@@ -245,9 +245,9 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         // A press with any button outside the field commits an open rename in the GTK view.
         // The view opens no context menu yet.
         Intent::ContextMenu { .. } => rename::commit(app, tx),
-        // Left at the view's start: the sidebar takes the keyboard, when there is one. Right,
-        // and Left anywhere else, stay (`single_pane_arrow_action` in
-        // `src/ui/window/key_routing.rs`).
+        // Left at the view's start: the sidebar takes the keyboard, when there is one. The
+        // component decides where its start is, from the view's keys (the first tile in Icons,
+        // any row in List); only that Left reaches here.
         Intent::Edge(Direction::Left) => {
             shell::leave_view_at_start(app, tx);
         }

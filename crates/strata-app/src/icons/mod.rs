@@ -10,6 +10,7 @@ use strata_components::{
     collection::keyboard::{KeySettings, Letters},
     icons_grid::IconsGridState,
 };
+use strata_core::i18n::tr;
 use strata_desktop::settings::Preferences;
 
 use crate::single::Single;
@@ -45,7 +46,7 @@ impl Icons {
         let typing = settings.type_to_search && !settings.tenxer_mode;
         let clicks = (settings.icons_file_clicks, settings.icons_folder_clicks);
         Self {
-            single: Single::new(VIEW, clicks, keys(typing), "Icons view"),
+            single: Single::new(VIEW, clicks, keys(typing), tr("Icons view")),
             grid: IconsGridState::new(),
             // The saved size, which loading holds between 32 and 256 (`stored.rs` in
             // `strata_desktop::settings`). The size a folder remembers is B2's store's.
