@@ -133,6 +133,12 @@ closed issue is not a fixed finding: the state given here is the finding's.
   message (`src/ui/window/tests/keyboard_dispatch/icon_motion.rs:195`), and passed in the
   one rerun of the whole workflow. That change is to `crates/strata-app`, which the GTK lane
   does not compile, and to Markdown.
+- **On [#2204](https://github.com/lgse/strata/pull/2204):** an eighth,
+  `ui::preview::tests::video::video_steps_reuse_one_view_and_keep_playback`
+  (`src/ui/preview/tests/video.rs:156`, "rendered stream", the seventh's message in its
+  sibling), failed once in CI's shard 3 at `8ba5dce33`. That change adds key constants and
+  two characters to the table key backend, which the GTK application does not install;
+  `./scripts/quality.sh test` had passed with it in the pinned image.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
