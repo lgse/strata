@@ -1,0 +1,113 @@
+# Parity status
+
+The state of each work package of [the parity plan](README.md), one row each, grouped by
+wave. The states are `not started`, `in progress`, `done` and `held`; a package's file says
+why it is held, what it has delivered and what is open. A package's agent edits its own row
+and its own file under [`packages/`](packages/), in the package's own pull requests, and
+nothing else here. Questions for the owner and the owner's rulings are in
+[`owner.md`](owner.md), and the plan's findings in [`findings.md`](findings.md).
+
+Each package was tracked in a GitHub issue until 2026-11-12, when the issues were closed and
+tracking moved here. The issues stay as an archive: each package file links its own.
+
+## Packages
+
+### Wave 0: foundations
+
+| ID | Package | State | Depends on | Pull requests |
+| --- | --- | --- | --- | --- |
+| [H0](packages/H0.md) | Issue map and labels | done | None | [#2164](https://github.com/lgse/strata/pull/2164) |
+| [H1](packages/H1.md) | Whole-corpus ledger | done | None | [#2165](https://github.com/lgse/strata/pull/2165), [#2166](https://github.com/lgse/strata/pull/2166) |
+| [H2](packages/H2.md) | Exception conventions in the runner | done | H1 | [#2171](https://github.com/lgse/strata/pull/2171) |
+| [B1](packages/B1.md) | Shell seams | done | None | [#2167](https://github.com/lgse/strata/pull/2167), [#2169](https://github.com/lgse/strata/pull/2169) |
+| [B2](packages/B2.md) | Shared state out of the GTK package | in progress | None | [#2168](https://github.com/lgse/strata/pull/2168), [#2170](https://github.com/lgse/strata/pull/2170), [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178), [#2188](https://github.com/lgse/strata/pull/2188) |
+| [B3](packages/B3.md) | Commands and key dispatch | held | B1; B2's key catalog | None |
+| [F1](packages/F1.md) | Fuzz driver and GTK calibration | in progress | None | [#2181](https://github.com/lgse/strata/pull/2181) (open) |
+
+### Wave 1: first fan-out
+
+| ID | Package | State | Depends on | Pull requests |
+| --- | --- | --- | --- | --- |
+| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2192](https://github.com/lgse/strata/pull/2192) (open) |
+| [A2](packages/A2.md) | List view | not started | B1 | None |
+| [A3](packages/A3.md) | Sidebar | not started | B1 | None |
+| [A4](packages/A4.md) | Tabs | not started | B1, B2 | None |
+| [A5](packages/A5.md) | Location bar | not started | B1 | None |
+| [A6](packages/A6.md) | Menus, dialogs and keymap | not started | B1, B2, B3 | None |
+| [A7](packages/A7.md) | Entry management and undo | not started | B3 | None |
+| [H3](packages/H3.md) | Backend reach | not started | H1 | None |
+| [H4](packages/H4.md) | Session host | not started | H1 | None |
+| [H5](packages/H5.md) | Coverage-gap scenarios | held | H0 | None |
+| [F2](packages/F2.md) | Differential mode and Columns pilot | not started | F1, H2 | None |
+| [F3](packages/F3.md) | Rune-side invariants | not started | F1 | None |
+
+### Wave 2: second fan-out
+
+| ID | Package | State | Depends on | Pull requests |
+| --- | --- | --- | --- | --- |
+| [A8](packages/A8.md) | View switching and appearance | not started | A1, A2, B2 | None |
+| [A9](packages/A9.md) | Pointer and click modes | not started | A1, A2 | None |
+| [A10](packages/A10.md) | Search, filter and sort | not started | A1, A2, B3 | None |
+| [A11](packages/A11.md) | 10xer mode | not started | A6, A10 | None |
+| [A12](packages/A12.md) | Clipboard and conflicts | not started | A7; H4 for some runs | None |
+| [A13](packages/A13.md) | Archives and providers | not started | A6, A7 | None |
+| [A14](packages/A14.md) | Open with, terminal and custom actions | not started | A6 | None |
+| [A15](packages/A15.md) | Preview drawer, text and documents | not started | B1 | None |
+| [A16](packages/A16.md) | Media, PDF and model viewers | not started | A15 | None |
+| [A17](packages/A17.md) | Properties | not started | A6 | None |
+| [A18](packages/A18.md) | Settings and themes | not started | A6, B2 | None |
+| [F4](packages/F4.md) | Fuzz rotation | not started | F2 | None |
+
+### Wave 3: bound to a real window
+
+| ID | Package | State | Depends on | Pull requests |
+| --- | --- | --- | --- | --- |
+| [A19](packages/A19.md) | Drag and drop | not started | H4, A1 to A5 | None |
+| [A20](packages/A20.md) | Portal chooser | not started | H4, A1, A2, A5 | None |
+| [A21](packages/A21.md) | Window and launch | not started | H4 | None |
+| [F5](packages/F5.md) | Session-host fuzzing | not started | H4, F2 | None |
+
+### Wave 4: exit
+
+| ID | Package | State | Depends on | Pull requests |
+| --- | --- | --- | --- | --- |
+| [E1](packages/E1.md) | Close the ledger | not started | Every A and H package | None |
+| [E2](packages/E2.md) | Soak | not started | E1, F4, F5 | None |
+| [E3](packages/E3.md) | Desktop hand checks | not started | A19, A20, A21 | None |
+| [E4](packages/E4.md) | Retire GTK | not started | E2, E3 | None |
+
+Pull requests are on `lgse/strata` and target `strata-next`. A package whose dependencies are
+`done` may start; "B2's key catalog" in B3's row is a dependency the plan does not record,
+explained in [B3's file](packages/B3.md).
+
+## Checkpoints
+
+The plan's checkpoints are where the owner looks at the numbers
+([Checkpoints](README.md#checkpoints)). Each report gives five counts. Here they are as they
+stand on `strata-next` today, with the command that produces each; whoever writes a
+checkpoint report runs them again.
+
+| Count | Today | Command |
+| --- | --- | --- |
+| Runs by status and reason | 760 runs: 36 `required`, 0 `parallel`, 715 `pending` (711 `scope`, 3 `platform`, 1 `rune`), 9 `excluded` | `./scripts/qa-parity.sh all --counts` |
+| Twins by exception code | 0 of each code | The `twins` line of `./scripts/qa-parity.sh all --counts`; `./scripts/qa-parity.sh all --twins` lists each twin |
+| Normalisation rules by code | None on `strata-next`: the map arrives with F1's pull request [#2181](https://github.com/lgse/strata/pull/2181), empty there, with an empty calibration mask | `./scripts/qa-fuzz.sh check`, once [#2181](https://github.com/lgse/strata/pull/2181) merges |
+| Open `divergence` and `oracle` findings | 0 `divergence`; 9 `oracle`, none fixed | [`findings.md`](findings.md) |
+| Packet entries added | 0: the packet has its 98 entries and no "Added during parity work" section | `docs/rune/upstream/rune/README.md` |
+
+Both `qa-parity.sh` reports read the ledger and the scenario files on the host: they start no
+container and build nothing.
+
+### End of wave 0
+
+The plan's three conditions:
+
+| Condition | State |
+| --- | --- |
+| H1 lists 760 runs, each with a package | Met: 760 runs in 58 files, each with its package ([H1](packages/H1.md)) |
+| B1 is merged | Met: [#2167](https://github.com/lgse/strata/pull/2167) and [#2169](https://github.com/lgse/strata/pull/2169) ([B1](packages/B1.md)) |
+| Two GTK runs of one fuzz seed agree | Not yet met on `strata-next`. Shown on F1's open pull request [#2181](https://github.com/lgse/strata/pull/2181), wherever GTK agrees with itself; the seeds that did not are `oracle` findings ([F1](packages/F1.md)) |
+
+B2 and B3 are wave 0 packages that are not done, and the checkpoint does not wait on them:
+waves are dependency waves, and wave 1 packages start as their own dependencies finish
+([`owner.md`](owner.md#ruled)).
