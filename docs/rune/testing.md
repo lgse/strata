@@ -389,15 +389,15 @@ window::`). `mise run test` and `check` never start a session.
 | --- | --- |
 | `STRATA_VK_ICD` | The Vulkan ICD clients use. Without it, lavapipe where installed, else the default driver. An ICD file outside the system's must name its `library_path` absolutely; `LD_LIBRARY_PATH` passes through too. |
 | `STRATA_WLR_RENDERER` | sway's renderer. Without it: pixman when the ICD is lavapipe (CI's path, no GPU), else gles2. A hardware Vulkan driver presents through `linux-dmabuf`, which pixman doesn't offer. |
-| `STRATA_TEST_TIMEOUT_SCALE` | Multiplies every wait (10 s). CI sets 3. |
+| `STRATA_TEST_TIMEOUT_SCALE` | Multiplies every wait (10 s). `mise run test-platform` sets 3 when it is unset; a test run with `cargo test` directly gets 1. |
 | `STRATA_SWAY_DEBUG=1` | sway's debug log in `sway.log` |
 | `STRATA_TEST_PEER` | The peer binary, instead of `target/<profile>/strata-test-peer` |
 | `STRATA_SESSION_REPORT` | A file a session appends its directory and pids to (W3's kill tests) |
 | `STRATA_SESSION_NAME` | The session's log directory name, instead of the test's (a test binary run as a child) |
 
-CI runs them in `.github/workflows/platform.yml` on Ubuntu 26.04 (sway 1.11, libwayland
-1.24), with the packages in `crates/strata-platform/tests/support/packages.txt`. A work
-package that needs another package adds its own block there.
+No workflow runs them: they run where a developer or an agent starts the task. The
+packages they need are listed in `crates/strata-platform/tests/support/packages.txt`, and a
+work package that needs another adds its own block there.
 
 ### Writing one
 

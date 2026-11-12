@@ -59,8 +59,7 @@ impl Fixture {
     }
 
     fn apply(&mut self, change: Change) -> Applied {
-        let grouping = self.grouping;
-        self.pane.apply(change, &|_| grouping, &mut self.tx)
+        self.pane.apply(change, &mut self.tx)
     }
 
     /// The browser opens column `depth`, active or not, and lists one entry in it.
@@ -71,17 +70,20 @@ impl Fixture {
             location: folder.clone(),
             show_hidden: false,
             active,
+            grouping: self.grouping,
         }));
         let row = Row::of(&entry(&folder, &format!("in-{depth}")), &self.ids);
         self.apply(Change::Rows {
             depth,
             edit: Edit::Replace(vec![row]),
             marks: Some(Marks::default()),
+            grouping: self.grouping,
         });
         self.apply(Change::Loaded {
             depth,
             load: Load::Listed,
             marks: Marks::default(),
+            grouping: self.grouping,
         });
     }
 
@@ -173,6 +175,7 @@ fn rows_a_hidden_column_received_show_when_it_shows() {
         depth: 0,
         edit: Edit::Insert(vec![(1, vec![row])]),
         marks: Some(Marks::default()),
+        grouping: None,
     });
 
     fixture.apply(Change::Truncated {
@@ -215,6 +218,7 @@ fn a_grouped_folder_shows_and_steps_in_its_groups_and_an_ungrouped_one_does_not(
         location: folder.clone(),
         show_hidden: false,
         active: true,
+        grouping: fixture.grouping,
     }));
     let names = ["b.txt", "a.png", "c.txt"];
     let rows = names
@@ -225,6 +229,7 @@ fn a_grouped_folder_shows_and_steps_in_its_groups_and_an_ungrouped_one_does_not(
         depth: 0,
         edit: Edit::Replace(rows),
         marks: Some(Marks::default()),
+        grouping: fixture.grouping,
     });
     let id = |name: &str| {
         fixture
@@ -246,9 +251,11 @@ fn a_grouped_folder_shows_and_steps_in_its_groups_and_an_ungrouped_one_does_not(
     );
 
     fixture.grouping = None;
-    fixture.apply(Change::Busy {
+    fixture.apply(Change::Loaded {
         depth: 0,
-        busy: false,
+        load: Load::Listed,
+        marks: Marks::default(),
+        grouping: None,
     });
 
     assert!(fixture.pane.collection().groups().is_empty());
