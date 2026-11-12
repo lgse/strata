@@ -206,6 +206,12 @@ path, such as `strata::sandbox::browser=debug`, keeps working: the logger repeat
 `strata::module` directive for the crates in `EXTRACTED_CRATES` in
 `crates/strata-core/src/logging.rs`. Add a new crate to that list.
 
+A module that left `src/ui` is the exception, because its path inside the crate changed
+too: `strata::ui::preferences` became `strata_desktop::settings`, and
+`strata::ui::tabs_session` became `strata_desktop::tabs_session`. A filter on the old path
+no longer selects it, and neither does one on a parent, such as `RUST_LOG=strata::ui=debug`.
+Name the new target.
+
 ## Build facts
 
 `strata-desktop`'s build script sets the commit, release tag, build kind and the updater

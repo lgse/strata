@@ -119,15 +119,43 @@ from a restored session. `PreferenceManager::set_restore_tabs` removes the file 
 setting is turned off. Neither file changed. `src/ui/mod.rs` imports the module at its old
 name, so `crate::ui::tabs_session` still resolves.
 
-An interface reads with `load_restorable()` at start-up, when `Preferences::restore_tabs` is
-on, and writes with `save(&locations, active)` and `remove()`. All three are called on the
-interface thread, and none calls back.
+An interface reads with `load_restorable()` and writes with `save(&locations, active)` and
+`remove()`. None calls back.
+
+- `load_restorable` reads the file where it is called, and blocks. It belongs to start-up,
+  before the first window shows, which is the one place
+  [preferences.md](../preferences.md#consumers-and-intentional-scopes) allows a read on the
+  interface thread. It is not for `poll` or an update.
+- `save` and `remove` only queue: they put the bytes on the settings writer's queue and
+  return. Calling them from one thread, the interface's, keeps the saves in order.
 
 One thing differs outside behaviour: the module's own log line, for a session that cannot
 be serialized, is logged under `strata_desktop::tabs_session`. A filter written as
-`strata::ui::tabs_session` no longer matches it, because the path inside the crate changed
-too. A failed write is logged by the settings writer, under `strata_core::storage::writer`
-as before.
+`strata::ui::tabs_session` no longer selects it, because the path inside the crate changed
+too, and neither does a filter on a parent such as `strata::ui`
+([workspace.md](../../workspace.md#log-targets)). A failed write is logged by the settings
+writer, under `strata_core::storage::writer` as before.
+
+### What the seam does not carry
+
+The store holds locations and an index. The rules for using it are in GTK code that is
+deleted at parity, and no QA scenario seeds or reads `tabs.toml` or sets `restore_tabs`, so
+the parity ledger holds no interface to them. Their only tests are GTK's, in
+`src/ui/window/composition/tabs/tests.rs`. Both interfaces write the same file, so a
+difference reaches the user:
+
+| Rule | Where GTK has it |
+| --- | --- |
+| Restore on a plain launch only: `restore_tabs` on, and no folder argument, reveal request or unlock flow | `src/ui/window/launch.rs:104`, `docs/preferences.md:137` |
+| Only that window persists its tabs | `src/ui/window/launch.rs:98`, `src/ui/window/composition/tabs.rs:670` |
+| No save while restoring, or a restore that stops half way replaces the session | `tabs.rs:670` |
+| No save of an empty set. The store does not refuse one: it writes a session with no tabs, `load_restorable` then answers `None`, and the last good session is gone | `tabs.rs:690` |
+| `remove()` in place of a save while `restore_tabs` is off, and when the setting is turned off | `tabs.rs:673-676`, `src/ui/preferences/file_settings.rs:114-119` |
+| A restored local folder that no longer exists loses its tab, unless it is the only one, which opens the default folder | `tabs.rs:726-752` |
+| The stored form is `main`'s to change. Any version but 1 is refused and the next save writes version 1 over it, and the 1.x releases read the same file. A field for per-tab state is a change on `main` first | `crates/strata-desktop/src/tabs_session.rs:108` |
+| The writer is flushed at exit, or a save on its way to the file is lost. The windowed Rune host flushes; the offscreen host does not, which a restore scenario on the Rune target would need | `crates/strata-app/src/host/windowed.rs:90` |
+
+The line numbers are as of the move.
 
 ## Merging from `main`
 
@@ -146,7 +174,8 @@ What a merge reports, and what to do:
 | Git reports | Means | Do |
 | --- | --- | --- |
 | Nothing, and the change is in the moved file | The change was clear of every line the move touched | Build. A new item the application names needs `pub`, and a path that began `super::super::` or `crate::ui::` names something `strata-desktop` cannot reach |
-| `CONFLICT (content)` in the moved file | The change is next to a line whose visibility changed. That is the usual case: 32 lines of `folder_views.rs` did | Take `main`'s lines, with `pub` where `main` has `pub(in crate::ui)` on an item the application names |
+| `CONFLICT (content)` in the moved file | The change is next to a line whose visibility changed. That is the usual case: 32 lines of `folder_views.rs` did, and 4 of `tabs_session.rs` | Take `main`'s lines, with `pub` where `main` has `pub(in crate::ui)` (the per-folder views) or `pub(crate)` (the tab session) on an item the application names |
+| Nothing, and the application fails to build on an item of `tabs_session` | `main` added a `pub(crate)` item. It builds in `strata-desktop`, where `pub(crate)` is still valid, and fails where the application names it, not in the moved file | Make the item `pub` in the moved file |
 | `CONFLICT (file location)` | `main` added a file under a directory that moved, such as `src/ui/preferences/folder_views/`. Git placed it under the new directory | Accept the placement, declare its `mod` in the moved parent, and fix its paths |
 | `CONFLICT (modify/delete)`, with `main`'s version left at the old path | Git did not pair the file | Apply `main`'s change to the moved file by hand and delete the file at the old path. Never keep it: no `mod` declares that path, so it builds and the change is silently dropped |
 | Nothing, for a new file `main` added beside a moved file | Git moves a new file only with a directory that moved whole | If it belongs to the moved store, move it beside the store and declare it there |
