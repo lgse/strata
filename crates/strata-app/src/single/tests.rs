@@ -12,7 +12,7 @@ use crate::test_support::{
     PATIENCE, fixture,
     view::{
         Shape, assert_browser_agrees, browser_holds, field, hosted_in, open, press, right_click,
-        seen, shift, wait,
+        right_click_blank, seen, shift, wait,
     },
 };
 
@@ -210,15 +210,19 @@ fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_list() {
 }
 
 /// `selection/right-click-selects-entry`: a right-click on an entry outside the selection
-/// selects it alone, and one on an entry of a selection of several keeps the selection, as
-/// GTK's `context_entries` reads it. The browser holds what the menu acts on.
+/// opens that entry's menu and selects it alone, one on an entry of a selection of several
+/// opens its menu and keeps the selection, as GTK's `context_entries` reads it, and one on
+/// blank space opens the folder's. A menu is named by what it acts on (`menus.rs`). The
+/// browser holds what the menu acts on.
 fn a_right_click_selects_or_keeps(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
+        let title = Location::local(folder.path()).display_name();
         open(&mut host, case.shape, folder.path());
         press(&mut host, Key::End, Mods::default());
 
-        right_click(&mut host, case.shape, "readme.md");
+        let menu = right_click(&mut host, case.shape, "readme.md");
+        assert_eq!(menu.as_deref(), Some("readme.md"));
         let held = browser_holds(&host);
         assert_eq!(
             held,
@@ -228,9 +232,14 @@ fn a_right_click_selects_or_keeps(case: &Case, name: &str) {
 
         press(&mut host, Key::Home, Mods::default());
         press(&mut host, case.next.clone(), shift());
-        right_click(&mut host, case.shape, "documents");
+        let menu = right_click(&mut host, case.shape, "documents");
+        assert_eq!(menu.as_deref(), Some("documents"));
         let (selected, _) = browser_holds(&host);
         assert_eq!(selected, ["archive", "documents"]);
+        press(&mut host, Key::Escape, Mods::default());
+
+        let menu = right_click_blank(&mut host, case.shape);
+        assert_eq!(menu, Some(title));
     });
 }
 
