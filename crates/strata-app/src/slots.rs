@@ -54,6 +54,7 @@
 //! | The keyboard | A part focuses its own element with `Tx::focus`. A field or a menu gives the keyboard back to the shown view: `shell::view_focus(app)` is the key for a component's `focus_return`. A view whose keyboard leaves it at its start (Left in the first column) calls `shell::leave_view_at_start(app, tx)`: the sidebar takes it at its [`Sidebar::focus`], and nothing happens when there is no sidebar |
 //! | The view, whichever is shown | `shell::shown_view(app)`. A part never names a view's module. The rename editor opens and polls through the shown view's [`Editing`]; the context menu decides what a chosen row does once, in `menus.rs`, and asks the view's [`Rows`] only for what differs from view to view; the QA backend reads its panes by the view's [`Probe`] |
 //! | The id of an entry | `shell::id_of(app, &location)`: the window's one table, which [`Setup::ids`] also hands a part for its listener |
+//! | A context menu on one of its rows, or on its folder | A view's handler calls `menus::open(app, Request { depth, entry, anchor }, tx)` for the collection's `Intent::ContextMenu`, with no entry for the folder. The opener decides what the menu is for and lists, once for every view, and asks the view only for a row's position ([`Rows`]) |
 //! | The window's shortcuts to wait | [`Part::holds_keyboard`], true while the part has a text field open |
 //!
 //! # Rules for a part

@@ -1,9 +1,22 @@
 // SPDX-License-Identifier: MIT
 
-use strata_components::context_menu::{Item, MenuModel};
+use std::{any::TypeId, path::Path};
+
+use rune::{Tx, el};
+use strata_components::{
+    context_menu::{Item, MenuModel},
+    contract::{EntryId, Rect},
+};
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 
-use super::{EntryTarget, FolderTarget, ROWS, entry, folder, wired};
+use super::{EntryTarget, FolderTarget, Menu, ROWS, Request, entry, folder, wired};
+use crate::{
+    App,
+    host::offscreen::Offscreen,
+    shell,
+    slots::{Entry, Place, View},
+    test_support::{PATIENCE, fixture, hosted_over, idle_view},
+};
 
 fn file(name: &str) -> FileEntry {
     FileEntry {
@@ -289,4 +302,129 @@ fn every_row_is_in_the_catalogs_and_only_five_actions_are_wired() {
     live.dedup();
     live.retain(|id| wired(id).is_some());
     assert_eq!(live, ["open", "rename", "select-all", "refresh", "hidden"]);
+}
+
+/// A view the opener has never heard of: it draws one element and answers only what
+/// [`Rows`](crate::slots::Rows) asks about a row's position, from the browser's own order.
+struct Plain;
+
+fn plain_view() -> View<App> {
+    let mut view: View<App> = idle_view(
+        "plain",
+        |_, _| Some(el().key("plain").w(40.0).h(20.0).focusable(true)),
+        |_| true,
+    );
+    view.rows.position = |app, (depth, id)| {
+        let found = app.browser.with_column_entries(depth, |entries| {
+            entries
+                .iter()
+                .position(|entry| shell::id_of(app, &entry.location) == id)
+        });
+        found.flatten()
+    };
+    view
+}
+
+/// The plain view and the menu, and nothing else.
+fn a_plain_view_and_the_menu() -> Vec<Entry<App>> {
+    let view = Entry {
+        name: "plain",
+        kind: TypeId::of::<Plain>,
+        place: Place::View(plain_view()),
+        listen: |_| None,
+        publish: |_| {},
+        caught_up: |_| {},
+        poll: |_, _, _| false,
+        holds_keyboard: |_| false,
+    };
+    vec![view, Entry::of::<Menu>("menu")]
+}
+
+/// Opens `folder` in the window of the plain view and waits for the browser to list it.
+fn listed(host: &mut Offscreen, folder: &Path, entries: usize) {
+    host.app().open(Location::local(folder));
+    let counted = |host: &Offscreen| {
+        let counts = host.app().browser().column_entry_counts(0);
+        counts.is_some_and(|counts| counts.total == entries)
+    };
+    assert!(host.run_until(PATIENCE, counted), "the folder's listing");
+}
+
+fn id_of(host: &Offscreen, folder: &Path, name: &str) -> EntryId {
+    shell::id_of(host.app(), &Location::local(folder.join(name)))
+}
+
+/// Asks for the menu as a view's handler does, and says what opened: the name assistive
+/// technology hears, the entry it is for, and the header's lines.
+fn opened(host: &mut Offscreen, entry: Option<EntryId>) -> (String, Option<EntryId>, Vec<String>) {
+    let request = Request {
+        depth: 0,
+        entry,
+        anchor: Rect::new(10.0, 10.0, 0.0, 0.0),
+    };
+    host.runtime()
+        .update(move |app: &mut App, tx: &mut Tx| super::open(app, request, tx));
+    while host.turn() {}
+    let menu = &host.app().menu;
+    let target = menu.state.target().expect("an open menu").entry();
+    let header = menu.state.model().expect("its rows").header.clone();
+    (menu.name.clone(), target, header)
+}
+
+/// `context_entries` in `src/ui/browser/context_menu.rs`, through a view that gives only
+/// its rows' positions.
+#[test]
+fn a_menu_is_for_the_selection_its_entry_is_in_and_else_for_the_entry_alone() {
+    hosted_over(
+        "menus::tests",
+        "a_menu_is_for_the_selection_its_entry_is_in_and_else_for_the_entry_alone",
+        a_plain_view_and_the_menu,
+        |mut host| {
+            let folder = fixture();
+            listed(&mut host, folder.path(), 5);
+            let names = ["readme.md".to_owned(), "todo.txt".to_owned()];
+            assert!(host.app().browser().select_entries_by_name_at(0, &names));
+            while host.turn() {}
+
+            let todo = id_of(&host, folder.path(), "todo.txt");
+            let (name, target, header) = opened(&mut host, Some(todo));
+            assert_eq!(name, "todo.txt");
+            assert_eq!(target, Some(todo));
+            assert_eq!(header, ["2 items selected", "readme.md, todo.txt"]);
+
+            let documents = id_of(&host, folder.path(), "documents");
+            let (name, target, header) = opened(&mut host, Some(documents));
+            assert_eq!(name, "documents");
+            assert_eq!(target, Some(documents));
+            assert_eq!(header.first().map(String::as_str), Some("documents"));
+        },
+    );
+}
+
+#[test]
+fn with_no_entry_the_menu_is_the_folders_and_select_all_needs_something_to_select() {
+    hosted_over(
+        "menus::tests",
+        "with_no_entry_the_menu_is_the_folders_and_select_all_needs_something_to_select",
+        a_plain_view_and_the_menu,
+        |mut host| {
+            let select_all = |host: &Offscreen| {
+                let model = host.app().menu.state.model().expect("an open menu");
+                let row = items(model).find(|item| item.label == "Select All");
+                row.expect("the row").enabled
+            };
+            let folder = fixture();
+            listed(&mut host, folder.path(), 5);
+
+            let (name, target, header) = opened(&mut host, None);
+            assert_eq!(name, Location::local(folder.path()).display_name());
+            assert_eq!(target, None);
+            assert!(header.is_empty());
+            assert!(select_all(&host));
+
+            listed(&mut host, &folder.path().join("archive"), 0);
+            opened(&mut host, None);
+            assert!(!select_all(&host));
+        },
+    );
 }
