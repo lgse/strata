@@ -268,12 +268,15 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
   `docs/rune/slice/V5b-settings-store.md` and `docs/rune/shared-state.md` say where a
   change from `main` to them goes.
 - The vertical slice in `docs/rune/slice/` was approved on 2026-11-11. Since then migration
-  work on `strata-next` lands by pull requests that target `strata-next` and follow the pull
-  request rules above. By the owner's instruction of 2026-11-12, the parity plan's packages
-  are tracked in `docs/rune/parity/` instead of GitHub issues: a pull request links its
-  package's file where the template asks for the issue. The rules for `main` are unchanged.
+  work on `strata-next` follows the issue and pull request rules above, with pull requests
+  targeting `strata-next`. The exception, by the owner's instruction of 2026-11-12: the
+  parity plan's packages and findings are tracked in `docs/rune/parity/` instead of GitHub
+  issues. A parity pull request links its package's file where the template asks for the
+  issue, and its branch keeps the package's archived issue number. The rules for `main` are
+  unchanged.
 - Work package documents are the exception to keeping task records out of the tree: the
-  plans and their status under `docs/rune/` stay in the repository as Markdown.
+  plans, their status, the parity plan's findings and the owner's decisions under
+  `docs/rune/` stay in the repository as Markdown.
 
 ## Test organization
 

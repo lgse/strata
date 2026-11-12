@@ -11,8 +11,14 @@ in Rune bound for the filing packet (`rune-gap`), requests for a twin or a norma
 Until 2026-11-12 each finding was a GitHub issue. From now on a new finding is an entry in
 this file, added in the pull request that meets it, in the form of the entries below: its
 code, two lines on what was seen, the run, seed or test it concerns, and its state. Search
-this file by code and by scenario or seed name before adding one. When a finding is fixed or
-set aside for good, its entry says where, and stays.
+this file by code and by scenario or seed name before adding one. A finding met mid-run may
+land as its own small docs-only pull request that merges quickly, so other packages see it
+before the package's own pull request does. When a finding is fixed or set aside for good,
+its entry says where, and stays.
+
+An `oracle` finding is Strata's own bug, and its fix, if anyone takes it up, lands on `main`.
+`main` keeps its own rules, so a fix there still starts from a bug issue on `main`, as
+`AGENTS.md` asks; the entry here then links it.
 
 **References.** The ledger's `parallel` entries, a twin's `parity.ref`, and the fuzz driver's
 normalisation map, calibration mask and `parked` lists each cite the record behind them, and
@@ -21,9 +27,10 @@ twin, its packet entry, `docs/rune/upstream/rune/<number>-<name>.md`
 (`tests/qa/twins.rs` and `scripts/qa_parity_check.py` today, and `tests/qa/fuzz/rules.rs`
 once F1's pull request [#2181](https://github.com/lgse/strata/pull/2181) merges). References to the archived issues below stay valid and
 need no change. What a reference to a finding recorded only in this file looks like is a
-question for the owner ([`owner.md`](owner.md#tracking-and-findings)); until it is ruled, a
-change that needs to cite a new finding says so in its pull request and in its package's
-file.
+question for the owner, the first in [`owner.md`](owner.md#tracking-and-findings): a GitHub
+issue for each new finding as its reference, or a `contract` change to the readers to accept
+an anchor here. Until it is ruled, a change that needs to cite a new finding says so in its
+pull request and in its package's file, and waits.
 
 ## Findings
 
@@ -34,7 +41,7 @@ closed issue is not a fixed finding: the state given here is the finding's.
 
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2161).
 - `tests/qa/mutations/cut.patch` no longer applies since `src/ui/browser/clipboard.rs`
-  changed under it on `main` ([#2092](https://github.com/lgse/strata/issues/2092)), so nothing proves `cut-moves-only-after-paste` can fail.
+  changed under it on `main` ([#2092](https://github.com/lgse/strata/pull/2092)), so nothing proves `cut-moves-only-after-paste` can fail.
 - **Concerns:** the GTK mutation patch `cut.patch` and the scenario
   `clipboard/cut-moves-only-after-paste`.
 - **State:** open, set aside. `./scripts/qa-parity.sh slice` holds it as the
@@ -143,5 +150,3 @@ The four fuzz issues name their sequence files with the alphabet's version
 (`fuzz-calibration-v1-0000000000000067.jsonl` and the like); in [#2181](https://github.com/lgse/strata/pull/2181) as it stands the files
 are `tests/qa/fuzz/corpus/calibration/fuzz-calibration-<seed>.jsonl`, with no version. Use
 the names [#2181](https://github.com/lgse/strata/pull/2181) merges with.
-
-No `divergence`, `rune-gap` or `exception` finding has been recorded yet.

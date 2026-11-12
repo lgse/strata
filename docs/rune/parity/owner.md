@@ -13,13 +13,25 @@ session's notes, the item says so.
 
 ### Tracking and findings
 
-- **What a reference to a new finding looks like.** The ledger, twins, the fuzz driver's map,
-  mask and `parked` lists accept an issue or a packet entry and nothing else
-  ([`findings.md`](findings.md#recording-a-finding)), and `docs/testing.md`, "Twins", asks a
-  `deviation` twin for "the issue that records the owner's ruling". Now that findings and
-  rulings are recorded in these files, what stands in those places for an entry with no
-  issue? Meanwhile: nothing cites a finding recorded only here; a pull request that needs to
-  says so and waits. Source: recorded by the orchestrating session on 2026-11-12.
+- **What a reference to a new finding looks like.** Every record behind an exception names
+  its reference, and the readers accept two forms only. `tests/qa/twins.rs` (lines 70 to 99)
+  and `scripts/qa_parity_check.py` (lines 239 to 263) take a packet entry,
+  `docs/rune/upstream/rune/<number>-<name>.md`, for a `rune` twin and `lgse/strata#<number>`
+  for every other code. The fuzz driver's normalisation map, calibration mask and `parked`
+  lists, in [#2181](https://github.com/lgse/strata/pull/2181), take `lgse/strata#<number>` only. Each checks the form alone (and, for a
+  packet entry, that the file exists), never what the issue says. So everything that cites a
+  finding with no issue waits on this: every twin under `timing`, `a11y`, `toolkit`,
+  `oracle` or `deviation`, every normalisation rule or mask line, and every newly parked
+  fuzz seed. That reaches F2, F4 and any area package that meets a `timing`, `a11y` or
+  `oracle` difference. `docs/testing.md`, "Twins", also asks a `deviation` twin for "the
+  issue that records the owner's ruling". The two answers:
+  1. A new finding still gets a GitHub issue, as its reference, and
+     [`findings.md`](findings.md) holds its state.
+  2. A `contract` change to the readers, so that they accept an anchor in `findings.md` (or
+     `owner.md`, for a ruling).
+
+  Meanwhile: nothing cites a finding recorded only in `findings.md`; a pull request that
+  needs to says so and waits. Source: recorded by the orchestrating session on 2026-11-12.
 - **The plan's copy and the owner's document.** From the pull request that moved tracking
   here, the copy in [`README.md`](README.md) differs from the owner's document in
   "Coordination" and in the sentences that sent a reader to an issue for a package's state;
@@ -28,8 +40,8 @@ session's notes, the item says so.
 
 ### H1: Whole-corpus ledger
 
-Each of these is H1's reading of the plan or a default the orchestrating session set while
-the owner was away; the rules as they landed are in `docs/testing.md`, "Who owns a run", and
+Each of these is H1's reading of the plan or a default the orchestrating session set; the
+rules as they landed are in `docs/testing.md`, "Who owns a run", and
 are in force meanwhile. Source: the archived issue
 [#2122](https://github.com/lgse/strata/issues/2122), H1's closing comment.
 
@@ -108,7 +120,7 @@ comments of 2026-11-12, unless another is named.
 - **The key lookups behind one backend.** The five key lookups and the accelerator reader
   and writer sit behind one backend in `strata_desktop::keys`; GTK installs a GDK-backed one
   and stays an exact oracle; the `xkbcommon` backend is a `strata-desktop` feature that only
-  `strata-app` enables. So CI's guard against `xkbcommon` in a release build stays as it is.
+  `strata-app` and the GTK lane's tests enable. So CI's guard against `xkbcommon` in a release build stays as it is.
   A ruling of the orchestrating session after an independent read, waiting for the owner's
   confirmation. In force: it orders B2's remaining work.
 - **The Rune side writes `settings.toml` as GTK does**, because the plan puts what
@@ -137,10 +149,10 @@ comments of 2026-11-12, unless another is named.
   that shape.
 - **A key with no name is written as `0x…` or `U+XXXX` and is not read back**, as GTK does
   today. Whether that is behaviour to keep. Meanwhile: kept exactly.
-- **For the owner to know:** B2's agent read `gtk/gtkaccelgroup.c` during the design, before
-  the ruling that nothing derived from GTK's source is committed. The accelerator reader and
-  writer for the `xkbcommon` backend are therefore written by another session, one that has
-  not read GTK's source.
+- **The accelerator reader and writer for the `xkbcommon` backend** are written from GTK's
+  documented format and its observed behaviour, by a session that has not read GTK's
+  accelerator source. In force, as the rule that follows from the owner's ruling on GTK's
+  source.
 
 ### B3: Commands and key dispatch
 
@@ -164,6 +176,13 @@ comments of 2026-11-12, unless another is named.
   `src/ui`, and the Rune side has no conflict check. Source: the archived issues
   [#2133](https://github.com/lgse/strata/issues/2133) and [#2150](https://github.com/lgse/strata/issues/2150).
 
+### Packages added later
+
+- **A branch name for a package with no archived issue.** Branch names keep the package's
+  archived issue number, as `AGENTS.md` asks for one. A package added to the plan after
+  2026-11-12 has none; the owner decides the rule. Source: the pull request that moved
+  tracking here.
+
 ### H5: Coverage-gap scenarios
 
 - **Who merges H5's pull requests.** H5 writes its scenarios on `main` first, and agents were
@@ -182,10 +201,11 @@ Rulings of the owner on the parity work, oldest first.
   and `cut.patch`'s `[[stale_patch]]` entry is what "as before" means for the GTK patches
   (slice decision 27). The merge gate keeps both allowances. Source:
   `docs/rune/slice/README.md`, decision 27.
-- **2026-11-11: package agents merge their own pull requests** into `strata-next`, with a
-  merge commit, once a session other than the author's has reviewed them, the plan's merge
-  gate has passed and CI is green. Source: recorded by the orchestrating session on
-  2026-11-11; the plan's ["The merge gate"](README.md#the-merge-gate) has the gate.
+- **2026-11-11: package agents merge their own pull requests.** The owner said that a
+  package's agent merges its pull requests into `strata-next`, with a merge commit, once a
+  session other than the author's has reviewed them, the plan's
+  [merge gate](README.md#the-merge-gate) has passed and CI is green (recorded by the
+  orchestrating session, 2026-11-11).
 - **2026-11-12: link `xkbcommon` at run time for the key tables.** Nothing derived from GTK's
   source is committed: no generated tables and no script that generated them. The shared
   crate carries the rules where GTK behaves differently, found by running GTK. Source: the
@@ -194,15 +214,17 @@ Rulings of the owner on the parity work, oldest first.
   expression, so that it compiles against the shared key type, proved with
   `./scripts/qa-mutation.sh quick-preview`. The rule that a GTK mutation patch is never
   edited stands for every other line and patch. Source: the archived issue [#2125](https://github.com/lgse/strata/issues/2125).
-- **2026-11-12: wave 1 packages start as their own dependencies finish**, not after the end
-  of wave 0's checkpoint, which is still reported. Source: recorded by the orchestrating
-  session on 2026-11-12; the plan's "Checkpoints" says the same of waves.
-- **2026-11-12: three package agents build at once**, and pinned-container runs still go one
-  at a time on a machine. Source: recorded by the orchestrating session on 2026-11-12.
-- **2026-11-12: tracking moves to Markdown in the repository.** After a maintainer closed
-  every package and finding issue that day, finished or not, the owner said to keep going,
-  and to move tracking into documents checked in under `docs/`, as agents finish and new
-  ones start. So the state of a package, its record and its open questions live under
-  `docs/rune/parity/`, and the closed issues are an archive that is linked, never reopened.
-  Source: recorded by the orchestrating session on 2026-11-12, and carried out by the pull
-  request that added these files.
+- **2026-11-12: wave 1 packages start as their own dependencies finish.** The owner said
+  that a wave 1 package starts when its own dependencies are done, not after the end of wave
+  0's checkpoint, which is still reported (recorded by the orchestrating session,
+  2026-11-12). The plan's "Checkpoints" says the same of waves.
+- **2026-11-12: tracking moves to Markdown in the repository.** After every package and
+  finding issue was closed that day, finished or not, the owner said to keep going and to
+  move tracking into Markdown checked in under `docs/`, as agents finish and new ones start
+  (recorded by the orchestrating session, 2026-11-12). So a package's state, its record and
+  its open questions live under `docs/rune/parity/`, and the closed issues are an archive.
+
+## Housekeeping
+
+- Merged branches still on `lgse/strata`: H1's `feat/2122-h1-whole-corpus-ledger` and
+  `fix/2122-h1-runner-test-in-ci-shards`, and B2's five, which go when B2 is done.

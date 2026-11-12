@@ -191,6 +191,9 @@ could observe. It adds a generator, a comparator and a shrinker to the QA runner
 | Rune gap | An upstream packet entry, a workaround, and a `rune` rule that expires with it |
 | Noise | The calibration mask grows, only when two GTK runs of the seed differ |
 
+A parked seed, a rule and a mask line cite an issue today; what they cite for a finding
+recorded only in [`findings.md`](findings.md) is open ([`owner.md`](owner.md#tracking-and-findings)).
+
 Four conventions keep the fuzzer honest:
 
 - **Calibrate on GTK first.** The slice's V3 found the `app` snapshot differs between two
@@ -442,35 +445,36 @@ Four packages, all waiting on the session host.
 
 ## Coordination
 
-The files of this folder are the only state agents share, and `strata-next` is where
-finished work meets. No agent learns what another is doing from a branch or a conversation.
+The files of this folder hold the state agents share, and `strata-next` is where finished
+work meets. Work in flight is seen in the open pull requests that target `strata-next`.
 
 ### Tracking
 
-- **[`STATUS.md`](STATUS.md)** has one row per package, grouped by wave: its state (`not
-  started`, `in progress`, `done` or `held`), its dependencies and its pull requests.
-  **[`packages/<ID>.md`](packages/)** has the package's scope, its done-when list, its runs,
-  a dated record of its pull requests and decisions, what its dependents must know, and what
-  is open.
-- **A package's agent edits its own row and its own file,** in the package's own pull
-  requests. A note for another package goes under "Notes from other packages" in that
-  package's file, in the pull request that finds it; nothing else in another package's file
-  changes.
-- **The owner assigns.** The owner hands each package to an agent. The agent checks that
-  every dependency's row reads `done`, then claims the package: its first pull request sets
-  the row to `in progress` and names the branch in the package's file.
+- **[`packages/<ID>.md`](packages/)** is the source for each package: its state (`not
+  started`, `in progress`, `done` or `held`), its pull requests, its done-when list, its
+  runs, a dated record of what merged and what was decided, what its dependents must know,
+  and what is open. **[`STATUS.md`](STATUS.md)** gathers the states in one table; whoever
+  coordinates keeps it, and package pull requests do not edit it.
+- **A package's agent edits its own file,** in the package's own pull requests. A note for
+  another package goes under "Notes from other packages" in that package's file, in the pull
+  request that finds it; nothing else in another package's file changes.
+- **The owner assigns.** The owner hands each package to an agent, and that assignment is
+  the claim. The agent checks that every dependency's file reads `done`; its first pull
+  request sets the package's state to `in progress`.
 - **Search before recording.** Look in [`findings.md`](findings.md) by code and by scenario
   or seed name before adding a finding. A new one is an entry there, in the pull request
   that meets it.
 - **Report in the package's file.** Each pull request adds one dated entry to its record:
-  the runs it flipped, the command, the artifact directory.
+  its number, what it delivered and the runs it flipped. The commands and the evidence are
+  on the pull request.
 - **Questions for the owner** go in [`owner.md`](owner.md), with the default in force
   meanwhile, and so do the owner's rulings.
 - **A stalled package goes back** to the owner, who hands it on. There is no timer.
 - **The archived issues.** Until 2026-11-12 each package, the tracker and each finding was a
   GitHub issue on `lgse/strata` ([the issue map](#issue-map)). They were closed that day,
   finished or not. They stay as an archive that the package files and the findings link to:
-  never reopened, and no longer where work is recorded. A reference to one stays valid.
+  not reopened, by the coordinator's rule, and no longer where work is recorded. A
+  reference to one stays valid.
 
 The plan's labels live on as codes in the files above, in the ledger and in the fuzz
 driver's files:
@@ -527,7 +531,7 @@ driver's files:
 | Role | Does |
 | --- | --- |
 | Owner | Delegates each package and each merge from `main`. Rulings on deviations, filing upstream, hand checks, the checkpoints |
-| Package agent | One assigned package in one worktree. Runs the merge gate before merging, and keeps the package's row in [`STATUS.md`](STATUS.md) and its file current |
+| Package agent | One assigned package in one worktree. Runs the merge gate before merging, and keeps the package's file current |
 | Reviewer | A session other than the author's reviews each pull request |
 
 ## Validation and gates
