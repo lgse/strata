@@ -229,13 +229,8 @@ impl Pane {
         self.generation += 1;
         self.moving.clear();
         let column = Column::new(location, show_hidden, None);
-        self.collection.enter(
-            self.scope,
-            &column,
-            None,
-            Listing::Loading,
-            tx,
-        );
+        self.collection
+            .enter(self.scope, &column, None, Listing::Loading, tx);
         self.held = self.collection.selection.revision();
         self.shown = Some((depth, column));
     }
@@ -426,4 +421,3 @@ impl Pane {
         self.listing().map(Column::load)
     }
 }
-

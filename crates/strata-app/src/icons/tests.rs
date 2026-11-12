@@ -26,7 +26,8 @@ fn hosted_in(mode: &'static str, name: &str, run: impl FnOnce(Offscreen)) {
     let prepare = move || {
         let file = settings_file();
         std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
-        let saved = format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n");
+        let saved =
+            format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n");
         std::fs::write(file, saved).expect("settings");
     };
     hosted_after(MODULE, name, prepare, run);
@@ -229,12 +230,16 @@ fn return_opens_a_folder_in_place() {
         press(&mut host, Key::Enter, Mods::default());
 
         let seen = wait(&mut host, "the folder to open", |seen| {
-            seen.pane.as_ref().is_some_and(|[name, _]| name == "documents")
+            seen.pane
+                .as_ref()
+                .is_some_and(|[name, _]| name == "documents")
         });
         assert_eq!(names(&seen), ["notes.txt", "report.md", "spreadsheet.csv"]);
         let browser = host.app().browser();
         assert_eq!(browser.location_at(1), None, "a single column");
-        let active = browser.active_location().map(|location| location.display_name());
+        let active = browser
+            .active_location()
+            .map(|location| location.display_name());
         assert_eq!(active.as_deref(), Some("documents"));
     });
 }
