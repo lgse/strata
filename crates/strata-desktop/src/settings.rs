@@ -34,6 +34,7 @@ use crate::{
 
 mod corner_roundness;
 mod defaults;
+mod folder_view_file;
 pub mod folder_views;
 mod keymap;
 mod list_columns;
@@ -51,6 +52,9 @@ use defaults::{
     default_icons_thumbnail_size, default_release_channel, default_search_entry_limit,
     default_search_time_limit, default_sort_direction, default_sort_key,
     default_video_preview_backend,
+};
+pub use folder_view_file::{
+    FolderViewsSave, folder_views_path, load_folder_views, save_folder_views,
 };
 pub use keymap::KeymapOverrides;
 use list_columns::is_default_list_column_order;
