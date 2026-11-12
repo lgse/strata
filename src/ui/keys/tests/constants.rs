@@ -8,7 +8,7 @@ macro_rules! named {
     };
 }
 
-const CONSTANTS: &[(&str, u32)] = strata_desktop::key_constants!(named);
+pub(super) const CONSTANTS: &[(&str, u32)] = strata_desktop::key_constants!(named);
 
 #[test]
 fn every_key_constant_is_the_gdk_key_of_its_name() {
