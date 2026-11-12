@@ -148,12 +148,16 @@ fn return_opens_a_folder_in_place(case: &Case, name: &str) {
 
         press(&mut host, Key::Enter, Mods::default());
 
-        let seen = wait(&mut host, case.shape, "the folder to open", |seen| {
-            seen.pane
+        // The pane takes the folder's name before its listing arrives: wait for both.
+        let entries = ["notes.txt", "report.md", "spreadsheet.csv"];
+        let seen = wait(&mut host, case.shape, "the folder's listing", |seen| {
+            let named = seen
+                .pane
                 .as_ref()
-                .is_some_and(|[name, _]| name == "documents")
+                .is_some_and(|[name, _]| name == "documents");
+            named && seen.names() == entries
         });
-        assert_eq!(seen.names(), ["notes.txt", "report.md", "spreadsheet.csv"]);
+        assert_eq!(seen.names(), entries);
         let browser = host.app().browser();
         assert_eq!(browser.location_at(1), None, "a single column");
         let active = browser

@@ -358,10 +358,18 @@ impl Column {
             .enumerate()
             .map(|(place, kind)| (types[kind], place))
             .collect();
-        let rows = &self.rows;
-        // A stable sort: each group keeps the browser's order.
-        self.shown
-            .sort_by_key(|position| rows[*position].group.and_then(|group| rank.get(&group)));
+        // One pass into a bucket for each group, in the browser's order: linear in the rows,
+        // so a folder that arrives in many batches costs one pass a batch, not a sort.
+        let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); types.len()];
+        for position in &self.shown {
+            let group = self.rows[*position].group;
+            let place = group
+                .and_then(|group| rank.get(&group))
+                .copied()
+                .unwrap_or(0);
+            buckets[place].push(*position);
+        }
+        self.shown = buckets.concat();
         self.back = vec![usize::MAX; self.rows.len()];
         for (index, position) in self.shown.iter().enumerate() {
             self.back[*position] = index;

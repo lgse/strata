@@ -41,9 +41,8 @@ impl Part for List {
         build: view::build,
         shows,
         focus: VIEW,
-        // `BrowserMode::supports_type_grouping`: the List view groups by file type, once it
-        // turns grouping on.
-        supports_type_grouping: false,
+        // `BrowserMode::supports_type_grouping`: the List view groups by file type.
+        supports_type_grouping: true,
         pointer_at: None,
         rows: single::rows::<Self>(),
         editing: single::editing::<Self>(),
