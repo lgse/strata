@@ -29,7 +29,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use rune::{Cx, El, HelpLook, Key, KeyEvent, Tx, col, row, text};
+use rune::{Cx, El, HelpLook, Key, KeyEvent, TextEdit, Tx, col, row, text, text_input};
 use strata_components::collection::element::{
     Collection, CollectionState, Controllers, Intent, RowMarks,
 };
@@ -265,6 +265,8 @@ pub struct Demo {
     /// The entry being renamed: a stand-in editor shows in its name's place (C5's comes
     /// later). Escape ends it.
     pub renaming: Option<EntryId>,
+    /// The stand-in editor's field: what it holds, and that it has the keyboard.
+    pub rename_edit: TextEdit,
     /// The host's marks on tiles (cut, dragging, the filter's Enter target).
     pub marks: HashMap<EntryId, RowMarks>,
     /// The window's autoscroll (C24).
@@ -312,6 +314,7 @@ impl Demo {
             thumbs_on: true,
             with_details: true,
             renaming: None,
+            rename_edit: TextEdit::default(),
             marks: HashMap::new(),
         }
     }
@@ -354,13 +357,20 @@ impl Demo {
             .unwrap_or_default()
     }
 
+    /// Opens the stand-in editor on `id` with the keyboard in it, as C5's editor opens.
+    pub fn begin_rename(&mut self, id: EntryId) {
+        self.renaming = Some(id);
+        self.rename_edit = TextEdit::new(self.name_of(id));
+        self.rename_edit.focused = true;
+    }
+
     fn heard(&mut self, intent: Intent) -> Option<Intent> {
         self.intent = match &intent {
             Intent::Clicked { id } => format!("Clicked {}", self.name_of(*id)),
             Intent::Activate { id, .. } => format!("Opened {}", self.name_of(*id)),
             Intent::BeginDrag { ids, .. } => format!("Dragging {} items", ids.len()),
             Intent::BeginRename { id } => {
-                self.renaming = Some(*id);
+                self.begin_rename(*id);
                 format!("Renaming {}", self.name_of(*id))
             }
             Intent::ContextMenu { target, .. } => match target {
@@ -559,6 +569,13 @@ fn selection(g: &mut Gallery, dark: bool) {
     d.coll.note_selection(&d.listing);
 }
 
+/// A tile renaming: the stand-in editor in its caption, with the keyboard.
+fn renaming(g: &mut Gallery, dark: bool) {
+    let d = open(g, dark, Folder::Pictures);
+    let id = d.listing.id_at(8);
+    d.begin_rename(id);
+}
+
 fn long_names(g: &mut Gallery, dark: bool) {
     open(g, dark, Folder::Long);
 }
@@ -654,6 +671,8 @@ pub const SCENES: &[Scene] = &[
     ("c3-loading-dark", |g| loading(g, true)),
     ("c3-selection-light", |g| selection(g, false)),
     ("c3-selection-dark", |g| selection(g, true)),
+    ("c3-renaming-light", |g| renaming(g, false)),
+    ("c3-renaming-dark", |g| renaming(g, true)),
     ("c3-long-names-light", |g| long_names(g, false)),
     ("c3-long-names-dark", |g| long_names(g, true)),
     ("c3-size-32-light", |g| size_32(g, false)),
@@ -720,16 +739,27 @@ pub fn collection(g: &Gallery) -> Collection<Gallery> {
     })
     .rename(
         |g: &Gallery| g.c3.renaming,
-        strata_components::collection::element::Slot::pure(|g: &Gallery, rcx| {
+        // A field that grows from no width of its own, as C5's editor does: the tile, not the
+        // stand-in, gives it its width.
+        strata_components::collection::element::Slot::pure(|g: &Gallery, _| {
             let kit = g.kit();
-            text(rcx.entry.name.to_owned())
+            row()
                 .key("c3-rename")
-                .font(kit.ty.ui_compact)
-                .color(kit.c.text_base)
+                .grow(1.0)
+                .min_w(0.0)
                 .fill(kit.c.layer_01)
                 .outline(1.0, 0.0, kit.c.border_focus)
-                .truncate()
-                .w_full()
+                .child(
+                    text_input(&g.c3.rename_edit, kit.ty.ui_compact)
+                        .single_line()
+                        .key("c3-rename-field")
+                        .label("Rename")
+                        .color(kit.c.text_base)
+                        .grow(1.0)
+                        .shrink()
+                        .min_w(0.0)
+                        .on_edit(|g: &mut Gallery| &mut g.c3.rename_edit),
+                )
         }),
     )
     .describe(strata_components::collection::element::Describe::pure(

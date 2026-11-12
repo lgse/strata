@@ -183,6 +183,19 @@ mod c3 {
         assert_eq!(rest_on(&mut rt, "row-11/label").as_deref(), Some(renamed));
     }
 
+    /// rename: the editor in a tile's caption takes the keyboard. A field that grows from no
+    /// width of its own, as C5's does, gets one from the tile: Rune gives the keyboard to no
+    /// field it cannot show.
+    #[test]
+    fn a_rename_field_in_a_tile_takes_the_keyboard() {
+        let rt = mount("c3-renaming-light");
+        let focused = rt.elements().into_iter().find(|e| e.focused);
+        assert_eq!(
+            focused.and_then(|e| e.key).as_deref(),
+            Some("c3-rename-field")
+        );
+    }
+
     /// icons: "Keyboard focus on a card shows no name tooltip."
     #[test]
     fn a_key_moving_onto_a_cut_tile_shows_no_tooltip() {
