@@ -169,29 +169,30 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
         |app: &mut App| V::single_mut(app).pane.parts_mut(),
         |app: &App| &app.look,
         |app: &App| pane::<V>(app).version(),
-    )
-    .name(title::<V>(app))
-    .description(described::<V>(app))
-    .settings(single.keys.clone())
-    .settings(PointerSettings::default().modes(single.clicks))
-    .describe(Describe::pure(|app: &App, row| {
-        let single = V::single(app);
-        let description = single
-            .pane
-            .listing()?
-            .description(row.index, &single.words)?;
-        Some(description.to_owned())
-    }))
-    .empty(shown_status::<V>)
-    .on_intent(heard::<V>)
-    .on_cursor(|app: &mut App, _, tx| moved(app, tx))
-    .on_selection(moved);
+    );
+    // The registry reads a key ahead of the view's own.
+    let collection = commands::in_view(collection)
+        .name(title::<V>(app))
+        .description(described::<V>(app))
+        .settings(single.keys.clone())
+        .settings(PointerSettings::default().modes(single.clicks))
+        .describe(Describe::pure(|app: &App, row| {
+            let single = V::single(app);
+            let description = single
+                .pane
+                .listing()?
+                .description(row.index, &single.words)?;
+            Some(description.to_owned())
+        }))
+        .empty(shown_status::<V>)
+        .on_intent(heard::<V>)
+        .on_cursor(|app: &mut App, _, tx| moved(app, tx))
+        .on_selection(moved);
     // The editor answers in this view only while its edit names it.
-    let collection = collection.rename(
+    collection.rename(
         |app: &App| app.rename.state.renaming_in(V::KEY),
         rename::editor(app).slot(),
-    );
-    commands::in_view(collection)
+    )
 }
 
 /// The view's element: a group keyed `<key>-pane`, named by the folder and described as
