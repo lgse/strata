@@ -268,3 +268,23 @@ pub(crate) fn right_click_blank(host: &mut Offscreen, shape: Shape) -> Option<St
     let at = blank_of(host, shape);
     right_click_at(host, at)
 }
+
+/// A click on the open menu's item named `name`.
+pub(crate) fn choose(host: &mut Offscreen, name: &str) {
+    let tree = host.tree();
+    let items = all(&tree, &|node| {
+        node["role"]
+            .as_str()
+            .is_some_and(|role| role.starts_with("menu-item"))
+            && node["name"] == name
+    });
+    let bounds = &items.first().expect("the menu item")["bounds"];
+    let at = |index: usize| bounds[index].as_f64().expect("a bound");
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let (x, y) = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) / 2.0) as f32);
+    let runtime = host.runtime();
+    runtime.pointer_move(x, y);
+    runtime.pointer_down(x, y);
+    runtime.pointer_up(x, y);
+    idle(host);
+}
