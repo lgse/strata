@@ -462,17 +462,41 @@ names used here. What it does not answer yet replies "… is not supported on
 this target". It answers `field` for a text field whose caret is on its first
 line, with offsets in characters as here, and composes dead keys as a Rune
 window does: Escape with a dead key pending reaches the application, where
-GTK's input method takes it. `./scripts/qa-parity.sh` runs a gate of
-`tests/qa/parity/slice.toml` on both targets; see "The Rune target and the
-parity ledger" in `docs/testing.md`. Never write a scenario for one target:
-a run that cannot pass on Rune is `pending` in the ledger, with its reason.
+GTK's input method takes it. `./scripts/qa-parity.sh <selection>` runs runs
+of the parity ledger on both targets; a selection is a scenario folder, a work
+package (`A7`), a gate of the slice (`slice`, `g1`, `g2`, `g3`) or `all`, and
+`--counts` prints its runs by status and reason. See "The Rune target and the
+parity ledger" in `docs/testing.md`.
+
+**The parity ledger.** `tests/qa/parity/<folder>.toml` lists every run of
+`tests/qa/scenarios/<folder>` once, and a runner unit test fails when a run is
+missing, listed twice or no run of the folder. So a change that adds, renames,
+moves or removes a scenario, a mode or a variant edits the folder's file too:
+
+```toml
+[[run]]
+scenario = "<scenario>"
+run = "<run label>"
+package = "<the package that owns the folder>"
+status = "pending"
+reason = "scope"
+blocker = "<the same package>"
+```
+
+`package` is the work package that owns the run, and only it edits the entry.
+A Columns run of the slice's seven folders also names its `gate`. `status` is
+`required` (with `host`, `offscreen` or `session`), `pending` (with `reason`
+and `blocker`) or `excluded` (with the owner's `ruling`); unknown fields are
+refused. Never write a scenario for one target: a run that cannot pass on Rune
+is `pending` in the ledger, with its reason.
+
 `./scripts/qa-parity.sh mutations` checks the Rune target's own mutation
 patches, `tests/qa/parity/mutations/<scenario>.patch`: each must make its
 scenario's required runs fail on Rune. They are separate from a scenario's
 `mutation` header, which names a GTK patch under `tests/qa/mutations/`.
 `./scripts/qa-parity.sh gtk-mutations` runs those GTK patches for the slice's
-exit check, less the ones the ledger names under `[[stale_patch]]`, which must
-still fail to apply. The ledger's `[[flaky]]` entry lets one named run fail in
+exit check, less the ones the ledger's `slice.toml` names under `[[stale_patch]]`,
+which must still fail to apply. Its `[[flaky]]` entry lets one named run fail in
 `slice`'s whole-suite part, which says so each time. Neither is a way to excuse
 a scenario: the runner's tests hold both lists to what
 `docs/rune/slice/README.md` records, and `./scripts/qa.sh` reads neither.
