@@ -2,7 +2,7 @@
 
 use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
-use super::{Command, parse};
+use super::{Command, is_browser_worker, parse};
 
 fn arguments(list: &[&str]) -> Vec<OsString> {
     list.iter().map(OsString::from).collect()
@@ -33,4 +33,18 @@ fn an_argument_that_is_not_utf8_is_a_directory() {
     let name = OsString::from_vec(b"-caf\xe9".to_vec());
 
     assert_eq!(parse([name.clone()]), Ok(Command::Open(Some(name))));
+}
+
+/// As `launch_mode` in `src/main.rs`: the worker's argument counts only in first place, so a
+/// folder named `--browser-worker` opened with `--` is a folder.
+#[test]
+fn only_a_first_argument_makes_a_thumbnail_worker() {
+    for (list, worker) in [
+        (&["strata-rune", "--browser-worker"][..], true),
+        (&["strata-rune", "--", "--browser-worker"], false),
+        (&["strata-rune", "/srv/files", "--browser-worker"], false),
+        (&["strata-rune"], false),
+    ] {
+        assert_eq!(is_browser_worker(&arguments(list)), worker, "{list:?}");
+    }
 }
