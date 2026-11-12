@@ -82,6 +82,7 @@ impl Part for Columns {
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-        view(app).tick(app, clock, tx)
+        let said = app.columns.watch_surface(clock, tx);
+        view(app).tick(app, clock, tx) | said
     }
 }
