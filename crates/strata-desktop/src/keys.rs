@@ -17,6 +17,7 @@ mod key;
 mod key_constants;
 mod label;
 mod parts;
+mod table;
 
 pub use active::{Active, Fixed, set_active};
 pub use alias::{Context, FALLBACK, rewrite};
@@ -33,6 +34,7 @@ pub use label::{
     modifiers_label_in, search_text, shown,
 };
 pub use parts::{KeyPressParts, Typed};
+pub use table::Table;
 
 /// The modifiers shortcuts compare. Locks, AltGr, Hyper and Meta never count.
 pub const SHORTCUT_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
