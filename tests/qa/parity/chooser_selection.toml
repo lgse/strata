@@ -1,0 +1,171 @@
+# The parity ledger of tests/qa/scenarios/chooser_selection: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "chooser-divider-keeps-marquee"
+run = "columns-sidebar"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-divider-keeps-marquee"
+run = "list-sidebar"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-divider-keeps-marquee"
+run = "icons-sidebar"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-divider-keeps-marquee"
+run = "columns-file-area"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-divider-keeps-marquee"
+run = "list-file-area"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-divider-keeps-marquee"
+run = "icons-file-area"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-divider-keeps-marquee"
+run = "columns-rail-file-area"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-divider-keeps-marquee"
+run = "list-rail-file-area"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-divider-keeps-marquee"
+run = "icons-rail-file-area"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-filtered-file-click-previews"
+run = "columns"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-filtered-file-click-previews"
+run = "icons"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-filtered-file-click-previews"
+run = "list"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-heading-escape-keeps-selection"
+run = "list"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-pdf-zoom-keeps-text-size"
+run = "list-default"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-pdf-zoom-keeps-text-size"
+run = "list-tenxer"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "chooser-sidebar-drops-survive-resize"
+run = "list"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-tap-drag-keeps-request-open"
+run = "columns"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-tap-drag-keeps-request-open"
+run = "list"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "chooser-tap-drag-keeps-request-open"
+run = "icons"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "enter-returns-multiple-selection"
+run = "list"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "enter-returns-multiple-selection"
+run = "columns"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"

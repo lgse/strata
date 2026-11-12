@@ -1,0 +1,19 @@
+# The parity ledger of tests/qa/scenarios/file_manager_interface: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "file-manager-reveals-requested-name"
+run = "columns-showitems"
+package = "A21"
+status = "pending"
+reason = "scope"
+blocker = "A21"
+
+[[run]]
+scenario = "file-manager-reveals-requested-name"
+run = "columns-showitemproperties"
+package = "A21"
+status = "pending"
+reason = "scope"
+blocker = "A21"

@@ -1,0 +1,51 @@
+# The parity ledger of tests/qa/scenarios/sidebar_reordering: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "builtin-places-reorder-survive-restart"
+run = "columns-row-before"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "builtin-places-reorder-survive-restart"
+run = "columns-row-after"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "builtin-places-reorder-survive-restart"
+run = "columns-gap-before"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "builtin-places-reorder-survive-restart"
+run = "columns-gap-after"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "pin-insertion-keeps-one-destination"
+run = "columns-expanded"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"
+
+[[run]]
+scenario = "pin-insertion-keeps-one-destination"
+run = "columns-compact"
+package = "A3"
+status = "pending"
+reason = "scope"
+blocker = "A3"

@@ -1,0 +1,107 @@
+# The parity ledger of tests/qa/scenarios/archive_errors: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "abandoned-extract-to-no-hijack"
+run = "columns-cancelled-password"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "abandoned-extract-to-no-hijack"
+run = "columns-read-only-destination"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "cancel-compression-allows-another"
+run = "columns-7z"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "cancel-compression-allows-another"
+run = "columns-tar-gz"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "folder-named-like-archive-no-extract"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "invalid-archive-reports-damage"
+run = "columns-fake.zip"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "invalid-archive-reports-damage"
+run = "columns-fake.7z"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "invalid-archive-reports-damage"
+run = "columns-fake.tar"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "invalid-archive-reports-damage"
+run = "columns-fake.tar.gz"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "invalid-archive-reports-damage"
+run = "columns-fake.rar"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "invalid-archive-reports-damage"
+run = "columns-scatter.zip"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "invalid-archive-reports-damage"
+run = "columns-trailer.tar.gz"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "wrong-extract-password-reopens"
+run = "list"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"

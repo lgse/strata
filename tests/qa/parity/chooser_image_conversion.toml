@@ -1,0 +1,27 @@
+# The parity ledger of tests/qa/scenarios/chooser_image_conversion: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "png-conversion-consent-reuses-download"
+run = "list"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "png-conversion-errors-keep-chooser"
+run = "list-animated"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"
+
+[[run]]
+scenario = "png-conversion-errors-keep-chooser"
+run = "list-corrupt"
+package = "A20"
+status = "pending"
+reason = "scope"
+blocker = "A20"

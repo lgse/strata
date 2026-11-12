@@ -1,0 +1,11 @@
+# The parity ledger of tests/qa/scenarios/popover_scrolling: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "panel-wheel-routing"
+run = "columns"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"

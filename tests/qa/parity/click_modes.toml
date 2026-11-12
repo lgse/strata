@@ -1,0 +1,243 @@
+# The parity ledger of tests/qa/scenarios/click_modes: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "click-mode-preference-live"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "click-then-double-click-no-rename"
+run = "columns"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "click-then-double-click-no-rename"
+run = "icons"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "click-then-double-click-no-rename"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "clicking-open-folder-focuses-column"
+run = "columns-row-space"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "clicking-open-folder-focuses-column"
+run = "columns-name"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "file-click-closes-deeper-column"
+run = "columns-previews-off"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "file-click-closes-deeper-column"
+run = "columns-previews-on"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "keyboard-open-selects-first-child"
+run = "columns"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "keyboard-open-selects-first-child"
+run = "icons"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "keyboard-open-selects-first-child"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "keyboard-selection-in-single-click-mode"
+run = "columns"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "keyboard-selection-in-single-click-mode"
+run = "icons"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "keyboard-selection-in-single-click-mode"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "sidebar-selection-depends-on-activation"
+run = "columns-mouse"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "sidebar-selection-depends-on-activation"
+run = "columns-keyboard"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "single-click-clipped-parent-column"
+run = "columns-settled"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "single-click-clipped-parent-column"
+run = "columns-revealed"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "single-click-opens-directory-group"
+run = "columns"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "single-click-opens-directory-group"
+run = "icons"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "single-click-opens-directory-group"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "single-click-opens-directory"
+run = "columns"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "single-click-opens-directory"
+run = "icons"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "single-click-opens-directory"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "two-clicks-open"
+run = "columns"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "two-clicks-open"
+run = "icons"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "two-clicks-open"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "two-slow-clicks-do-not-open"
+run = "columns"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "two-slow-clicks-do-not-open"
+run = "icons"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "two-slow-clicks-do-not-open"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"

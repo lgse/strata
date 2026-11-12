@@ -1,0 +1,195 @@
+# The parity ledger of tests/qa/scenarios/accessibility: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "appearance-options-expose-chosen"
+run = "columns-icons"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "appearance-options-expose-chosen"
+run = "columns-hidden"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "empty-directory-focus-and-tab-order"
+run = "columns-keyboard"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "empty-directory-focus-and-tab-order"
+run = "icons-keyboard"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "empty-directory-focus-and-tab-order"
+run = "list-keyboard"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "empty-directory-focus-and-tab-order"
+run = "columns-pointer"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "empty-directory-focus-and-tab-order"
+run = "icons-pointer"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "empty-directory-focus-and-tab-order"
+run = "list-pointer"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "fields-and-sliders-named"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "fields-and-sliders-named"
+run = "icons"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "focus-order-reaches-files"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "focus-order-reaches-files"
+run = "icons"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "focus-order-reaches-files"
+run = "list"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "icon-only-buttons-named"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "icon-only-buttons-named"
+run = "icons"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "icon-only-buttons-named"
+run = "list"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "listing-names-descriptions-selection"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "listing-names-descriptions-selection"
+run = "icons"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "listing-names-descriptions-selection"
+run = "list"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "permission-bits-expose-state"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "settings-choice-buttons-expose-value"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"
+
+[[run]]
+scenario = "settings-choice-options-expose-chosen"
+run = "columns-date-format"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"
+
+[[run]]
+scenario = "settings-choice-options-expose-chosen"
+run = "columns-drag-drop"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"
+
+[[run]]
+scenario = "toolbar-controls-named"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"

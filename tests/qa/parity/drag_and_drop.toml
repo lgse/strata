@@ -1,0 +1,307 @@
+# The parity ledger of tests/qa/scenarios/drag_and_drop: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "column-edge-scrolls-listing"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-cancels-folder-peek"
+run = "icons"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-cancels-folder-peek"
+run = "list"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-file-onto-folder"
+run = "columns-move"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-file-onto-folder"
+run = "icons-move"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-file-onto-folder"
+run = "list-move"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-file-onto-folder"
+run = "columns-copy"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-file-onto-folder"
+run = "icons-copy"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-file-onto-folder"
+run = "list-copy"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-folder-merges-into-same-named-folder"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-from-clipped-column-narrow-window"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drag-onto-pane-background"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drop-folder-into-itself"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drop-folder-into-itself"
+run = "icons"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "drop-folder-into-itself"
+run = "list"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "empty-name-space-drag-starts-marquee"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "empty-name-space-drag-starts-marquee"
+run = "list"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "escape-cancels-file-drag"
+run = "columns-ordinary"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "escape-cancels-file-drag"
+run = "icons-ordinary"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "escape-cancels-file-drag"
+run = "list-ordinary"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "escape-cancels-file-drag"
+run = "columns-tenxer"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "escape-cancels-file-drag"
+run = "icons-tenxer"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "escape-cancels-file-drag"
+run = "list-tenxer"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "escape-cancels-file-drag"
+run = "columns-preview"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "escape-cancels-file-drag"
+run = "columns-before-target"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "filtered-result-to-sidebar-folder"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "folder-into-another-folder"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "multi-selection-drag-moves-every-entry"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "release-outside-cancels-drag"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "row-padding-drag-view-policy"
+run = "columns-top"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "row-padding-drag-view-policy"
+run = "list-top"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "row-padding-drag-view-policy"
+run = "columns-bottom"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "row-padding-drag-view-policy"
+run = "list-bottom"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "row-padding-drag-view-policy"
+run = "list-airy"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "selected-blank-space-starts-file-drag"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "selected-blank-space-starts-file-drag"
+run = "icons"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "selected-blank-space-starts-file-drag"
+run = "list"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "strip-edge-scrolls-columns-in"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"

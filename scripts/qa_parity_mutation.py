@@ -7,9 +7,12 @@ Checked the way scripts/qa_mutation.py checks the GTK application's patches: the
 required runs pass on the Rune target unpatched, and at least one fails a step with the patch
 applied. A patch is `<scenario>.patch`.
 
+A patch may be named for a scenario of any folder: its required runs are looked up in the
+whole ledger, tests/qa/parity/<folder>.toml.
+
 With `gtk` it runs the GTK application's own patches for the slice's exit check instead:
 every patch under tests/qa/mutations but the ones the parity ledger names as stale before
-the slice, which must be stale still.
+the slice, in tests/qa/parity/slice.toml, which must be stale still.
 """
 
 from __future__ import annotations
@@ -43,7 +46,7 @@ def unguarded(scenarios: list[str], ledger: dict) -> list[str]:
     """The patches whose scenario has no required run: nothing would be run to catch them."""
 
     return [scenario for scenario in scenarios
-            if not qa_parity.selected(ledger, "slice", "required", scenario)]
+            if not qa_parity.selected(ledger, qa_parity.EVERY, "required", scenario)]
 
 
 def run_rune(scenario: str, destination: Path) -> tuple[dict[str, str], int]:
@@ -52,7 +55,7 @@ def run_rune(scenario: str, destination: Path) -> tuple[dict[str, str], int]:
     destination.mkdir(parents=True, exist_ok=True)
     log = destination / "qa-parity.log"
     started = time.monotonic()
-    command = [str(REPOSITORY / "scripts/qa-parity.sh"), "slice", "--target", "rune",
+    command = [str(REPOSITORY / "scripts/qa-parity.sh"), qa_parity.EVERY, "--target", "rune",
                "--scenario", scenario]
     with log.open("w", encoding="utf-8") as output:
         status = subprocess.run(

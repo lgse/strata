@@ -1,0 +1,59 @@
+# The parity ledger of tests/qa/scenarios/keymap: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "capture-records-latin-key-on-russian-layout"
+run = "columns-ru"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "capture-records-latin-key-on-russian-layout"
+run = "columns-ru-only"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "capture-refuses-a-taken-key"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "keymap-tables-change-independently"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "saved-keymap-applies-at-launch"
+run = "columns"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"
+
+[[run]]
+scenario = "settings-capture-rebinds-rename"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"
+
+[[run]]
+scenario = "structural-aliases-act-as-enter-and-escape"
+run = "list"
+package = "A6"
+status = "pending"
+reason = "scope"
+blocker = "A6"

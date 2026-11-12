@@ -1,0 +1,203 @@
+# The parity ledger of tests/qa/scenarios/tabs: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "breadcrumb-opens-new-tab"
+run = "columns"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "breadcrumb-opens-new-tab"
+run = "list"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "ctrl-drop-on-tab-copies"
+run = "columns-file"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "ctrl-drop-on-tab-copies"
+run = "columns-folder"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "drop-on-tab-moves-files"
+run = "columns-file"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "drop-on-tab-moves-files"
+run = "icons-file"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "drop-on-tab-moves-files"
+run = "list-file"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "drop-on-tab-moves-files"
+run = "columns-folder"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "drop-on-tab-moves-files"
+run = "icons-folder"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "drop-on-tab-moves-files"
+run = "list-folder"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "hovered-tab-takes-drop"
+run = "columns-file"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "hovered-tab-takes-drop"
+run = "icons-file"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "hovered-tab-takes-drop"
+run = "list-file"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "hovered-tab-takes-drop"
+run = "columns-folder"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "hovered-tab-takes-drop"
+run = "icons-folder"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "hovered-tab-takes-drop"
+run = "list-folder"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "reopen-closed-tabs"
+run = "columns"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "sidebar-locations-open-new-tabs"
+run = "columns"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "tab-drag-reorders-numbers"
+run = "columns"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "tenxer-tab-chords"
+run = "columns"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-tab-chords"
+run = "icons"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-tab-chords"
+run = "list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "view-folders-open-new-tabs"
+run = "columns"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "view-folders-open-new-tabs"
+run = "icons"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"
+
+[[run]]
+scenario = "view-folders-open-new-tabs"
+run = "list"
+package = "A4"
+status = "pending"
+reason = "scope"
+blocker = "A4"

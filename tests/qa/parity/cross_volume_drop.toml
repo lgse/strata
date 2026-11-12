@@ -1,0 +1,115 @@
+# The parity ledger of tests/qa/scenarios/cross_volume_drop: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "columns-copy"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "icons-copy"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "list-copy"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "columns-move"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "icons-move"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "list-move"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "columns-cancel"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "icons-cancel"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "list-cancel"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "columns-escape"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "columns-cancel-button"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "columns-close"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-enter-choice"
+run = "columns-backdrop"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "cross-volume-plain-copy"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"

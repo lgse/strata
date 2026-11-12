@@ -1,0 +1,59 @@
+# The parity ledger of tests/qa/scenarios/browser_workers: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "browser-workers-reuse-processes"
+run = "columns"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "browser-workers-reuse-processes"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "browser-workers-reuse-processes"
+run = "list"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "icons-rename-reuses-thumbnail-details"
+run = "columns"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "idle-workers-exit-and-restart"
+run = "columns"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "list-icons-fill-duration-cached"
+run = "list"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "stl-thumbnails-render-only-valid-models"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"

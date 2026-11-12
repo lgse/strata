@@ -1,0 +1,379 @@
+# The parity ledger of tests/qa/scenarios/filter_results: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "delete-trashes-filtered-result"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "delete-trashes-filtered-result"
+run = "icons"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "delete-trashes-filtered-result"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "dismissed-delete-confirmation-keeps-result-focus"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "dismissed-delete-confirmation-keeps-result-focus"
+run = "icons"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "dismissed-delete-confirmation-keeps-result-focus"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-enter-opens-top-match"
+run = "columns-folder"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-enter-opens-top-match"
+run = "icons-folder"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-enter-opens-top-match"
+run = "list-folder"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-enter-opens-top-match"
+run = "columns-subfolders"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-enter-opens-top-match"
+run = "icons-subfolders"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-enter-opens-top-match"
+run = "list-subfolders"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-results-follow-external-changes"
+run = "columns-false"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-results-follow-external-changes"
+run = "icons-false"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-results-follow-external-changes"
+run = "list-false"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-results-follow-external-changes"
+run = "columns-true"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-results-follow-external-changes"
+run = "icons-true"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-results-follow-external-changes"
+run = "list-true"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-slash-enters-folder"
+run = "columns-folder"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-slash-enters-folder"
+run = "icons-folder"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-slash-enters-folder"
+run = "list-folder"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-slash-enters-folder"
+run = "columns-subfolders"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-slash-enters-folder"
+run = "icons-subfolders"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-slash-enters-folder"
+run = "list-subfolders"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-updates-retain-state"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-updates-retain-state"
+run = "icons"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filter-updates-retain-state"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filtered-control-selection-group"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filtered-file-click-previews"
+run = "columns-two-clicks"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filtered-file-click-previews"
+run = "icons-two-clicks"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filtered-file-click-previews"
+run = "list-two-clicks"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filtered-file-click-previews"
+run = "columns-one-click"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filtered-file-click-previews"
+run = "icons-one-click"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filtered-file-click-previews"
+run = "list-one-click"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "filtered-results-group-selection"
+run = "icons"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "columns-inline"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "icons-inline"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "list-inline"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "columns-tab"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "icons-tab"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "list-tab"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "columns-tenxer"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "icons-tenxer"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "list-tenxer"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "icons-moved"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "renamed-filter-result-keeps-focus"
+run = "list-moved"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "space-completes-composition"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"

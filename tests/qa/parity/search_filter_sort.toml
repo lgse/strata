@@ -1,0 +1,243 @@
+# The parity ledger of tests/qa/scenarios/search_filter_sort: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "additional-sort-choices"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "additional-sort-choices"
+run = "icons"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "additional-sort-choices"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "dismissing-filter-keeps-hidden"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "global-search-arrows-keep-typing"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "global-search-finds-file-under-home"
+run = "columns-us"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "global-search-finds-file-under-home"
+run = "columns-ru-only"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "global-search-preview-follows-neighbor"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "global-search-reveal-visited-list"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "global-search-reveal"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "grouped-list-first-visit-starts-at-first-row"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "grouped-list-keeps-file-targets"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "hidden-files-toggle"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "local-filtered-result-opens-once"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "local-filtered-result-opens-once"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "recursive-file-double-click-launches-once"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "recursive-filtered-result-opens-once"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "recursive-filtered-result-opens-once"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "reversing-sort-direction"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "sorting-by-size"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "tenxer-footer-filter-commits"
+run = "columns"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-footer-filter-commits"
+run = "icons"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-footer-filter-commits"
+run = "list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-sort-chords-keep-cursor"
+run = "columns"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-sort-chords-keep-cursor"
+run = "icons"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-sort-chords-keep-cursor"
+run = "list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "type-to-search-finds-nested"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "type-to-search-finds-nested"
+run = "icons"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "type-to-search-finds-nested"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"
+
+[[run]]
+scenario = "wildcard-filter-patterns"
+run = "columns"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10"

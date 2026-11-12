@@ -1,0 +1,27 @@
+# The parity ledger of tests/qa/scenarios/drag_animation: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "delete-animation-keeps-survivors"
+run = "columns"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "delete-animation-keeps-survivors"
+run = "icons"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"
+
+[[run]]
+scenario = "delete-animation-keeps-survivors"
+run = "list"
+package = "A19"
+status = "pending"
+reason = "scope"
+blocker = "A19"

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Reads the parity ledger for scripts/qa-parity.sh: the runs a selection names, and the
-failures of the whole GTK suite its allowances let `slice` pass over."""
+"""Reads the parity ledger for scripts/qa-parity.sh: the runs a selection names, their
+counts by status and reason, and the failures of the whole GTK suite its allowances let
+`slice` pass over.
+
+The ledger is the directory tests/qa/parity: <folder>.toml lists the runs of one folder
+under tests/qa/scenarios, and slice.toml holds the slice's allowances (docs/testing.md).
+"""
 
 from __future__ import annotations
 
@@ -9,15 +14,66 @@ import argparse
 import re
 import sys
 import tomllib
+from collections import Counter
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-LEDGER = REPOSITORY / "tests/qa/parity/slice.toml"
+LEDGER = REPOSITORY / "tests/qa/parity"
+# The one file of the directory that lists no runs: the slice's allowances.
+ALLOWANCES = "slice.toml"
 GATES = {"g1": ("G1",), "g2": ("G2",), "g3": ("G3",), "slice": ("G1", "G2", "G3")}
-STATUSES = ("required", "pending")
+EVERY = "all"
+STATUSES = ("required", "pending", "excluded")
+MODES = ("columns", "icons", "list")
+# The host this command can start. A `session` run needs a real window in a compositor.
+OFFSCREEN = "offscreen"
+HOSTS = (OFFSCREEN, "session")
 # The runner's line for a failed test and its closing count of them, tests/qa/harness.rs.
 FAILED = re.compile(r"^test (\S+) \.\.\. FAILED\b")
 RESULT = re.compile(r"^test result: FAILED\. \d+ passed; (\d+) failed;")
+
+
+class UnknownSelection(ValueError):
+    """A selection that is no gate, folder or package of the ledger."""
+
+
+def name(run: dict) -> str:
+    return f"{run['scenario']}/{run['run']}"
+
+
+def folders(ledger: dict) -> list[str]:
+    return sorted({run["folder"] for run in ledger.get("run", [])})
+
+
+def packages(ledger: dict) -> list[str]:
+    return sorted({run["package"] for run in ledger.get("run", [])}, key=package_order)
+
+
+def package_order(package: str) -> tuple[str, int, str]:
+    """Packages by track and then number: A2 before A10."""
+
+    track, number = package[:1], package[1:]
+    return (track, int(number), "") if number.isdigit() else (package, 0, "")
+
+
+def chosen(ledger: dict, selection: str) -> list[dict]:
+    """The runs a selection names, in ledger order: a gate's, a folder's, a package's or all.
+
+    `slice` and the gates are the slice's set by its `gate` field, whoever owns the run.
+    A folder or a package is every view's runs.
+    """
+
+    runs = ledger.get("run", [])
+    if selection == EVERY:
+        return list(runs)
+    if selection in GATES:
+        return [run for run in runs if run.get("gate") in GATES[selection]]
+    for field, known in (("folder", folders(ledger)), ("package", packages(ledger))):
+        if selection in known:
+            return [run for run in runs if run[field] == selection]
+    raise UnknownSelection(
+        f"{selection!r} is no selection: it is {', '.join(GATES)} or {EVERY}, a folder of "
+        f"tests/qa/scenarios, or a package that owns a run ({', '.join(packages(ledger))})")
 
 
 def selected(ledger: dict, selection: str, status: str, scenario: str | None = None) -> list[str]:
@@ -26,16 +82,69 @@ def selected(ledger: dict, selection: str, status: str, scenario: str | None = N
     With `scenario`, only that scenario's runs.
     """
 
-    gates = GATES[selection]
-    return [f"{run['scenario']}/{run['run']}" for run in ledger.get("run", [])
-            if run["gate"] in gates and run["status"] == status
+    return [name(run) for run in chosen(ledger, selection)
+            if run["status"] == status and scenario in (None, run["scenario"])]
+
+
+def needs_session(ledger: dict, selection: str, scenario: str | None = None) -> list[str]:
+    """The selection's required runs this command cannot start: the session host's."""
+
+    return [name(run) for run in chosen(ledger, selection)
+            if run["status"] == "required" and run.get("host") != OFFSCREEN
             and scenario in (None, run["scenario"])]
+
+
+def mode(run: dict) -> str:
+    """The view a run starts in: its label is the mode, or the mode and a variant."""
+
+    return run["run"].split("-", 1)[0]
+
+
+def counts(ledger: dict, selection: str) -> str:
+    """A selection's runs by status and reason, by host, by view and by package."""
+
+    runs = chosen(ledger, selection)
+    spread = len({run["folder"] for run in runs})
+    by_host = Counter(run["host"] for run in runs if "host" in run)
+    by_mode = Counter(mode(run) for run in runs)
+    return "\n".join([
+        f"== {selection}: {len(runs)} run(s) in {spread} folder(s) ==",
+        *_by_status(runs),
+        "host      " + _listed(by_host, HOSTS),
+        "view      " + _listed(by_mode, MODES),
+        *_by_package(runs),
+    ])
+
+
+def _by_status(runs: list[dict]) -> list[str]:
+    """A line for each status, with the pending runs' reasons under theirs."""
+
+    by_status = Counter(run["status"] for run in runs)
+    reasons = Counter(run["reason"] for run in runs if run["status"] == "pending")
+    under = {"pending": [f"  {reason:<10}{count:>5}" for reason, count in sorted(reasons.items())]}
+    return [line for status in STATUSES
+            for line in (f"{status:<10}{by_status[status]:>5}", *under.get(status, []))]
+
+
+def _by_package(runs: list[dict]) -> list[str]:
+    """A heading, then a line for each package: its runs, and how many have each status."""
+
+    lines = [f"{'package':<10}{'runs':>5}" + "".join(f"{status:>10}" for status in STATUSES)]
+    for package in packages({"run": runs}):
+        owned = Counter(run["status"] for run in runs if run["package"] == package)
+        lines.append(f"{package:<10}{sum(owned.values()):>5}"
+                     + "".join(f"{owned[status]:>10}" for status in STATUSES))
+    return lines
+
+
+def _listed(counter: Counter, order: tuple[str, ...]) -> str:
+    return ", ".join(f"{key} {counter[key]}" for key in order)
 
 
 def flaky(ledger: dict) -> list[str]:
     """The `<scenario>/<run>` names the ledger allows to fail in the whole GTK suite."""
 
-    return [f"{run['scenario']}/{run['run']}" for run in ledger.get("flaky", [])]
+    return [name(run) for run in ledger.get("flaky", [])]
 
 
 def stale_patches(ledger: dict) -> list[str]:
@@ -65,8 +174,8 @@ def excused(ledger: dict, log: str) -> tuple[list[str], list[str]]:
 
     allowed = flaky(ledger)
     failed = failed_tests(log)
-    return ([name for name in failed if name in allowed],
-            [name for name in failed if name not in allowed])
+    return ([test for test in failed if test in allowed],
+            [test for test in failed if test not in allowed])
 
 
 def refusal(ledger: dict, log: str) -> str | None:
@@ -94,31 +203,62 @@ def report_excused(ledger: dict, log: Path) -> int:
     if reason := refusal(ledger, text):
         print(f"NO ALLOWANCE: {reason}", file=sys.stderr)
         return 1
-    for name in excused(ledger, text)[0]:
-        print(name)
+    for run in excused(ledger, text)[0]:
+        print(run)
     return 0
 
 
-def load(ledger: Path = LEDGER) -> dict:
-    with ledger.open("rb") as stream:
+def read(path: Path) -> dict:
+    with path.open("rb") as stream:
         return tomllib.load(stream)
 
 
+def load(ledger: Path = LEDGER) -> dict:
+    """Every folder's runs, each with its `folder`, in file and then ledger order; and the
+    allowances, when the directory has them."""
+
+    files = sorted(path for path in ledger.glob("*.toml") if path.name != ALLOWANCES)
+    runs = [{**run, "folder": path.stem} for path in files for run in read(path).get("run", [])]
+    allowances = read(ledger / ALLOWANCES) if (ledger / ALLOWANCES).is_file() else {}
+    return {"run": runs, **{key: allowances.get(key, []) for key in ("flaky", "stale_patch")}}
+
+
+def report_selected(ledger: dict, args: argparse.Namespace) -> int:
+    """Prints a selection's runs with the status, one a line; exits 3 when a required one
+    needs a host this command cannot start."""
+
+    if args.status == "required" and (beyond := needs_session(ledger, args.selection, args.scenario)):
+        print(f"{len(beyond)} required run(s) of {args.selection} name the session host, which "
+              f"qa-parity.sh cannot start yet: {', '.join(beyond)}", file=sys.stderr)
+        return 3
+    for run in selected(ledger, args.selection, args.status, args.scenario):
+        print(run)
+    return 0
+
+
 def main(arguments: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("selection", choices=sorted(GATES))
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("selection", help=f"{', '.join(GATES)}, {EVERY}, a scenario folder or a package")
     parser.add_argument("--status", choices=STATUSES, default="required")
     parser.add_argument("--scenario", help="only this scenario's runs")
-    parser.add_argument("--ledger", type=Path, default=LEDGER)
+    parser.add_argument("--counts", action="store_true",
+                        help="instead of the runs: the selection's counts by status and reason")
+    parser.add_argument("--ledger", type=Path, default=LEDGER, help="the ledger's directory")
     parser.add_argument("--failed-in", type=Path, metavar="LOG",
                         help="instead of a selection's runs: the flaky runs that failed in this "
                              "log of the whole GTK suite, or exit 1 if it failed any other way")
     args = parser.parse_args(arguments)
+    ledger = load(args.ledger)
     if args.failed_in:
-        return report_excused(load(args.ledger), args.failed_in)
-    for name in selected(load(args.ledger), args.selection, args.status, args.scenario):
-        print(name)
-    return 0
+        return report_excused(ledger, args.failed_in)
+    try:
+        if args.counts:
+            print(counts(ledger, args.selection))
+            return 0
+        return report_selected(ledger, args)
+    except UnknownSelection as error:
+        print(error, file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

@@ -1,0 +1,83 @@
+# The parity ledger of tests/qa/scenarios/archive_preview: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "archive-rows-select-on-click"
+run = "list"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "columns-archive-preview-explicit-entry"
+run = "columns-automatic-Right"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "columns-archive-preview-explicit-entry"
+run = "columns-automatic-Return"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "columns-archive-preview-explicit-entry"
+run = "columns-automatic-space"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "columns-archive-preview-explicit-entry"
+run = "columns-manual-Right"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "columns-archive-preview-explicit-entry"
+run = "columns-manual-Return"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "columns-archive-preview-explicit-entry"
+run = "columns-manual-space"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "open-preview-keeps-focus-on-archives"
+run = "list"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "open-preview-keeps-focus-on-archives"
+run = "icons"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "tenxer-password-archive-keys"
+run = "list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"

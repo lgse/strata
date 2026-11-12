@@ -1,23 +1,26 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    parity::{Gate, Ledger, Planned, Status, Suite, document, planned},
+    parity::{Gate, Ledger, Planned, Status, planned},
     target::{RUNE_BINARY_VARIABLE, TARGET_VARIABLE, Target},
 };
 
-pub(crate) fn the_parity_ledger_accounts_for_every_columns_run_of_the_slices_set() {
+/// The folder whose runs an owner ruling left out of the migration: they run on GTK only.
+const EXCLUDED: &str = "visual_baselines";
+
+pub(crate) fn the_parity_ledger_accounts_for_every_run_of_every_scenario_folder() {
     let ledger = Ledger::load().unwrap_or_else(|error| panic!("{error}"));
     let planned = planned();
     let problems = ledger.problems(&planned);
     assert!(
         problems.is_empty(),
-        "tests/qa/parity/slice.toml:\n  {}",
+        "tests/qa/parity:\n  {}",
         problems.join("\n  ")
     );
-    let gate = |gate: Gate| planned.iter().filter(|run| run.2 == gate).count();
+    let gate = |gate: Gate| planned.iter().filter(|run| run.gate == Some(gate)).count();
     assert_eq!(gate(Gate::G1), 1, "gate G1 is one run");
     assert!(gate(Gate::G2) > 0 && gate(Gate::G3) > 0);
-    let first_light = ledger.runs.iter().find(|entry| entry.gate == Gate::G1);
+    let first_light = ledger.entries().find(|entry| entry.gate == Some(Gate::G1));
     assert_eq!(
         first_light.map(|entry| entry.status),
         Some(Status::Required),
@@ -25,202 +28,265 @@ pub(crate) fn the_parity_ledger_accounts_for_every_columns_run_of_the_slices_set
     );
 }
 
-/// The allowances are the two the slice was given, and each stands on something real: a
-/// run of the suite or a patch a scenario names, a reason, and a document that names it.
-pub(crate) fn the_ledger_allows_only_the_flaky_run_and_the_stale_patch_it_was_given() {
+/// An exclusion takes a run out of the migration, so it is an owner ruling and not a place
+/// to park a run: the committed ledger excludes one folder, whole.
+pub(crate) fn the_ledger_excludes_only_the_runs_the_owner_ruled_out() {
     let ledger = Ledger::load().unwrap_or_else(|error| panic!("{error}"));
-    let problems = ledger.allowance_problems(&planned(), &Suite::planned(), document);
-    assert!(
-        problems.is_empty(),
-        "tests/qa/parity/slice.toml:\n  {}",
-        problems.join("\n  ")
-    );
-    let flaky: Vec<String> = ledger.flaky.iter().map(|flaky| flaky.name()).collect();
-    assert_eq!(
-        flaky,
-        ["new-folder-with-selection-groups/columns"],
-        "a flaky run is allowed by an owner ruling, recorded in docs/rune/slice/README.md"
-    );
-    let stale: Vec<&str> = ledger
-        .stale_patches
-        .iter()
-        .map(|stale| stale.patch.as_str())
-        .collect();
-    assert_eq!(stale, ["cut"], "one patch was stale before the slice");
+    for (folder, entries) in &ledger.folders {
+        for entry in entries {
+            assert_eq!(
+                entry.status == Status::Excluded,
+                folder == EXCLUDED,
+                "{}/{}: the visual baselines are excluded, by the ruling of 2026-11-11, and \
+                 nothing else is",
+                entry.scenario,
+                entry.run
+            );
+        }
+    }
 }
 
-fn run(scenario: &str, label: &str, gate: Gate) -> Planned {
-    (scenario.to_owned(), label.to_owned(), gate)
+pub(crate) const PENDING: &str = "status = \"pending\"\nreason = \"scope\"\nblocker = \"A7\"";
+pub(crate) const REQUIRED: &str = "status = \"required\"\nhost = \"offscreen\"";
+const EXCLUDING: &str = "status = \"excluded\"\nruling = \"the owner, 2026-11-11\"";
+
+/// A run of the ledger these tests make up: where the runner plans it, and who owns it.
+#[derive(Clone, Copy)]
+pub(crate) struct Row {
+    pub(crate) folder: &'static str,
+    pub(crate) scenario: &'static str,
+    pub(crate) run: &'static str,
+    pub(crate) package: &'static str,
+    pub(crate) gate: Option<Gate>,
 }
 
-const PENDING: &str = "status = \"pending\"\nreason = \"harness\"\nblocker = \"open_menu\"";
-const REQUIRED: &str = "status = \"required\"";
+/// Folder `keys` has three runs, two of them of the slice's set; folder `pictures` has one.
+const ARROWS: Row = Row {
+    folder: "keys",
+    scenario: "moves",
+    run: "columns-arrows",
+    package: "V7",
+    gate: Some(Gate::G1),
+};
+pub(crate) const KEYS: Row = Row {
+    run: "columns-keys",
+    package: "A7",
+    gate: Some(Gate::G2),
+    ..ARROWS
+};
+pub(crate) const RENAMES: Row = Row {
+    scenario: "renames",
+    run: "list",
+    gate: None,
+    ..KEYS
+};
+const LOOKS: Row = Row {
+    folder: "pictures",
+    scenario: "looks",
+    run: "icons",
+    package: "E1",
+    gate: None,
+};
 
-fn entry(scenario: &str, label: &str, gate: &str, rest: &str) -> String {
-    format!("[[run]]\nscenario = \"{scenario}\"\nrun = \"{label}\"\ngate = \"{gate}\"\n{rest}\n")
+impl Row {
+    fn planned(self) -> Planned {
+        Planned {
+            folder: self.folder.to_owned(),
+            scenario: self.scenario.to_owned(),
+            run: self.run.to_owned(),
+            gate: self.gate,
+        }
+    }
+
+    /// The run's entry as a ledger file writes it, ending with the lines of its status.
+    pub(crate) fn entry(self, status: &str) -> String {
+        let Self {
+            scenario,
+            run,
+            package,
+            ..
+        } = self;
+        let gate = self
+            .gate
+            .map(|gate| format!("gate = \"{gate:?}\"\n"))
+            .unwrap_or_default();
+        format!(
+            "[[run]]\nscenario = \"{scenario}\"\nrun = \"{run}\"\npackage = \"{package}\"\n\
+             {gate}{status}\n"
+        )
+    }
 }
 
-/// A ledger that is in order but for its last entry, `renames/columns`, which is `last`.
-fn ledger_ending(last: &str) -> String {
-    let first = entry("moves", "columns-arrows", "G1", REQUIRED);
-    let second = entry("moves", "columns-keys", "G2", PENDING);
+/// The file of folder `keys`, in order but for its last entry, `renames/list`, which is
+/// `last`.
+fn keys_ending(last: &str) -> String {
+    let first = ARROWS.entry(REQUIRED);
+    let second = KEYS.entry(PENDING);
     format!("{first}{second}{last}")
 }
 
-fn problems(ledger: &str) -> Vec<String> {
-    let planned = [
-        run("moves", "columns-arrows", Gate::G1),
-        run("moves", "columns-keys", Gate::G2),
-        run("renames", "columns", Gate::G3),
-    ];
-    Ledger::parse(ledger)
-        .unwrap_or_else(|error| panic!("{error}"))
-        .problems(&planned)
+/// The problems of the ledger of `keys` and `pictures`, given their files.
+fn problems(files: &[(&str, &str)]) -> Vec<String> {
+    let planned = [ARROWS, KEYS, RENAMES, LOOKS].map(Row::planned);
+    let mut ledger = Ledger::default();
+    for (folder, text) in files {
+        ledger
+            .add(folder, text)
+            .unwrap_or_else(|error| panic!("{error}"));
+    }
+    ledger.problems(&planned)
 }
 
-pub(crate) fn a_ledger_that_misses_repeats_or_leaves_a_run_unexplained_is_refused() {
-    let third = entry("renames", "columns", "G3", PENDING);
-    let renames = |rest: &str| ledger_ending(&entry("renames", "columns", "G3", rest));
-    assert_eq!(problems(&ledger_ending(&third)), Vec::<String>::new());
+/// The problems of the two folders when `keys`' file ends with `last`.
+fn problems_ending(last: &str) -> Vec<String> {
+    let pictures = LOOKS.entry(EXCLUDING);
+    problems(&[("keys", &keys_ending(last)), ("pictures", &pictures)])
+}
 
-    let twice = entry("moves", "columns-keys", "G2", PENDING);
-    let gone = entry("moves", "icons", "G2", PENDING);
-    for (case, ledger, expected) in [
+pub(crate) fn a_ledger_that_misses_repeats_or_misplaces_a_run_is_refused() {
+    let third = RENAMES.entry(PENDING);
+    let pictures = LOOKS.entry(EXCLUDING);
+    assert_eq!(problems_ending(&third), Vec::<String>::new());
+
+    let twice = KEYS.entry(PENDING);
+    let gone = Row {
+        run: "icons",
+        gate: None,
+        ..KEYS
+    };
+    let elsewhere = LOOKS.entry(PENDING);
+    let ungated = keys_ending(&third).replace("gate = \"G2\"\n", "");
+    let gated = Row {
+        gate: Some(Gate::G3),
+        ..RENAMES
+    };
+    let stranger = Row {
+        package: "A22",
+        ..RENAMES
+    };
+    for (case, found, expected) in [
         (
-            "a run of the set is missing",
-            ledger_ending(""),
-            "renames/columns is not listed",
+            "a run of the folder is missing",
+            problems_ending(""),
+            "keys.toml: renames/list is not listed",
         ),
         (
             "a run is listed twice",
-            ledger_ending(&format!("{twice}{third}")),
-            "moves/columns-keys is listed twice",
+            problems_ending(&format!("{twice}{third}")),
+            "keys.toml: moves/columns-keys is listed twice",
         ),
         (
             "a run no longer exists",
-            ledger_ending(&format!("{third}{gone}")),
-            "moves/icons is no Columns run of the set",
+            problems_ending(&format!("{third}{}", gone.entry(PENDING))),
+            "keys.toml: moves/icons is no run of the folder",
         ),
         (
-            "a run sits under another gate",
-            ledger_ending(&entry("renames", "columns", "G2", PENDING)),
-            "renames/columns belongs to gate G3",
+            "a run is another folder's",
+            problems_ending(&format!("{third}{elsewhere}")),
+            "keys.toml: looks/icons is no run of the folder",
         ),
+        (
+            "a run of the set has no gate",
+            problems(&[("keys", &ungated), ("pictures", &pictures)]),
+            "keys.toml: moves/columns-keys belongs to gate G2",
+        ),
+        (
+            "a run outside the set has a gate",
+            problems_ending(&gated.entry(PENDING)),
+            "keys.toml: renames/list has a gate, and is no Columns run of the slice's set",
+        ),
+        (
+            "a run names no package of the plan",
+            problems_ending(&stranger.entry(PENDING)),
+            "keys.toml: renames/list names \"A22\", which is no package of the parity plan",
+        ),
+    ] {
+        assert_eq!(found, [expected], "{case}");
+    }
+}
+
+pub(crate) fn a_folder_without_a_ledger_file_or_a_file_without_a_folder_is_refused() {
+    let keys = keys_ending(&RENAMES.entry(PENDING));
+    let pictures = LOOKS.entry(EXCLUDING);
+    assert_eq!(
+        problems(&[("keys", &keys)]),
+        ["pictures.toml is missing: tests/qa/scenarios/pictures has no ledger"]
+    );
+    assert_eq!(
+        problems(&[("keys", &keys), ("pictures", &pictures), ("sounds", "")]),
+        ["sounds.toml names no folder of tests/qa/scenarios"]
+    );
+}
+
+pub(crate) fn a_ledger_entry_that_lacks_a_field_of_its_status_or_has_anothers_is_refused() {
+    let renames = |status: &str| problems_ending(&RENAMES.entry(status));
+    for (case, status, expected) in [
         (
             "a pending run gives no reason",
-            renames("status = \"pending\"\nblocker = \"x\""),
-            "renames/columns is pending without a reason",
+            "status = \"pending\"\nblocker = \"x\"".to_owned(),
+            "is pending without a reason",
         ),
         (
             "a pending run names no blocker",
-            renames("status = \"pending\"\nreason = \"rune\"\nblocker = \" \""),
-            "renames/columns is pending without a blocker",
+            "status = \"pending\"\nreason = \"rune\"\nblocker = \" \"".to_owned(),
+            "is pending without a blocker",
+        ),
+        (
+            "a pending run cites a ruling",
+            format!("{PENDING}\nruling = \"x\""),
+            "is pending, so it has no ruling",
+        ),
+        (
+            "a run that needs a real window names no session host",
+            "status = \"pending\"\nreason = \"platform\"\nblocker = \"x\"".to_owned(),
+            "is pending on platform, so its host is session",
+        ),
+        (
+            "a required run names no host",
+            "status = \"required\"".to_owned(),
+            "is required without a host",
         ),
         (
             "a required run keeps its old excuse",
-            renames("status = \"required\"\nreason = \"harness\"\nblocker = \"x\""),
-            "renames/columns is required, so it has no reason or blocker",
+            format!("{REQUIRED}\nreason = \"harness\"\nblocker = \"x\""),
+            "is required, so it has no reason, blocker or ruling",
+        ),
+        (
+            "an excluded run cites no ruling",
+            "status = \"excluded\"\nruling = \"\"".to_owned(),
+            "is excluded without a ruling",
+        ),
+        (
+            "an excluded run is also blocked",
+            format!("{EXCLUDING}\nreason = \"scope\"\nblocker = \"A7\""),
+            "is excluded, so it has no host, reason or blocker",
         ),
     ] {
-        assert_eq!(problems(&ledger), [expected], "{case}");
+        let expected = format!("keys.toml: renames/list {expected}");
+        assert_eq!(renames(&status), [expected], "{case}");
     }
+    let on_session =
+        "status = \"pending\"\nhost = \"session\"\nreason = \"platform\"\nblocker = \"x\"";
+    assert_eq!(renames(on_session), Vec::<String>::new());
 }
 
-const FLAKY: &str = "[[flaky]]\nscenario = \"opens\"\nrun = \"columns\"";
-const STALE: &str = "[[stale_patch]]\npatch = \"cut\"";
-const FOUNDED: &str = "reason = \"since before the slice\"\nrecorded = \"notes.md\"";
-
-fn allowance_problems(ledger: &str) -> Vec<String> {
-    let planned = [run("moves", "columns-keys", Gate::G2)];
-    let suite = Suite {
-        runs: ["moves/columns-keys", "opens/columns", "opens/list"]
-            .map(str::to_owned)
-            .into(),
-        mutations: ["cut", "paste"].map(str::to_owned).into(),
-    };
-    let notes = |path: &str| {
-        (path == "notes.md").then(|| "opens/columns is flaky and cut.patch is stale".to_owned())
-    };
-    Ledger::parse(ledger)
-        .unwrap_or_else(|error| panic!("{error}"))
-        .allowance_problems(&planned, &suite, notes)
-}
-
-pub(crate) fn an_allowance_for_nothing_real_or_with_nothing_behind_it_is_refused() {
-    let both = format!("{FLAKY}\n{FOUNDED}\n{STALE}\n{FOUNDED}\n");
-    assert_eq!(allowance_problems(&both), Vec::<String>::new());
-    assert_eq!(allowance_problems(""), Vec::<String>::new());
-
-    let flaky = |scenario: &str, run: &str| {
-        format!("[[flaky]]\nscenario = \"{scenario}\"\nrun = \"{run}\"\n{FOUNDED}\n")
-    };
-    let elsewhere = "reason = \"since before the slice\"\nrecorded = \"README.md\"";
-    let unexplained = "reason = \" \"\nrecorded = \"notes.md\"";
-    for (case, ledger, expected) in [
-        (
-            "the run does not exist",
-            flaky("opens", "icons"),
-            "opens/icons is no run of the GTK suite",
-        ),
-        (
-            "the run is the parity set's",
-            flaky("moves", "columns-keys"),
-            "moves/columns-keys is a run of the parity set, which a gate decides",
-        ),
-        (
-            "the run exists and no document names it",
-            flaky("opens", "list"),
-            "opens/list is not recorded in \"notes.md\"",
-        ),
-        (
-            "the document is not there",
-            format!("{FLAKY}\n{elsewhere}\n"),
-            "opens/columns is not recorded in \"README.md\"",
-        ),
-        (
-            "the run is allowed without a reason",
-            format!("{FLAKY}\n{unexplained}\n"),
-            "opens/columns is allowed without a reason",
-        ),
-        (
-            "the run is allowed twice",
-            format!("{FLAKY}\n{FOUNDED}\n{FLAKY}\n{FOUNDED}\n"),
-            "opens/columns is allowed twice",
-        ),
-        (
-            "no scenario names the patch",
-            format!("[[stale_patch]]\npatch = \"trash\"\n{FOUNDED}\n"),
-            "trash.patch is no mutation patch a scenario names",
-        ),
-        (
-            "the patch exists and no document names it",
-            format!("[[stale_patch]]\npatch = \"paste\"\n{FOUNDED}\n"),
-            "paste.patch is not recorded in \"notes.md\"",
-        ),
-    ] {
-        assert_eq!(allowance_problems(&ledger), [expected], "{case}");
-    }
-
-    for malformed in [
-        format!("{FLAKY}\nreason = \"x\"\n"),
-        format!("{FLAKY}\n{FOUNDED}\nuntil = \"V10\"\n"),
-        format!("{STALE}\nrecorded = \"notes.md\"\n"),
-    ] {
-        assert!(Ledger::parse(&malformed).is_err(), "{malformed}");
-    }
-}
-
-pub(crate) fn a_ledger_entry_with_an_unknown_gate_status_reason_or_field_does_not_parse() {
-    for rest in [
+pub(crate) fn a_ledger_entry_with_an_unknown_value_or_field_or_no_package_does_not_parse() {
+    let parse = |text: &str| Ledger::default().add("keys", text);
+    for status in [
         "status = \"done\"",
         "status = \"pending\"\nreason = \"flaky\"\nblocker = \"x\"",
-        "status = \"required\"\nnote = \"x\"",
+        "status = \"required\"\nhost = \"window\"",
+        "status = \"required\"\nhost = \"offscreen\"\nnote = \"x\"",
     ] {
-        let malformed = entry("moves", "columns-arrows", "G1", rest);
-        assert!(Ledger::parse(&malformed).is_err(), "{malformed}");
+        let malformed = ARROWS.entry(status);
+        assert!(parse(&malformed).is_err(), "{malformed}");
     }
-    let unknown_gate = entry("moves", "columns-arrows", "G4", REQUIRED);
-    assert!(Ledger::parse(&unknown_gate).is_err(), "{unknown_gate}");
+    let unknown_gate = ARROWS.entry(REQUIRED).replace("\"G1\"", "\"G4\"");
+    assert!(parse(&unknown_gate).is_err(), "{unknown_gate}");
+    let unowned = ARROWS.entry(REQUIRED).replace("package = \"V7\"\n", "");
+    assert!(parse(&unowned).is_err(), "{unowned}");
+    let allowance = "[[flaky]]\nscenario = \"moves\"\nrun = \"columns-arrows\"\n";
+    assert!(parse(allowance).is_err(), "{allowance}");
     for reason in [
         "harness",
         "component",
@@ -230,9 +296,11 @@ pub(crate) fn a_ledger_entry_with_an_unknown_gate_status_reason_or_field_does_no
         "deviation",
         "scope",
     ] {
-        let rest = format!("status = \"pending\"\nreason = \"{reason}\"\nblocker = \"x\"");
-        let coded = entry("moves", "columns-arrows", "G1", &rest);
-        assert!(Ledger::parse(&coded).is_ok(), "{coded}");
+        let coded = format!("status = \"pending\"\nreason = \"{reason}\"\nblocker = \"x\"");
+        assert!(parse(&ARROWS.entry(&coded)).is_ok(), "{coded}");
+    }
+    for status in [REQUIRED, PENDING, EXCLUDING] {
+        assert!(parse(&RENAMES.entry(status)).is_ok(), "{status}");
     }
 }
 

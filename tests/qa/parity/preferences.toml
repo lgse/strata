@@ -1,0 +1,35 @@
+# The parity ledger of tests/qa/scenarios/preferences: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "enabled-tenxer-survives-restart"
+run = "columns"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "language-selection-after-relaunch"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"
+
+[[run]]
+scenario = "preferences-sync-windows-restart"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"
+
+[[run]]
+scenario = "unsaved-changes-one-notice"
+run = "columns"
+package = "A18"
+status = "pending"
+reason = "scope"
+blocker = "A18"

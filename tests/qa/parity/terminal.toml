@@ -1,0 +1,27 @@
+# The parity ledger of tests/qa/scenarios/terminal: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "columns-terminal-parent-pane-folder"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "terminal-launchers-reaped"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"
+
+[[run]]
+scenario = "terminal-without-emulator-reports"
+run = "columns"
+package = "A14"
+status = "pending"
+reason = "scope"
+blocker = "A14"

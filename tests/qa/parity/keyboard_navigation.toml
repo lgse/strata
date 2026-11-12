@@ -1,0 +1,218 @@
+# The parity ledger of tests/qa/scenarios/keyboard_navigation: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "alt-up-and-history"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "alt-up-and-history"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "arrow-keys-move-focus-remaining"
+run = "icons-arrows"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "arrow-keys-move-focus-remaining"
+run = "list-arrows"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "arrow-keys-move-focus-remaining"
+run = "columns-hjkl"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "arrow-keys-move-focus-remaining"
+run = "icons-hjkl"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "arrow-keys-move-focus-remaining"
+run = "list-hjkl"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "arrow-keys-move-focus"
+run = "columns-arrows"
+package = "V7"
+gate = "G1"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "arrow-keys-move-focus"
+run = "columns-hjkl-tenxer-ru"
+package = "A11"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C1c: 10xer mode (`tenxer_mode`), from the first `j`. Then rune: a plain-letter binding under a non-Latin layout needs a key press that carries its physical key (docs/rune/upstream/rune/97-key-press-with-physical-key.md, filed as anomalyco/rune#657)"
+
+[[run]]
+scenario = "back-history-dropdown"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "back-history-dropdown"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "back-then-file-keys-target-focused-folder"
+run = "columns"
+package = "A3"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C8: the sidebar, at `click` on `sidebar` Home. Then Delete to the trash"
+
+[[run]]
+scenario = "columns-home-end-mirror"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "columns-return-selects-source-folder"
+run = "columns"
+package = "A5"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C6: the location bar's crumbs, at `click` on the `documents` breadcrumb button"
+
+[[run]]
+scenario = "focus-usable-after-view-change"
+run = "columns"
+package = "A2"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C4: the List view, at Ctrl+3 (`view_mode`). Then tabs (C7) and the Icons view (C3)"
+
+[[run]]
+scenario = "keyboard-only-copy-paste"
+run = "columns"
+package = "A12"
+gate = "G2"
+status = "pending"
+host = "session"
+reason = "platform"
+blocker = "the clipboard, at Ctrl+C and Ctrl+V: the offscreen host has none (the session host; P2 and X3 hold the pieces)"
+
+[[run]]
+scenario = "list-typed-file-path"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "return-restores-nested-scroll"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "return-restores-nested-scroll"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "select-all-selects-every-entry"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "select-all-selects-every-entry"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "shift-arrow-extends-selection"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "shift-arrow-extends-selection"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "shift-arrow-extends-selection"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "tenxer-icons-edges-search-peek"
+run = "icons"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-keeps-location-edit"
+run = "columns"
+package = "A11"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C6: the location field, at Ctrl+L (`field`). The run is 10xer mode's (C1c)"

@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
-# Runs the runs of the parity ledger, tests/qa/parity/slice.toml, on both QA targets inside
-# the pinned test image: the GTK application and strata-rune (docs/rune/slice/README.md).
+# Runs the runs of the parity ledger, tests/qa/parity/<folder>.toml, on both QA targets
+# inside the pinned test image: the GTK application and strata-rune (docs/testing.md, "The
+# Rune target and the parity ledger"). A selection is a gate of the slice, a scenario
+# folder, a work package or all:
+#   ./scripts/qa-parity.sh selection          the required runs of tests/qa/scenarios/selection,
+#                                             on each target
+#   ./scripts/qa-parity.sh A7                 the required runs package A7 owns
+#   ./scripts/qa-parity.sh all                every required run of the ledger
 #   ./scripts/qa-parity.sh g1                 gate G1's required runs, on each target
 #   ./scripts/qa-parity.sh slice              the slice's exit check: every gate's required
 #                                             runs on each target, the runner's own tests and
 #                                             the whole GTK suite, then the Rune mutation
 #                                             patches and the GTK ones
+#   ./scripts/qa-parity.sh A7 --counts        the selection's runs by status and reason, by
+#                                             host, view and package; nothing is run
 #   ./scripts/qa-parity.sh g2 --target rune   one target only: gtk or rune
-#   ./scripts/qa-parity.sh g2 --pending       a survey: gate G2's pending runs on the Rune
-#                                             target, listing which pass and which fail
+#   ./scripts/qa-parity.sh A7 --pending       a survey: the selection's pending runs on the
+#                                             Rune target, listing which pass and which fail
 #   ./scripts/qa-parity.sh g2 --scenario shift-click-range
 #                                             only that scenario's runs of the selection
 #   ./scripts/qa-parity.sh mutations          each patch under tests/qa/parity/mutations must
@@ -20,17 +28,19 @@
 # target/qa-artifacts-rune (Rune), under <scenario>/<run>; STRATA_QA_KEEP_ARTIFACTS=0 keeps
 # only a failed run's. Shares target/qa-container with qa.sh: one QA script at a time.
 #
-# The ledger's allowances are slice's alone. A run it names as flaky may fail in the whole
-# GTK suite: slice says so and keeps the failed run's artifacts in
-# target/qa-parity/allowance. Any other failure there fails slice. Every allowance used or
-# refused is listed when slice ends.
+# The ledger's allowances, tests/qa/parity/slice.toml, are slice's alone. A run it names as
+# flaky may fail in the whole GTK suite: slice says so and keeps the failed run's artifacts
+# in target/qa-parity/allowance. Any other failure there fails slice. Every allowance used
+# or refused is listed when slice ends.
 set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-usage='Usage: scripts/qa-parity.sh <slice|g1|g2|g3> [--target gtk|rune] [--pending] [--scenario <name>]
+usage='Usage: scripts/qa-parity.sh <selection> [--target gtk|rune] [--pending] [--scenario <name>]
+       scripts/qa-parity.sh <selection> --counts
        scripts/qa-parity.sh mutations
-       scripts/qa-parity.sh gtk-mutations'
+       scripts/qa-parity.sh gtk-mutations
+A selection is slice, g1, g2, g3, all, a folder of tests/qa/scenarios or a package id.'
 selection="${1:-}"
 if [[ $# -eq 1 ]]; then
   # Each patch is applied to this checkout, run and reverted: scripts/qa_parity_mutation.py.
@@ -39,11 +49,12 @@ if [[ $# -eq 1 ]]; then
     gtk-mutations) exec python3 "$repository/scripts/qa_parity_mutation.py" gtk ;;
   esac
 fi
-case "$selection" in slice|g1|g2|g3) shift ;; *) echo "$usage" >&2; exit 2 ;; esac
+case "$selection" in ""|-*|mutations|gtk-mutations) echo "$usage" >&2; exit 2 ;; *) shift ;; esac
 targets="gtk rune"
 status=required
 scenario=()
 whole=1
+counts=0
 while (($#)); do
   case "$1" in
     --target)
@@ -60,16 +71,28 @@ while (($#)); do
       whole=0
       shift 2
       ;;
+    --counts)
+      counts=1
+      shift
+      ;;
     *) echo "$usage" >&2; exit 2 ;;
   esac
 done
+if ((counts)); then
+  # The ledger alone answers: no image, no build.
+  exec python3 "$repository/scripts/qa_parity.py" "$selection" --counts
+fi
 if [[ "$status" == pending ]]; then
   # Pending runs pass on GTK already; the survey asks what they do on Rune.
   targets=rune
 fi
 
 if [[ "$targets" != "gtk rune" || "$status" != required ]]; then whole=0; fi
-mapfile -t runs < <(python3 "$repository/scripts/qa_parity.py" "$selection" --status "$status" "${scenario[@]}")
+# The ledger refuses a selection it does not have, and a required run it cannot start here.
+listed="$(python3 "$repository/scripts/qa_parity.py" "$selection" --status "$status" "${scenario[@]}")" \
+  || exit 2
+runs=()
+if [[ -n "$listed" ]]; then mapfile -t runs <<< "$listed"; fi
 if ((${#runs[@]} == 0)); then
   if ((${#scenario[@]})); then
     # A scenario is named to run it: a name with no run is a mistake, not an empty gate.

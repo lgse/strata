@@ -1,0 +1,142 @@
+# The parity ledger of tests/qa/scenarios/escape_selection: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "enter-after-escape-opens-folder"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "enter-after-escape-opens-folder"
+run = "icons"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "enter-after-escape-opens-folder"
+run = "list"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "escape-dismisses-transient"
+run = "columns"
+package = "A6"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C15: the properties dialog, at Alt+Return (`dialog`). Then the location field (C6), the filter (C18), the preview (C9) and a new folder"
+
+[[run]]
+scenario = "escape-only-clears-active-column"
+run = "columns"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "shift-after-escape-starts-on-focused"
+run = "columns-no-range"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "shift-after-escape-starts-on-focused"
+run = "icons-no-range"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "shift-after-escape-starts-on-focused"
+run = "list-no-range"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "shift-after-escape-starts-on-focused"
+run = "columns-had-range"
+package = "V8"
+gate = "G2"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "shift-after-escape-starts-on-focused"
+run = "icons-had-range"
+package = "A1"
+status = "pending"
+reason = "scope"
+blocker = "A1"
+
+[[run]]
+scenario = "shift-after-escape-starts-on-focused"
+run = "list-had-range"
+package = "A2"
+status = "pending"
+reason = "scope"
+blocker = "A2"
+
+[[run]]
+scenario = "tenxer-escape-closes-peek"
+run = "columns"
+package = "A11"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C1c: 10xer mode (`tenxer_mode`), at Space, which there selects and moves on"
+
+[[run]]
+scenario = "tenxer-escape-closes-peek"
+run = "icons"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-escape-closes-peek"
+run = "list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-escape-filter-preview-fill"
+run = "columns"
+package = "A11"
+gate = "G2"
+status = "pending"
+reason = "scope"
+blocker = "C1c and C18: 10xer mode's `f` and the filter field (`field`). Then the preview (C9)"
+
+[[run]]
+scenario = "tenxer-escape-filter-preview-fill"
+run = "icons"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"
+
+[[run]]
+scenario = "tenxer-escape-filter-preview-fill"
+run = "list"
+package = "A11"
+status = "pending"
+reason = "scope"
+blocker = "A11"

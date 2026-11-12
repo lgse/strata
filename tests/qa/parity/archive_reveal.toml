@@ -1,0 +1,27 @@
+# The parity ledger of tests/qa/scenarios/archive_reveal: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "distant-archive-scrolled-into-view"
+run = "columns"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "distant-archive-scrolled-into-view"
+run = "icons"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"
+
+[[run]]
+scenario = "distant-archive-scrolled-into-view"
+run = "list"
+package = "A13"
+status = "pending"
+reason = "scope"
+blocker = "A13"

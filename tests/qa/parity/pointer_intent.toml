@@ -1,0 +1,147 @@
+# The parity ledger of tests/qa/scenarios/pointer_intent: every run of the folder, once, with the
+# package that owns it. A package edits only the rows that name it. The fields and the
+# checks are in docs/testing.md, "The Rune target and the parity ledger".
+
+[[run]]
+scenario = "ctrl-drag-copies-keeps-selection"
+run = "columns-unselected-stay"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "ctrl-drag-copies-keeps-selection"
+run = "icons-unselected-stay"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "ctrl-drag-copies-keeps-selection"
+run = "list-unselected-stay"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "ctrl-drag-copies-keeps-selection"
+run = "columns-unselected-open"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "ctrl-drag-copies-keeps-selection"
+run = "icons-unselected-open"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "ctrl-drag-copies-keeps-selection"
+run = "list-unselected-open"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "ctrl-drag-copies-keeps-selection"
+run = "columns-selected-stay"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "ctrl-drag-copies-keeps-selection"
+run = "icons-selected-stay"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "ctrl-drag-copies-keeps-selection"
+run = "list-selected-stay"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "shift-drag-moves-file"
+run = "columns"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "shift-drag-moves-file"
+run = "icons"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "shift-drag-moves-file"
+run = "list"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "tap-drag-waits-for-release"
+run = "columns-file"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "tap-drag-waits-for-release"
+run = "list-file"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "tap-drag-waits-for-release"
+run = "icons-file"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "tap-drag-waits-for-release"
+run = "columns-folder"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "tap-drag-waits-for-release"
+run = "list-folder"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
+
+[[run]]
+scenario = "tap-drag-waits-for-release"
+run = "icons-folder"
+package = "A9"
+status = "pending"
+reason = "scope"
+blocker = "A9"
