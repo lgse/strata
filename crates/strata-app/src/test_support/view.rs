@@ -199,3 +199,51 @@ pub(crate) fn field(host: &Offscreen) -> Option<(String, bool)> {
     let field = fields.first()?;
     Some((text(field, "value"), has_state(field, "focused")))
 }
+
+/// The middle of the entry named `name`, in window points.
+fn middle_of(host: &Offscreen, shape: Shape, name: &str) -> (f32, f32) {
+    let tree = host.tree();
+    let entries = all(&tree, &|node| {
+        node["role"] == shape.entry && node["name"] == name && keyed_as_entry(node)
+    });
+    let bounds = &entries.first().expect("the entry")["bounds"];
+    let at = |index: usize| bounds[index].as_f64().expect("a bound");
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let middle = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) / 2.0) as f32);
+    middle
+}
+
+/// A point of the view's list below its entries, in window points.
+fn blank_of(host: &Offscreen, shape: Shape) -> (f32, f32) {
+    let tree = host.tree();
+    let lists = all(&tree, &|node| node["role"] == shape.list);
+    let bounds = &lists.first().expect("the list")["bounds"];
+    let at = |index: usize| bounds[index].as_f64().expect("a bound");
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let blank = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) - 8.0) as f32);
+    blank
+}
+
+/// A right-click at `(x, y)`, and the name of the menu it opens.
+fn right_click_at(host: &mut Offscreen, (x, y): (f32, f32)) -> Option<String> {
+    let runtime = host.runtime();
+    runtime.secondary_down(x, y);
+    runtime.secondary_up(x, y);
+    idle(host);
+    let tree = host.tree();
+    let menus = all(&tree, &|node| node["role"] == "menu");
+    menus.first().map(|menu| text(menu, "name"))
+}
+
+/// A right-click on the entry named `name`, and the name of the menu it opens.
+pub(crate) fn right_click(host: &mut Offscreen, shape: Shape, name: &str) -> Option<String> {
+    let at = middle_of(host, shape, name);
+    right_click_at(host, at)
+}
+
+/// A right-click on the view's blank space below its entries, and the name of the menu it
+/// opens.
+pub(crate) fn right_click_blank(host: &mut Offscreen, shape: Shape) -> Option<String> {
+    let at = blank_of(host, shape);
+    right_click_at(host, at)
+}
