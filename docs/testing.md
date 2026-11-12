@@ -998,7 +998,8 @@ package as the blocker. Its package is the first of these that fits:
 5. **Settings.** In A6's folders, a run that opens the Settings window in its
    first steps and works on one of its pages is A18's. One that opens Settings
    as one overlay among several, or checks that it stays closed, is A6's.
-6. **The folder**, by the parity plan's tables:
+6. **The folder**, by the tables of the parity plan
+   (`docs/rune/parity/README.md`, "Work packages"):
 
 | Package | Folders |
 | --- | --- |
