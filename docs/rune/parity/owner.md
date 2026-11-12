@@ -116,6 +116,16 @@ are in force meanwhile. Source: the archived issue
 - **No CI job builds the Rune side**, so Rune-lane evidence is written on each pull request.
   That is slice decision 13, still open (`docs/rune/slice/slice-report.md`); B1's record
   lists it.
+- **When CI comes back for `strata-next`.** The owner turned the `CI` workflow off for
+  `strata-next` "for now" on 2026-11-12 (see "Ruled"). When it runs again, and whether with a
+  Rune-lane job (decision 13), is the owner's to say. Meanwhile: the agents'
+  [checks in place of CI](README.md#checks-in-place-of-ci). Source: that instruction.
+- **The trigger change must not reach `main` at the cutover.** `ci.yml` on `strata-next` no
+  longer runs for `strata-next`'s pushes and pull requests; if `main` takes `strata-next` by
+  merge at [E4](packages/E4.md), that change must not turn CI off for anything `main` needs.
+  The review of that pull request finds it harmless there: `push` on `main` and "ignore pull
+  requests based on `strata-next`" turn off nothing `main` needs, so this is not urgent.
+  Meanwhile: E4 checks it. Source: the pull request that changed the triggers.
 
 ### B2: Shared state out of the GTK package
 
@@ -339,6 +349,17 @@ Rulings of the owner on the parity work, oldest first.
   from `strata-app` to `strata-preview`, not a new library, and criterion 6 was not met
   before it either. E4 owns removing `gdk-pixbuf` from the whole tree: `strata-fs`'s own
   use of it, its use of `strata-preview`, and the thumbnail worker's direct use.
+- **2026-11-12: CI does not run for `strata-next`.** The owner said: "Lets disable CI for
+  strata-next for now and stop waiting for it, agent's own checks are sufficient" (recorded
+  by the orchestrating session, 2026-11-12). Changed: the `on:` block of
+  `.github/workflows/ci.yml`, whose `push` trigger no longer names `strata-next` and whose
+  `pull_request` trigger ignores pull requests based on it; `workflow_dispatch` stays, so it
+  can still be run by hand. Still running for `strata-next`: `pr-policy.yml` (the title, type
+  label and metadata checks), `test-image.yml` (publishes the test image base when a manifest
+  or `tests/container/` changes on `strata-next`), and `integrations.yml` and
+  `packaging.yml` on pull requests that touch their paths. For `strata-next` this replaces
+  "CI is green" in the 2026-11-11 merge ruling above with the plan's
+  [checks in place of CI](README.md#checks-in-place-of-ci).
 
 ## Housekeeping
 

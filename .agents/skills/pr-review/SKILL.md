@@ -289,6 +289,11 @@ When a check fails:
 
 Repeat until every check is green. Do not stop at "pushed, waiting for CI".
 
+On a pull request to `strata-next` the CI workflow does not run, by the owner's
+instruction of 2026-11-12: only the pull request policy checks appear, and the
+author's own checks stand in for CI (`docs/rune/parity/README.md`, "Checks in
+place of CI").
+
 ## 10. Comment on the PR
 
 Post one comment with `gh pr comment "$PR" --body-file <file>` (write the

@@ -115,8 +115,10 @@ The checkpoint a package feeds is its wave's, in the plan's
   [When a mutation run is right](README.md#when-a-mutation-run-is-right) says.
 - **Before opening:** the checks in the plan's
   ["Before a package's pull request"](README.md#before-a-packages-pull-request) table that the
-  change reaches, risk-based as `AGENTS.md` sets out. CI builds the GTK lane only, so the
-  Rune-lane evidence is written on the pull request.
+  change reaches, risk-based as `AGENTS.md` sets out, and the plan's
+  [checks in place of CI](README.md#checks-in-place-of-ci): on `strata-next` CI does not run,
+  so every result, the Rune lane's included, is written on the pull request, and a check
+  skipped is named with its reason.
 
 ## Review, the merge gate and the merge
 
@@ -129,12 +131,18 @@ The checkpoint a package feeds is its wave's, in the plan's
   (`./scripts/qa-parity.sh all`), the whole GTK suite (`./scripts/qa.sh`) and
   `./scripts/quality.sh test`. No mutation set is run: a patch is proven once, alone, as the
   plan's [When a mutation run is right](README.md#when-a-mutation-run-is-right) says.
-- **The merge**, once the gate and CI are green: a merge commit,
+- **The merge**, once the gate and the checks in place of CI have passed and the review is
+  answered; on `strata-next` it does not wait for CI, which does not run. A `CI` run that does
+  appear on a pull request into `strata-next` (started before CI was turned off there, or by
+  hand) is not waited for, and a red one is not a reason to hold a merge whose own checks
+  passed. A merge commit,
   `gh pr merge <number> -R lgse/strata --merge`, never a squash or a rebase
   ([`owner.md`](owner.md#ruled)).
-- **CI failing on something the change did not touch:** read the failure, say on the pull
-  request why the change cannot reach it, and rerun the whole workflow once. A flaky GTK unit
-  test goes into finding [#2175](https://github.com/lgse/strata/issues/2175) in [`findings.md`](findings.md).
+- **A GTK unit test failing on something the change did not touch** (in
+  `./scripts/quality.sh test`, now that CI does not run on `strata-next`): read the failure,
+  say on the pull request why the change cannot reach it, and rerun that test once alone with
+  `./scripts/test-headless.py <name>`. A flaky GTK unit test goes into finding
+  [#2175](https://github.com/lgse/strata/issues/2175) in [`findings.md`](findings.md).
 - **When the package is done:** its last pull request sets its file's state to `done` and
   ticks its done-when list; its merged branches are deleted.
 

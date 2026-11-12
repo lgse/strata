@@ -151,6 +151,9 @@ closed issue is not a fixed finding: the state given here is the finding's.
   shard 1 (the assertion at `direct_commands.rs:509`, Shift+O's `open_with`); on the
   workflow's rerun, `default_map_tab_leaves_the_listing_in_one_press` failed in shard 1
   instead. Both are already listed above.
+- **With CI off on `strata-next`** (the owner's instruction of 2026-11-12), a sighting now
+  comes from `./scripts/quality.sh test`. The rule is unchanged: record it here, rerun the
+  test once alone with `./scripts/test-headless.py <name>`, and do not chase it.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 

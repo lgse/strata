@@ -14,9 +14,8 @@ host = "offscreen"
 scenario = "hidden-files-persist-across-restart"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "hidden-files-persist-across-restart"
