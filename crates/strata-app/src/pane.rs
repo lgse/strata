@@ -19,16 +19,26 @@
 //!   holds the result, and [`Pane::publish`] hands it over. The collection is reached only
 //!   through the pane, so nothing changes it outside that bookkeeping but the component's own
 //!   handlers ([`Pane::parts_mut`]).
-//! - **Order.** Positions and neighbours are the listing's order, the browser's. A view that
-//!   groups its rows (List's file-type groups) shows another order and must map through its
-//!   groups first.
+//! - **Order.** A view index is the listing's ([`Column`]): the browser's order, or, where the
+//!   browser groups the folder by file type (`Browser::shows_type_groups`, which only a view
+//!   that supports type grouping turns on), strata-fs's group order, each group keeping the
+//!   browser's order. The collection, its cursor, anchor, ranges and keys, and so
+//!   [`Pane::neighbour`], work in view indices; what crosses to the browser goes by id
+//!   ([`Pane::position`], the handover). The pane gives the collection the groups before
+//!   each `enter` and `sync`, and none when the folder is not grouped.
 //! - **One pane for the window.** The collection is keyed by a fixed `scope`; a window with
 //!   tabs will need one pane, and one key, for each tab.
 
+use std::sync::Arc;
+
 use strata_components::{
-    collection::{element::CollectionState, selection::Listing},
+    collection::{
+        element::{CollectionState, Group, Groups},
+        selection::Listing,
+    },
     contract::{Entry, EntryId, EntrySource},
 };
+use strata_core::{i18n::tr, model::ViewPreferences};
 use strata_fs::app::Browser;
 
 use crate::{
@@ -79,6 +89,33 @@ pub(crate) struct Pane {
     collection: CollectionState,
     held: Held,
     moving: Moving,
+    /// The collection has groups: the folder shown was grouped when they were last given.
+    grouped: bool,
+}
+
+/// Whether the browser groups the folder of each of its columns by file type, and under
+/// which preferences: what [`Pane::apply`] reads of the browser.
+pub(crate) type Grouping<'a> = &'a dyn Fn(usize) -> Option<ViewPreferences>;
+
+/// The groups of `column`'s rows as it shows them: one for each run of a file type, headed by
+/// its description, translated once for the group.
+fn groups_of(column: &Column) -> Groups {
+    let mut groups: Vec<Group> = Vec::new();
+    let mut current = None;
+    for index in 0..column.len() {
+        let Some(group) = column.group_at(index) else {
+            continue;
+        };
+        match (current, groups.last_mut()) {
+            (Some(open), Some(last)) if open == group => last.len += 1,
+            _ => {
+                let label: Arc<str> = Arc::from(tr(&group.description()));
+                groups.push(Group::new(group.key(), label, 1));
+                current = Some(group);
+            }
+        }
+    }
+    Groups::new(groups)
 }
 
 impl Pane {
@@ -91,6 +128,7 @@ impl Pane {
             held: Held::of(&collection),
             collection,
             moving: Moving::default(),
+            grouped: false,
         }
     }
 
@@ -148,16 +186,23 @@ impl Pane {
         (index < column.len()).then(|| column.id_at(index))
     }
 
-    /// Applies one change the view's listener queued.
-    pub(crate) fn apply(&mut self, change: Change, tx: &mut rune::Tx) -> Applied {
+    /// Applies one change the view's listener queued. `grouping` reads, for a column, whether
+    /// the browser groups its folder, which every column then follows.
+    pub(crate) fn apply(
+        &mut self,
+        change: Change,
+        grouping: Grouping<'_>,
+        tx: &mut rune::Tx,
+    ) -> Applied {
         let before = (self.shown, self.generation);
+        self.follow_grouping(grouping, tx);
         match change {
             Change::Reset => {
                 self.columns.clear();
                 self.show(None, tx);
             }
             Change::Truncated { len, active, .. } => self.truncate(len, active, tx),
-            Change::Added(added) => self.add(added, tx),
+            Change::Added(added) => self.add(added, grouping, tx),
             Change::Relocated {
                 from_depth,
                 columns,
@@ -172,6 +217,36 @@ impl Pane {
         match before == (self.shown, self.generation) {
             true => Applied::Within,
             false => Applied::Entered,
+        }
+    }
+
+    /// Every column follows the browser's grouping; the one shown is brought in step with its
+    /// new order at once.
+    fn follow_grouping(&mut self, grouping: Grouping<'_>, tx: &mut rune::Tx) {
+        let mut regrouped = false;
+        for (depth, column) in self.columns.iter_mut().enumerate() {
+            let changed = column.set_grouping(grouping(depth));
+            regrouped |= changed && self.shown == Some(depth);
+        }
+        if regrouped {
+            self.sync(tx);
+        }
+    }
+
+    /// Gives the collection the groups of the folder shown, or takes them away: before each
+    /// `enter` and `sync`, as the collection asks.
+    fn regroup(&mut self) {
+        let column = self.shown.and_then(|depth| self.columns.get(depth));
+        match column.filter(|column| column.grouping().is_some()) {
+            Some(column) => {
+                self.collection.set_groups(groups_of(column));
+                self.grouped = true;
+            }
+            None if self.grouped => {
+                self.collection.set_groups(Groups::default());
+                self.grouped = false;
+            }
+            None => {}
         }
     }
 
@@ -209,6 +284,7 @@ impl Pane {
         let depth = depth.filter(|depth| *depth < self.columns.len());
         self.shown = depth;
         self.generation += 1;
+        self.regroup();
         let (source, listing) = match depth.and_then(|depth| self.columns.get(depth)) {
             Some(column) if column.is_loading() => (column as &dyn EntrySource, Listing::Loading),
             Some(column) => (column as &dyn EntrySource, Listing::Complete),
@@ -232,7 +308,7 @@ impl Pane {
         }
     }
 
-    fn add(&mut self, added: Added, tx: &mut rune::Tx) {
+    fn add(&mut self, added: Added, grouping: Grouping<'_>, tx: &mut rune::Tx) {
         let Added {
             depth,
             location,
@@ -244,7 +320,9 @@ impl Pane {
         if self.columns.len() != depth {
             return;
         }
-        self.columns.push(Column::new(location, show_hidden, None));
+        let mut column = Column::new(location, show_hidden, None);
+        column.set_grouping(grouping(depth));
+        self.columns.push(column);
         // Opening a folder in place makes the new root active, and history the column it
         // restores. A column opened with its parent kept active (`descend`) does not show.
         // The browser closes a column before it adds another at its depth, so `truncate` has
@@ -319,6 +397,7 @@ impl Pane {
 
     /// Brings the collection in step with its rows after they changed.
     fn sync(&mut self, tx: &mut rune::Tx) {
+        self.regroup();
         let Some(column) = self.shown.and_then(|depth| self.columns.get(depth)) else {
             return;
         };
