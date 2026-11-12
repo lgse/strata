@@ -38,7 +38,9 @@ The checkpoint a package feeds is its wave's, in the plan's
   the source; whoever coordinates brings `STATUS.md` up to date from them, in small
   docs-only pull requests of its own.
 - **The archived issues are not reopened, edited or commented on.** That is the
-  coordinator's rule: they are history, linked from the files.
+  coordinator's rule: they are history, linked from the files. A new finding's reference
+  issue is filed and may be closed at once, as
+  [`findings.md`](findings.md#recording-a-finding) says.
 
 ## Branch and worktree
 
@@ -76,8 +78,10 @@ The checkpoint a package feeds is its wave's, in the plan's
   for the owner: record it in [`findings.md`](findings.md) and [`owner.md`](owner.md), leave
   the run `pending`, and go on. A run moves from `required` to `parallel` only with the
   owner's agreement.
-- **Strata's own faults are `oracle` findings:** search [`findings.md`](findings.md) by code
-  and by scenario or seed name, record a new one, set it aside, and do not chase it.
+- **Strata's own faults are `oracle` findings:** search [`findings.md`](findings.md), then
+  the issues, by code and by scenario or seed name; record a new one as `findings.md` says
+  (a reference issue, which may be closed at once, and an entry there); set it aside, and do
+  not chase it.
 - **Rune is read-only.** A gap is drafted into `docs/rune/upstream/rune/` as the plan's
   [Rune framework gaps](README.md#rune-framework-gaps) says, and then worked around.
 - **Stop rather than widen.** Something outside the package's scope, an owner ruling, or a
@@ -102,6 +106,13 @@ The checkpoint a package feeds is its wave's, in the plan's
   pull request's number, what it delivers and the runs it flips; what its dependents must
   know, if anything; the done-when items it completes, ticked; and what it leaves open. The
   validation and the evidence stay on the pull request, not in the file.
+- **Before opening, when anything under `crates/` or `src/` changed:**
+  check that every mutation patch still applies, from the repository root:
+  `for p in tests/qa/parity/mutations/*.patch tests/qa/mutations/*.patch; do git apply --check "$p" 2>/dev/null || echo "does not apply: $p"; done`.
+  It takes seconds and starts no container; it is not a mutation run. Only `cut.patch`
+  (finding [#2161](https://github.com/lgse/strata/issues/2161)) is known not to apply. A patch that no longer applies is refreshed and
+  proven once, as the plan's
+  [When a mutation run is right](README.md#when-a-mutation-run-is-right) says.
 - **Before opening:** the checks in the plan's
   ["Before a package's pull request"](README.md#before-a-packages-pull-request) table that the
   change reaches, risk-based as `AGENTS.md` sets out. CI builds the GTK lane only, so the
@@ -113,9 +124,11 @@ The checkpoint a package feeds is its wave's, in the plan's
   what is right, answer what is not, on the pull request.
 - **The merge gate** is the plan's ([The merge gate](README.md#the-merge-gate)), run by the
   package's agent on its branch with `strata-next` merged in: the package's ledger selection
-  on both targets (`./scripts/qa-parity.sh <package>`) and its Rune mutation patches
-  (`./scripts/qa-parity.sh mutations`); and, when the runner, `strata-qa`, a shared crate or
-  `src/` changed, `./scripts/qa-parity.sh slice` and `./scripts/quality.sh test` too.
+  on both targets (`./scripts/qa-parity.sh <package>`); or, when the runner, `strata-qa`, a
+  shared crate or `src/` changed, every required run on both targets
+  (`./scripts/qa-parity.sh all`), the whole GTK suite (`./scripts/qa.sh`) and
+  `./scripts/quality.sh test`. No mutation set is run: a patch is proven once, alone, as the
+  plan's [When a mutation run is right](README.md#when-a-mutation-run-is-right) says.
 - **The merge**, once the gate and CI are green: a merge commit,
   `gh pr merge <number> -R lgse/strata --merge`, never a squash or a rebase
   ([`owner.md`](owner.md#ruled)).
