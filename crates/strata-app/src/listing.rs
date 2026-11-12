@@ -102,8 +102,11 @@ pub(crate) struct Row {
     kind: EntryKind,
     described: Described,
     hidden: bool,
-    /// Its file type, as the List view groups by it.
-    group: TypeGroup,
+    /// The browser's kind of entry: what its file type is read from with its name.
+    entry_kind: Kind,
+    /// Its file type, as the List view groups by it: read only while its folder is grouped
+    /// ([`Column::group`]), as a MIME lookup for every row would cost every view.
+    group: Option<TypeGroup>,
 }
 
 impl Row {
@@ -115,7 +118,8 @@ impl Row {
             kind,
             described,
             hidden: entry.is_hidden,
-            group: TypeGroup::of(entry),
+            entry_kind: entry.kind,
+            group: None,
         }
     }
 
@@ -296,7 +300,9 @@ impl Column {
         let Some(current) = self.rows.get_mut(position) else {
             return;
         };
-        let regroup = self.grouping.is_some() && current.group != row.group;
+        // A row that changed its name or its kind may have changed its type.
+        let retyped = current.name != row.name || current.entry_kind != row.entry_kind;
+        let regroup = self.grouping.is_some() && retyped;
         let moved = current.id != row.id || current.hidden != row.hidden || regroup;
         *current = row;
         if moved {
@@ -326,25 +332,31 @@ impl Column {
         let Some(preferences) = self.grouping else {
             return;
         };
+        let folder = self.location.clone();
         let mut types: Vec<TypeGroup> = Vec::new();
+        let mut known: HashMap<TypeGroup, usize> = HashMap::new();
         for position in &self.shown {
-            let group = self.rows[*position].group;
-            if !types.contains(&group) {
+            let row = &mut self.rows[*position];
+            let group = *row
+                .group
+                .get_or_insert_with(|| TypeGroup::of_row(&folder, row.entry_kind, &row.name));
+            known.entry(group).or_insert_with(|| {
                 types.push(group);
-            }
+                types.len() - 1
+            });
         }
         let names: Vec<_> = types.iter().map(|group| group.description()).collect();
         let mut ranked: Vec<usize> = (0..types.len()).collect();
         ranked.sort_by(|a, b| compare_type_groups(&names[*a], &names[*b], preferences));
-        let mut rank = vec![0; types.len()];
-        for (place, kind) in ranked.into_iter().enumerate() {
-            rank[kind] = place;
-        }
-        let rank_of = |group: TypeGroup| types.iter().position(|t| *t == group).map(|i| rank[i]);
+        let rank: HashMap<TypeGroup, usize> = ranked
+            .into_iter()
+            .enumerate()
+            .map(|(place, kind)| (types[kind], place))
+            .collect();
         let rows = &self.rows;
         // A stable sort: each group keeps the browser's order.
         self.shown
-            .sort_by_key(|position| rank_of(rows[*position].group));
+            .sort_by_key(|position| rows[*position].group.and_then(|group| rank.get(&group)));
         self.back = vec![usize::MAX; self.rows.len()];
         for (index, position) in self.shown.iter().enumerate() {
             self.back[*position] = index;
@@ -383,7 +395,7 @@ impl Column {
 
     /// The file type of the row shown at `index`.
     pub(crate) fn group_at(&self, index: usize) -> Option<TypeGroup> {
-        Some(self.rows.get(self.position_at(index)?)?.group)
+        self.rows.get(self.position_at(index)?)?.group
     }
 
     /// What the row the view shows at `index` is, as assistive technology hears it.

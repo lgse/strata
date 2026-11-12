@@ -14,7 +14,7 @@
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use strata_core::model::FileEntry;
+use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 use strata_fs::services::entry_type;
 
 /// A file type's description, by its key in the table.
@@ -32,6 +32,13 @@ thread_local! {
 }
 
 impl TypeGroup {
+    /// The type of the entry of `kind` named `name` in `folder`, as GTK's grouped List reads
+    /// it: strata-fs's `entry_type`, over the two fields it reads (its kind and its name), since
+    /// a listing keeps no `FileEntry`.
+    pub(crate) fn of_row(folder: &Location, kind: EntryKind, name: &str) -> Self {
+        Self::of(&entry(folder, kind, name))
+    }
+
     /// The type of `entry`, as GTK's grouped List reads it.
     pub(crate) fn of(entry: &FileEntry) -> Self {
         let kind = entry_type(entry);
@@ -60,8 +67,39 @@ impl TypeGroup {
         })
     }
 
+    /// How many types the table holds.
+    #[cfg(test)]
+    pub(crate) fn interned() -> usize {
+        NAMES.with_borrow(|table| table.names.len())
+    }
+
     /// The key as a group's, for the collection's group headers.
     pub(crate) fn key(self) -> u64 {
         u64::from(self.0)
     }
 }
+
+/// An entry with what `entry_type` reads, its kind and its name, and nothing else known.
+fn entry(folder: &Location, kind: EntryKind, name: &str) -> FileEntry {
+    FileEntry {
+        location: folder.clone(),
+        thumbnail_path: None,
+        native_name: name.into(),
+        display_name: name.to_owned(),
+        kind,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
+        recent_uri: None,
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
+        is_hidden: false,
+    }
+}
+
+#[cfg(test)]
+mod tests;

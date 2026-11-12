@@ -6,7 +6,7 @@ use strata_components::contract::{EntryKind, EntrySource};
 use strata_core::model::{EntryKind as Kind, FileEntry, Location, MetadataValue, ViewPreferences};
 use strata_fs::{app::compare_type_groups, services::entry_type};
 
-use super::{Column, Edit, Row};
+use super::{Column, Edit, Row, TypeGroup};
 use crate::slots::Ids;
 
 const FOLDER: &str = "/listing";
@@ -217,8 +217,8 @@ fn a_grouped_listing_shows_type_groups_in_strata_fs_order_and_each_in_the_browse
     }
 }
 
-/// Ungrouped, nothing changes from the browser's order and no lookup is built; turning
-/// grouping off again goes back to both.
+/// Ungrouped, nothing changes from the browser's order, no type is read and no lookup is
+/// built; turning grouping off again goes back to the browser's order.
 #[test]
 fn an_ungrouped_listing_keeps_the_browsers_order_and_builds_no_lookup() {
     let ids = Ids::default();
@@ -228,6 +228,11 @@ fn an_ungrouped_listing_keeps_the_browsers_order_and_builds_no_lookup() {
 
     assert!(!column.set_grouping(None));
     assert!(column.back.is_empty());
+    assert_eq!(
+        TypeGroup::interned(),
+        0,
+        "no type is read for an ungrouped listing"
+    );
     assert!(column.set_grouping(Some(by_name())));
     assert!(column.set_grouping(None));
 
