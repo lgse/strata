@@ -467,9 +467,13 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         &app.window.csd,
         csd_of,
     );
-    rune_kit::root(window, layer).on_window_focus(|app: &mut App, focused, _: &mut Tx| {
-        app.window.active = focused;
-    })
+    rune_kit::root(window, layer)
+        // What the focused element and those around it left of a key, ahead of Rune's own
+        // focus navigation. The root takes no focus and no press for it.
+        .on_key(commands::from_element)
+        .on_window_focus(|app: &mut App, focused, _: &mut Tx| {
+            app.window.active = focused;
+        })
 }
 
 /// Rune's `poll` hook: what the browser's observers queued, then each part's own timers,

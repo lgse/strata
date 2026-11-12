@@ -2982,6 +2982,33 @@ fn a_collection_keyed_by_its_host_takes_keys_through_the_host() {
     assert!(!taken);
 }
 
+/// A host's own keys come before its list's: the hook hears each key first, by either road
+/// into the collection, and a key it takes reaches no controller.
+#[test]
+fn the_hosts_hook_hears_a_key_before_the_controllers_and_keeps_the_one_it_takes() {
+    let end = KeyEvent {
+        key: Key::End,
+        mods: Mods::default(),
+    };
+    for (takes, cursor) in [(true, None), (false, Some(id(19)))] {
+        let mut rt = strip(20);
+        let event = end.clone();
+
+        let taken = rt.update_if(move |s, tx| {
+            strip_pane(1)
+                .before_keys(move |_: &mut Strip, _, _| takes)
+                .key(s, &event, tx)
+        });
+
+        assert!(taken, "the hook or the controller takes End");
+        assert_eq!(
+            rt.state.colls[1].selection.cursor(),
+            cursor,
+            "hook takes: {takes}"
+        );
+    }
+}
+
 // The drag-over hook (C2's request E2).
 
 /// Drags `at` a point on a folder row and then near the viewport's bottom edge, for 20 frames;

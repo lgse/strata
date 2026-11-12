@@ -10,7 +10,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 
 use super::intents;
-use crate::{App, rename};
+use crate::{App, commands, rename};
 
 /// The view's words, translated once: the language changes only on restart.
 pub(super) struct Labels(ColumnsLabels);
@@ -77,13 +77,14 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
             None => collection,
         };
         // The editor answers in the column its edit names, and in no other.
-        match app.columns.scope(depth) {
+        let collection = match app.columns.scope(depth) {
             Some(scope) => collection.rename(
                 move |app: &App| app.rename.state.renaming_in(&scope),
                 rename::editor(app).slot(),
             ),
             None => collection,
-        }
+        };
+        commands::in_view(collection)
     })
     .pointer_settings(|app: &App| PointerSettings::default().modes(app.columns.clicks))
     .on_intent(intents::heard)

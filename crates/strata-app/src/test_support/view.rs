@@ -10,23 +10,34 @@ use serde_json::Value;
 use strata_components::{collection::element::row_key, contract::EntryId};
 use strata_core::model::Location;
 
-use super::{PATIENCE, hosted_after, send_key};
-use crate::host::offscreen::Offscreen;
+use super::{PATIENCE, hosted_after, hosted_on, send_key};
+use crate::{App, host::offscreen::Offscreen, slots::Entry};
 
 fn settings_file() -> PathBuf {
     strata_core::storage::config_directory().join("settings.toml")
 }
 
+fn save_mode(mode: &str) {
+    let file = settings_file();
+    std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+    let saved = format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n");
+    std::fs::write(file, saved).expect("settings");
+}
+
 /// Runs the test `name` of `module` in a window whose saved `browser_mode` is `mode`.
 pub(crate) fn hosted_in(module: &str, mode: &'static str, name: &str, run: impl FnOnce(Offscreen)) {
-    let prepare = move || {
-        let file = settings_file();
-        std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
-        let saved =
-            format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n");
-        std::fs::write(file, saved).expect("settings");
-    };
-    hosted_after(module, name, prepare, run);
+    hosted_after(module, name, move || save_mode(mode), run);
+}
+
+/// A test on a window made of the table `parts`, with `mode` saved as the view to show.
+pub(crate) fn hosted_over_in(
+    (module, name): (&str, &str),
+    mode: &'static str,
+    parts: fn() -> Vec<Entry<App>>,
+    run: impl FnOnce(Offscreen),
+) {
+    let host = |ui, settings| Offscreen::with_parts(parts().leak(), ui, settings);
+    hosted_on((module, name), move || save_mode(mode), host, run);
 }
 
 /// How a view looks to assistive technology: what its pane is described as, its list's role,

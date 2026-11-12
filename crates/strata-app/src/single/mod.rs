@@ -35,7 +35,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 
 use crate::{
-    App, events,
+    App, commands, events,
     listing::{Column, Load, Words},
     menus::{self, Request},
     pane::{Applied, Pane},
@@ -187,10 +187,11 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     .on_cursor(|app: &mut App, _, tx| moved(app, tx))
     .on_selection(moved);
     // The editor answers in this view only while its edit names it.
-    collection.rename(
+    let collection = collection.rename(
         |app: &App| app.rename.state.renaming_in(V::KEY),
         rename::editor(app).slot(),
-    )
+    );
+    commands::in_view(collection)
 }
 
 /// The view's element: a group keyed `<key>-pane`, named by the folder and described as

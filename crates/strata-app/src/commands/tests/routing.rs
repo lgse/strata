@@ -32,11 +32,11 @@ thread_local! {
     static BUILT: Cell<u32> = const { Cell::new(0) };
 }
 
-fn note(line: impl Into<String>) {
+pub(super) fn note(line: impl Into<String>) {
     LOG.with_borrow_mut(|log| log.push(line.into()));
 }
 
-fn noted() -> Vec<String> {
+pub(super) fn noted() -> Vec<String> {
     LOG.with_borrow_mut(std::mem::take)
 }
 
@@ -56,12 +56,12 @@ fn f8(press: &KeyPress) -> bool {
     press.is(Binding::plain(Key::F8))
 }
 
-fn f9(press: &KeyPress) -> bool {
+pub(super) fn f9(press: &KeyPress) -> bool {
     press.is(Binding::plain(Key::F9))
 }
 
 /// `reads` at `stage`, wherever the press lands.
-const fn at(stage: Stage, reads: fn(&KeyPress) -> bool) -> Keys<App> {
+pub(super) const fn at(stage: Stage, reads: fn(&KeyPress) -> bool) -> Keys<App> {
     Keys {
         stage,
         reads: Reads::Press(reads),
@@ -70,7 +70,7 @@ const fn at(stage: Stage, reads: fn(&KeyPress) -> bool) -> Keys<App> {
 }
 
 /// A part with `commands` and nothing to draw. Its type tells two of them apart.
-fn part<P: 'static>(
+pub(super) fn part<P: 'static>(
     name: &'static str,
     commands: &'static [Action<App>],
     keyboard: fn(&App) -> Option<Holds>,
@@ -298,6 +298,67 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
                     (asked.iter().map(|s| (*s).to_owned()).collect(), taken),
                     "{holds:?}"
                 );
+            }
+        },
+    );
+}
+
+fn made_button(_: &App, _: &mut Frame<'_, App>) -> Option<El> {
+    Some(el().key("made-button").w(40.0).h(20.0).focusable(true))
+}
+
+fn an_owner_every_stage_and_a_button() -> Vec<Entry<App>> {
+    struct Button;
+    let button = Entry {
+        place: Place::Overlays(made_button),
+        ..part::<Button>("made-button", &[], |_| None)
+    };
+    let mut parts = an_owner_and_every_stage();
+    parts.push(button);
+    parts
+}
+
+/// Rune hears a key at the root element when an element has the keyboard and at the window
+/// when none has or a part holds it; a view's own keys stand ahead of the chain's last stage,
+/// so from a view the root asks only what follows them. Wherever it lands, each stage hears
+/// the press once.
+#[test]
+fn a_press_is_offered_once_from_wherever_the_keyboard_is() {
+    const WHOLE: [&str; 9] = [
+        "tab strip",
+        "entry",
+        "zoom",
+        "inline editing",
+        "text input",
+        "file commands, outside text",
+        "after yield, the owner's",
+        "after yield",
+        "unclaimed",
+    ];
+    let after_the_view = &WHOLE[6..];
+    // A field's part holds the keyboard: the window asks, with what a field leaves.
+    let under_a_field = [&WHOLE[..5], &WHOLE[6..]].concat();
+    let cases: [(Option<&str>, Option<Holds>, &[&str]); 4] = [
+        (None, None, &WHOLE),
+        (Some("made-button"), None, &WHOLE),
+        (Some("made-view"), None, after_the_view),
+        (Some("made-button"), Some(Holds::Field), &under_a_field),
+    ];
+    hosted_over(
+        MODULE,
+        "routing::a_press_is_offered_once_from_wherever_the_keyboard_is",
+        an_owner_every_stage_and_a_button,
+        move |mut host: Offscreen| {
+            for (focused, holds, asked) in cases {
+                HOLDS.set(holds);
+                act(&mut host, |_, tx| match focused {
+                    Some(key) => tx.focus(key, false),
+                    None => tx.blur(),
+                });
+
+                press(&mut host, Logical::Function(9), Mods::default());
+
+                assert_eq!(noted(), asked, "{focused:?}, {holds:?}");
             }
         },
     );
