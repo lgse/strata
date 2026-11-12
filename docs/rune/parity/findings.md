@@ -125,6 +125,10 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `ui::window::tests::keyboard_dispatch::icon_motion::tenxer_icons_move_spatially_open_explicitly_and_peek`,
   failed once in `./scripts/quality.sh test` on a loaded host (`Key(104) landed on ["empty",
   "tile-03.txt", "tile-03.txt"]`) and then passed 6 times of 6 alone.
+  At `6f1605908` a seventh,
+  `ui::preview::tests::audio::audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request`
+  (`src/ui/preview/tests/audio.rs:27`, "rendered stream"), failed in CI's shard 2, where
+  `./scripts/quality.sh test` had passed at the same commit in the pinned image.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
