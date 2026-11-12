@@ -84,21 +84,29 @@ slots::parts! {
 
 - **Each package of the parity plan has its own comment in both lists,** and adds its lines
   under it. Two branches then never add at the same place, and git merges them without a
-  conflict. Do not move another package's line or add outside your comment.
+  conflict. Do not move another package's line or add outside your comment. A registration
+  line takes no `///` and no `#[cfg]`.
 - **The registration line is a field of the application state:** `app.sidebar`, which the
   part's components reach by accessor.
 - **The order of the registration lines is the order of the parts,** within a slot and
   wherever the shell calls each of them: an overlay registered later is drawn over an
-  earlier one, and parts hear a `Browser` event in that order.
+  earlier one, and parts hear a `Browser` event in that order. That makes it the order of
+  the packages, with nothing to override it: another order is a `contract` change.
 - **A slot with no part adds nothing:** no element, no node in the accessibility tree, no
   focus stop.
 - **The contract is the module documentation of `crates/strata-app/src/slots.rs`:** where
-  each slot is, and how a part gets its place, its state, its settings, its share of
-  `Browser`'s events, its timers and the keyboard. `columns/part.rs` is the worked example.
+  each slot is, what a part gives the shell there, and how it gets its state, its settings,
+  its share of `Browser`'s events, its timers and the keyboard. It has the rules a part
+  keeps, and a list of what waits on another package: window chords and the header's
+  buttons, saving a setting, a service other than `Browser`, a `Browser` for each tab, and
+  changing the view while the window is open. `columns/part.rs` is the worked example.
 - **A part never edits `shell.rs`, `slots.rs` or another part's module.** When a slot cannot
   give a part what it needs, that is a `contract` change of its own, made first.
-- **`slots::tests` checks the registrations:** a part registered twice, or a second part in
-  a slot that holds one, fails `mise run test-rune slots::`.
+- **No CI job builds, lints or tests the Rune side** ([Two lanes](#two-lanes)), so nothing
+  but a local run finds two branches that merged cleanly and do not fit: a second part in a
+  slot that holds one, or a part registered twice. Run `mise run test-rune slots::` before
+  pushing, and again after merging `strata-next`. A debug build refuses to start on the
+  same faults; a release build does not check.
 
 ## Two lanes
 

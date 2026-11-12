@@ -79,7 +79,7 @@ impl<S: 'static> Inbox<S> {
     }
 
     /// Lets each of `listeners` read `event`, in order, and queues what they ask in that
-    /// order. The queue is not held while they read: a listener may call the browser.
+    /// order.
     pub(crate) fn hear(&self, event: &BrowserEvent, browser: &Browser, listeners: &[Listener<S>]) {
         let mut batch = Batch {
             updates: Vec::new(),

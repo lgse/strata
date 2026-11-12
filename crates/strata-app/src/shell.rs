@@ -209,10 +209,10 @@ pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
     &mut app.window.csd
 }
 
-/// The key of the element that takes the keyboard for `slot`: where a field or a menu gives
-/// it back.
-pub(crate) fn focus_key(app: &App, slot: Slot) -> Option<&'static str> {
-    app.window.parts.focus(slot)
+/// The key of the shown view's element that takes the keyboard: where a field or a menu
+/// gives it back.
+pub(crate) fn view_focus(app: &App) -> Option<&'static str> {
+    app.window.parts.shown().map(|view| view.focus)
 }
 
 fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
@@ -271,8 +271,9 @@ struct Placed {
 
 /// What the parts of `slot` build, in the order they are registered.
 fn built(app: &App, slot: Slot, frame: &mut Frame<'_, App>) -> Vec<El> {
-    let parts = app.window.parts.of(slot);
-    parts.filter_map(|part| (part.build)(app, frame)).collect()
+    let builds = app.window.parts.of(slot);
+    let builds = builds.filter_map(|part| part.place.build());
+    builds.filter_map(|build| build(app, frame)).collect()
 }
 
 impl Placed {
@@ -283,8 +284,8 @@ impl Placed {
         let location = built(app, Slot::Location, frame).pop();
         let sidebar = built(app, Slot::Sidebar, frame).pop();
         let mut files = built(app, Slot::View, frame).pop();
-        for drawer in app.window.parts.of(Slot::Drawer) {
-            files = files.map(|files| (drawer.wrap)(app, files, frame));
+        if let Some(wrap) = app.window.parts.drawer() {
+            files = files.map(|files| wrap(app, files, frame));
         }
         let footer = built(app, Slot::Footer, frame);
         let mut anchors = built(app, Slot::Overlays, frame);
@@ -309,9 +310,9 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
         .min_h(0.0)
         .fill(app.look.kit.c.bg_base)
         .on_pointer_move_local(|app: &mut App, pointer, tx: &mut Tx| {
-            let parts = app.window.parts;
-            for view in parts.of(Slot::View) {
-                (view.pointer_at)(app, (pointer.window_x, pointer.window_y));
+            let view = app.window.parts.shown();
+            if let Some(pointer_at) = view.and_then(|view| view.pointer_at) {
+                pointer_at(app, (pointer.window_x, pointer.window_y));
             }
             tx.live_only();
         });
@@ -413,7 +414,7 @@ type WindowKey = (&'static str, fn(&mut App, &mut Tx));
 
 /// The window's own keys. Shift may be held with a history key, as `history_jump` in
 /// `src/ui/window/keyboard/items.rs` lets it.
-const WINDOW_KEYS: [WindowKey; 7] = [
+const WINDOW_KEYS: &[WindowKey] = &[
     // `HIDDEN_FILES`, `RENAME` and `REFRESH` in `src/ui/keys/bindings/window.rs`. F5 reads
     // every column again in the Columns view (`refresh_browser`).
     ("ctrl+h, ctrl+.", |app, _| app.browser.toggle_hidden()),

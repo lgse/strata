@@ -5,7 +5,7 @@
 
 use std::{any::TypeId, rc::Rc};
 
-use rune::{Env, Runtime, el};
+use rune::{El, Env, Runtime, el};
 use strata_core::model::ViewPreferences;
 use strata_desktop::settings::Preferences;
 use strata_fs::{
@@ -13,7 +13,7 @@ use strata_fs::{
     app::{Browser, BrowserEvent},
 };
 
-use super::{Entry, Inbox, Listener, Registry, Setup, Slot, registry::Fault};
+use super::{Entry, Frame, Inbox, Listener, Place, Registry, Setup, Slot, View, registry::Fault};
 use crate::columns::Ids;
 
 /// What the made-up parts did, in order.
@@ -40,46 +40,56 @@ made! {
     Columns = "columns",
     Icons = "icons",
     Sidebar = "sidebar",
+    Drawer = "drawer",
     Editor = "editor",
     Menu = "menu",
 }
 
-fn named(event: &BrowserEvent) -> &'static str {
-    match event {
-        BrowserEvent::Reset => "reset",
-        BrowserEvent::HiddenToggled { .. } => "hidden",
-        _ => "another event",
-    }
-}
-
-/// A listener that queues one line for each event: who heard it, and which it was.
+/// A listener that queues one line for each change of the hidden-files choice: who heard it,
+/// and what the choice was.
 fn listen<P: Made>(_: &Setup<'_>) -> Option<Listener<Log>> {
     Some(Box::new(|event, _, heard| {
-        let event = named(event);
-        heard.then(move |log: &mut Log, _| {
-            log.push(format!("{} heard {event}", P::NAME));
-            true
-        });
+        if let BrowserEvent::HiddenToggled { show_hidden } = event {
+            let shown = *show_hidden;
+            heard.then(move |log: &mut Log, _| {
+                log.push(format!("{} heard {shown}", P::NAME));
+                true
+            });
+        }
     }))
 }
 
-/// Part `P` in `slot`, with hooks that do nothing and a listener.
-fn part<P: Made>(slot: Slot) -> Entry<Log> {
+/// The element of a made-up part: none.
+fn nothing(_: &Log, _: &mut Frame<'_, Log>) -> Option<El> {
+    None
+}
+
+/// Part `P` at `place`, with hooks that do nothing and a listener.
+fn part<P: Made>(place: Place<Log>) -> Entry<Log> {
     Entry {
         name: P::NAME,
-        slot,
-        focus: None,
         kind: TypeId::of::<P>,
-        shows: |mode| mode == P::NAME,
+        place,
         listen: listen::<P>,
-        build: |_, _| None,
-        wrap: |_, files, _| files,
         publish: |_| {},
         caught_up: |_| {},
         poll: |_, _, _| false,
-        pointer_at: |_, _| {},
         holds_keyboard: |_| false,
     }
+}
+
+/// A view that answers to its own name as the saved mode, and takes the keyboard there.
+fn view<P: Made>() -> Entry<Log> {
+    part::<P>(Place::View(View {
+        build: nothing,
+        shows: |mode| mode == P::NAME,
+        focus: P::NAME,
+        pointer_at: None,
+    }))
+}
+
+fn overlay<P: Made>() -> Entry<Log> {
+    part::<P>(Place::Overlays(nothing))
 }
 
 fn names(parts: impl Iterator<Item = &'static Entry<Log>>) -> Vec<&'static str> {
@@ -95,27 +105,30 @@ fn table(entries: Vec<Entry<Log>>) -> &'static [Entry<Log>] {
 fn a_part_registered_twice_is_refused_and_so_is_a_second_part_in_a_slot_for_one() {
     let renamed = Entry {
         name: "strip",
-        ..part::<Columns>(Slot::View)
+        ..view::<Columns>()
     };
     let cases = [
         (
-            vec![part::<Columns>(Slot::View), part::<Columns>(Slot::View)],
+            vec![view::<Columns>(), view::<Columns>()],
             Err(Fault::NamedTwice("columns")),
         ),
         (
-            vec![part::<Columns>(Slot::View), renamed],
+            vec![view::<Columns>(), renamed],
             Err(Fault::SamePart("columns", "strip")),
         ),
         (
-            vec![part::<Sidebar>(Slot::Sidebar), part::<Menu>(Slot::Sidebar)],
+            vec![
+                part::<Sidebar>(Place::Sidebar(nothing)),
+                part::<Menu>(Place::Sidebar(nothing)),
+            ],
             Err(Fault::Crowded(Slot::Sidebar, "sidebar", "menu")),
         ),
         (
             vec![
-                part::<Columns>(Slot::View),
-                part::<Icons>(Slot::View),
-                part::<Editor>(Slot::Overlays),
-                part::<Menu>(Slot::Overlays),
+                view::<Columns>(),
+                view::<Icons>(),
+                overlay::<Editor>(),
+                overlay::<Menu>(),
             ],
             Ok(()),
         ),
@@ -134,14 +147,10 @@ fn the_parts_this_crate_registers_can_be_a_window() {
 }
 
 #[test]
-fn a_slot_nothing_is_registered_in_has_no_part_and_no_focus() {
-    let columns = Entry {
-        focus: Some("strip"),
-        ..part::<Columns>(Slot::View)
-    };
-    let registry = Registry::new(table(vec![columns]), "columns");
+fn a_slot_nothing_is_registered_in_has_no_part() {
+    let registry = Registry::new(table(vec![view::<Columns>()]), "columns");
 
-    assert_eq!(registry.focus(Slot::View), Some("strip"));
+    assert_eq!(names(registry.of(Slot::View)), ["columns"]);
     for empty in [
         Slot::Tabs,
         Slot::Location,
@@ -152,17 +161,39 @@ fn a_slot_nothing_is_registered_in_has_no_part_and_no_focus() {
         Slot::Dialogs,
     ] {
         assert_eq!(names(registry.of(empty)), [""; 0], "{empty:?}");
-        assert_eq!(registry.focus(empty), None, "{empty:?}");
+    }
+    assert!(registry.drawer().is_none());
+}
+
+#[test]
+fn a_part_builds_its_element_in_every_slot_but_the_drawer_which_wraps_the_views() {
+    let places = [
+        (Place::Tabs(nothing), Slot::Tabs, true),
+        (Place::Location(nothing), Slot::Location, true),
+        (Place::Sidebar(nothing), Slot::Sidebar, true),
+        (view::<Columns>().place, Slot::View, true),
+        (Place::Drawer(|_, files, _| files), Slot::Drawer, false),
+        (Place::Footer(nothing), Slot::Footer, true),
+        (Place::Overlays(nothing), Slot::Overlays, true),
+        (Place::Dialogs(nothing), Slot::Dialogs, true),
+    ];
+
+    for (place, slot, builds) in places {
+        assert_eq!(place.slot(), slot);
+        assert_eq!(place.build().is_some(), builds, "{slot:?}");
+        let registry = Registry::new(table(vec![part::<Drawer>(place)]), "columns");
+        assert_eq!(names(registry.of(slot)), ["drawer"], "{slot:?}");
+        assert_eq!(registry.drawer().is_some(), !builds, "{slot:?}");
     }
 }
 
 #[test]
 fn the_saved_mode_names_the_view_that_is_shown_and_the_first_stands_in() {
     let entries = table(vec![
-        part::<Editor>(Slot::Overlays),
-        part::<Columns>(Slot::View),
-        part::<Icons>(Slot::View),
-        part::<Menu>(Slot::Overlays),
+        overlay::<Editor>(),
+        view::<Columns>(),
+        view::<Icons>(),
+        overlay::<Menu>(),
     ]);
     let cases = [
         ("columns", ["editor", "columns", "menu"]),
@@ -173,70 +204,117 @@ fn the_saved_mode_names_the_view_that_is_shown_and_the_first_stands_in() {
 
     for (mode, active) in cases {
         let registry = Registry::new(entries, mode);
+        let shown = registry.shown().map(|view| view.focus);
         assert_eq!(names(registry.active()), active, "{mode}");
         assert_eq!(names(registry.of(Slot::View)), [active[1]], "{mode}");
+        assert_eq!(shown, Some(active[1]), "{mode}");
     }
 }
 
 #[test]
 fn a_window_with_no_view_registered_shows_none() {
-    let registry = Registry::new(table(vec![part::<Menu>(Slot::Overlays)]), "columns");
+    let registry = Registry::new(table(vec![overlay::<Menu>()]), "columns");
 
     assert_eq!(names(registry.of(Slot::View)), [""; 0]);
     assert_eq!(names(registry.active()), ["menu"]);
+    assert!(registry.shown().is_none());
+}
+
+/// What the parts of `entries` logged after the browser changed its hidden-files choice
+/// twice, with their listeners on the browser's observer as the shell puts them.
+fn heard_by(entries: &'static [Entry<Log>]) -> Log {
+    let registry = Registry::new(entries, "columns");
+    let (settings, ids) = (Preferences::default(), Ids::default());
+    let setup = Setup {
+        settings: &settings,
+        ids: &ids,
+    };
+    let browser = Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
+    let inbox = Inbox::observing(&browser, registry.listeners(&setup));
+
+    browser.toggle_hidden();
+    browser.toggle_hidden();
+
+    assert_eq!(inbox.heard(), 2);
+    let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
+    runtime.update(|log, tx| {
+        while let Some(update) = inbox.pop() {
+            update(log, tx);
+        }
+    });
+    runtime.state
 }
 
 #[test]
 fn parts_hear_each_event_in_the_order_they_are_registered_and_a_hidden_view_hears_none() {
-    let entries = table(vec![
-        part::<Editor>(Slot::Overlays),
-        part::<Icons>(Slot::View),
-        part::<Columns>(Slot::View),
-        part::<Menu>(Slot::Overlays),
+    let one_way = table(vec![
+        overlay::<Editor>(),
+        view::<Icons>(),
+        view::<Columns>(),
+        overlay::<Menu>(),
     ]);
-    let registry = Registry::new(entries, "columns");
-    let (settings, ids) = (Preferences::default(), Ids::default());
-    let listeners = registry.listeners(&Setup {
-        settings: &settings,
-        ids: &ids,
-    });
-    let browser = Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
-    let inbox = Inbox::observing(&browser, Vec::new());
+    let the_other = table(vec![
+        overlay::<Menu>(),
+        view::<Columns>(),
+        view::<Icons>(),
+        overlay::<Editor>(),
+    ]);
 
-    inbox.hear(&BrowserEvent::Reset, &browser, &listeners);
-    inbox.hear(
-        &BrowserEvent::HiddenToggled { show_hidden: true },
-        &browser,
-        &listeners,
+    assert_eq!(
+        heard_by(one_way),
+        [
+            "editor heard true",
+            "columns heard true",
+            "menu heard true",
+            "editor heard false",
+            "columns heard false",
+            "menu heard false",
+        ]
     );
+    assert_eq!(
+        heard_by(the_other),
+        [
+            "menu heard true",
+            "columns heard true",
+            "editor heard true",
+            "menu heard false",
+            "columns heard false",
+            "editor heard false",
+        ]
+    );
+}
+
+#[test]
+fn an_update_pushed_from_outside_an_event_waits_its_turn_in_the_queue() {
+    let browser = Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
+    let listeners = Registry::new(table(vec![overlay::<Menu>()]), "columns");
+    let (settings, ids) = (Preferences::default(), Ids::default());
+    let inbox = Inbox::observing(
+        &browser,
+        listeners.listeners(&Setup {
+            settings: &settings,
+            ids: &ids,
+        }),
+    );
+
+    browser.toggle_hidden();
     inbox.push(|log: &mut Log, _| {
         log.push("pushed".to_owned());
         false
     });
+    browser.toggle_hidden();
 
-    assert_eq!(inbox.heard(), 2);
     let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
-    let mut asked_for_a_view = Vec::new();
+    let mut asks_for_a_view = Vec::new();
     runtime.update(|log, tx| {
         while let Some(update) = inbox.pop() {
-            asked_for_a_view.push(update(log, tx));
+            asks_for_a_view.push(update(log, tx));
         }
     });
     assert_eq!(
         runtime.state,
-        [
-            "editor heard reset",
-            "columns heard reset",
-            "menu heard reset",
-            "editor heard hidden",
-            "columns heard hidden",
-            "menu heard hidden",
-            "pushed",
-        ]
+        ["menu heard true", "pushed", "menu heard false"]
     );
-    assert_eq!(
-        asked_for_a_view,
-        [true, true, true, true, true, true, false]
-    );
+    assert_eq!(asks_for_a_view, [true, false, true]);
     assert!(inbox.is_empty());
 }

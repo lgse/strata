@@ -33,7 +33,7 @@ use strata_core::{
 
 use crate::{
     App, columns,
-    slots::{Frame, Part, Setup, Slot},
+    slots::{Frame, Part, Place, Setup},
 };
 
 /// The one menu the window has open, and what it was opened on.
@@ -57,23 +57,23 @@ pub(crate) struct Opening {
 }
 
 /// The menu's element, with its surfaces in the layer while it is open.
+fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+    let menu = ContextMenu::new(
+        "menu",
+        |app: &App| &app.menu.state,
+        |app: &mut App| &mut app.menu.state,
+    )
+    .name(app.menu.name())
+    .on_intent(columns::chosen)
+    .build(app, &app.look, frame.layer);
+    Some(menu)
+}
+
 impl Part for Menu {
-    const SLOT: Slot = Slot::Overlays;
+    const PLACE: Place<App> = Place::Overlays(build);
 
     fn new(_: &Setup<'_>) -> Self {
         Self::default()
-    }
-
-    fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
-        let menu = ContextMenu::new(
-            "menu",
-            |app: &App| &app.menu.state,
-            |app: &mut App| &mut app.menu.state,
-        )
-        .name(app.menu.name())
-        .on_intent(columns::chosen)
-        .build(app, &app.look, frame.layer);
-        Some(menu)
     }
 }
 

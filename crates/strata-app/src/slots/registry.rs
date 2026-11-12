@@ -4,26 +4,21 @@
 
 use std::any::TypeId;
 
-use rune::{El, Tx};
+use rune::Tx;
 
-use super::{Frame, Listener, Part, Setup, Slot};
+use super::{Listener, Part, Place, Setup, Slot, View};
 use crate::App;
 
-/// One registered part: its name, its slot, and its hooks.
+/// One registered part: its name, its place, and its hooks.
 pub(crate) struct Entry<S: 'static> {
     /// The field of the application state that holds the part.
     pub(crate) name: &'static str,
-    pub(crate) slot: Slot,
-    pub(crate) focus: Option<&'static str>,
     pub(crate) kind: fn() -> TypeId,
-    pub(crate) shows: fn(&str) -> bool,
+    pub(crate) place: Place<S>,
     pub(crate) listen: fn(&Setup<'_>) -> Option<Listener<S>>,
-    pub(crate) build: fn(&S, &mut Frame<'_, S>) -> Option<El>,
-    pub(crate) wrap: fn(&S, El, &mut Frame<'_, S>) -> El,
     pub(crate) publish: fn(&mut S),
     pub(crate) caught_up: fn(&mut S),
     pub(crate) poll: fn(&mut S, f64, &mut Tx) -> bool,
-    pub(crate) pointer_at: fn(&mut S, (f32, f32)),
     pub(crate) holds_keyboard: fn(&S) -> bool,
 }
 
@@ -32,18 +27,26 @@ impl Entry<App> {
     pub(crate) const fn of<P: Part>(name: &'static str) -> Self {
         Self {
             name,
-            slot: P::SLOT,
-            focus: P::FOCUS,
             kind: TypeId::of::<P>,
-            shows: P::shows,
+            place: P::PLACE,
             listen: P::listen,
-            build: P::build,
-            wrap: P::wrap,
             publish: P::publish,
             caught_up: P::caught_up,
             poll: P::poll,
-            pointer_at: P::pointer_at,
             holds_keyboard: P::holds_keyboard,
+        }
+    }
+}
+
+impl<S> Entry<S> {
+    pub(crate) const fn slot(&self) -> Slot {
+        self.place.slot()
+    }
+
+    fn view(&self) -> Option<&View<S>> {
+        match &self.place {
+            Place::View(view) => Some(view),
+            _ => None,
         }
     }
 }
@@ -79,9 +82,9 @@ impl<'a, S> Registry<'a, S> {
     pub(crate) fn new(entries: &'a [Entry<S>], mode: &str) -> Self {
         let views = || {
             let entries = entries.iter().enumerate();
-            entries.filter(|(_, entry)| entry.slot == Slot::View)
+            entries.filter_map(|(index, entry)| Some((index, entry.view()?)))
         };
-        let named = views().find(|(_, entry)| (entry.shows)(mode));
+        let named = views().find(|(_, view)| (view.shows)(mode));
         let shown = named.or_else(|| views().next()).map(|(index, _)| index);
         Self { entries, shown }
     }
@@ -96,8 +99,8 @@ impl<'a, S> Registry<'a, S> {
                 if (earlier.kind)() == (entry.kind)() {
                     return Err(Fault::SamePart(earlier.name, entry.name));
                 }
-                if earlier.slot == entry.slot && entry.slot.holds_one() {
-                    return Err(Fault::Crowded(entry.slot, earlier.name, entry.name));
+                if earlier.slot() == entry.slot() && entry.slot().holds_one() {
+                    return Err(Fault::Crowded(entry.slot(), earlier.name, entry.name));
                 }
             }
         }
@@ -108,19 +111,27 @@ impl<'a, S> Registry<'a, S> {
     pub(crate) fn active(self) -> impl Iterator<Item = &'a Entry<S>> {
         let entries = self.entries.iter().enumerate();
         entries
-            .filter(move |(index, entry)| entry.slot != Slot::View || self.shown == Some(*index))
+            .filter(move |(index, entry)| entry.view().is_none() || self.shown == Some(*index))
             .map(|(_, entry)| entry)
     }
 
     /// The active parts of `slot`, in registration order. None for a slot nothing is
     /// registered in.
     pub(crate) fn of(self, slot: Slot) -> impl Iterator<Item = &'a Entry<S>> {
-        self.active().filter(move |entry| entry.slot == slot)
+        self.active().filter(move |entry| entry.slot() == slot)
     }
 
-    /// The key of the element that takes the keyboard for `slot`.
-    pub(crate) fn focus(self, slot: Slot) -> Option<&'static str> {
-        self.of(slot).find_map(|entry| entry.focus)
+    /// The view that is shown. None when no view is registered.
+    pub(crate) fn shown(self) -> Option<&'a View<S>> {
+        self.entries.get(self.shown?)?.view()
+    }
+
+    /// The drawer's wrap around the files, when a drawer is registered.
+    pub(crate) fn drawer(self) -> Option<super::Wrap<S>> {
+        self.active().find_map(|entry| match entry.place {
+            Place::Drawer(wrap) => Some(wrap),
+            _ => None,
+        })
     }
 
     /// The active parts' listeners, in registration order.

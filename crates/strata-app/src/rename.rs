@@ -38,7 +38,7 @@ use strata_fs::{
 
 use crate::{
     App, shell,
-    slots::{Frame, Listener, Part, Setup, Slot},
+    slots::{Frame, Listener, Part, Place, Setup},
 };
 
 /// How a rename the browser was asked for ended.
@@ -129,11 +129,17 @@ impl Rename {
     }
 }
 
-/// The editor's message over the rows, and the editor's share of the window: the browser's
-/// answers, its poll, and the window's keys waiting while its field is open. The field itself
-/// is in the row, where the view puts [`editor`]'s slot.
+/// The editor's message, over the rows.
+fn message(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+    frame.layer.extend(editor(app).message(app, &app.look));
+    None
+}
+
+/// The editor's share of the window: its message, the browser's answers, its poll, and the
+/// window's keys waiting while its field is open. The field itself is in the row, where the
+/// view puts [`editor`]'s slot.
 impl Part for Rename {
-    const SLOT: Slot = Slot::Overlays;
+    const PLACE: Place<App> = Place::Overlays(message);
 
     fn new(_: &Setup<'_>) -> Self {
         Self::translated()
@@ -148,11 +154,6 @@ impl Part for Rename {
                 });
             }
         }))
-    }
-
-    fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
-        frame.layer.extend(editor(app).message(app, &app.look));
-        None
     }
 
     fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
@@ -174,7 +175,7 @@ pub(crate) fn editor(app: &App) -> RenameEditor<App> {
     .label(|app: &App, _| app.rename.label.clone())
     .on_intent(heard);
     // The keyboard goes back to the view: a column takes none of its own.
-    match shell::focus_key(app, Slot::View) {
+    match shell::view_focus(app) {
         Some(view) => editor.focus_return(view),
         None => editor,
     }
