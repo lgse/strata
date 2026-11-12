@@ -76,11 +76,11 @@ Arch Linux and Omarchy are the primary supported environments. Current binaries 
 Fedora on `x86_64` or `aarch64` can install Strata from COPR, which builds it from source. Updates arrive with ordinary system updates:
 
 ```bash
-sudo dnf copr enable l0gicgate/strata
+sudo dnf copr enable @lgse/strata
 sudo dnf install strata
 ```
 
-For alpha, beta, and release-candidate builds as well as stable releases, enable `l0gicgate/strata-preview` instead. Enable only one of the two.
+For alpha, beta, and release-candidate builds as well as stable releases, enable `@lgse/strata-preview` instead. Enable only one of the two.
 
 The COPR package cannot open RAR archives, because COPR accepts only software under licenses Fedora allows, and it has no in-app updater. Codec-dependent previews use whichever FFmpeg is installed: Fedora's `ffmpeg-free`, or `ffmpeg` from RPM Fusion for more formats.
 
