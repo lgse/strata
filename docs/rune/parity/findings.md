@@ -8,10 +8,21 @@ in Rune bound for the filing packet (`rune-gap`), requests for a twin or a norma
 
 ## Recording a finding
 
-Until 2026-11-12 each finding was a GitHub issue. From now on a new finding is an entry in
-this file, added in the pull request that meets it, in the form of the entries below: its
-code, two lines on what was seen, the run, seed or test it concerns, and its state. Search
-this file by code and by scenario or seed name before adding one. A finding met mid-run may
+Until 2026-11-12 each finding was a GitHub issue that also held its state. By the owner's
+ruling of 2026-11-12 ([`owner.md`](owner.md#ruled)), a new finding is two things:
+
+- **A reference issue on `lgse/strata`**, which is what the ledger, twins and the fuzz
+  driver's files cite. It carries the code's label and `rune-parity`, and a short statement
+  in the form of the archived issues, and it may be closed at once with a line pointing at
+  this file. It is a reference, not a tracker: nothing more is recorded on it, and a ruling
+  on it is recorded in `owner.md`. Closing it as soon as its entry here exists is the
+  coordinating session's practice, not the owner's rule.
+- **An entry in this file**, added in the pull request that meets the finding, in the form
+  of the entries below: its code, two lines on what was seen, the run, seed or test it
+  concerns, and its state.
+
+Search before filing: this file first, by code and by scenario or seed name, then the issues
+by label and by scenario or seed name. A finding met mid-run may
 land as its own small docs-only pull request that merges quickly, so other packages see it
 before the package's own pull request does. When a finding is fixed or set aside for good,
 its entry says where, and stays.
@@ -25,12 +36,8 @@ normalisation map, calibration mask and `parked` lists each cite the record behi
 their readers accept only two forms: an issue, `lgse/strata#<number>`, or, for a `rune`
 twin, its packet entry, `docs/rune/upstream/rune/<number>-<name>.md`
 (`tests/qa/twins.rs` and `scripts/qa_parity_check.py` today, and `tests/qa/fuzz/rules.rs`
-once F1's pull request [#2181](https://github.com/lgse/strata/pull/2181) merges). References to the archived issues below stay valid and
-need no change. What a reference to a finding recorded only in this file looks like is a
-question for the owner, the first in [`owner.md`](owner.md#tracking-and-findings): a GitHub
-issue for each new finding as its reference, or a `contract` change to the readers to accept
-an anchor here. Until it is ruled, a change that needs to cite a new finding says so in its
-pull request and in its package's file, and waits.
+once F1's pull request [#2181](https://github.com/lgse/strata/pull/2181) merges). A new finding's reference issue is that issue.
+References to the archived issues below stay valid and need no change.
 
 ## Findings
 
@@ -73,8 +80,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2173).
 - With the inline rename open on `todo.txt`, a Shift+click on that row clears the field's
   selection in 28 of 34 replays and selects the whole name in 6, from identical input.
-- **Concerns:** fuzz seed `0x67` of the `calibration` alphabet, found while F1 calibrated
-  the driver; step 34 of its sequence.
+- **Concerns:** fuzz seed `0x67` of version 1 of the `calibration` alphabet, found while F1
+  calibrated the driver; step 34 of its sequence.
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181),
   and the `calibration` alphabet no longer clicks an entry while a name is edited.
 
@@ -110,6 +117,28 @@ closed issue is not a fixed finding: the state given here is the finding's.
   and, in `strata-fs`,
   `services::search::tests::folder_path_search_leads_with_a_folder_the_query_names_outright`
   (`crates/strata-fs/src/services/search/tests.rs:819`).
+- **On [#2181](https://github.com/lgse/strata/pull/2181):** the second failed in CI's shard 1 at `7963d110f` and again in the one
+  rerun of the whole workflow, and the third failed in the first of those two runs. That
+  change is to the QA runner, its scripts and documentation, and touches no `src/` and no
+  crate; `./scripts/quality.sh test` passed at that commit in the pinned image. With
+  `strata-next` merged at `734d67f6c`, a sixth,
+  `ui::window::tests::keyboard_dispatch::icon_motion::tenxer_icons_move_spatially_open_explicitly_and_peek`,
+  failed once in `./scripts/quality.sh test` on a loaded host (`Key(104) landed on ["empty",
+  "tile-03.txt", "tile-03.txt"]`) and then passed 6 times of 6 alone.
+  At `6f1605908` a seventh,
+  `ui::preview::tests::audio::audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request`
+  (`src/ui/preview/tests/audio.rs:27`, "rendered stream"), failed in CI's shard 2, where
+  `./scripts/quality.sh test` had passed at the same commit in the pinned image.
+- **On [#2200](https://github.com/lgse/strata/pull/2200):** the sixth failed once in CI's shard 3 at `a6c6708c2`, with the same
+  message (`src/ui/window/tests/keyboard_dispatch/icon_motion.rs:195`), and passed in the
+  one rerun of the whole workflow. That change is to `crates/strata-app`, which the GTK lane
+  does not compile, and to Markdown.
+- **On [#2204](https://github.com/lgse/strata/pull/2204):** an eighth,
+  `ui::preview::tests::video::video_steps_reuse_one_view_and_keep_playback`
+  (`src/ui/preview/tests/video.rs:156`, "rendered stream", the seventh's message in its
+  sibling), failed once in CI's shard 3, in the pull request's first run. That change adds
+  key constants and two characters to the table key backend, which the GTK application
+  does not install; `./scripts/quality.sh test` had passed with it in the pinned image.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -117,14 +146,19 @@ closed issue is not a fixed finding: the state given here is the finding's.
   change cannot reach, as on [#2197](https://github.com/lgse/strata/pull/2197), the orchestrating session's ruling of 2026-11-12 is: record
   the sighting and rerun the whole workflow once more; a test that fails a second time on the
   same pull request stops the agent again.
+- **Sightings on [#2202](https://github.com/lgse/strata/pull/2202)**, which changes ledger
+  rows, Rune patches and docs only: `shipped_keys_never_reach_the_direct_stage` failed in
+  shard 1 (the assertion at `direct_commands.rs:509`, Shift+O's `open_with`); on the
+  workflow's rerun, `default_map_tab_leaves_the_listing_in_one_press` failed in shard 1
+  instead. Both are already listed above.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2176).
 - Seven steps (a multiple selection, F2, a file written into the folder, Return, Up, Return)
   make GTK log `gtk_selection_model_selection_changed: assertion … failed`, every time.
-- **Concerns:** fuzz seed `0x19b` of the `calibration` alphabet, shrunk from 40 steps to 7
-  and confirmed 3 of 3.
+- **Concerns:** fuzz seed `0x19b` of version 2 of the `calibration` alphabet, shrunk from 40
+  steps to 7 and confirmed 3 of 3.
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181).
 
 ### #2177: after Move to Trash on a filtered pane, the preview shows another file
@@ -133,8 +167,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - With the drawer open and the pane filtered, moving `report.md` to the trash from its
   context menu leaves the preview on `todo.txt`, neither focused nor selected, in 23 of 24
   replays, and on the focused entry in the other.
-- **Concerns:** fuzz seed `0xb1` of the `calibration` alphabet; step 35 of its sequence,
-  which did not shrink.
+- **Concerns:** fuzz seed `0xb1` of version 2 of the `calibration` alphabet; step 35 of its
+  sequence, which did not shrink.
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181).
 
 ### #2179: the windowed Rune host does not pump GLib again after a queued update
@@ -154,14 +188,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2180).
 - A click on the folder `pictures` left focus on its column in one replay and on its first
   entry in the other, with the machine loaded four times over. Seen once, in 300 seeds.
-- **Concerns:** fuzz seed `0x41c` of the `calibration` alphabet; step 2 of its sequence. It
-  may share a cause with [#2162](https://github.com/lgse/strata/issues/2162).
+- **Concerns:** fuzz seed `0x41c` of version 3 of the `calibration` alphabet; step 2 of its
+  sequence. It may share a cause with [#2162](https://github.com/lgse/strata/issues/2162).
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181).
 
-The four fuzz issues name their sequence files with the alphabet's version
-(`fuzz-calibration-v1-0000000000000067.jsonl` and the like); in [#2181](https://github.com/lgse/strata/pull/2181) as it stands the files
-are `tests/qa/fuzz/corpus/calibration/fuzz-calibration-<seed>.jsonl`, with no version. Use
-the names [#2181](https://github.com/lgse/strata/pull/2181) merges with.
+The fuzz issues name their sequence files with the alphabet's version, and those are
+the names [#2181](https://github.com/lgse/strata/pull/2181) merges with:
+`tests/qa/fuzz/corpus/calibration/fuzz-calibration-v<version>-<seed>.jsonl`, the seed as
+sixteen hex digits (`fuzz-calibration-v1-0000000000000067.jsonl` for [#2173](https://github.com/lgse/strata/issues/2173)). A seed names a
+sequence only together with the alphabet's version, so the version is part of the name.
 
 ### #2193: a GTK test whose name string is stale passes without running
 
@@ -200,3 +235,19 @@ the names [#2181](https://github.com/lgse/strata/pull/2181) merges with.
 - **State:** open, not taken up, and not to be fixed on `strata-next`. Until it is fixed on
   `main`, the same test can fail a shard; whoever meets it reads the failure, and it is this
   entry and not a new flaky test.
+
+### #2201: Space in a column's sort menu does two different things
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2201), filed on 2026-11-12 as the finding's reference and
+  closed at once: its state is kept here.
+- With a column's sort menu opened from the keyboard (Up, Right, Right, Return) and left
+  open, after a right-click and Down, Space puts the folder back in its default order, by
+  name, in 16 of 24 replays, and in another order in the other 8. The menu stays open
+  either way. The input logs are identical and every step is at rest.
+- **Concerns:** fuzz seed `0x1de` of version 3 of the `calibration` alphabet; step 32 of its
+  sequence, `{"key":"space"}`, where `app.matches` and `app.menu` differ. The shrinker takes
+  the seed from 40 steps to 10 and calls it noise, since the shortest sequence differed in 2
+  confirmations of 3. To reproduce:
+  `./scripts/qa-fuzz.sh replay tests/qa/fuzz/corpus/calibration/fuzz-calibration-v3-00000000000001de.jsonl --repeats 24 --jobs 1`.
+- **State:** open, set aside, parked. Parked in `tests/qa/fuzz/corpus/calibration/parked`
+  in [#2181](https://github.com/lgse/strata/pull/2181), with the seed's first 32 steps kept beside it.

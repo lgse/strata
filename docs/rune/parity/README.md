@@ -18,6 +18,10 @@
 >   [`packages/`](packages/) a file for each, [`owner.md`](owner.md) the questions and
 >   rulings, [`findings.md`](findings.md) the findings, and [`working.md`](working.md) how
 >   a package is worked on.
+> - Since the owner's rule of 2026-11-12 on mutation testing, the routine checks and the
+>   merge gate run no mutation patches, so "Before a package's pull request" and "The merge
+>   gate" differ from the document too, and [When a mutation run is
+>   right](#when-a-mutation-run-is-right) is this copy's own.
 
 2026-11-11 · William
 
@@ -191,8 +195,8 @@ could observe. It adds a generator, a comparator and a shrinker to the QA runner
 | Rune gap | An upstream packet entry, a workaround, and a `rune` rule that expires with it |
 | Noise | The calibration mask grows, only when two GTK runs of the seed differ |
 
-A parked seed, a rule and a mask line cite an issue today; what they cite for a finding
-recorded only in [`findings.md`](findings.md) is open ([`owner.md`](owner.md#tracking-and-findings)).
+A parked seed, a rule and a mask line cite the finding's reference issue; its state is in
+[`findings.md`](findings.md).
 
 Four conventions keep the fuzzer honest:
 
@@ -461,9 +465,11 @@ work meets. Work in flight is seen in the open pull requests that target `strata
 - **The owner assigns.** The owner hands each package to an agent, and that assignment is
   the claim. The agent checks that every dependency's file reads `done`; its first pull
   request sets the package's state to `in progress`.
-- **Search before recording.** Look in [`findings.md`](findings.md) by code and by scenario
-  or seed name before adding a finding. A new one is an entry there, in the pull request
-  that meets it.
+- **Findings.** Search [`findings.md`](findings.md), then the issues, by code and by
+  scenario or seed name before adding one. A new finding gets a GitHub issue purely as its
+  reference, which may be closed at once, and an entry in `findings.md`, which holds its
+  state, in the pull request that meets it
+  ([`findings.md`](findings.md#recording-a-finding)).
 - **Report in the package's file.** Each pull request adds one dated entry to its record:
   its number, what it delivered and the runs it flipped. The commands and the evidence are
   on the pull request.
@@ -546,19 +552,57 @@ checkpoints.
 | --- | --- |
 | The runs it claims, on both targets | `./scripts/qa-parity.sh <selection> --scenario <name>`. Selections by folder and package arrive with H1 |
 | Which pending runs already pass on Rune | `./scripts/qa-parity.sh <selection> --pending` |
-| Its Rune mutation patches | `./scripts/qa-parity.sh mutations` |
 | Rune-side unit and gallery tests | `mise run test-rune <filter>`, with a filter that matches at least one test |
 | The GTK side, when a shared crate or `src/` changed | `./scripts/qa.sh <scenario>` and `./scripts/test-headless.py <filter>` |
 | The fuzz smoke tier for its alphabet | F1's command |
+| That every mutation patch still applies, when anything under `crates/` or `src/` changed: seconds, no container, and no mutation run | The `git apply --check` loop below. Only `cut.patch` (finding #2161) is known not to apply |
 | No GTK in the Rune binary | `cargo tree -p strata-rune -i gtk4` |
 | Formatting, lint and code health, at the pre-push checkpoint only | `./scripts/quality.sh fmt`, `./scripts/quality.sh clippy`, `scripts/code-health.sh --changed` |
+
+The patch check, from the repository root:
+
+```bash
+for p in tests/qa/parity/mutations/*.patch tests/qa/mutations/*.patch; do git apply --check "$p" 2>/dev/null || echo "does not apply: $p"; done
+```
 
 ### The merge gate
 
 The package's agent runs the gate itself before merging, on its branch with the integration
 branch merged in. CI checks only linting and unit tests. The gate runs the package's ledger
-selection on both targets and its mutation patches. It adds the full GTK suite and its 22
-patches when the runner, `strata-qa`, a shared crate or `src/` changed.
+selection on both targets (`./scripts/qa-parity.sh <package>`). When the runner,
+`strata-qa`, a shared crate or `src/` changed, it is the full gate instead: every required
+and parallel run on both targets (`./scripts/qa-parity.sh all`), the whole GTK suite
+(`./scripts/qa.sh`) and `./scripts/quality.sh test`. Neither runs a mutation patch.
+`./scripts/qa.sh` does not read the slice's flaky allowance. A failure there of
+`new-folder-with-selection-groups/columns` passes as finding #2162 only if it is the only
+failure, it fails as #2162 does (the opened folder's column does not take focus within
+15 s), and the change does not touch what the run exercises; otherwise it is the change's.
+
+### When a mutation run is right
+
+Mutation runs are too heavy on wall-clock time to be routine verification. By the owner's
+rule of 2026-11-12 ([`owner.md`](owner.md#ruled)), one is run only when there is a question
+whether tests are effective:
+
+- **A Rune mutation patch a package wrote or changed** is proven once, alone, by hand, since
+  `./scripts/qa-parity.sh mutations` runs every Rune patch and has no per-patch selection
+  yet. Start with the files the patch touches clean. Run its scenario on Rune unpatched
+  (`./scripts/qa-parity.sh <folder> --target rune --scenario <scenario>`) and see it pass.
+  Apply the patch (`git apply tests/qa/parity/mutations/<scenario>.patch`), run the same
+  selection and see a step fail: a build or launch failure, or a mutated tree that ran
+  nothing, is not a catch. Restore the files (`git restore -- <files>`, or `git apply -R`),
+  and see `git status --porcelain` empty before committing anything.
+- **A patch that stopped applying** because the code it breaks moved, once it is refreshed.
+  The check before a pull request finds one.
+- **A runner change to how a step is judged.**
+- **A run suspected of passing for the wrong reason.**
+- **A GTK scenario whose `mutation` changed**, or whose patch stopped applying:
+  `./scripts/qa-mutation.sh <scenario>`, as `AGENTS.md`, "QA scenarios", says.
+- **The exit checks:** E2's soak and exit criterion 3 are deliberate checks that the tests
+  are effective, and stay as written.
+
+Deliverable 5, a twin's patch and the risk row on twins are about a patch existing and
+having been proven once, not about running the sets again.
 
 ### Checkpoints
 
@@ -587,6 +631,15 @@ the commands.
 4. The fuzz soak passes with no open `divergence` finding.
 5. The hand checks on four desktops are recorded.
 6. `cargo tree` shows no `gtk4`, `gdk4`, `sourceview5` or `gdk-pixbuf`.
+
+The thumbnail worker is the ruled exception to criterion 6 until E4: by the owner's ruling
+of 2026-11-12 it uses `gdk-pixbuf` in `strata-rune`, and E4 removes it
+([`owner.md`](owner.md#ruled)). `gdk-pixbuf` is in `strata-rune`'s tree already, without the
+worker: `strata-fs` depends on it directly and through `strata-preview`, so E4's removal
+covers those too, unless the owner narrows the criterion
+([`owner.md`](owner.md#e4-exit-criterion-6)). It is an exception for
+`gdk-pixbuf` alone: `gtk4`, `gdk4` and `sourceview5` stay out of `strata-app` and
+`strata-rune`, and `cargo tree -p strata-rune -i gtk4` still finds nothing.
 
 Three oracle defects are open today and should be the first `oracle` issues: `cut.patch` no
 longer applies, `new-folder-with-selection-groups/columns` fails more often than not alone,

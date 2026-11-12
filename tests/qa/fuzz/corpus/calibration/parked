@@ -1,0 +1,31 @@
+# Sequences parked against an issue, one to a line, sorted by version and seed:
+#
+#   v<version>-<seed> <code> <issue>
+#
+# The line reads as the end of the kept file's name. Neither a run of that seed on that
+# version of the alphabet nor a replay of the corpus reports a parked sequence again;
+# `replay --parked` replays them on purpose. A seed means nothing across versions, so a
+# line for v1 stops no run of v3. See docs/testing.md, "Fuzzing".
+#
+# v1, 0x67: a Shift+click on the entry being renamed clears the selection in 28 GTK
+# replays of 34 and selects the whole name in the other 6. The sequence is the seed's as
+# version 1 of the alphabet wrote it, cut after the click; from version 2 on the alphabet
+# does not click an entry while a name is edited.
+v1-0000000000000067 oracle lgse/strata#2173
+# v2, 0xb1: after Move to Trash from a context menu on a filtered pane, the preview shows a
+# file that is neither focused nor selected in 23 GTK replays of 24, and the focused one in
+# the other. The sequence is the seed's, cut three steps after the move; it did not shrink,
+# since the rare result does not show three times out of three.
+v2-00000000000000b1 oracle lgse/strata#2177
+# v2, 0x19b: GTK logs a critical, gtk_selection_model_selection_changed, every time. Shrunk
+# from 40 steps to these 7 and confirmed three times out of three.
+v2-000000000000019b oracle lgse/strata#2176
+# v3, 0x1de: with a column's sort menu open, Space after a right-click and Down puts the
+# folder back in its default order in 16 GTK replays of 24, and in another order in the
+# other 8. The sequence is the seed's first 32 steps; the shrinker took the seed to 10
+# steps that differed in two confirmations of three, which it calls noise.
+v3-00000000000001de oracle lgse/strata#2201
+# v3, 0x41c: with 96 sequences replayed at once on 24 cores, a click that opens a folder's
+# column left focus on the column in one GTK replay and on its first entry in the other.
+# Seen once. The sequence is the seed's first two steps.
+v3-000000000000041c oracle lgse/strata#2180
