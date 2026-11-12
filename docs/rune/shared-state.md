@@ -82,9 +82,20 @@ after it, as text, into a new file beside the model:
 | `load_folder_views` | The read at start-up: the read half of `FolderViewStore::load`. It gives the values, and the error when the file was there and could not be read |
 | `save_folder_views`, `FolderViewsSave` | The save: the lock (waited for at exit, not otherwise), the merge over what another process wrote, the atomic write, and the result: busy, saved with what the other process had, or failed |
 
-They use `strata-core` and the model, and no GTK or GLib. Nothing in the file schedules:
-an interface decides when to save and runs `save_folder_views` on the settings writer's
-thread. `load_folder_views` reads on the calling thread and is for start-up.
+They use `strata-core` and the model, and no GTK or GLib, and nothing in the file
+schedules. They are the store's tools, not an interface's:
+
+- **Nothing but the GTK application's `FolderViewStore` calls them until the shared store
+  lands.** `save_folder_views` merges the caller's unsaved changes over the file, so two
+  writers in one process would each save without the other's.
+- **`load_folder_views` is called once in a process,** at start-up, by whoever owns the
+  store. It notes the file's stamp with the settings writer, which is how a later re-read
+  tells another process's write from this one's. A second call notes the stamp again, and a
+  change another process made before it is never adopted.
+- **A part of the Rune interface waits for the store** and does not read
+  `FolderViews::view` itself. On GTK a folder's saved view is read behind
+  `remembered_key`, which answers nothing while `remember_folder_views` is off, and behind
+  the key rules of `key_for_location`. The store carries that gate; the model does not.
 
 What stayed in `src/ui/preferences/folder_view_settings.rs` is the store:
 

@@ -3,8 +3,10 @@
 //! `folder-views.toml` on disk: where it is, the read at start-up, and the save that merges
 //! over what another Strata process wrote. [`super::folder_views`] is what the file holds.
 //!
-//! Nothing here schedules. An interface decides when to save and runs [`save_folder_views`]
-//! on the settings writer's thread.
+//! Nothing here schedules, and these are the store's tools, not an interface's. Until the
+//! shared store lands, the one caller of each is the GTK application's `FolderViewStore`
+//! (`src/ui/preferences/folder_view_settings.rs`): it holds the unsaved changes a save merges
+//! in and the file's stamp, and a second caller in the process would lose the first's.
 
 use std::{
     fs, io,
@@ -24,7 +26,12 @@ pub fn folder_views_path() -> PathBuf {
 }
 
 /// The saved values, and why saving is off for this session when the file existed but
-/// could not be read. Reads on the calling thread: for start-up.
+/// could not be read. Reads on the calling thread.
+///
+/// Once in a process, at start-up, by whoever owns the store. It notes the file's stamp with
+/// the settings writer, which is how a later re-read tells another process's write from
+/// this one's: a second call notes the stamp again, and a change another process made
+/// before it is then never adopted.
 pub fn load_folder_views() -> (FolderViews, Option<io::Error>) {
     let path = folder_views_path();
     writer::note(&path, file_stamp(&path));
@@ -49,13 +56,23 @@ pub fn load_folder_views() -> (FolderViews, Option<io::Error>) {
     (views, load_failure)
 }
 
+/// How one save went.
 pub enum FolderViewsSave {
+    /// Another process holds the lock, and this is not the save at exit: try again later.
     Busy,
+    /// Written. With values, another process had saved since and they differ from what was
+    /// asked: adopt them. Either way the edits the snapshot held are saved.
     Saved(Option<FolderViews>),
+    /// Not written. The file was unreadable or from a newer version, or the write failed.
     Failed(io::Error),
 }
 
 /// An unreadable file, or one from a newer version, must not be overwritten.
+///
+/// For the store alone, on the settings writer's thread. Nothing but the GTK application's
+/// `FolderViewStore` calls it until the shared store lands: `snapshot` carries the unsaved
+/// changes that are merged over the file, and two writers in one process would each save
+/// without the other's.
 pub fn save_folder_views(path: &Path, snapshot: FolderViews, exit: bool) -> FolderViewsSave {
     let lock = lock_saves(path, if exit { EXIT_LOCK_WAIT } else { Duration::ZERO });
     if let Err(error) = &lock {
