@@ -16,15 +16,14 @@ fn saved_show_hidden() -> Option<bool> {
         .as_bool()
 }
 
-/// `hidden_files/hidden-files-persist-across-restart`: Ctrl+. saves `show_hidden`, and the
-/// rest of the file stays as another Strata process left it.
-#[test]
-fn the_hidden_files_choice_is_saved_and_nothing_else_is_rewritten() {
+/// Toggles the hidden files on and off over a `settings.toml` that holds `seed`, then hands
+/// the saved file to `check`.
+fn toggle_hidden_files_over(test: &'static str, seed: &'static str, check: fn(&toml::Table, &str)) {
     hosted_after(
         MODULE,
-        "saved::the_hidden_files_choice_is_saved_and_nothing_else_is_rewritten",
-        || save_settings("group_by_type = true\nfrom_a_later_strata = \"kept\"\n"),
-        |mut host| {
+        test,
+        move || save_settings(seed),
+        move |mut host| {
             let folder = fixture();
             open(&mut host, folder.path());
 
@@ -47,8 +46,36 @@ fn the_hidden_files_choice_is_saved_and_nothing_else_is_rewritten() {
                     .and_then(toml::Value::as_str),
                 Some("kept")
             );
+            check(&table, &file);
+        },
+    );
+}
+
+/// `hidden_files/hidden-files-persist-across-restart`: Ctrl+. saves `show_hidden`, and the
+/// rest of a file that reads without repair stays as another Strata process left it.
+#[test]
+fn the_hidden_files_choice_is_saved_and_nothing_else_is_rewritten() {
+    toggle_hidden_files_over(
+        "saved::the_hidden_files_choice_is_saved_and_nothing_else_is_rewritten",
+        "mode = \"theme\"\ntheme = \"azure-glow\"\ngroup_by_type = true\nfrom_a_later_strata = \"kept\"\n",
+        |table, file| {
             // Only what this process changed: a default it never touched is not written.
             assert_eq!(table.get("sort_key"), None, "{file}");
+        },
+    );
+}
+
+/// A file without `mode` or `theme` does not read whole and is salvaged entry by entry. As
+/// in the GTK application, what loading filled in is saved with the first change.
+#[test]
+fn a_salvaged_file_is_saved_with_what_loading_filled_in() {
+    toggle_hidden_files_over(
+        "saved::a_salvaged_file_is_saved_with_what_loading_filled_in",
+        "group_by_type = true\nfrom_a_later_strata = \"kept\"\n",
+        |table, file| {
+            for filled in ["mode", "theme", "sort_key"] {
+                assert!(table.contains_key(filled), "{filled} was not saved: {file}");
+            }
         },
     );
 }
