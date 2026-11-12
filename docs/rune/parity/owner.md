@@ -242,6 +242,23 @@ issue [#2128](https://github.com/lgse/strata/issues/2128).
    content in GTK (`src/ui/window/keyboard/items.rs:152, 180`). Neither Rune view honours
    it. Meanwhile: not honoured; it goes with items 2 and 3.
 
+### A2: List view
+
+Found by the package's agent, 2026-11-12, against A1's five items above.
+
+1. **Right with no cursor.** GTK keeps the keyboard where it is: List rows have no
+   sideways neighbours (`horizontal_arrow_action`, `src/ui/window/key_routing.rs:120`).
+   Rune's keyboard controller puts the cursor on the first row, as a step with no cursor
+   does in any collection (`first_step` in
+   `crates/strata-components/src/collection/keyboard/machine.rs`). A deviation of the
+   component for the owner to rule. Meanwhile: the component's; no run pins it.
+2. **A1's items, in List.** Item 1 (Down on the last full row) does not arise: a List row
+   holds one entry. Item 2 (Left with no cursor) does not differ: every List row is at the
+   pane's left edge (`at_left_edge`, `src/ui/browser_modes/focus.rs:133`), so the List part
+   has Left leave the pane with or without a cursor, as GTK does. Items 3, 4 and 5 (Up from
+   the first row, focus after Back, Forward and Up, "Arrows scoped to content") differ in
+   List as they do in Icons, with the same defaults in force.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
