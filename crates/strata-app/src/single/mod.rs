@@ -15,6 +15,7 @@
 //!   in place, as GTK's Icons and List views open it (`activate_in_place`), and Left at the
 //!   view's start leaves it for the sidebar. Where the start is, is the component's: the
 //!   first tile in Icons, any row in List (`at_left_edge` in `src/ui/browser_modes/focus.rs`).
+//!   A secondary click or the Menu key opens the context menu through `menus::open`.
 //! - **What the window asks of a view:** [`rows`] for the context menu, [`editing`] for the
 //!   rename editor, [`publish`], and for the QA backend [`listed`] and [`lists`].
 //! - **What both build:** the base [`collection`] a view's component adds its parts to, and
@@ -36,6 +37,7 @@ use strata_core::i18n::tr;
 use crate::{
     App, events,
     listing::{Column, Load, Words},
+    menus::{self, Request},
     pane::{Applied, Pane},
     rename, shell,
     slots::{At, Editing, Listener, Rows, Setup},
@@ -271,9 +273,15 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         Intent::Activate { id, how } => open_in_place::<V>(app, depth, id, how),
         // A slow second click on the name.
         Intent::BeginRename { id } => rename::begin_on(app, depth, id, tx),
-        // A press with any button outside the field commits an open rename in the GTK view.
-        // The view opens no context menu yet.
-        Intent::ContextMenu { .. } => rename::commit(app, tx),
+        // The opener ends an open rename itself, as a press outside the field does in GTK.
+        Intent::ContextMenu { target, anchor } => {
+            let request = Request {
+                depth,
+                entry: target,
+                anchor,
+            };
+            menus::open(app, request, tx);
+        }
         // Left at the view's start: the sidebar takes the keyboard, when there is one. The
         // component decides where its start is, from the view's keys (the first tile in Icons,
         // any row in List); only that Left reaches here.
