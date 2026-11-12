@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, strata-next]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -107,13 +107,13 @@ jobs:
                 echo "x11rb, wayland-client, wayland-protocols-misc, wayland-protocols-wlr and xkbcommon, the input clients of the qa feature, must not be in a default or feature-disabled build" >&2
                 exit 1
               fi
-              cargo check --locked --all-targets --no-default-features
-              cargo test --locked --all-targets --no-default-features launch_mode
-              cargo test --locked --all-targets --no-default-features services::operations::tests
-              cargo test --locked --all-targets --no-default-features rar_disabled
+              cargo check --locked --workspace --all-targets --no-default-features --features test-support
+              cargo test --locked --workspace --all-targets --no-default-features --features test-support launch_mode
+              cargo test --locked --workspace --all-targets --no-default-features --features test-support services::operations::tests
+              cargo test --locked --workspace --all-targets --no-default-features --features test-support rar_disabled
               xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- \
                 env -u WAYLAND_DISPLAY GDK_BACKEND=x11 GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
-                cargo test --locked --all-targets --no-default-features archive_extraction_actions_follow_build_support
+                cargo test --locked --workspace --all-targets --no-default-features --features test-support archive_extraction_actions_follow_build_support
             '
 
       - name: Compile all test targets once and plan the test shards
@@ -160,7 +160,7 @@ jobs:
           retention-days: 1
 
       - name: Save trusted quality cache
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/strata-next')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |

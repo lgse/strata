@@ -1,0 +1,22 @@
+[package]
+name = "strata-test-support"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Test helpers shared by Strata's crates"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+glib.workspace = true
+rustix.workspace = true
+tempfile.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+gio.workspace = true

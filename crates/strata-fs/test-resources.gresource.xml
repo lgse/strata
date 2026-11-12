@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A few of the application's resources, for tests that copy from a location without paths. -->
+<gresources>
+  <gresource prefix="/io/github/lgse/Strata">
+    <file>brand/strata-logo-white.svg</file>
+    <file>icons/scalable/actions/strata-arrow-down.svg</file>
+    <file>icons/scalable/apps/io.github.lgse.Strata.svg</file>
+  </gresource>
+</gresources>

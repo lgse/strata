@@ -1,0 +1,256 @@
+// SPDX-License-Identifier: MIT
+
+use super::{
+    LocationValidationError, UriCredentials, backend_unavailable_message, gio_device_error_message,
+    sanitize_uri_credentials, validate_uri_credentials,
+};
+
+#[test]
+fn untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details() {
+    crate::test_support::isolated_test(
+        "services::file_source::tests::untyped_gio_failures_use_localized_catalog_text_instead_of_backend_details",
+        || {
+            rust_i18n::set_locale("fr");
+            let raw = "Failed to open sftp://alice:secret@host/private?token=hidden";
+            for kind in [gio::IOErrorEnum::Failed, gio::IOErrorEnum::InvalidArgument] {
+                let error = glib::Error::new(kind, raw);
+                assert_eq!(
+                    super::gio_backend_error_message(&error),
+                    crate::i18n::tr(super::UNEXPECTED_SYSTEM_ERROR)
+                );
+                assert_eq!(
+                    super::gio_error_message(&error),
+                    raw,
+                    "application-owned operation errors must retain their detail"
+                );
+            }
+            let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, raw);
+            assert_eq!(super::gio_error_message(&denied), "Permission refusée");
+            assert_eq!(
+                super::gio_backend_error_message(&denied),
+                "Permission refusée"
+            );
+            let refused = "Failed to mount Windows share: Permission denied";
+            let refused = glib::Error::new(gio::IOErrorEnum::Failed, refused);
+            assert_eq!(
+                super::gio_backend_error_message(&refused),
+                "Permission refusée",
+                "untyped SMB credential rejections keep their reason"
+            );
+            assert_eq!(
+                super::gio_error_message(&refused),
+                "Failed to mount Windows share: Permission denied"
+            );
+        },
+    );
+}
+
+#[test]
+fn embedded_uri_credentials_are_rejected() {
+    for uri in [
+        "smb://user:secret@host/share",
+        "smb://user%3Asecret@host/share",
+        "smb://user:sec%72et@host/share",
+        "smb://user:@host/share",
+        "smb://user;password=secret@host/share",
+        "smb://user%3Bpassword=secret@host/share",
+        "smb://user%3Bpassword%3Dsecret@host/share",
+        "smb://user;password=sec%72et@host/share",
+        "smb://user;@host/share",
+        "sftp://user:secret@host:2222/path",
+        "ftp://user:secret@host/public",
+    ] {
+        assert_eq!(
+            validate_uri_credentials(uri),
+            Err(LocationValidationError::EmbeddedCredential),
+            "{uri:?} should be rejected"
+        );
+    }
+}
+
+#[test]
+fn embedded_uri_credentials_are_separated_from_the_sanitized_uri() {
+    for (uri, sanitized) in [
+        ("smb://user:secret@host/share", "smb://user@host/share"),
+        ("smb://user%3Asecret@host/share", "smb://user@host/share"),
+        (
+            "smb://user;password=secret@host/share",
+            "smb://user@host/share",
+        ),
+        (
+            "smb://user%3Bpassword=secret@host/share",
+            "smb://user@host/share",
+        ),
+        (
+            "sftp://user%3Asecret@host/caf%E9%20x.txt",
+            "sftp://user@host/caf%E9%20x.txt",
+        ),
+        (
+            "smb://user:secret@host/a%2Fb?x=%FF#f",
+            "smb://user@host/a%2Fb?x=%FF#f",
+        ),
+    ] {
+        assert_eq!(
+            sanitize_uri_credentials(uri),
+            Ok((
+                sanitized.to_owned(),
+                Some(UriCredentials {
+                    username: "user".to_owned(),
+                    password: "secret".to_owned(),
+                }),
+            )),
+            "did not separate {uri:?}"
+        );
+    }
+}
+
+#[test]
+fn credential_free_uris_are_accepted() {
+    for uri in [
+        "smb://host/share",
+        "smb://user@host/share",
+        "sftp://user@host:2222/path",
+        "network:///",
+        "sftp://host/share/%FF",
+    ] {
+        assert_eq!(
+            validate_uri_credentials(uri),
+            Ok(uri.to_owned()),
+            "{uri:?} should be safe"
+        );
+    }
+}
+
+#[test]
+fn sanitized_uris_keep_gio_percent_encoding() {
+    for (uri, sanitized) in [
+        ("trash:///caf%E9.txt", "trash:///caf%E9.txt"),
+        ("sftp://host/share/a%2Fb", "sftp://host/share/a%2Fb"),
+        ("smb://host/caf%C3%A9", "smb://host/caf%C3%A9"),
+        ("smb://host/my share", "smb://host/my%20share"),
+    ] {
+        assert_eq!(
+            sanitize_uri_credentials(uri),
+            Ok((sanitized.to_owned(), None)),
+            "{uri:?}"
+        );
+    }
+}
+
+#[test]
+fn non_ascii_hosts_are_preserved_verbatim() {
+    // MTP device names may contain non-ASCII characters ("一加" below): GUri
+    // re-serialization IDNA-encodes the host (mtp://OnePlus_一加_... becomes
+    // mtp://xn--...), which the gvfs backend cannot match to its device name,
+    // so the location stays permanently NotMounted.
+    assert_eq!(
+        sanitize_uri_credentials("mtp://OnePlus_%E4%B8%80%E5%8A%A0_Ace_5_Pro_9d231cfe/"),
+        Ok((
+            "mtp://OnePlus_%E4%B8%80%E5%8A%A0_Ace_5_Pro_9d231cfe/".to_owned(),
+            None
+        )),
+    );
+}
+
+#[test]
+fn malformed_uris_fail_without_echoing_input() {
+    assert_eq!(
+        validate_uri_credentials("smb://user%ZZ@host/share"),
+        Err(LocationValidationError::InvalidUri)
+    );
+    assert_eq!(
+        LocationValidationError::InvalidUri.to_string(),
+        "Enter a valid URI."
+    );
+}
+
+#[test]
+fn backend_unavailable_message_names_the_known_smb_package() {
+    let message = backend_unavailable_message("smb://host/share");
+    assert!(message.contains("smb://"));
+    assert!(message.contains("gvfs-smb"));
+}
+
+#[test]
+fn backend_unavailable_message_falls_back_for_unknown_schemes() {
+    let message = backend_unavailable_message("afp://host/path");
+    assert!(message.contains("afp://"));
+    assert!(message.contains("distribution"));
+}
+
+#[test]
+fn backend_unavailable_message_offers_candidate_packages_for_sftp() {
+    let message = backend_unavailable_message("sftp://host.example:2222/home/user");
+    assert!(message.contains("sftp://"));
+    assert!(message.contains("gvfs-backends"));
+    assert!(message.contains("distribution"));
+    assert!(!message.contains("host.example"));
+}
+
+#[test]
+fn default_fill_reports_unsupported_synchronously() {
+    use super::{
+        DirectoryEvent, FileSource, LoadHandle, MetadataOutcome, MetadataRequest, RequestId,
+    };
+    use crate::model::Location;
+    use std::rc::Rc;
+    use std::time::Duration;
+
+    struct NoMetadata;
+    impl FileSource for NoMetadata {
+        fn validate_location(
+            &self,
+            _location: &Location,
+        ) -> Result<(), super::LocationValidationError> {
+            Ok(())
+        }
+
+        fn enumerate(
+            &self,
+            _request: super::DirectoryRequest,
+            _emit: Rc<dyn Fn(DirectoryEvent)>,
+        ) -> LoadHandle {
+            LoadHandle::new(|| {})
+        }
+    }
+
+    let events = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let collected = events.clone();
+    let _handle = NoMetadata.fill_metadata(
+        MetadataRequest {
+            id: RequestId(4),
+            entries: Vec::new(),
+            full: false,
+            include_icon_details: false,
+            time_budget: Duration::from_secs(1),
+        },
+        Rc::new(move |event| collected.borrow_mut().push(event)),
+    );
+    assert!(matches!(
+        events.borrow().as_slice(),
+        [DirectoryEvent::MetadataFinished {
+            request_id: RequestId(4),
+            outcome: MetadataOutcome::Unsupported,
+        }]
+    ));
+}
+
+#[test]
+fn busy_device_failures_read_as_in_use() {
+    use gio::IOErrorEnum;
+    use glib::Error;
+    for busy in [
+        "Error ejecting /dev/sr0: eject: cannot open /dev/sr0: Device or resource busy",
+        "Error mounting /dev/loop0 at /run/media/me/live: /dev/loop0 already mounted or mount point busy",
+    ] {
+        assert_eq!(
+            gio_device_error_message(&Error::new(IOErrorEnum::Failed, busy)),
+            "The item is in use"
+        );
+    }
+    let labelled = "Error mounting /dev/sdb1 at /run/media/me/BUSYBOX: wrong fs type";
+    assert_eq!(
+        gio_device_error_message(&Error::new(IOErrorEnum::Failed, labelled)),
+        labelled
+    );
+}

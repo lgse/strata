@@ -68,7 +68,7 @@ only "Invalid argument" for it.
 Every local operation that puts an item at a new name — move, rename, undo, restore from Trash,
 publishing a staged copy, setting an original aside for Replace or Merge and putting it back,
 archive extraction and creation — goes through one routine, `placement::place` in
-`src/adapters/local_operations/placement.rs`. It tries these steps in order and stops at the first
+`crates/strata-fs/src/adapters/local_operations/placement.rs`. It tries these steps in order and stops at the first
 that applies:
 
 | Step | Applies to | Operation | Why it cannot replace |
@@ -232,7 +232,7 @@ Replace and Merge without Trash, would still be refused on these mounts.
 ## What a mount supports
 
 Strata learns capabilities per mount instead of trusting the filesystem type. The cache lives in
-`src/adapters/volume/mount_capabilities.rs`. It is keyed by the mount id from `statx`:
+`crates/strata-fs/src/adapters/volume/mount_capabilities.rs`. It is keyed by the mount id from `statx`:
 `STATX_MNT_ID_UNIQUE`, which is never reused, on Linux 6.8 and later, otherwise `STATX_MNT_ID` with
 the device number. Entries are dropped whenever the mount table changes.
 
@@ -264,8 +264,8 @@ for an item in the Trash, and when an open folder was renamed. Mounts disagree a
 that. vfat, exFAT, FUSE daemons and SMB without server inode numbers give an entry a new inode
 number once the kernel evicts it; ext4, NFS and SMB give a freed number straight to the next item;
 and only some mounts report birth times. So every such decision goes through one rule per mount:
-`compare` in `src/adapters/local_operations/native_fs.rs` during an operation, and `ItemIdentity` in
-`src/services/item_identity.rs` for records kept after it. The mount's traits are learned once, with
+`compare` in `crates/strata-fs/src/adapters/local_operations/native_fs.rs` during an operation, and `ItemIdentity` in
+`crates/strata-fs/src/services/item_identity.rs` for records kept after it. The mount's traits are learned once, with
 its [capabilities](#what-a-mount-supports), from its type and udev's format.
 
 The rule weighs what both readings carry, in this order:
@@ -484,7 +484,7 @@ moved or copied into `a`. Staging what the merge overwrites would take the sourc
 ## Copying
 
 Every copy between two native paths goes through one engine, `copy_engine` in
-`src/adapters/local_operations/copy_engine.rs`: pastes, Duplicate and Keep Both, moves across
+`crates/strata-fs/src/adapters/local_operations/copy_engine.rs`: pastes, Duplicate and Keep Both, moves across
 filesystems, Replace's staging copy, merges, and restores from Trash where nothing can be placed.
 It runs on worker threads, opens every entry through a descriptor beneath a pinned folder
 (`openat2` with `RESOLVE_BENEATH` and no symlinks), and makes every call through the `FsOps` seam.
@@ -1362,7 +1362,7 @@ about to close, and otherwise leaves the file where it is and says which program
 
 ### Releasing Strata's own reads
 
-`src/services/file_activity.rs` registers the reads Strata holds and the operations that run. Every
+`crates/strata-core/src/file_activity.rs` registers the reads Strata holds and the operations that run. Every
 read of a user's file goes through it, on a worker: previews and thumbnails with their sandboxes,
 media playback, waveform and storyboard decodes, metadata probes, the small in-process reads
 (content sniffing, text, Markdown images), and background listings (item counts, folder art,
@@ -1428,7 +1428,7 @@ inside a folder is left alone:
 
 Deleting a folder, removing the source folders of a move, cleaning up a failed copy, removing a
 merge's stage and removing a folder of set-aside originals all go through one removal in
-`src/adapters/local_operations/leftovers.rs`. When
+`crates/strata-fs/src/adapters/local_operations/leftovers.rs`. When
 `rmdir` fails with `ENOTEMPTY`, or with `EACCES` and an empty listing on SMB with POSIX extensions,
 it lists the folder. Anything that is not the mount family's leftover ends it with the error as it
 is. Otherwise it tries again, with pauses of 10 ms doubling to 50 ms, listing again after each
@@ -1551,7 +1551,7 @@ still recognises those names and classes them as possible originals.
 
 - **By the whole name.** A known prefix followed by a UUID, or for the two older stage prefixes the
   6-character suffix older builds used. `.strata-copy-notes` or an unknown `.strata-x-<uuid>` is an
-  ordinary file. The table is `src/model/hidden_names.rs`.
+  ordinary file. The table is `crates/strata-core/src/model/hidden_names.rs`.
 - **From the listing Strata makes anyway**, in memory, with no extra scan or file call; a folder
   nobody opens is never looked at.
 - **Where the user looks.** In a browser window, not the portal chooser, in a folder the view shows
@@ -1655,7 +1655,7 @@ probe only costs that probe its answer.
 | `.strata-replacement-*` with 6 characters | released builds' Replace stage | a copy, or after an exchange the original | **may be the user's original**; Restore as "Recovered item" |
 | `.strata-compression-*` with 6 characters, `.strata-symlink-*` | released builds' archive and symbolic link stages | a copy | an incomplete copy |
 
-The prefixes live in `src/model/hidden_names.rs`. Strata never deletes or renames by itself a name
+The prefixes live in `crates/strata-core/src/model/hidden_names.rs`. Strata never deletes or renames by itself a name
 that may hold user data.
 
 ## Changes made elsewhere
@@ -1664,7 +1664,7 @@ A folder's change monitor sees only changes made through this computer's kernel.
 writing to an NFS export or an SMB share, a program on an sshfs server, or a sync client writing
 into the backing folder of a FUSE overlay sends no event: the lab saw none for 300 such changes
 on NFS, SMB and sshfs. So Strata checks the folders it shows on those mounts, in
-`src/app/browser/freshness.rs`.
+`crates/strata-fs/src/app/browser/freshness.rs`.
 
 ### Which folders are checked
 
@@ -1807,7 +1807,7 @@ waits off the interface thread and bounds how many workers they can hold.
 
 ### Off the interface thread
 
-The GTK main thread is marked at start (`src/util/ui_thread.rs`), and every seam that touches the
+The GTK main thread is marked at start (`crates/strata-core/src/util/ui_thread.rs`), and every seam that touches the
 disk asserts that it runs elsewhere, also outside main-loop dispatch: the syscall seam, the probes,
 mount-table reads and the settings writer. What the interface needs from the disk it asks of a
 worker:
@@ -1823,7 +1823,7 @@ worker:
   drive properties and Format dialogs, which open at once and fill in their facts, read that table
   or ask a worker.
 - Undo and redo, Compress, and the folder choosers of Copy To, Move To, Extract To and Send To ask
-  the probes in `src/adapters/local_operations/probes.rs`. Only a proven absence counts as missing:
+  the probes in `crates/strata-fs/src/adapters/local_operations/probes.rs`. Only a proven absence counts as missing:
   an undo whose item cannot be checked is attempted and reports the real error, a moved dangling
   link is undone, and a destination that cannot be checked is written only by an exclusive create,
   which never replaces.
@@ -1845,7 +1845,7 @@ worker:
 - Strata's own settings and state files are saved by one background writer and read again there
   after another program changes them; see [Saved preferences](preferences.md).
 - An enumerator or stream the interface lets go of is closed in the background
-  (`src/adapters/gio_close.rs`), as GLib would otherwise close it in place. With the server
+  (`crates/strata-fs/src/adapters/gio_close.rs`), as GLib would otherwise close it in place. With the server
   stopped, closing a read-only file blocked on NFSv4.2 and exfat-fuse in the lab, and closing a
   written one blocked on NFS, SMB and exfat-fuse until the server returned. A written stream is
   never closed this way, since its close reports lost data. The folder descriptors that a restore
@@ -1887,7 +1887,7 @@ interface thread makes, and its stall watchdog names the call the interface thre
 
 ### Request lanes
 
-These worker requests go through their mount's lane in `src/adapters/volume/mount_lanes.rs`: folder
+These worker requests go through their mount's lane in `crates/strata-fs/src/adapters/volume/mount_lanes.rs`: folder
 loads, probes, monitor creation, the look a monitor takes at its folder's path after a batch of
 changes, the search for a departed folder by its identity, the release before an operation, the
 leftover review and its sweep of stale probes, imports, exports and program checks of custom
@@ -1972,7 +1972,7 @@ Measured in the lab over loopback, with the server stopped:
   under a directory delegation, also while the server is dead.
 - **The mount table stays live.** Reading `/proc/self/mountinfo` never waited on a server (446 µs
   at most over 4,974 reads during six outages, an SMB reconnect included), and `poll` on it woke at
-  once on a change. Strata's mount watcher (`src/adapters/volume/mount_watch.rs`) reads it on its
+  once on a change. Strata's mount watcher (`crates/strata-fs/src/adapters/volume/mount_watch.rs`) reads it on its
   own thread, waits 50 ms for a burst of changes to end, and publishes the table to readers that
   do no I/O: a burst of 3,000 changes cost 3 reads, and sustained churn 0.6 to 0.8 % of one core.
 - **GVfs was not stopped.** The lab stopped no GVfs backend and no `gvfs-udisks2` volume monitor.
@@ -2054,7 +2054,7 @@ Archive extraction never sets a symbolic link's time on FUSE, where sshfs applie
 ### Unit tests
 
 Unit tests inject each quirk deterministically through the syscall seam in
-`src/adapters/local_operations/fs_ops.rs`. A test installs a scope over its temporary directory:
+`crates/strata-fs/src/adapters/local_operations/fs_ops.rs`. A test installs a scope over its temporary directory:
 
 ```rust
 let _quirks = FsQuirks::install(root.path(), Quirks::without_rename_flags());

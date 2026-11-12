@@ -2,7 +2,7 @@ min_version = "2026.9.0"
 
 [tools]
 # Keep in lockstep with tests/container/Dockerfile (RUSTUP_TOOLCHAIN).
-rust = { version = "1.98.1", components = ["clippy", "rustfmt", "rust-analyzer"] }
+rust = { version = "1.99.1", components = ["clippy", "rustfmt", "rust-analyzer"] }
 python = { version = "3.14", postinstall = "python -m pip install --upgrade pycairo PyGObject" }
 "aqua:EmbarkStudios/cargo-deny" = "0.20.2"
 "aqua:crate-ci/typos" = "1.50.1"
@@ -17,15 +17,15 @@ run = "cargo fmt --all --check"
 
 [tasks.compile]
 description = "Type-check all targets"
-run = "cargo check --all-targets --all-features --locked"
+run = "cargo check --workspace --all-targets --all-features --locked"
 
 [tasks.clippy]
 description = "Lint with Clippy"
-run = "cargo clippy --all-targets --all-features --locked -- -D warnings"
+run = "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
 
 [tasks.test]
 description = "Run Rust tests without a desktop display"
-run = "env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test --all-targets --all-features --locked"
+run = "env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test --workspace --all-targets --all-features --locked"
 
 [tasks.scripts]
 description = "Run Python unit tests under scripts/"

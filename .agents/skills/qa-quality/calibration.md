@@ -47,7 +47,7 @@ By score: #1 84, #4 54, #2 52, #3 42, #6 31, #5 17, #7 14, #9 10, #8 7,
   choices the dialog offers (`conflict_dialog_offers_skip_for_a_multi_item_paste`)
   but not the outcome of dismissing it. `archive-conflict-keyboard-choices`
   dismisses a different dialog (an archive name collision).
-- **Criticality 4:** `src/adapters/local_operations` has ~96 commits and ~55
+- **Criticality 4:** `crates/strata-fs/src/adapters/local_operations` has ~96 commits and ~55
   `fix` commits, `src/ui/browser/transfer*` ~30 and ~15; the outcome spans
   dialog, operation and listing. Not 5: no race or external process.
 - **Diagnostic 4:** each variant takes one route, and the failing file check
@@ -66,7 +66,7 @@ By score: #1 84, #4 54, #2 52, #3 42, #6 31, #5 17, #7 14, #9 10, #8 7,
   and the only check of its default focus. Numbering is unit-tested
   (`duplicating_an_existing_numbered_name_advances_its_index`,
   `keeping_both_in_a_cross_folder_paste_generates_a_unique_name` in
-  `src/adapters/local_operations/tests/`); selection and focus after the dialog
+  `crates/strata-fs/src/adapters/local_operations/tests/`); selection and focus after the dialog
   are not.
 - **Criticality 4:** same area as #1, plus focus restoration after an
   asynchronous operation completes.
@@ -83,7 +83,7 @@ By score: #1 84, #4 54, #2 52, #3 42, #6 31, #5 17, #7 14, #9 10, #8 7,
 - **Impact 5:** permanent deletion; following or removing the wrong path is
   unrecoverable.
 - **Coverage 3:** `permanent_delete_accepts_a_symlink_in_the_parent_path` and
-  its neighbours in `src/adapters/local_operations/tests/deletion.rs` pin the
+  its neighbours in `crates/strata-fs/src/adapters/local_operations/tests/deletion.rs` pin the
   filesystem logic. `permanent-delete-confirmation` covers the dialog. What is
   unique is the GUI resolving an alias pane and refreshing it. The two modes
   count, because they open the alias by different routes.

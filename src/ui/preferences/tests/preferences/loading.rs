@@ -342,7 +342,7 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
                 .map(|window| {
                     let label = gtk::Label::new(None);
                     window.set_child(Some(&label));
-                    crate::util::set_modified_date(&label, Some(&entry), "—");
+                    crate::ui::modified_date::set_modified_date(&label, Some(&entry), "—");
                     label
                 })
                 .collect();
@@ -353,14 +353,14 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
             for label in &labels {
                 assert_eq!(label.label(), absolute("%B %-d, %Y, %H:%M"));
             }
-            crate::util::set_modified_date(&labels[0], None, "unknown");
+            crate::ui::modified_date::set_modified_date(&labels[0], None, "unknown");
             manager.set_date_format(crate::util::DateFormat::Relative);
             assert_eq!(labels[0].label(), "unknown");
             let text = labels[1].label();
             assert!(text == "Just now" || text.ends_with(" ago"), "{text}");
             let mut rebound = entry.clone();
             rebound.modified_unix_seconds = MetadataValue::Known(seconds - 86400);
-            crate::util::set_modified_date(&labels[0], Some(&rebound), "—");
+            crate::ui::modified_date::set_modified_date(&labels[0], Some(&rebound), "—");
             manager.set_date_format(crate::util::DateFormat::Iso8601);
             let expected = glib::DateTime::from_unix_local(seconds - 86400)
                 .expect("rebound date")
@@ -370,7 +370,7 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
             assert_eq!(labels[1].label(), absolute("%Y-%m-%d %H:%M"));
             let rebuilt = gtk::Label::new(None);
             windows[1].set_child(Some(&rebuilt));
-            crate::util::set_modified_date(&rebuilt, Some(&entry), "—");
+            crate::ui::modified_date::set_modified_date(&rebuilt, Some(&entry), "—");
             assert_eq!(rebuilt.label(), absolute("%Y-%m-%d %H:%M"));
             manager.set_date_format(crate::util::DateFormat::Long);
             assert_eq!(rebuilt.label(), absolute("%B %-d, %Y, %H:%M"));

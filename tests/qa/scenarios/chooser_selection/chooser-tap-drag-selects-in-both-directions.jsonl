@@ -1,0 +1,23 @@
+{"scenario":"chooser-tap-drag-selects-in-both-directions","modes":["columns","list"],"portal":true,"session_bus":true,"variants":[{"id":"down","vars":{"from":"readme.md","to":"todo.txt","part":"label"}},{"id":"up","vars":{"from":"todo.txt","to":"readme.md","part":"label"}},{"id":"metadata-down","modes":["list"],"vars":{"from":"readme.md","to":"todo.txt","part":"metadata"}},{"id":"metadata-up","modes":["list"],"vars":{"from":"todo.txt","to":"readme.md","part":"metadata"}}],"cost":{"columns-down":1.3,"columns-up":1.3,"list-down":1.4,"list-metadata-down":1.3,"list-metadata-up":1.3,"list-up":1.2},"quality":{"impact":3,"coverage":3,"criticality":4,"diagnostic":4,"score":33,"note":"Selected name-space and List metadata tap-drags select both ways; only multi-select tap route, not single-request acceptance"}}
+{"portal_open":"Repeated drag selection","options":{"current_folder":"$fixture","multiple":true}}
+{"adopt":"Repeated drag selection","message":"the multiple-file chooser to open"}
+{"wait":{"entries":{"contains":["readme.md","todo.txt"]},"dir":"$root"},"message":"the fixture files to be listed"}
+{"click":{"entry":"$from","part":"$part","dir":"$root"},"at":["2/3","50%"]}
+{"wait":{"selected":["$from"],"dir":"$root"},"message":"the starting row to be selected before dragging its $part selection space"}
+{"drag":{"from":{"entry":"$from","part":"$part","dir":"$root"},"from_at":["2/3","50%"],"to":{"entry":"$to","part":"$part","dir":"$root"},"to_at":["2/3","50%"]},"release":false}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"dragging already-selected $part space to select both files while held"}
+{"portal_response":{"done":false},"message":"a held marquee to leave the request open"}
+{"button_up":1}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the completed marquee to retain both files"}
+{"click":{"entry":"$to","part":"$part","dir":"$root"},"at":["2/3","50%"]}
+{"wait":{"selected":{"contains":["$to"]},"dir":"$root"},"message":"the opposite endpoint to be selected for a reverse tap-drag"}
+{"button_down":1}
+{"move_by":[0,-12],"variants":["down","metadata-down"]}
+{"move_by":[0,12],"variants":["up","metadata-up"]}
+{"move":{"entry":"$from","part":"$part","dir":"$root"},"at":["2/3","50%"]}
+{"wait":{"selected":["readme.md","todo.txt"],"dir":"$root"},"message":"the held second tap to select both files in the reverse direction"}
+{"portal_response":{"done":false},"message":"the reverse tap-drag to leave the request open"}
+{"button_up":1}
+{"during":{"selected":["readme.md","todo.txt"],"dir":"$root"},"ms":500,"message":"releasing a tap-drag to retain both files without late activation"}
+{"activate":{"role":"button","name":"Open"}}
+{"portal_response":{"done":true,"status":0,"names":["readme.md","todo.txt"]},"message":"acceptance to return the actual pointer-selected files"}

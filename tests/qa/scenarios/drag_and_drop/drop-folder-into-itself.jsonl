@@ -1,7 +1,15 @@
-{"scenario":"drop-folder-into-itself","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.9,"icons":0.9,"list":0.9},"quality":{"impact":5,"coverage":3,"criticality":4,"diagnostic":4,"score":42,"note":"Folder dropped on itself is a no-op in all three views; drop_filters_self pins the logic, Icons and List drops only checked here"}}
+{"scenario":"drop-folder-into-itself","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"single-click","prefs":{"list_folder_clicks":1,"grid_folder_clicks":1,"explorer_folder_clicks":1}},{"id":"double-click","prefs":{"list_folder_clicks":2,"grid_folder_clicks":2,"explorer_folder_clicks":2}}],"cost":{"columns-double-click":1.5,"columns-single-click":1.5,"icons-double-click":1.6,"icons-single-click":1.6,"list-double-click":1.7,"list-single-click":1.6},"quality":{"impact":5,"coverage":4,"criticality":4,"diagnostic":4,"score":63,"note":"Returned folder drags neither navigate nor transfer; sole self-return/click-policy guard, with valid hover-opening preserved"}}
 {"fs":{"path":".","remember":"before"}}
-{"select":{"entry":"documents"}}
-{"drag":{"from":{"entry":"documents"},"to":{"entry":"documents"}}}
-{"wait":{"entry":"documents"},"message":"the entry 'documents' to appear"}
+{"wait":{"entries":{"contains":["documents","archive"]},"dir":"$root"},"message":"the source and destination folders to be listed"}
+{"drag":{"from":{"entry":"documents","part":"icon","dir":"$root"},"to":{"background":true,"dir":"$root"}},"release":false}
+{"move":{"entry":"documents","part":"icon","dir":"$root"}}
+{"during":{"directory":"$root"},"ms":1200,"message":"returning a held drag to its source must not spring-open that folder"}
+{"button_up":1}
+{"during":{"directory":"$root"},"ms":500,"message":"releasing a returned folder drag must not activate the folder"}
 {"fs":{"path":".","unchanged":"before"},"timeout_ms":0,"message":"a folder must not be moved inside itself"}
 {"fs":{"path":"documents/notes.txt","exists":true},"timeout_ms":0}
+{"drag":{"from":{"entry":"documents","part":"icon","dir":"$root"},"to":{"entry":"archive","part":"icon","dir":"$root"}},"release":false}
+{"wait":{"directory":"archive"},"message":"a different destination folder to spring-open while dragging"}
+{"key":"Escape"}
+{"button_up":1}
+{"fs":{"path":".","unchanged":"before"},"message":"cancelling the valid destination drag to preserve the source tree"}
