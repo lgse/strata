@@ -74,9 +74,39 @@ fn open(directory: Option<&OsStr>) -> Result<(), String> {
     host::windowed::run(startup::UiThread::claim()?, settings, location)
 }
 
+/// The argument the sandbox's worker pool runs this executable with
+/// (`strata_preview::sandbox::browser`), as the GTK application's `main` reads it.
+const BROWSER_WORKER: &str = "--browser-worker";
+
+/// Whether this process is a thumbnail worker the sandbox started: the first argument, and
+/// only the first, names it, as `launch_mode` in `src/main.rs` reads it.
+fn is_browser_worker(arguments: &[OsString]) -> bool {
+    arguments
+        .get(1)
+        .is_some_and(|argument| argument == BROWSER_WORKER)
+}
+
+/// Serves the sandbox's thumbnail requests on stdin, as the GTK application's
+/// `LaunchMode::BrowserWorker` does. The confinement is `strata-preview`'s, the same for both
+/// binaries: the pool starts this executable under bubblewrap, bound read-only at
+/// `/app/strata`, and the worker restricts itself (`sandbox::browser::worker::run`).
+fn browser_worker() -> ExitCode {
+    match strata_preview::sandbox::browser::run(strata_preview::sandbox_helper::browser_render) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Browser helper failed: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// Runs `strata-rune` with the process's arguments, the program name first.
 pub fn run(arguments: impl IntoIterator<Item = OsString>) -> ExitCode {
     let arguments: Vec<OsString> = arguments.into_iter().collect();
+    // Before anything else starts: a worker sets up no logging, settings or window.
+    if is_browser_worker(&arguments) {
+        return browser_worker();
+    }
     #[cfg(feature = "qa")]
     if let Some(code) = crate::qa::launch(&arguments) {
         return code;
