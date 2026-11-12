@@ -268,12 +268,20 @@ sequence only together with the alphabet's version, so the version is part of th
   set differs from run to run. The sets that failed pass alone on the same machine
   (`p0::` 26 of 26, `p2::x11` 22 of 22).
 - It is neither the machine's compositor nor a change on a branch. Every wait is 10 s times
-  `STRATA_TEST_TIMEOUT_SCALE` (`docs/rune/testing.md`); CI sets 3 and the `mise` task sets
-  nothing, so a local run has a third of CI's patience while it starts one sway and one
-  Xwayland for each test, as many at once as the machine has cores. With
-  `STRATA_TEST_TIMEOUT_SCALE=3` the whole task passed on the same loaded machine and
-  commit: 177, then the gallery's 23 and 14, then `strata-rune`'s 3.
+  `STRATA_TEST_TIMEOUT_SCALE` (`crates/strata-platform/tests/support/mod.rs`), which was 1
+  in all of these runs, while the task starts one sway and one Xwayland for each test, as
+  many at once as the machine has cores. With the scale at 3 the whole task passed once, on
+  the same loaded machine and commit: 177, then the gallery's 23 and 14, then
+  `strata-rune`'s 3. That is one run, not a measure of how often it passes.
+- `docs/rune/testing.md` said that CI sets the scale to 3 and runs these tests in
+  `.github/workflows/platform.yml`. Neither was so: no workflow sets the variable, none runs
+  the tests, and that file has never been in the repository. Both lines are corrected with
+  this entry. The comment on `timeout` in `crates/strata-platform/tests/support/mod.rs`
+  says "CI sets 3" too, and is left for whoever takes the harness.
 - **Concerns:** `mise run test-platform` (`mise.toml`), and every package that changes a
   host, the shell or `strata-rune`, whose window tests are the last thing that task runs.
-- **State:** open, not taken up. [`working.md`](working.md#while-building) says how to run
-  it meanwhile. Whether the task takes CI's scale by default is for whoever owns it.
+- **State:** open, unowned. The task now sets the scale to 3 when it is unset, by the
+  orchestrating session's ruling of 2026-11-12, which gives a loaded machine more time and
+  does not remove the cause. The thing to fix is the number of sessions started at once: a
+  limit on concurrent sway sessions in the harness, or on the test threads the task asks
+  for. [`working.md`](working.md#while-building) has how to run the window tests alone.
