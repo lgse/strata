@@ -134,7 +134,7 @@ impl App {
             ids: &ids,
             later: &later,
         };
-        debug_assert_eq!(Registry::check(parts), Ok(()));
+        debug_assert_eq!(Registry::check(parts, commands::own()), Ok(()));
         let parts = Registry::new(parts, &saved.browser_mode);
         let mut listeners = parts.listeners(&setup);
         listeners.push(Box::new(hear));
@@ -558,10 +558,10 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
     changed
 }
 
-/// Whether a part's field has the keyboard, so that the window's keys wait.
-pub(crate) fn holds_keyboard(app: &App) -> bool {
-    let parts = app.window.parts;
-    parts.active().any(|part| (part.holds_keyboard)(app))
+/// The registered parts, with the view that is shown: what the command registry reads each
+/// part's commands and its hold on the keyboard from.
+pub(crate) fn parts(app: &App) -> Registry<'static, App> {
+    app.window.parts
 }
 
 /// What the key catalog reads of the settings, brought up to the saved values as they are

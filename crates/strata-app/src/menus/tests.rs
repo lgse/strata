@@ -346,7 +346,8 @@ fn a_plain_view_and_the_menu() -> Vec<Entry<App>> {
         publish: |_| {},
         caught_up: |_| {},
         poll: |_, _, _| false,
-        holds_keyboard: |_| false,
+        commands: &[],
+        keyboard: |_| None,
     };
     vec![view, Entry::of::<Menu>("menu")]
 }

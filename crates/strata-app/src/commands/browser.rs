@@ -7,25 +7,17 @@
 use rune::Tx;
 use strata_core::model::Location;
 use strata_desktop::keys::{
-    Map, Matcher, Modifiers, SHORTCUT_MODIFIERS,
+    Map, Modifiers, SHORTCUT_MODIFIERS,
     bindings::{
         ENTER, HIDDEN_FILES, HISTORY_BACK, HISTORY_FORWARD, HOME_FOLDER, PARENT_FOLDER, REFRESH,
-        RENAME, SELECT_ALL,
+        SELECT_ALL,
     },
 };
 
-use super::{Action, Call, Keys, On, Outcome, Reads, Stage};
-use crate::{App, rename, shell};
+use super::{Action, Call, Keys, On, Outcome, Stage};
+use crate::{App, shell};
 
 const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
-
-/// A command's keys at one stage.
-const fn at(stage: Stage, matchers: &'static [Matcher]) -> Keys {
-    Keys {
-        stage,
-        reads: Reads::Commands(matchers),
-    }
-}
 
 /// The column a call is for: the row's, the folder's, or the browser's active one.
 fn depth(app: &App, on: On) -> Option<usize> {
@@ -38,27 +30,6 @@ fn depth(app: &App, on: On) -> Option<usize> {
 /// `browser_commands` in `src/ui/window/keyboard/commands.rs`, and the pane menu's row.
 fn toggle_hidden(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     app.browser.toggle_hidden();
-    Outcome::Ran
-}
-
-/// F2 and Ctrl+R rename the item the keyboard is on (`inline_editing` in
-/// `src/ui/window/keyboard/commands.rs`). The menu's row selects its entry alone first, and
-/// then renames it as the key does (`rename_context_entry` in
-/// `src/ui/browser/context_menu/focus.rs`).
-fn rename(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
-    match call.on {
-        On::Row((depth, id)) => {
-            let Some(rows) = shell::shown_view(app).map(|view| &view.rows) else {
-                return Outcome::Declined;
-            };
-            (rows.select_only)(app, (depth, id), tx);
-            shell::publish(app);
-            rename::begin_on(app, depth, id, tx);
-        }
-        On::Focus => rename::begin_focused(app, tx),
-        // A menu with no entry has no Rename row.
-        On::Column(_) => return Outcome::Declined,
-    }
     Outcome::Ran
 }
 
@@ -113,38 +84,44 @@ fn home(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
 
 /// The ids are the menu rows' where a row runs the command (`menus::ROWS`).
 pub(super) const ACTIONS: &[Action<App>] = &[
-    Action::new("rename", rename)
-        .command(RENAME)
-        .keys(&[at(Stage::InlineEditing, &[RENAME.in_map(Map::Default)])]),
     Action::new("hidden", toggle_hidden)
         .command(HIDDEN_FILES)
-        .keys(&[at(
+        .keys(&[Keys::at(
             Stage::FileCommands,
             &[HIDDEN_FILES.in_map(Map::Default)],
         )]),
-    Action::new("refresh", refresh).command(REFRESH).keys(&[at(
-        Stage::FileCommands,
-        &[REFRESH.ignoring(SHORTCUT_MODIFIERS)],
-    )]),
+    // `browser_commands` reads it with anything held; the window action `refresh` reads it
+    // as bound once the chain has left the key (`WINDOW_ACTIONS` in `keyboard.rs`), which is
+    // what refreshes under a menu.
+    Action::new("refresh", refresh).command(REFRESH).keys(&[
+        Keys::at(Stage::FileCommands, &[REFRESH.ignoring(SHORTCUT_MODIFIERS)]),
+        Keys::at(Stage::AfterYield, &[REFRESH.ignoring(Modifiers::empty())]),
+    ]),
     Action::new("open", open).command(ENTER),
     Action::new("select-all", select_all).command(SELECT_ALL),
     // `history_jump` in `src/ui/window/keyboard/items.rs`, which lets Shift be held.
     Action::new("history-back", back)
         .command(HISTORY_BACK)
-        .keys(&[at(
+        .keys(&[Keys::at(
             Stage::ItemNavigation,
             &[HISTORY_BACK.in_map(Map::Default).ignoring(SHIFT)],
         )]),
     Action::new("history-forward", forward)
         .command(HISTORY_FORWARD)
-        .keys(&[at(
+        .keys(&[Keys::at(
             Stage::ItemNavigation,
             &[HISTORY_FORWARD.in_map(Map::Default).ignoring(SHIFT)],
         )]),
     Action::new("parent-folder", parent)
         .command(PARENT_FOLDER)
-        .keys(&[at(Stage::ItemNavigation, &[PARENT_FOLDER.ignoring(SHIFT)])]),
+        .keys(&[Keys::at(
+            Stage::ItemNavigation,
+            &[PARENT_FOLDER.ignoring(SHIFT)],
+        )]),
     Action::new("home-folder", home)
         .command(HOME_FOLDER)
-        .keys(&[at(Stage::ItemNavigation, &[HOME_FOLDER.ignoring(SHIFT)])]),
+        .keys(&[Keys::at(
+            Stage::ItemNavigation,
+            &[HOME_FOLDER.ignoring(SHIFT)],
+        )]),
 ];

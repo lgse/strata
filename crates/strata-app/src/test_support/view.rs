@@ -5,12 +5,12 @@
 
 use std::path::{Path, PathBuf};
 
-use rune::{Key, KeyEvent, Mods, PhysicalInput};
+use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
 use strata_components::{collection::element::row_key, contract::EntryId};
 use strata_core::model::Location;
 
-use super::{PATIENCE, hosted_after};
+use super::{PATIENCE, hosted_after, send_key};
 use crate::host::offscreen::Offscreen;
 
 fn settings_file() -> PathBuf {
@@ -181,10 +181,7 @@ pub(crate) fn open(host: &mut Offscreen, shape: Shape, folder: &Path) -> Seen {
 
 /// Feeds the host a key with its modifiers held, as a keyboard sends one.
 pub(crate) fn press(host: &mut Offscreen, key: Key, mods: Mods) {
-    let runtime = host.runtime();
-    runtime.physical_input(PhysicalInput::Modifiers(mods));
-    runtime.key(KeyEvent { key, mods });
-    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
+    send_key(host, KeyEvent { key, mods });
     idle(host);
 }
 
@@ -270,4 +267,24 @@ pub(crate) fn right_click(host: &mut Offscreen, shape: Shape, name: &str) -> Opt
 pub(crate) fn right_click_blank(host: &mut Offscreen, shape: Shape) -> Option<String> {
     let at = blank_of(host, shape);
     right_click_at(host, at)
+}
+
+/// A click on the open menu's item named `name`.
+pub(crate) fn choose(host: &mut Offscreen, name: &str) {
+    let tree = host.tree();
+    let items = all(&tree, &|node| {
+        node["role"]
+            .as_str()
+            .is_some_and(|role| role.starts_with("menu-item"))
+            && node["name"] == name
+    });
+    let bounds = &items.first().expect("the menu item")["bounds"];
+    let at = |index: usize| bounds[index].as_f64().expect("a bound");
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let (x, y) = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) / 2.0) as f32);
+    let runtime = host.runtime();
+    runtime.pointer_move(x, y);
+    runtime.pointer_down(x, y);
+    runtime.pointer_up(x, y);
+    idle(host);
 }
