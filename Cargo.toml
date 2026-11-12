@@ -86,7 +86,7 @@ strata-test-support = { version = "0.0.0", path = "crates/strata-test-support" }
 rune = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "2a44156b21d63b0342a366b26d9222a6edd4622c", default-features = false, features = ["accessibility", "dbus", "embedded-fonts", "svg"] }
 rune-kit = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "2a44156b21d63b0342a366b26d9222a6edd4622c" }
 
-strata-app = { version = "0.0.1", path = "crates/strata-app" }
+strata-app = { version = "0.0.1", path = "crates/strata-app", default-features = false }
 strata-components = { version = "0.0.1", path = "crates/strata-components" }
 strata-kit = { version = "0.0.1", path = "crates/strata-kit" }
 strata-platform = { version = "0.0.1", path = "crates/strata-platform" }

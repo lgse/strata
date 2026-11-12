@@ -13,6 +13,10 @@ publish = false
 workspace = true
 
 [features]
+# UnRAR for archive browsing and RAR-based covers, on by default as in the GTK application's
+# default build (the root package's `rar`). A build without UnRAR is `--no-default-features`.
+default = ["rar"]
+rar = ["strata-core/rar", "strata-fs/rar", "strata-preview/rar"]
 # The scripted `--qa` mode on the offscreen host (docs/rune/slice/V7-rune-qa-backend.md).
 # Never in a release build.
 qa = [
