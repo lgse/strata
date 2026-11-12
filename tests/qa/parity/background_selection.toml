@@ -14,9 +14,8 @@ host = "offscreen"
 scenario = "background-click-clears-selection"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "background-click-clears-selection"
@@ -38,9 +37,8 @@ host = "offscreen"
 scenario = "background-press-clears-before-drag"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "background-press-clears-before-drag"
@@ -100,7 +98,7 @@ run = "icons"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A15: the preview drawer and the image viewer, at `preview` on line 5"
 
 [[run]]
 scenario = "preview-blank-click-keeps-selection"
