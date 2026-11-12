@@ -74,7 +74,7 @@ deny = [
   { crate = "gstreamer", wrappers = ["gstreamer-app", "gstreamer-base", "strata"] },
   { crate = "gstreamer-app", wrappers = ["strata"] },
   { crate = "strata-core", wrappers = ["strata", "strata-app", "strata-desktop", "strata-fs", "strata-preview"] },
-  { crate = "strata-preview", wrappers = ["strata", "strata-desktop", "strata-fs"] },
+  { crate = "strata-preview", wrappers = ["strata", "strata-app", "strata-desktop", "strata-fs"] },
   { crate = "strata-fs", wrappers = ["strata", "strata-app", "strata-desktop"] },
   { crate = "strata-desktop", wrappers = ["strata", "strata-app"] },
   { crate = "strata-qa", wrappers = ["strata", "strata-app"] },
