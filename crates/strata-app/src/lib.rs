@@ -19,10 +19,6 @@ mod host;
 mod launch;
 mod listing;
 // The one folder a single-pane view shows: the Icons and List views'.
-#[expect(
-    dead_code,
-    reason = "the Icons view, lgse/strata#2128, is its first user"
-)]
 mod pane;
 #[cfg(feature = "qa")]
 mod qa;
@@ -44,6 +40,7 @@ mod menus;
 mod rename;
 // B3 Commands and key dispatch
 // A1 Icons view and thumbnails
+mod icons;
 // A2 List view
 // A3 Sidebar
 // A4 Tabs
@@ -74,6 +71,7 @@ slots::parts! {
     menu: menus::Menu,
     // B3 Commands and key dispatch
     // A1 Icons view and thumbnails
+    icons: icons::Icons,
     // A2 List view
     // A3 Sidebar
     // A4 Tabs

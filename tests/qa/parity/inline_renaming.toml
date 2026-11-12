@@ -82,9 +82,8 @@ host = "offscreen"
 scenario = "long-rename-keeps-caret"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "long-rename-keeps-caret"
@@ -346,9 +345,8 @@ host = "offscreen"
 scenario = "window-accelerators-leave-rename"
 run = "icons-f5"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "window-accelerators-leave-rename"

@@ -222,7 +222,7 @@ issue [#2128](https://github.com/lgse/strata/issues/2128).
    pane header. Meanwhile: nothing happens.
 4. **Focus after Back, Forward and Up.** GTK focuses the new listing on an explicit
    navigation, and leaves focus on a header button or the sidebar for history unless it was
-   in the pane (`on_navigation_starting`, `src/ui/browser_modes/events.rs:58-66`). The Rune
+   in the pane (`on_navigation_starting`, `src/ui/browser_modes/events.rs:59-73`). The Rune
    views focus the listing whenever another folder shows. Meanwhile: the Rune views', until
    the header buttons ([B3](packages/B3.md)) and the sidebar exist to keep focus.
 5. **"Arrows scoped to content"** (`arrow_navigation_scoped`) keeps Left and Up inside the
