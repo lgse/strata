@@ -10,7 +10,10 @@ use strata_core::model::Location;
 
 use crate::test_support::{
     PATIENCE, fixture,
-    view::{Shape, assert_browser_agrees, field, hosted_in, open, press, seen, shift, wait},
+    view::{
+        Shape, assert_browser_agrees, browser_holds, field, hosted_in, open, press, right_click,
+        right_click_blank, seen, shift, wait,
+    },
 };
 
 const MODULE: &str = "single::tests";
@@ -204,4 +207,50 @@ fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_icons() {
 fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_list() {
     let name = "f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_list";
     f2_opens_the_editor_and_f5_leaves_it(&LIST, name);
+}
+
+/// `selection/right-click-selects-entry`: a right-click on an entry outside the selection
+/// opens that entry's menu and selects it alone, one on an entry of a selection of several
+/// opens its menu and keeps the selection, as GTK's `context_entries` reads it, and one on
+/// blank space opens the folder's. A menu is named by what it acts on (`menus.rs`). The
+/// browser holds what the menu acts on.
+fn a_right_click_selects_or_keeps(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        let title = Location::local(folder.path()).display_name();
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, Key::End, Mods::default());
+
+        let menu = right_click(&mut host, case.shape, "readme.md");
+        assert_eq!(menu.as_deref(), Some("readme.md"));
+        let held = browser_holds(&host);
+        assert_eq!(
+            held,
+            (vec!["readme.md".to_owned()], Some("readme.md".to_owned()))
+        );
+        press(&mut host, Key::Escape, Mods::default());
+
+        press(&mut host, Key::Home, Mods::default());
+        press(&mut host, case.next.clone(), shift());
+        let menu = right_click(&mut host, case.shape, "documents");
+        assert_eq!(menu.as_deref(), Some("documents"));
+        let (selected, _) = browser_holds(&host);
+        assert_eq!(selected, ["archive", "documents"]);
+        press(&mut host, Key::Escape, Mods::default());
+
+        let menu = right_click_blank(&mut host, case.shape);
+        assert_eq!(menu, Some(title));
+    });
+}
+
+#[test]
+fn a_right_click_selects_an_unselected_tile_and_keeps_a_selection_it_is_in() {
+    let name = "a_right_click_selects_an_unselected_tile_and_keeps_a_selection_it_is_in";
+    a_right_click_selects_or_keeps(&ICONS, name);
+}
+
+#[test]
+fn a_right_click_selects_an_unselected_row_and_keeps_a_selection_it_is_in() {
+    let name = "a_right_click_selects_an_unselected_row_and_keeps_a_selection_it_is_in";
+    a_right_click_selects_or_keeps(&LIST, name);
 }
