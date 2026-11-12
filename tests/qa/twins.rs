@@ -28,8 +28,12 @@ use crate::{
 
 /// What a twin's name adds to its original's.
 pub(crate) const SUFFIX: &str = "-rune";
-/// The exceptions of the parity plan that may carry a twin.
-const TWIN_BEARING: [&str; 6] = ["timing", "a11y", "rune", "oracle", "toolkit", "deviation"];
+/// The exceptions of the parity plan that may carry a twin. With `PLATFORM` these are the
+/// plan's exception codes, and the fuzz driver's normalisation map takes them from here.
+pub(crate) const TWIN_BEARING: [&str; 6] =
+    ["timing", "a11y", "rune", "oracle", "toolkit", "deviation"];
+/// The exception that never carries a twin: its runs go to the session host.
+pub(crate) const PLATFORM: &str = "platform";
 /// The pending reasons that are no exception: they must reach zero.
 const PENDING_ONLY: [&str; 3] = ["scope", "harness", "component"];
 /// The Rune filing packet: a `rune` twin cites the entry it expires with.
@@ -56,7 +60,7 @@ pub(crate) fn exception_problem(code: &str) -> Option<String> {
     if TWIN_BEARING.contains(&code) {
         return None;
     }
-    let why = if code == "platform" {
+    let why = if code == PLATFORM {
         "never carries a twin: the same file runs on the session host, so its run is pending \
          or required with that host"
     } else if PENDING_ONLY.contains(&code) {

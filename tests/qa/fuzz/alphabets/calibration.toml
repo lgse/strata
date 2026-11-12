@@ -1,0 +1,119 @@
+# The calibration alphabet: what F1 used to fix the projection and the rest rule on GTK
+# (docs/testing.md, "Calibration"). It is not an area's alphabet. It reaches a little of
+# every kind of action the driver has, in Columns on the canonical fixture, so that every
+# field of an observation moves at least sometimes.
+area = "calibration"
+version = 3
+about = "Columns on the canonical fixture: keyboard navigation and selection, clicks by name, typed text, a context menu, the preview, rename, hidden files, and files made and removed behind the application's back"
+header = '{"modes":["columns"]}'
+
+[[action]]
+name = "down"
+weight = 10
+steps = ['{"key":"Down"}']
+
+[[action]]
+name = "up"
+weight = 8
+steps = ['{"key":"Up"}']
+
+[[action]]
+name = "right"
+weight = 6
+steps = ['{"key":"Right"}']
+
+# Left of the fixture's own column is its parent, /tmp, and what is listed there is the
+# machine's and not the sequence's: other runs' folders. So Left stays inside the fixture.
+[[action]]
+name = "left"
+weight = 6
+steps = ['{"key":"Left","when":{"not":{"directory":"$root"}}}']
+
+[[action]]
+name = "edge"
+weight = 4
+steps = ['{"key":"<key>"}']
+choose.key = ["Home", "End", "Page_Down", "Page_Up"]
+
+[[action]]
+name = "extend"
+weight = 6
+steps = ['{"key":"shift+<key>"}']
+choose.key = ["Down", "Up", "Home", "End"]
+
+[[action]]
+name = "select-all"
+weight = 1
+steps = ['{"key":"ctrl+a"}']
+
+[[action]]
+name = "escape"
+weight = 4
+steps = ['{"key":"Escape"}']
+
+# No click lands on an entry while a name is being edited. A click on the row that holds
+# the editor is a click into its text, where the caret goes by pixel and not by name; and
+# GTK does not answer a Shift+click there the same way twice (lgse/strata#2173).
+[[action]]
+name = "click"
+weight = 4
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.entry = ["archive", "documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "photo.txt"]
+
+[[action]]
+name = "click-with"
+weight = 3
+steps = ['{"click":{"entry":"<entry>"},"mods":["<modifier>"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.entry = ["documents", "pictures", "readme.md", "todo.txt", "notes.txt", "spreadsheet.csv"]
+choose.modifier = ["ctrl", "shift"]
+
+[[action]]
+name = "type"
+weight = 2
+steps = ['{"type":"<text>"}']
+choose.text = ["t", "re", "no", "d"]
+
+[[action]]
+name = "menu"
+weight = 2
+steps = ['{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.entry = ["documents", "readme.md", "todo.txt", "report.md"]
+
+[[action]]
+name = "menu-pick"
+weight = 2
+steps = ['{"click":{"menu_item":"<item>"},"when":{"present":{"menu_item":"<item>"}}}']
+choose.item = ["Rename", "Copy", "Paste", "New Folder"]
+
+[[action]]
+name = "preview"
+weight = 2
+steps = ['{"key":"space"}']
+
+[[action]]
+name = "rename"
+weight = 2
+steps = ['{"key":"F2"}']
+
+[[action]]
+name = "commit"
+weight = 2
+steps = ['{"key":"Return"}']
+
+# The one action here that writes settings.toml, so that part of an observation moves too.
+[[action]]
+name = "hidden"
+weight = 2
+steps = ['{"key":"ctrl+period"}']
+
+[[action]]
+name = "write"
+weight = 2
+steps = ['{"fs":{"path":"<path>","write":"fuzz\n"}}']
+choose.path = ["fuzz-a.txt", "documents/fuzz-b.txt", "archive/fuzz-c.txt"]
+
+[[action]]
+name = "remove"
+weight = 1
+steps = ['{"fs":{"path":"<path>","remove":true}}']
+choose.path = ["fuzz-a.txt", "documents/fuzz-b.txt", "archive/fuzz-c.txt"]

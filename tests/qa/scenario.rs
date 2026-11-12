@@ -254,12 +254,10 @@ pub(crate) fn planned_tests() -> Plan {
     plan(&scenario_files(), Target::from_environment().ok(), named)
 }
 
-/// The tests of `files` on a target. `named` is set when scenarios were named, so a `skip`
-/// scenario still runs.
-pub(crate) fn plan(files: &[PathBuf], target: Option<Target>, named: bool) -> Plan {
-    let mut elsewhere = Vec::new();
-    let mut tests: Vec<harness::Test> = UNIT_TESTS
+fn unit_tests() -> Vec<harness::Test> {
+    UNIT_TESTS
         .iter()
+        .chain(crate::fuzz::UNIT_TESTS)
         .map(|&(name, test)| harness::Test {
             name: name.to_owned(),
             group: None,
@@ -273,7 +271,14 @@ pub(crate) fn plan(files: &[PathBuf], target: Option<Target>, named: bool) -> Pl
                 harness::Outcome::Passed(None)
             }),
         })
-        .collect();
+        .collect()
+}
+
+/// The tests of `files` on a target. `named` is set when scenarios were named, so a `skip`
+/// scenario still runs.
+pub(crate) fn plan(files: &[PathBuf], target: Option<Target>, named: bool) -> Plan {
+    let mut elsewhere = Vec::new();
+    let mut tests = unit_tests();
     for path in files {
         let scenario = scenario_name(path);
         let header = match read_header(path) {
