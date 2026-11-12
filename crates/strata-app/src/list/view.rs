@@ -115,10 +115,12 @@ fn collection(app: &App) -> Collection<App> {
 }
 
 pub(super) fn table(app: &App) -> ListTable<App> {
-    let columns = vec![TableColumn::primary(name_id().as_str(), app.list.labels.name.clone())
-        // The Name column's default width and minimum (`src/ui/browser_modes/list_columns.rs`).
-        .width(160.0)
-        .min(160.0)];
+    let columns = vec![
+        TableColumn::primary(name_id().as_str(), app.list.labels.name.clone())
+            // The Name column's default width and minimum: `src/ui/browser_modes/list_columns.rs`.
+            .width(160.0)
+            .min(160.0),
+    ];
     ListTable::new(
         VIEW,
         columns,

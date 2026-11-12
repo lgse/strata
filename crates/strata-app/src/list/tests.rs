@@ -72,7 +72,10 @@ fn all<'a>(node: &'a Value, wanted: &dyn Fn(&Value) -> bool) -> Vec<&'a Value> {
 
 /// An entry's row, as the collection keys it: the headings are a row too.
 fn is_entry(node: &Value) -> bool {
-    node["role"] == "row" && node["key"].as_str().is_some_and(|key| key.starts_with("row-"))
+    node["role"] == "row"
+        && node["key"]
+            .as_str()
+            .is_some_and(|key| key.starts_with("row-"))
 }
 
 fn seen(host: &Offscreen) -> Seen {
@@ -278,7 +281,10 @@ fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there() {
                 field(host).is_some_and(|(_, focused)| focused)
             });
             assert!(editing, "the field: {:?}", field(&host));
-            assert_eq!(field(&host).map(|(text, _)| text).as_deref(), Some("todo.txt"));
+            assert_eq!(
+                field(&host).map(|(text, _)| text).as_deref(),
+                Some("todo.txt")
+            );
 
             press(&mut host, Key::Function(5), Mods::default());
             host.run_until(std::time::Duration::from_millis(500), |_| false);
