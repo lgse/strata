@@ -326,8 +326,9 @@ fn an_unreadable_folder_says_why_in_list() {
     an_unreadable_folder_says_why(&LIST, "an_unreadable_folder_says_why_in_list");
 }
 
-/// `inline_renaming`'s Tab: the edit goes on to the next entry, with the keyboard in its field
-/// (`advance_rename`).
+/// `inline_renaming`'s Tab and Shift+Tab: the edit goes on to the next or the previous entry,
+/// which the browser then holds selected, with the keyboard in its field; Tab on the last entry
+/// ends the edit (`advance_rename`).
 fn tab_moves_the_edit_on_with_the_keyboard(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let folder = fixture();
@@ -341,11 +342,31 @@ fn tab_moves_the_edit_on_with_the_keyboard(case: &Case, name: &str) {
         assert!(editing, "the field: {:?}", field(&host));
 
         press(&mut host, Key::Tab, Mods::default());
-
         let moved = host.run_until(PATIENCE, |host| {
             field(host).is_some_and(|(text, focused)| focused && text == "todo.txt")
         });
         assert!(moved, "the field after Tab: {:?}", field(&host));
+        assert_eq!(browser_holds(&host).0, ["todo.txt"]);
+
+        press(&mut host, Key::Tab, shift());
+        let back = host.run_until(PATIENCE, |host| {
+            field(host).is_some_and(|(text, focused)| focused && text == "readme.md")
+        });
+        assert!(back, "the field after Shift+Tab: {:?}", field(&host));
+        assert_eq!(browser_holds(&host).0, ["readme.md"]);
+
+        // Tab on the last entry commits and ends the edit, with no wrap (`advance_rename`).
+        press(&mut host, Key::Tab, Mods::default());
+        press(&mut host, Key::Tab, Mods::default());
+        let ended = host.run_until(PATIENCE, |host| field(host).is_none());
+        assert!(
+            ended,
+            "the field after Tab on the last entry: {:?}",
+            field(&host)
+        );
+        let seen = seen(&host, case.shape);
+        assert_eq!(seen.focused.as_deref(), Some("todo.txt"), "{seen:#?}");
+        assert_eq!(browser_holds(&host).0, ["todo.txt"]);
     });
 }
 
