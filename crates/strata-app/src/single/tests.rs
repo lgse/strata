@@ -10,7 +10,10 @@ use strata_core::model::Location;
 
 use crate::test_support::{
     PATIENCE, fixture,
-    view::{Shape, assert_browser_agrees, field, hosted_in, open, press, seen, shift, wait},
+    view::{
+        Shape, assert_browser_agrees, browser_holds, field, hosted_in, open, press, right_click,
+        seen, shift, wait,
+    },
 };
 
 const MODULE: &str = "single::tests";
@@ -204,4 +207,41 @@ fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_icons() {
 fn f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_list() {
     let name = "f2_opens_the_editor_with_the_keyboard_and_f5_leaves_it_there_in_list";
     f2_opens_the_editor_and_f5_leaves_it(&LIST, name);
+}
+
+/// `selection/right-click-selects-entry`: a right-click on an entry outside the selection
+/// selects it alone, and one on an entry of a selection of several keeps the selection, as
+/// GTK's `context_entries` reads it. The browser holds what the menu acts on.
+fn a_right_click_selects_or_keeps(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, Key::End, Mods::default());
+
+        right_click(&mut host, case.shape, "readme.md");
+        let held = browser_holds(&host);
+        assert_eq!(
+            held,
+            (vec!["readme.md".to_owned()], Some("readme.md".to_owned()))
+        );
+        press(&mut host, Key::Escape, Mods::default());
+
+        press(&mut host, Key::Home, Mods::default());
+        press(&mut host, case.next.clone(), shift());
+        right_click(&mut host, case.shape, "documents");
+        let (selected, _) = browser_holds(&host);
+        assert_eq!(selected, ["archive", "documents"]);
+    });
+}
+
+#[test]
+fn a_right_click_selects_an_unselected_tile_and_keeps_a_selection_it_is_in() {
+    let name = "a_right_click_selects_an_unselected_tile_and_keeps_a_selection_it_is_in";
+    a_right_click_selects_or_keeps(&ICONS, name);
+}
+
+#[test]
+fn a_right_click_selects_an_unselected_row_and_keeps_a_selection_it_is_in() {
+    let name = "a_right_click_selects_an_unselected_row_and_keeps_a_selection_it_is_in";
+    a_right_click_selects_or_keeps(&LIST, name);
 }

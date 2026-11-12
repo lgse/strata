@@ -199,3 +199,28 @@ pub(crate) fn field(host: &Offscreen) -> Option<(String, bool)> {
     let field = fields.first()?;
     Some((text(field, "value"), has_state(field, "focused")))
 }
+
+/// The middle of the entry named `name`, in window points.
+fn middle_of(host: &Offscreen, shape: Shape, name: &str) -> (f32, f32) {
+    let tree = host.tree();
+    let entries = all(&tree, &|node| {
+        node["role"] == shape.entry && node["name"] == name && keyed_as_entry(node)
+    });
+    let bounds = &entries.first().expect("the entry")["bounds"];
+    let at = |index: usize| bounds[index].as_f64().expect("a bound");
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let middle = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) / 2.0) as f32);
+    middle
+}
+
+/// A right-click on the entry named `name`, and the menu it opens.
+pub(crate) fn right_click(host: &mut Offscreen, shape: Shape, name: &str) {
+    let (x, y) = middle_of(host, shape, name);
+    let runtime = host.runtime();
+    runtime.secondary_down(x, y);
+    runtime.secondary_up(x, y);
+    idle(host);
+    let tree = host.tree();
+    let menus = all(&tree, &|node| node["role"] == "menu");
+    assert!(!menus.is_empty(), "no menu after a right-click on {name}");
+}
