@@ -50,6 +50,10 @@ pub(crate) struct Seen {
     pub(crate) selected: Vec<String>,
     /// The list's active descendant: where the keyboard is.
     pub(crate) focused: Option<String>,
+    /// The list itself has the keyboard.
+    pub(crate) keyboard: bool,
+    /// The texts drawn in the list, other than its entries'.
+    pub(crate) texts: Vec<String>,
 }
 
 impl Seen {
@@ -123,6 +127,11 @@ pub(crate) fn seen(host: &Offscreen, shape: Shape) -> Seen {
             .iter()
             .find(|entry| entry["key"] == *active)
             .map(|entry| text(entry, "name")),
+        keyboard: has_state(list, "focused"),
+        texts: all(list, &|node| node["role"] == "label")
+            .iter()
+            .map(|label| text(label, "name"))
+            .collect(),
     }
 }
 
