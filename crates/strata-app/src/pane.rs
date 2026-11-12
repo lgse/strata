@@ -49,6 +49,18 @@ impl EntrySource for Nothing {
     }
 }
 
+/// The column a change inside one column is for. None for a change to every column, or to
+/// which columns there are.
+fn column_of(change: &Change) -> Option<usize> {
+    match change {
+        Change::Rows { depth, .. }
+        | Change::Loaded { depth, .. }
+        | Change::Busy { depth, .. }
+        | Change::Selection { depth, .. } => Some(*depth),
+        _ => None,
+    }
+}
+
 /// What applying a change did to the folder shown.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Applied {
@@ -170,24 +182,22 @@ impl Pane {
     }
 
     fn apply_within(&mut self, change: Change, tx: &mut rune::Tx) {
+        let Some(depth) = self.depth() else {
+            return;
+        };
+        // Another column's changes are not shown.
+        if column_of(&change).is_some_and(|other| other != depth) {
+            return;
+        }
         match change {
-            Change::Rows { depth, edit, marks } => self.edit(depth, edit, marks, tx),
-            Change::Loaded { depth, load, marks } => {
-                if let Some(column) = self.column_mut(depth) {
-                    column.set_load(load);
-                    column.set_busy(false);
-                    self.settle(&marks, tx);
-                }
-            }
-            Change::Busy { depth, busy } => {
+            Change::Rows { edit, marks, .. } => self.edit(edit, marks, tx),
+            Change::Loaded { load, marks, .. } => self.loaded(load, &marks, tx),
+            Change::Busy { busy, .. } => {
                 if let Some(column) = self.column_mut(depth) {
                     column.set_busy(busy);
                 }
             }
             Change::Hidden { show_hidden, marks } => {
-                let Some(depth) = self.depth() else {
-                    return;
-                };
                 if let Some(column) = self.column_mut(depth) {
                     column.set_show_hidden(show_hidden);
                 }
@@ -195,19 +205,22 @@ impl Pane {
                     self.settle(marks, tx);
                 }
             }
-            Change::Selection {
-                depth,
-                marks,
-                reveal,
-                ..
-            } if self.column(depth).is_some() => {
+            Change::Selection { marks, reveal, .. } => {
                 self.adopt(&marks);
                 if reveal {
                     self.reveal_cursor(tx);
                 }
             }
-            // `apply` took the rest, and another column's are not shown.
+            // `apply` took the rest.
             _ => {}
+        }
+    }
+
+    fn loaded(&mut self, load: Load, marks: &Marks, tx: &mut rune::Tx) {
+        if let Some((_, column)) = &mut self.shown {
+            column.set_load(load);
+            column.set_busy(false);
+            self.settle(marks, tx);
         }
     }
 
@@ -251,8 +264,8 @@ impl Pane {
         self.settle(&moved.marks, tx);
     }
 
-    fn edit(&mut self, depth: usize, edit: Edit, marks: Option<Marks>, tx: &mut rune::Tx) {
-        let Some(column) = self.column_mut(depth) else {
+    fn edit(&mut self, edit: Edit, marks: Option<Marks>, tx: &mut rune::Tx) {
+        let Some((_, column)) = &mut self.shown else {
             return;
         };
         column.apply(edit);
