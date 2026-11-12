@@ -8,7 +8,7 @@ run = "columns"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A1: Columns rows asking the window's thumbnails for what they show, a `contract` change to `columns/`, at `all_cached_in` on line 7"
 
 [[run]]
 scenario = "browser-workers-reuse-processes"
@@ -16,7 +16,7 @@ run = "icons"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A1: the details line under each tile (an image's dimensions), at `present` label `320×180` on line 12. The thumbnails before it render through strata-rune's sandboxed workers"
 
 [[run]]
 scenario = "browser-workers-reuse-processes"
@@ -24,7 +24,7 @@ run = "list"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A2: the List view's icon column reading the window's thumbnails, at `all_cached_in` on line 7"
 
 [[run]]
 scenario = "icons-rename-reuses-thumbnail-details"
@@ -32,7 +32,7 @@ run = "columns"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 2, whose command is B3's"
 
 [[run]]
 scenario = "idle-workers-exit-and-restart"
@@ -40,7 +40,7 @@ run = "columns"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A1: Columns rows asking the window's thumbnails for what they show, a `contract` change to `columns/`, at `all_cached_in` on line 5"
 
 [[run]]
 scenario = "list-icons-fill-duration-cached"
@@ -48,7 +48,7 @@ run = "list"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A2: the List view's icon column reading the window's thumbnails, at `cached_in` on line 11"
 
 [[run]]
 scenario = "stl-thumbnails-render-only-valid-models"
@@ -56,4 +56,4 @@ run = "icons"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A18: the Settings dialog, at `activate` Settings on line 6 and its search on line 8"

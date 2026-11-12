@@ -151,8 +151,12 @@ impl Columns {
     /// The changes inside a column: its rows, its load, its cursor and selection.
     fn apply_within(&mut self, change: Change, hands: &mut Hands<'_>) {
         match change {
-            Change::Rows { depth, edit, marks } => self.edit(depth, edit, marks, hands),
-            Change::Loaded { depth, load, marks } => self.loaded(depth, load, &marks, hands),
+            Change::Rows {
+                depth, edit, marks, ..
+            } => self.edit(depth, edit, marks, hands),
+            Change::Loaded {
+                depth, load, marks, ..
+            } => self.loaded(depth, load, &marks, hands),
             Change::Busy { depth, busy } => {
                 if let Some(column) = self.listings.columns.get_mut(depth) {
                     column.set_busy(busy);
@@ -211,6 +215,7 @@ impl Columns {
             location,
             show_hidden,
             active,
+            ..
         } = added;
         self.listings.columns.truncate(depth);
         self.held.truncate(depth);

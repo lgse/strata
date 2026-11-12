@@ -36,7 +36,10 @@ impl TypeGroup {
     /// it: strata-fs's `entry_type`, over the two fields it reads (its kind and its name), since
     /// a listing keeps no `FileEntry`.
     pub(crate) fn of_row(folder: &Location, kind: EntryKind, name: &str) -> Self {
-        Self::of(&entry(folder, kind, name))
+        let location = folder
+            .child(std::ffi::OsStr::new(name))
+            .unwrap_or_else(|| folder.clone());
+        Self::of(&entry(&location, kind, name))
     }
 
     /// The type of `entry`, as GTK's grouped List reads it.
@@ -79,10 +82,11 @@ impl TypeGroup {
     }
 }
 
-/// An entry with what `entry_type` reads, its kind and its name, and nothing else known.
-fn entry(folder: &Location, kind: EntryKind, name: &str) -> FileEntry {
+/// An entry at `location` with what `entry_type` reads, its kind and its name, and nothing else
+/// known.
+fn entry(location: &Location, kind: EntryKind, name: &str) -> FileEntry {
     FileEntry {
-        location: folder.clone(),
+        location: location.clone(),
         thumbnail_path: None,
         native_name: name.into(),
         display_name: name.to_owned(),

@@ -62,6 +62,15 @@ The checkpoint a package feeds is its wave's, in the plan's
 - **Running checks:** `AGENTS.md`, "Pre-push checks", "QA scenarios" and "Test image reuse",
   and the Rune side's rules under "The Rune side". `./scripts/qa-parity.sh <selection>
   --counts` and `--twins` read files on the host and start no container.
+- **The compositor tests on a loaded machine.** `mise run test-platform` starts a sway and
+  an Xwayland for each test, as many at once as the machine has cores, and with other
+  packages building on the machine its waits ran out in `strata-platform`'s own session
+  tests before it reached the rest (finding [#2218](https://github.com/lgse/strata/issues/2218) in [`findings.md`](findings.md)). The task
+  now triples every wait unless `STRATA_TEST_TIMEOUT_SCALE` is set, which passed once under
+  that load and is no guarantee. To run `strata-rune`'s window tests alone, the only run
+  through a real window, which a change to a host, the shell or the key routing owes:
+  `mise run test-platform window::`. A failure of a test run alone is the change's until
+  shown otherwise.
 - **While a gate runs from the worktree, leave the worktree alone, and commit by name.**
   `./scripts/qa-mutation.sh`, and so the mutation phases of `./scripts/qa-parity.sh slice`
   and `mutations`, apply each patch to the source files in place (`git apply`) and take it

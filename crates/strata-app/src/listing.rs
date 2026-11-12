@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 
-use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget};
+use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget, ThumbKey};
 use strata_core::{
     i18n::tr,
     model::{EntryKind as Kind, FileEntry, Location, ViewPreferences},
@@ -102,6 +102,10 @@ pub(crate) struct Row {
     kind: EntryKind,
     described: Described,
     hidden: bool,
+    /// The key of the entry's thumbnail, for a file that gets one ([`crate::thumbnails`]): a
+    /// hash, so a row holds eight bytes for it and no path. A view finds the file again
+    /// through the browser.
+    thumbnail: Option<ThumbKey>,
     /// The browser's kind of entry: what its file type is read from with its name.
     entry_kind: Kind,
     /// Its file type, as the List view groups by it: read only while its folder is grouped
@@ -118,6 +122,7 @@ impl Row {
             kind,
             described,
             hidden: entry.is_hidden,
+            thumbnail: crate::thumbnails::key_of(entry),
             entry_kind: entry.kind,
             group: None,
         }
@@ -353,10 +358,18 @@ impl Column {
             .enumerate()
             .map(|(place, kind)| (types[kind], place))
             .collect();
-        let rows = &self.rows;
-        // A stable sort: each group keeps the browser's order.
-        self.shown
-            .sort_by_key(|position| rows[*position].group.and_then(|group| rank.get(&group)));
+        // One pass into a bucket for each group, in the browser's order: linear in the rows,
+        // so a folder that arrives in many batches costs one pass a batch, not a sort.
+        let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); types.len()];
+        for position in &self.shown {
+            let group = self.rows[*position].group;
+            let place = group
+                .and_then(|group| rank.get(&group))
+                .copied()
+                .unwrap_or(0);
+            buckets[place].push(*position);
+        }
+        self.shown = buckets.concat();
         self.back = vec![usize::MAX; self.rows.len()];
         for (index, position) in self.shown.iter().enumerate() {
             self.back[*position] = index;
@@ -429,7 +442,11 @@ impl EntrySource for Column {
     fn entry(&self, index: usize) -> Entry<'_> {
         let row = &self.rows[self.shown[index]];
         // No icon name: the view falls back to its folder and file icons.
-        Entry::new(row.id, &row.name, row.kind, "")
+        let entry = Entry::new(row.id, &row.name, row.kind, "");
+        match row.thumbnail {
+            Some(key) => entry.thumbnail(key),
+            None => entry,
+        }
     }
 }
 

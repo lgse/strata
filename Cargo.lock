@@ -4810,6 +4810,7 @@ version = "0.0.1"
 dependencies = [
  "gio",
  "glib",
+ "image",
  "rune",
  "rune-kit",
  "rust-i18n",

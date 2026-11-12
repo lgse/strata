@@ -224,12 +224,7 @@ pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> 
         heard.copied(read.copied);
         for change in read.changes {
             heard.then(move |app: &mut App, tx: &mut Tx| {
-                let browser = app.browser.clone();
-                let grouping = |depth: usize| {
-                    let grouped = browser.shows_type_groups(depth);
-                    grouped.then(|| browser.column_preferences(depth)).flatten()
-                };
-                if V::single_mut(app).pane.apply(change, &grouping, tx) == Applied::Entered {
+                if V::single_mut(app).pane.apply(change, tx) == Applied::Entered {
                     // The GTK window gives a new listing the keyboard.
                     tx.focus(V::KEY, false);
                 }
