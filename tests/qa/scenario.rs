@@ -260,6 +260,7 @@ pub(crate) fn plan(files: &[PathBuf], target: Option<Target>, named: bool) -> Pl
     let mut elsewhere = Vec::new();
     let mut tests: Vec<harness::Test> = UNIT_TESTS
         .iter()
+        .chain(crate::fuzz::UNIT_TESTS)
         .map(|&(name, test)| harness::Test {
             name: name.to_owned(),
             group: None,

@@ -30,6 +30,9 @@ mod fs_check;
 #[path = "qa/fs_helpers.rs"]
 mod fs_helpers;
 
+#[path = "qa/fuzz.rs"]
+mod fuzz;
+
 #[path = "qa/input_method.rs"]
 mod input_method;
 
@@ -231,7 +234,12 @@ fn shader_cache() -> Result<PathBuf, String> {
 }
 
 fn main() -> std::process::ExitCode {
-    let arguments = match harness::Arguments::parse(std::env::args().skip(1)) {
+    let mut arguments = std::env::args().skip(1).peekable();
+    // `./scripts/qa-fuzz.sh`: the fuzz driver's commands, not a selection of scenarios.
+    if arguments.next_if(|first| first == fuzz::ARGUMENT).is_some() {
+        return fuzz::main(arguments);
+    }
+    let arguments = match harness::Arguments::parse(arguments) {
         Ok(arguments) => arguments,
         Err(error) => {
             eprintln!("error: {error}");
