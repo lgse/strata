@@ -11,7 +11,8 @@
 //! setting.
 //!
 //! [`folder_views`] is the model of `folder-views.toml`, the sort and icon size a folder
-//! remembers. Finding, reading and saving that file is still `PreferenceManager`'s.
+//! remembers, and [`folder_views_path`], [`load_folder_views`] and [`save_folder_views`] find,
+//! read and save that file. When a save is scheduled is still `PreferenceManager`'s.
 //!
 //! [`Saving`] is the bookkeeping of a save: an interface changes its [`Preferences`], commits,
 //! and awaits the save the commit hands back.

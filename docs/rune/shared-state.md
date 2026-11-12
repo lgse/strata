@@ -20,7 +20,7 @@ the files on disk keep their format and their place.
 
 | Store | State | Shared part | What `src/ui` keeps |
 | --- | --- | --- | --- |
-| Per-folder views | The model moved. The file's path, reading and saving have not | `strata_desktop::settings::folder_views` | `src/ui/preferences/folder_view_settings.rs`, whole |
+| Per-folder views | The model moved, and the file code: its path, the read at start-up and the save. The store has not: when a save is scheduled, the monitors, the notices | `strata_desktop::settings::folder_views` and `settings::folder_view_file` | `src/ui/preferences/folder_view_settings.rs`: `FolderViewStore` and the manager's methods |
 | Tab sessions | Moved, whole | `strata_desktop::tabs_session` | One import in `src/ui/mod.rs`. When to save and how to restore stay in `src/ui/window/composition/tabs.rs` |
 | Key catalog | Not moved | None yet | `src/ui/keys` |
 | `PreferenceManager` | The save bookkeeping moved. The manager, its getters and setters, its bindings and its notices have not | The schema, from V5b, and `strata_desktop::settings::Saving` | `src/ui/preferences.rs` and the files under it, with `persistence.rs` as the wrapper around `Saving` |
@@ -73,20 +73,33 @@ checks of its constructors; nothing outside the module ever built one. And
 thread-local mount snapshot. An item is `pub` where the application names it and private
 otherwise.
 
-**The model does not find, read or write the file.** All of that stayed in
-`src/ui/preferences/folder_view_settings.rs`:
+**The model does not find, read or write the file.** That is the file code, which moved
+after it, as text, into a new file beside the model:
 
-- the file's name and `folder_views_path`;
-- `FolderViewStore`: the read at start-up, the save timer, the monitors that follow what
-  another process saved, and the session's values of trashed folders;
-- `save_folder_views`: the lock, the merge over the saved file and the atomic write;
-- the `PreferenceManager` methods that resolve a folder's sort, change the values and
-  publish the change to bindings.
+| Moved to `strata_desktop::settings` (`settings/folder_view_file.rs`) | Holds |
+| --- | --- |
+| `folder_views_path` | Where the file is, with its name |
+| `load_folder_views` | The read at start-up: the read half of `FolderViewStore::load`. It gives the values, and the error when the file was there and could not be read |
+| `save_folder_views`, `FolderViewsSave` | The save: the lock (waited for at exit, not otherwise), the merge over what another process wrote, the atomic write, and the result: busy, saved with what the other process had, or failed |
 
-`folder_views_path` and `save_folder_views` use no GTK and no GLib, and stay all the same.
-The rest of the file reads the manager's preferences, bindings and save notices, and a
-file that stays whole keeps merging from `main` without a hand. They move with
-`PreferenceManager`, into a new file.
+They use `strata-core` and the model, and no GTK or GLib. Nothing in the file schedules:
+an interface decides when to save and runs `save_folder_views` on the settings writer's
+thread. `load_folder_views` reads on the calling thread and is for start-up.
+
+What stayed in `src/ui/preferences/folder_view_settings.rs` is the store:
+
+- `FolderViewStore`: the values in memory, the save timer, the two monitors that follow
+  what another process saved, and the session's values of trashed folders;
+- the two delays, and `schedule_folder_views_write` with its timer;
+- the `PreferenceManager` methods that resolve a folder's sort, change the values, start a
+  write and take its result, adopt what a monitor found, publish the change to bindings and
+  show the notices.
+
+Three log lines moved with the file code and are now logged under
+`strata_desktop::settings::folder_view_file`: the two warnings of a file with invalid
+entries and of a file that cannot be loaded, and the debug line of a save made unlocked.
+`RUST_LOG=strata=…` still covers them; a filter on `strata::ui::preferences` does not
+([workspace.md](../workspace.md#log-targets)).
 
 `src/ui/preferences/trashed.rs` (`TrashedValues`) stayed too. Its users are
 `folder_view_settings.rs` and `item_customizations.rs`, which both stay.
@@ -307,12 +320,13 @@ Where each file is:
 | --- | --- |
 | `src/ui/preferences/folder_views.rs`, `folder_views/keys.rs`, `folder_views/tests.rs` | The file of the same name under `crates/strata-desktop/src/settings/` |
 | `mod folder_views;` in `src/ui/preferences.rs` | `use strata_desktop::settings::folder_views;` in the same file |
-| `src/ui/preferences/folder_view_settings.rs` | The same file as on `main`, with the lines of `adopt_defaults_saved_elsewhere` and `adopt_defaults` that the rows on `Saving` below name |
+| `src/ui/preferences/folder_view_settings.rs` | The same file as on `main`, less the file code and with the lines the rows on `Saving` below name. Git keeps pairing it with `main`'s by its path |
+| In that file on `main`: `FILE_NAME`, `EXIT_LOCK_WAIT`, `folder_views_path`, the read in `FolderViewStore::load`, `FolderViewsSave`, `save_folder_views` | `crates/strata-desktop/src/settings/folder_view_file.rs`. A change from `main` to one of them conflicts in `folder_view_settings.rs`, against lines that are gone, and is applied to the new file by hand |
 | `src/ui/preferences/trashed.rs` | The same file as on `main` |
 | `src/ui/tabs_session.rs`, `tabs_session/tests.rs` | The file of the same name under `crates/strata-desktop/src/` |
 | `mod tabs_session;` in `src/ui/mod.rs` | `use strata_desktop::tabs_session;` in the same file |
 | A getter or setter of `PreferenceManager`, a binding, a notice, a test or the fixture | The same file as on `main`. Five lines of those files changed, and a change from `main` beside one conflicts there: `appearance_settings.rs:200` and `:213` (the two start-up values, now read from `Saving`), and three assertions that read `saving.borrow().unsaved()` (`bindings/tests.rs:92` and `:96`, `tests/preferences/saving.rs:259`) |
-| `PreferenceManager`'s fields and `load` in `src/ui/preferences.rs`; `src/ui/preferences/persistence.rs`; in `folder_view_settings.rs`, the load-failure read at `:385` and the bookkeeping in `adopt_defaults`; the bookkeeping in `normalize_loaded_theme_selection` | Rewritten around `Saving`. A change from `main` conflicts there and is applied by hand: to `crates/strata-desktop/src/settings/saving.rs` when it changes what is recorded or saved, to the wrapper when it changes what GTK does around it |
+| `PreferenceManager`'s fields and `load` in `src/ui/preferences.rs`; `src/ui/preferences/persistence.rs`; in `folder_view_settings.rs`, the load-failure read in `adopt_defaults_saved_elsewhere` and the bookkeeping in `adopt_defaults`; the bookkeeping in `normalize_loaded_theme_selection` | Rewritten around `Saving`. A change from `main` conflicts there and is applied by hand: to `crates/strata-desktop/src/settings/saving.rs` when it changes what is recorded or saved, to the wrapper when it changes what GTK does around it |
 | A new process-wide effect of loading | `PreferenceManager::load` in `src/ui/preferences.rs`, after the shared `load` |
 | A new call of `changes.record` or `changes.reset_baseline` | It merges clean and builds, and the next `save_preferences` then panics in debug builds, so in the QA runs: the bindings' snapshot and `Saving`'s no longer agree. Add the matching call beside it: `commit` for a save, `record_adopted` for adopted values, `rebase` for a start-up repair |
 | A new use of `last_queued`, `dirty_keys`, `persistence_dirty`, `saves_requested`, `load_failure` or a start-up value | It merges clean and does not build: the field is in `Saving` now |
