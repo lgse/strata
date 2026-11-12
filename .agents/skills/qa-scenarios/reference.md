@@ -469,26 +469,31 @@ package (`A7`), a gate of the slice (`slice`, `g1`, `g2`, `g3`) or `all`, and
 parity ledger" in `docs/testing.md`.
 
 **The parity ledger.** `tests/qa/parity/<folder>.toml` lists every run of
-`tests/qa/scenarios/<folder>` once, and a runner unit test fails when a run is
-missing, listed twice or no run of the folder. So a change that adds, renames,
-moves or removes a scenario, a mode or a variant edits the folder's file too:
+`tests/qa/scenarios/<folder>` once, in the runner's order. A runner unit test
+fails, and `./scripts/qa-parity.sh` refuses every selection, when a run is
+missing, listed twice, out of order or no run of the folder. So a change that
+adds, renames, moves or removes a scenario, a mode or a variant edits the
+folder's file too. A new run goes in at its place in the runner's order:
 
 ```toml
 [[run]]
 scenario = "<scenario>"
 run = "<run label>"
-package = "<the package that owns the folder>"
+package = "<its package>"
 status = "pending"
 reason = "scope"
 blocker = "<the same package>"
 ```
 
 `package` is the work package that owns the run, and only it edits the entry.
-A Columns run of the slice's seven folders also names its `gate`. `status` is
-`required` (with `host`, `offscreen` or `session`), `pending` (with `reason`
-and `blocker`) or `excluded` (with the owner's `ruling`); unknown fields are
-refused. Never write a scenario for one target: a run that cannot pass on Rune
-is `pending` in the ledger, with its reason.
+It is not always the folder's: "Who owns a run" in `docs/testing.md` has the
+rules, in order (a `tenxer` name is A11's; in the slice's seven folders Icons
+is A1's, List is A2's and a Columns run also names its `gate`; then the
+folder's package). `status` is `required` (with `host`, `offscreen` or
+`session`), `pending` (with `reason` and `blocker`) or `excluded` (with the
+owner's `ruling`); unknown fields are refused. Never write a scenario for one
+target: a run that cannot pass on Rune is `pending` in the ledger, with its
+reason.
 
 `./scripts/qa-parity.sh mutations` checks the Rune target's own mutation
 patches, `tests/qa/parity/mutations/<scenario>.patch`: each must make its

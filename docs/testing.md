@@ -864,7 +864,8 @@ package is every view's runs; a gate is Columns runs only.
 
 `--counts` reads the ledger and starts no container. It prints the selection's
 runs by status, the pending ones by reason, then by host, by view and by
-package, which is what a checkpoint report quotes:
+package, which is what a checkpoint report quotes. It counts the whole
+selection, so it takes no `--target`, `--pending` or `--scenario`:
 
 ```text
 == selection: 25 run(s) in 1 folder(s) ==
@@ -879,9 +880,8 @@ A1            7         0         7         0
 …
 ```
 
-`slice` alone is the exit check of `docs/rune/slice/README.md`, and the gate a
-change to the runner, a shared crate or `src/` passes before it merges. It has
-four parts that all run whatever the earlier ones did:
+`slice` alone is the exit check of `docs/rune/slice/README.md`. It has four
+parts that all run whatever the earlier ones did:
 
 1. every gate's required runs, on GTK and then on Rune;
 2. the runner's own tests and the whole GTK suite, as `./scripts/qa.sh` runs
@@ -892,6 +892,13 @@ four parts that all run whatever the earlier ones did:
 It ends by listing each allowance it used or refused, or saying it used none,
 and then `== slice exits <status> ==`. A whole run takes about 14 minutes with
 a warm cache, 11 of them the GTK mutation patches.
+
+As a gate before a merge, `slice` covers the slice's gated runs on both
+targets, both sets of mutation patches, and the whole GTK suite with its two
+allowances. It runs no required run outside the gates. None exists yet; once
+an area package has made one, a change to the runner, the protocol, a shared
+crate or `src/` passes `slice` and `./scripts/qa-parity.sh all`, which runs
+every required run of the ledger on both targets.
 
 `mutations` proves the Rune target's runs can fail, as `scripts/qa-mutation.sh`
 does for the GTK application. Each patch under `tests/qa/parity/mutations/`
@@ -909,10 +916,11 @@ scenario or `strata-app`'s adapter changes.
 
 The runs come from the parity ledger, the directory `tests/qa/parity`. It has
 one file for each folder under `tests/qa/scenarios`, `<folder>.toml`, which
-lists every run of that folder once, in every view: 760 runs in 58 files. One
-file for each folder keeps branches that work on different folders out of each
-other's way. `slice.toml`, beside them, lists no runs: it holds the slice's
-allowances, below.
+lists every run of that folder once, in every view and in the runner's order:
+760 runs in 58 files at `94ece01`, and `./scripts/qa-parity.sh all --counts`
+has today's figure. One file for each folder keeps branches that work on
+different folders out of each other's way. `slice.toml`, beside them, lists no
+runs: it holds the slice's allowances, below.
 
 ```toml
 [[run]]
@@ -935,10 +943,10 @@ blocker = "A1"
 | Field | On | Holds |
 | --- | --- | --- |
 | `scenario`, `run` | Every entry | The run, as the runner names it: `<scenario>/<run>` |
-| `package` | Every entry | The work package that owns the run: an id of the parity plan (`A7`, `H4`), or the slice's package that took the run to `required` (`V7` for gate G1, `V8` for G2, `V9` for G3). Only the owner edits the entry |
+| `package` | Every entry | The work package that owns the run: an id of the parity plan (`A7`, `H4`), or the slice's package that took the run to `required` (`V7` for gate G1, `V8` for G2, `V9` for G3). "Who owns a run", below, says which |
 | `gate` | The Columns runs of the slice's seven folders, and no other | `G1`, `G2` or `G3`: what `slice`, `g1`, `g2` and `g3` select (`docs/rune/slice/README.md`) |
 | `status` | Every entry | `required`, `pending` or `excluded` |
-| `host` | A `required` entry; a `pending` one may name it | `offscreen`, the Rune host every required run uses today, or `session`, a real window in a headless compositor. A run pending on `platform` names `session` |
+| `host` | A `required` entry; a `pending` one may name it | `offscreen`, the Rune host every required run uses today, or `session`, a real window in a headless compositor. On a `pending` entry it says which host the run will need, and nothing asks for it |
 | `reason`, `blocker` | A `pending` entry | Why the run does not pass on Rune yet, and what someone can act on |
 | `ruling` | An `excluded` entry | The owner ruling that left the run out |
 
@@ -953,23 +961,105 @@ edit neighbouring entries merge without a conflict.
   `blocker`. The reasons are `harness` (a step or predicate the Rune backend
   lacks), `component` (a component lacks or differs in the behaviour), `rune`
   (Rune itself, with the entry of `docs/rune/upstream/rune/`), `platform` (it
-  needs a real window, compositor, clipboard or drag), `toolkit` (it checks
-  something GTK-specific), `deviation` (the port differs on purpose, by an
-  owner ruling) and `scope` (it needs a part of the interface no package has
-  ported yet). A `scope` run names the package that will port it as its
-  blocker; the runs the slice left pending keep the blocker it recorded.
+  needs a real window, compositor, clipboard or drag, or something else the
+  test environment lacks), `toolkit` (it checks something GTK-specific),
+  `deviation` (the port differs on purpose, by an owner ruling) and `scope`
+  (it needs a part of the interface no package has ported yet). A `scope` run
+  names the package that will port it as its blocker; the runs the slice left
+  pending keep the blocker it recorded.
 - `status = "excluded"`: left out of the migration by an owner ruling, which
   `ruling` cites. It runs on GTK only. The nine `visual_baselines` runs are
   the only ones, and a unit test holds the list to them.
 
-The runner's unit tests fail when a folder has no file or a file has no
-folder; when a run is missing from its folder's file, listed twice, or no run
-of that folder; when an entry has an unknown field, no package or one the plan
-does not have, a gate that is not its run's, or the fields of another status.
-So adding, renaming, moving or removing a run means editing the ledger in the
-same change: a new run is listed `pending`, `scope`, under the package that
-owns its folder. A merge from `main` that brings such a change lists its runs
-in the merge.
+#### Who owns a run
+
+Adding, renaming, moving or removing a run means editing the ledger in the
+same change, and a merge from `main` that brings such a change does it in the
+merge. A new run goes into its folder's file at its place in the runner's
+order: scenario files by name, and within a file the header's variants in
+order, each in its modes. It is listed `pending`, reason `scope`, with its
+package as the blocker. Its package is the first of these that fits:
+
+1. **10xer mode.** The scenario's name or the run's variant id says `tenxer`:
+   A11, in whatever folder and view.
+2. **Visual baselines.** A run of `visual_baselines` is `excluded` under E1,
+   with the ruling the folder's other entries cite.
+3. **The slice's seven folders** (`keyboard_navigation`, `selection`,
+   `escape_selection`, `background_selection`, `hidden_files`,
+   `startup_arguments`, `inline_renaming`). An Icons run is A1's and a List
+   run A2's. A Columns run takes the folder's `gate` (`G3` in
+   `inline_renaming`, `G2` in the others) and the package that owns the first
+   part of the interface it needs that Rune does not mount yet: the package of
+   that part's folder in the table below. One that needs no such part is E1's,
+   which closes the ledger.
+4. **Preview files.** In `quick_preview`, a scenario about a PDF, a model or a
+   route, and the PDF variant of any other scenario, is A16's. The rest of the
+   folder is A15's.
+5. **Settings.** In A6's folders, a run that opens the Settings window in its
+   first steps and works on one of its pages is A18's. One that opens Settings
+   as one overlay among several, or checks that it stays closed, is A6's.
+6. **The folder**, by the parity plan's tables:
+
+| Package | Folders |
+| --- | --- |
+| A1 | `browser_workers`, `thumbnail_worker_settings` |
+| A3 | `sidebar_pinning`, `sidebar_reordering`, `letter_bookmarks`, `recent` |
+| A4 | `tabs` |
+| A5 | `locations` |
+| A6 | `dialogs_and_menus`, `keymap`, `accessibility` |
+| A7 | `entry_management`, `rename_visibility` |
+| A8 | `view_switching`, `text_size`, `column_background`, `created_entry_columns`, `monitor_selection` |
+| A9 | `click_modes`, `pointer_intent`, `marquee_scrolling`, `popover_scrolling` |
+| A10 | `search_filter_sort`, `filter_results` |
+| A12 | `clipboard`, `copy_conflicts` |
+| A13 | `archive_activation`, `archive_conflicts`, `archive_errors`, `archive_preview`, `archive_reveal`, `file_providers` |
+| A14 | `open_with`, `terminal`, `custom_actions` |
+| A15 | `preview_session`, `quick_preview` |
+| A16 | `preview_media_layout`, `preview_video` |
+| A17 | `properties_media`, `properties_size` |
+| A18 | `preferences` |
+| A19 | `drag_and_drop`, `drag_animation`, `content_drops`, `cross_volume_drop`, `sidebar_file_drops` |
+| A20 | `chooser_selection`, `chooser_image_conversion` |
+| A21 | `file_manager_interface` |
+
+A new folder takes the package of the part of the interface it tests. Rules 1
+and 3 to 5 are how the first ledger read the plan where it splits a folder,
+and E1 for a Columns run with nothing to wait for is a default; the owner has
+yet to confirm them (lgse/strata#2122).
+
+Only a run's package edits its entry: it flips the status, and rewrites the
+reason and the blocker as it learns them. `V7`, `V8` and `V9` own the runs the
+slice took to `required` and no other, so such an entry cannot be demoted or
+handed on without failing the check.
+
+#### What checks the ledger
+
+Two readers check it, by the same rules. The runner's unit tests fail on a
+ledger with a fault, and `./scripts/qa-parity.sh` refuses to select anything
+from one: it exits 2 and names the file and the run. Both refuse:
+
+- a folder with no file, and a file with no folder;
+- a run missing from its folder's file, listed twice, no run of that folder,
+  or standing before a run the runner plans earlier;
+- an unknown field or value, and an entry with no package;
+- a package the plan does not have, and `V7`, `V8` or `V9` on any entry but a
+  `required` one of its own gate;
+- a gate that is not the run's;
+- a `required` entry without a `host`, a `pending` one without a `reason` and
+  a `blocker`, an `excluded` one without a `ruling`, and the fields of another
+  status.
+
+`tests/qa/parity_cases.toml` is the table of what both accept and refuse.
+`tests/qa/parity_tests.rs` runs it through the runner's reader
+(`tests/qa/parity.rs`) and `scripts/test_qa_parity.py` through the scripts'
+(`scripts/qa_parity_check.py`), and a problem is the same line from both. A
+change to the schema adds its rows to that table first, so that neither reader
+can learn a field or a status the other does not know.
+
+Some rules are conventions that nothing checks: that only the owner edits an
+entry, that a run marked `required` did pass three times, and what a blocker
+says. A check of the ledger's diff against the merge base, by the package id
+in the branch name, could hold the first; it is not built.
 
 #### What `slice` lets stand
 
