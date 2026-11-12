@@ -73,8 +73,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2173).
 - With the inline rename open on `todo.txt`, a Shift+click on that row clears the field's
   selection in 28 of 34 replays and selects the whole name in 6, from identical input.
-- **Concerns:** fuzz seed `0x67` of the `calibration` alphabet, found while F1 calibrated
-  the driver; step 34 of its sequence.
+- **Concerns:** fuzz seed `0x67` of version 1 of the `calibration` alphabet, found while F1
+  calibrated the driver; step 34 of its sequence.
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181),
   and the `calibration` alphabet no longer clicks an entry while a name is edited.
 
@@ -101,6 +101,10 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `ui::window::tests::keyboard_dispatch::pane_focus::default_map_tab_leaves_the_listing_in_one_press`,
   and, added in a comment,
   `ui::window::tests::keyboard_dispatch::folder_jump::tenxer_z_ranks_history_and_opens_the_chosen_folder_once`.
+- **Sightings:** `shipped_keys_never_reach_the_direct_stage` and
+  `default_map_tab_leaves_the_listing_in_one_press` both failed in shard 1 of [#2181](https://github.com/lgse/strata/pull/2181) at
+  `7963d110f` on 2026-11-12, a change to the QA runner, its scripts and documentation that
+  touches no `src/` and no crate.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
@@ -111,8 +115,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2176).
 - Seven steps (a multiple selection, F2, a file written into the folder, Return, Up, Return)
   make GTK log `gtk_selection_model_selection_changed: assertion … failed`, every time.
-- **Concerns:** fuzz seed `0x19b` of the `calibration` alphabet, shrunk from 40 steps to 7
-  and confirmed 3 of 3.
+- **Concerns:** fuzz seed `0x19b` of version 2 of the `calibration` alphabet, shrunk from 40
+  steps to 7 and confirmed 3 of 3.
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181).
 
 ### #2177: after Move to Trash on a filtered pane, the preview shows another file
@@ -121,8 +125,8 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - With the drawer open and the pane filtered, moving `report.md` to the trash from its
   context menu leaves the preview on `todo.txt`, neither focused nor selected, in 23 of 24
   replays, and on the focused entry in the other.
-- **Concerns:** fuzz seed `0xb1` of the `calibration` alphabet; step 35 of its sequence,
-  which did not shrink.
+- **Concerns:** fuzz seed `0xb1` of version 2 of the `calibration` alphabet; step 35 of its
+  sequence, which did not shrink.
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181).
 
 ### #2179: the windowed Rune host does not pump GLib again after a queued update
@@ -142,14 +146,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **Code:** `oracle`. [Archived issue](https://github.com/lgse/strata/issues/2180).
 - A click on the folder `pictures` left focus on its column in one replay and on its first
   entry in the other, with the machine loaded four times over. Seen once, in 300 seeds.
-- **Concerns:** fuzz seed `0x41c` of the `calibration` alphabet; step 2 of its sequence. It
-  may share a cause with [#2162](https://github.com/lgse/strata/issues/2162).
+- **Concerns:** fuzz seed `0x41c` of version 3 of the `calibration` alphabet; step 2 of its
+  sequence. It may share a cause with [#2162](https://github.com/lgse/strata/issues/2162).
 - **State:** open, set aside. Parked in `tests/qa/fuzz/corpus/calibration/parked` in [#2181](https://github.com/lgse/strata/pull/2181).
 
-The four fuzz issues name their sequence files with the alphabet's version
-(`fuzz-calibration-v1-0000000000000067.jsonl` and the like); in [#2181](https://github.com/lgse/strata/pull/2181) as it stands the files
-are `tests/qa/fuzz/corpus/calibration/fuzz-calibration-<seed>.jsonl`, with no version. Use
-the names [#2181](https://github.com/lgse/strata/pull/2181) merges with.
+The four fuzz issues name their sequence files with the alphabet's version, and those are
+the names [#2181](https://github.com/lgse/strata/pull/2181) merges with:
+`tests/qa/fuzz/corpus/calibration/fuzz-calibration-v<version>-<seed>.jsonl`, the seed as
+sixteen hex digits (`fuzz-calibration-v1-0000000000000067.jsonl` for [#2173](https://github.com/lgse/strata/issues/2173)). A seed names a
+sequence only together with the alphabet's version, so the version is part of the name.
 
 ### #2193: a GTK test whose name string is stale passes without running
 
