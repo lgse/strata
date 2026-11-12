@@ -114,10 +114,6 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `ui::window::tests::keyboard_dispatch::pane_focus::default_map_tab_leaves_the_listing_in_one_press`,
   and, added in a comment,
   `ui::window::tests::keyboard_dispatch::folder_jump::tenxer_z_ranks_history_and_opens_the_chosen_folder_once`;
-  `ui::window::tests::keyboard_dispatch::icon_motion::tenxer_icons_move_spatially_open_explicitly_and_peek`
-  (`src/ui/window/tests/keyboard_dispatch/icon_motion.rs:195`, "Key(104) landed on …"), which
-  failed once in CI's shard 3 on [#2200](https://github.com/lgse/strata/pull/2200), a change to `crates/strata-app` and Markdown that the
-  GTK lane does not compile;
   and, in `strata-fs`,
   `services::search::tests::folder_path_search_leads_with_a_folder_the_query_names_outright`
   (`crates/strata-fs/src/services/search/tests.rs:819`).
@@ -133,6 +129,10 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `ui::preview::tests::audio::audio_steps_keep_playback_and_volume_but_never_reuse_an_ended_request`
   (`src/ui/preview/tests/audio.rs:27`, "rendered stream"), failed in CI's shard 2, where
   `./scripts/quality.sh test` had passed at the same commit in the pinned image.
+- **On [#2200](https://github.com/lgse/strata/pull/2200):** the sixth failed once in CI's shard 3 at `a6c6708c2`, with the same
+  message (`src/ui/window/tests/keyboard_dispatch/icon_motion.rs:195`), and passed in the
+  one rerun of the whole workflow. That change is to `crates/strata-app`, which the GTK lane
+  does not compile, and to Markdown.
 - **State:** open, set aside. Whoever meets one of these in a red shard reads the failure
   first: if the change could reach the test, it is the change's; if not, say why on the pull
   request, rerun the whole workflow once, and stop if the same test fails twice. A new flaky
