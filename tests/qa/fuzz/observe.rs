@@ -23,8 +23,8 @@ use sha2::{Digest, Sha256};
 use super::project::{APP, CRITICALS, FS, RESULT, SETTINGS};
 
 /// How rest is told. Calibration set these (`docs/testing.md`, "Calibration"): GTK goes on
-/// changing for up to about 220 ms after a reply with nothing to see in between, so the
-/// quiet window is 350 ms. With 150 ms, two replays of one seed differed in 1 seed of 100.
+/// changing for up to about 220 ms after a reply with nothing to see in between, and the
+/// quiet window of 350 ms is that with a margin.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Rest {
     /// Equal samples in a row that count as rest.
@@ -33,6 +33,12 @@ pub(crate) struct Rest {
     pub(crate) poll: Duration,
     /// How long a step may take to come to rest before it is recorded as unsettled.
     pub(crate) budget: Duration,
+}
+
+impl Default for Rest {
+    fn default() -> Self {
+        REST
+    }
 }
 
 pub(crate) const REST: Rest = Rest {
@@ -63,6 +69,16 @@ pub(crate) enum Outcome {
 }
 
 impl Outcome {
+    pub(crate) const ALL: [Self; 7] = [
+        Self::Ok,
+        Self::Skipped,
+        Self::Refused,
+        Self::Failed,
+        Self::Crashed,
+        Self::Closed,
+        Self::Left,
+    ];
+
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Ok => "ok",
@@ -101,7 +117,7 @@ pub(crate) struct Rested {
     pub(crate) changes: Vec<u64>,
 }
 
-fn milliseconds(time: Duration) -> u64 {
+pub(crate) fn milliseconds(time: Duration) -> u64 {
     u64::try_from(time.as_millis()).unwrap_or(u64::MAX)
 }
 
@@ -195,9 +211,9 @@ impl Observation {
 
     /// Whether the replay ended with this observation.
     pub(crate) fn ends_the_replay(&self) -> bool {
-        [Outcome::Crashed, Outcome::Closed, Outcome::Left]
-            .iter()
-            .any(|outcome| outcome.name() == self.outcome())
+        Outcome::ALL
+            .into_iter()
+            .any(|outcome| outcome.name() == self.outcome() && outcome.ends_the_replay())
     }
 
     pub(crate) fn criticals(&self) -> usize {

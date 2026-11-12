@@ -10,13 +10,13 @@ use std::{
 use super::{
     alphabet,
     compare::{Divergence, compare},
-    corpus,
-    generate::{GENERATOR, generate, name, seed_of},
+    corpus::{self, Parked},
+    generate::{GENERATOR, Origin, generate},
     options::{Command, Options, USAGE},
     replay::{Replay, Replayed, Stream, replay},
     report::{self, Evidence, Examined, Run},
-    rules::{self, CAUSES, EXCEPTIONS, Ignored},
-    sequence::{Loaded, PREFIX, Sequence},
+    rules::{self, CAUSES, Ignored, exceptions},
+    sequence::{Loaded, Sequence},
     shrink::{CONFIRMATIONS, shrink},
 };
 use crate::{
@@ -30,9 +30,20 @@ use crate::{
 const USAGE_ERROR: u8 = 2;
 
 /// One sequence to examine, and the area whose corpus and artifacts it belongs to.
-struct Job {
-    area: String,
-    sequence: Sequence,
+pub(crate) struct Job {
+    pub(crate) area: String,
+    pub(crate) sequence: Sequence,
+    /// The parked line of a sequence that is replayed on purpose.
+    pub(crate) parked: Option<Parked>,
+}
+
+/// The sequences a command means: the ones it replays, and the parked ones it names and
+/// leaves out.
+pub(crate) struct Plan {
+    /// Which sequences these are, for the summary.
+    pub(crate) what: String,
+    pub(crate) jobs: Vec<Job>,
+    pub(crate) skipped: Vec<(String, Parked)>,
 }
 
 pub(crate) fn main(arguments: impl IntoIterator<Item = String>) -> ExitCode {
@@ -61,10 +72,14 @@ pub(crate) fn main(arguments: impl IntoIterator<Item = String>) -> ExitCode {
 }
 
 /// Everything the fuzzer reads from the tree, loaded as a run would load it: a line for
-/// each alphabet and each corpus, and the counts of the map and the mask.
+/// each alphabet and its corpus, and the counts of the map and the mask.
 pub(crate) fn checked() -> Result<Vec<String>, String> {
     let mut lines = Vec::new();
-    for area in alphabet::areas() {
+    let areas = alphabet::areas();
+    if let Some(stray) = corpus::areas().iter().find(|area| !areas.contains(area)) {
+        return Err(format!("the corpus {stray} has no alphabet"));
+    }
+    for area in areas {
         let alphabet = alphabet::load(&area)?;
         lines.push(format!(
             "FUZZ alphabet {area} v{}: {} actions; {}",
@@ -72,16 +87,9 @@ pub(crate) fn checked() -> Result<Vec<String>, String> {
             alphabet.actions.len(),
             alphabet.about
         ));
-    }
-    for area in corpus::areas() {
-        let sequences = corpus::sequences(&area)?;
-        for sequence in &sequences {
-            sequence.load()?;
-        }
+        let (kept, parked) = corpus::check(&alphabet)?;
         lines.push(format!(
-            "FUZZ corpus {area}: {} sequences, {} seeds parked",
-            sequences.len(),
-            corpus::parked(&area)?.len()
+            "FUZZ corpus {area}: {kept} sequences, {parked} of them parked"
         ));
     }
     lines.push(rule_counts(&Ignored::load(false)?));
@@ -98,7 +106,7 @@ fn check() -> Result<(), String> {
 pub(crate) fn rule_counts(ignored: &Ignored) -> String {
     format!(
         "FUZZ rules: {} normalisation rules ({}/{}); {} calibration masks ({}/{})",
-        rules::counts(&ignored.rules, &EXCEPTIONS),
+        rules::counts(&ignored.rules, &exceptions()),
         super::DATA,
         rules::MAP,
         rules::counts(&ignored.masks, &CAUSES),
@@ -138,7 +146,9 @@ fn scenario(path: &Path) -> ExitCode {
     }
 }
 
-/// Two kept streams of one sequence, compared as a run compares its replays.
+/// Two kept streams of one sequence, compared as a run compares its replays. The map
+/// applies when the streams are of two targets, and streams of another sequence, alphabet
+/// version or rest rule are refused: their observations do not answer one another.
 fn compare_files(left: &Path, right: &Path) -> Result<(), String> {
     let read = |path: &Path| {
         std::fs::read_to_string(path)
@@ -146,80 +156,119 @@ fn compare_files(left: &Path, right: &Path) -> Result<(), String> {
             .and_then(|text| Stream::parse(&text))
             .map_err(|error| format!("{}: {error}", path.display()))
     };
-    let ignored = Ignored::load(true)?;
+    let (ours, theirs) = (read(left)?, read(right)?);
+    if let Some(mismatch) = ours.header.mismatch(&theirs.header) {
+        return Err(mismatch);
+    }
+    let ignored = Ignored::load(ours.header.target == theirs.header.target)?;
+    println!(
+        "FUZZ compare: {} on {} and on {}",
+        ours.header.sequence, ours.header.target, theirs.header.target
+    );
     println!("{}", rule_counts(&ignored));
-    match compare(&read(left)?, &read(right)?, &ignored) {
+    let perturbed = ours.header.perturbed || theirs.header.perturbed;
+    match compare(&ours, &theirs, &ignored) {
         None => {
             println!("AGREE {} and {}", left.display(), right.display());
             Ok(())
         }
-        Some(divergence) => Err(report::differ_line("the streams", &divergence)),
+        Some(divergence) => Err(report::differ_line(
+            &ours.header.sequence,
+            &divergence,
+            perturbed,
+        )),
     }
 }
 
-/// The area a sequence name holds: `fuzz-<area>-<seed>`.
-fn area_of(name: &str) -> Option<String> {
-    seed_of(name)?;
-    let area = name.strip_prefix(&format!("{PREFIX}-"))?;
-    Some(area[..area.len().checked_sub(17)?].to_owned())
-}
-
-/// The sequences a command means. A parked seed is named and left out.
-fn jobs(options: &Options, run: &mut Run) -> Result<Vec<Job>, String> {
+/// The sequences a command means.
+pub(crate) fn planned(options: &Options) -> Result<Plan, String> {
     if options.command == Command::Run {
-        return generated_jobs(options, run);
+        return generated_plan(options);
     }
-    run.what = "kept sequences".to_owned();
+    let mut plan = Plan {
+        what: if options.parked {
+            "parked sequences, replayed on purpose".to_owned()
+        } else {
+            "kept sequences".to_owned()
+        },
+        jobs: Vec::new(),
+        skipped: Vec::new(),
+    };
     if !options.files.is_empty() {
-        return options.files.iter().map(|path| file_job(path)).collect();
+        plan.jobs = options
+            .files
+            .iter()
+            .map(|path| file_job(path))
+            .collect::<Result<_, _>>()?;
+        return Ok(plan);
     }
     let areas = match &options.alphabet {
         Some(area) => vec![area.clone()],
         None => corpus::areas(),
     };
-    let mut jobs = Vec::new();
     for area in areas {
         let parked = corpus::parked(&area)?;
-        for sequence in corpus::sequences(&area)? {
-            let seed = seed_of(&sequence.name);
-            match parked.iter().find(|parked| Some(parked.seed) == seed) {
-                Some(parked) => run.parked(&sequence.name, parked),
-                None => jobs.push(Job {
+        for (origin, sequence) in corpus::sequences(&area)? {
+            let entry = corpus::parked_as(&parked, origin.version, origin.seed).cloned();
+            match (entry, options.parked) {
+                (Some(entry), false) => plan.skipped.push((sequence.name, entry)),
+                (None, true) => {}
+                (entry, _) => plan.jobs.push(Job {
                     area: area.clone(),
                     sequence,
+                    parked: entry,
                 }),
             }
         }
     }
-    Ok(jobs)
+    Ok(plan)
 }
 
-fn generated_jobs(options: &Options, run: &mut Run) -> Result<Vec<Job>, String> {
+/// A run's sequences: each seed's, but a seed parked on this version of the alphabet. A
+/// line that parks the seed on another version names another sequence, and stops nothing.
+fn generated_plan(options: &Options) -> Result<Plan, String> {
     let area = options.alphabet.clone().unwrap_or_default();
     let alphabet = alphabet::load(&area)?;
-    run.what = format!(
-        "alphabet {area} v{}, generator {GENERATOR}, {} actions",
-        alphabet.version, options.length
-    );
     let parked = corpus::parked(&area)?;
-    let mut jobs = Vec::new();
+    let mut plan = Plan {
+        what: format!(
+            "alphabet {area} v{}, generator {GENERATOR}, {} actions",
+            alphabet.version, options.length
+        ),
+        jobs: Vec::new(),
+        skipped: Vec::new(),
+    };
     for seed in &options.seeds {
-        match parked.iter().find(|parked| parked.seed == *seed) {
-            Some(parked) => run.parked(&name(&area, *seed), parked),
-            None => jobs.push(Job {
+        let sequence = generate(&alphabet, *seed, options.length);
+        match corpus::parked_as(&parked, alphabet.version, *seed) {
+            Some(entry) => plan.skipped.push((sequence.name, entry.clone())),
+            None => plan.jobs.push(Job {
                 area: area.clone(),
-                sequence: generate(&alphabet, *seed, options.length),
+                sequence,
+                parked: None,
             }),
         }
     }
-    Ok(jobs)
+    Ok(plan)
 }
 
 fn file_job(path: &Path) -> Result<Job, String> {
     let sequence = Sequence::read(path)?;
-    let area = area_of(&sequence.name)
-        .ok_or_else(|| format!("{}: a sequence is named fuzz-<area>-<seed>", path.display()))?;
-    Ok(Job { area, sequence })
+    let origin = origin_of(&sequence)?;
+    Ok(Job {
+        area: origin.area,
+        sequence,
+        parked: None,
+    })
+}
+
+fn origin_of(sequence: &Sequence) -> Result<Origin, String> {
+    Origin::of(&sequence.name).ok_or_else(|| {
+        format!(
+            "{}: a sequence is named fuzz-<area>-v<version>-<seed>",
+            sequence.name
+        )
+    })
 }
 
 /// What every replay of a command shares.
@@ -254,9 +303,13 @@ impl<'a> Bench<'a> {
 fn examine_all(options: &Options) -> Result<(), String> {
     let bench = Bench::new(options)?;
     let mut run = Run::new(options, bench.target, &bench.ignored);
-    let jobs = jobs(options, &mut run)?;
-    run.start(jobs.len());
-    let queue = Mutex::new(jobs.into_iter().collect::<VecDeque<Job>>());
+    let plan = planned(options)?;
+    run.what = plan.what;
+    for (name, parked) in &plan.skipped {
+        run.parked(name, parked);
+    }
+    run.start(plan.jobs.len());
+    let queue = Mutex::new(plan.jobs.into_iter().collect::<VecDeque<Job>>());
     let run = Mutex::new(run);
     std::thread::scope(|scope| {
         for _ in 0..options.jobs {
@@ -296,6 +349,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// have it. Only the last replay is perturbed, when the command perturbs.
 fn examine(job: &Job, bench: &Bench) -> Examined {
     let mut examined = Examined::new(&job.area, &job.sequence);
+    examined.parked.clone_from(&job.parked);
     let loaded = match job.sequence.load() {
         Ok(loaded) => loaded,
         Err(error) => {
@@ -326,9 +380,8 @@ fn examine(job: &Job, bench: &Bench) -> Examined {
     let evidence = Evidence {
         sequence: &job.sequence,
         replays: &replays,
-        target: bench.target,
     };
-    examined.kept = report::keep(&examined, &evidence, bench.options);
+    examined.kept = report::keep(&examined, &evidence, bench.options.keep);
     examined.streams = replays
         .into_iter()
         .map(|replayed| replayed.stream)
@@ -360,8 +413,8 @@ fn shrink_one(options: &Options) -> Result<(), String> {
         Some(path) => Sequence::read(path)?,
         None => generated(options)?,
     };
-    let area = area_of(&sequence.name)
-        .ok_or_else(|| format!("{}: a sequence is named fuzz-<area>-<seed>", sequence.name))?;
+    let area = origin_of(&sequence)?.area;
+    let perturbed = options.perturbation.is_some();
     let mut run = Run::new(options, bench.target, &bench.ignored);
     run.what = format!("shrinking {}", sequence.name);
     run.start(1);
@@ -372,7 +425,7 @@ fn shrink_one(options: &Options) -> Result<(), String> {
             sequence.name
         ));
     };
-    println!("{}", report::differ_line(&sequence.name, &found));
+    println!("{}", report::differ_line(&sequence.name, &found, perturbed));
     let mut last = replays;
     let shrunk = shrink(&sequence.steps, &found, options.limit, &mut |steps| {
         let (divergence, replays) = diverges(&sequence.with_steps(steps.to_vec()), &bench)?;
@@ -385,7 +438,6 @@ fn shrink_one(options: &Options) -> Result<(), String> {
     let evidence = Evidence {
         sequence: &sequence,
         replays: &last,
-        target: bench.target,
     };
     report::shrunk(&area, &shrunk, &shortest, &evidence);
     if !shrunk.is_confirmed() {

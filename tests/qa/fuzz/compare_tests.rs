@@ -9,12 +9,11 @@ use serde_json::{Value, json};
 
 use super::{
     compare::{Divergence, compare},
-    corpus::parse_parked,
     observe::Outcome,
     observe_tests::{observation, stream},
     perturb::Perturbation,
     project::Difference,
-    rules::{self, CAUSES, EXCEPTIONS, Entry, Ignored},
+    rules::{self, CAUSES, Entry, Ignored, exceptions},
     shrink::{CONFIRMATIONS, shrink},
 };
 
@@ -68,7 +67,7 @@ pub(crate) fn the_comparator_reports_the_first_field_outside_the_map_and_the_mas
     );
     // A rule of the map is passed over the same way.
     let ruled = Ignored {
-        rules: masks(&["app"]).masks,
+        rules: masks(&["app.focused", "app.panes[].selected"]).masks,
         masks: Vec::new(),
     };
     assert_eq!(compare(&left, &right, &ruled), None);
@@ -103,9 +102,9 @@ pub(crate) fn a_warning_or_a_lost_target_diverges_even_when_both_replays_show_it
     };
     let found = compare(&lost(), &lost(), &Ignored::default()).expect("both were lost");
     assert_eq!((found.step, found.field()), (1, "result"));
-    // Masking what is observed does not excuse it; only an entry that names it does.
-    assert!(compare(&warned(), &warned(), &masks(&["app", "fs", "settings"])).is_some());
-    assert_eq!(compare(&warned(), &warned(), &masks(&["criticals"])), None);
+    // No mask excuses either: a mask is for a field that does not agree with itself.
+    let masked = masks(&["app.focused", "app.panes", "fs.todo.txt"]);
+    assert!(compare(&warned(), &warned(), &masked).is_some());
 }
 
 pub(crate) fn a_step_not_at_rest_is_compared_by_its_outcome_alone() {
@@ -206,6 +205,24 @@ pub(crate) fn the_shrinker_keeps_the_fewest_steps_that_still_diverge_and_confirm
         .expect("the oracle never fails");
     assert_eq!(kept.divergence.signature(), "app.focused");
     assert!(kept.steps.contains(&"b".to_owned()) && kept.is_confirmed());
+    // Nor is a removal that slides to another difference on the same field: taking `b`
+    // out of `a b c d` leaves `d` to differ there, between other values after another step.
+    let slide = |candidate: &[String]| {
+        double(candidate).or_else(|| {
+            candidate
+                .iter()
+                .position(|step| step == "d")
+                .map(|at| Divergence {
+                    action: json!({ "key": "d" }),
+                    ..divergence(at + 1, "app.focused")
+                })
+        })
+    };
+    let other = steps("a b c d");
+    let found = slide(&other).expect("diverges");
+    let kept = shrink(&other, &found, 200, &mut |candidate| Ok(slide(candidate)))
+        .expect("the oracle never fails");
+    assert_eq!(kept.steps, steps("a b c"));
     // The oracle's own failure ends the shrink: it is the harness's, not a verdict.
     let long_found = double(&long).expect("diverges");
     assert!(
@@ -265,9 +282,10 @@ pub(crate) fn a_perturbation_waits_for_its_step_and_its_state() {
 }
 
 pub(crate) fn the_map_and_the_mask_take_one_sorted_entry_to_a_line() {
+    let codes = exceptions();
     let text = "# why\napp.field.caret timing lgse/strata#1\n\n\
-                app.panes[].focused a11y lgse/strata#22\nfs oracle lgse/strata#3\n";
-    let entries = rules::parse(text, &EXCEPTIONS).expect("the entries should parse");
+                app.panes[].focused a11y lgse/strata#22\nfs.documents oracle lgse/strata#3\n";
+    let entries = rules::parse(text, &codes).expect("the entries should parse");
     assert_eq!(
         entries[1],
         Entry {
@@ -277,73 +295,50 @@ pub(crate) fn the_map_and_the_mask_take_one_sorted_entry_to_a_line() {
         }
     );
     assert_eq!(
-        rules::counts(&entries, &EXCEPTIONS),
+        rules::counts(&entries, &codes),
         "3 (timing 1, a11y 1, oracle 1)"
     );
-    assert_eq!(rules::counts(&[], &EXCEPTIONS), "0");
+    assert_eq!(rules::counts(&[], &codes), "0");
     let ignored = Ignored {
         rules: entries,
         masks: Vec::new(),
     };
     assert!(ignored.covers("app.panes[3].focused") && !ignored.covers("app.focused"));
+    assert!(ignored.covers("fs.documents/notes.txt") && !ignored.covers("fs.documents.bak"));
+}
+
+pub(crate) fn an_entry_is_refused_for_its_form_its_code_or_blinding_a_whole_root() {
+    let codes = exceptions();
     let one = "app.focused timing lgse/strata#1\n";
-    for (text, codes, expected) in [
+    let field = |name: &str| one.replace("app.focused", name);
+    let cases = [
         (
-            format!("fs oracle lgse/strata#3\n{one}"),
-            &EXCEPTIONS[..],
+            format!("fs.a oracle lgse/strata#3\n{one}"),
             "sorted by field",
         ),
-        (format!("{one}{one}"), &EXCEPTIONS[..], "listed once"),
-        (
-            "app.focused timing\n".to_owned(),
-            &EXCEPTIONS[..],
-            "<field> <code> <issue>",
-        ),
-        (
-            one.replace("timing", "noise"),
-            &EXCEPTIONS[..],
-            "the code is one of",
-        ),
-        (
-            one.replace("lgse/strata", ""),
-            &EXCEPTIONS[..],
-            "lgse/strata#<number>",
-        ),
-        (
-            one.replace("focused", "rows"),
-            &EXCEPTIONS[..],
-            "names no field",
-        ),
-        (
-            one.replace("focused", "panes[0].focused"),
-            &EXCEPTIONS[..],
-            "written with []",
-        ),
-        // A mask is not an exception, and an exception is not a mask.
-        (one.to_owned(), &CAUSES[..], "the code is one of"),
-        (
-            one.replace("timing", "unsettled"),
-            &EXCEPTIONS[..],
-            "the code is one of",
-        ),
-    ] {
-        let error = rules::parse(&text, codes).expect_err(expected);
+        (format!("{one}{one}"), "listed once"),
+        ("app.focused timing\n".to_owned(), "<field> <code> <issue>"),
+        (one.replace("timing", "noise"), "the code is one of"),
+        (one.replace("lgse/strata", ""), "lgse/strata#<number>"),
+        (field("app.rows"), "names no field"),
+        (field("app.panes[0].focused"), "names no field"),
+        // One line must not blind a run.
+        (field("app"), "A whole root"),
+        (field("fs"), "A whole root"),
+        (field("settings"), "A whole root"),
+        (field("result"), "A whole root"),
+        (field("criticals"), "A whole root"),
+        // An exception is not a mask.
+        (one.replace("timing", "unsettled"), "the code is one of"),
+    ];
+    for (text, expected) in cases {
+        let error = rules::parse(&text, &codes).expect_err(expected);
         assert!(
             error.contains(expected),
             "{error:?} should say {expected:?}"
         );
     }
-    let parked = "# kept\n000000000000002a oracle lgse/strata#9\n\
-                  00000000000000ff divergence lgse/strata#10\n";
-    assert_eq!(
-        parse_parked(parked).map(|parked| parked.iter().map(|one| one.seed).collect::<Vec<_>>()),
-        Ok(vec![42, 255])
-    );
-    for text in [
-        "2a oracle lgse/strata#9\n",
-        "000000000000002a noise lgse/strata#9\n",
-        "00000000000000ff oracle lgse/strata#1\n000000000000002a oracle lgse/strata#2\n",
-    ] {
-        assert!(parse_parked(text).is_err(), "{text}");
-    }
+    // And a mask is not an exception.
+    assert!(rules::parse(one, &CAUSES).is_err());
+    assert!(rules::parse(&one.replace("timing", "clock"), &CAUSES).is_ok());
 }

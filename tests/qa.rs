@@ -235,8 +235,10 @@ fn shader_cache() -> Result<PathBuf, String> {
 
 fn main() -> std::process::ExitCode {
     let mut arguments = std::env::args().skip(1).peekable();
-    // `./scripts/qa-fuzz.sh`: the fuzz driver's commands, not a selection of scenarios.
-    if arguments.next_if(|first| first == fuzz::ARGUMENT).is_some() {
+    // `./scripts/qa-fuzz.sh`: the fuzz driver's commands, not a selection of scenarios. The
+    // option cannot be a test filter, so `cargo test fuzz` still selects tests by name.
+    if arguments.next_if(|first| first == fuzz::OPTION).is_some() {
+        announce_host_run();
         return fuzz::main(arguments);
     }
     let arguments = match harness::Arguments::parse(arguments) {
@@ -246,12 +248,7 @@ fn main() -> std::process::ExitCode {
             return std::process::ExitCode::from(harness::FAILED);
         }
     };
-    if host_run() {
-        eprintln!(
-            "UNSUPPORTED: STRATA_QA_HOST=1 runs QA scenarios on the host toolkit. \
-             This run is not validation evidence; use ./scripts/qa.sh."
-        );
-    }
+    announce_host_run();
     let plan = planned_tests();
     if let Some(refusal) = plan.unrunnable(&arguments, Target::from_environment().ok()) {
         eprintln!("error: {refusal}");
@@ -276,15 +273,26 @@ fn host_run() -> bool {
     !in_container() && std::env::var_os("STRATA_QA_HOST").is_some_and(|value| value == "1")
 }
 
+/// Why a run outside the pinned container is refused, for a scenario and for a fuzz replay.
+const CONTAINER_ONLY: &str = "QA scenarios run only in the pinned container: use \
+    ./scripts/qa.sh (STRATA_QA_CONTAINER=1 is set there). A host run needs the owner's \
+    explicit consent and STRATA_QA_HOST=1, and is never validation evidence.";
+
+/// Labels a host run as what it is, whatever the runner was asked to do.
+fn announce_host_run() {
+    if host_run() {
+        eprintln!(
+            "UNSUPPORTED: STRATA_QA_HOST=1 runs QA scenarios on the host toolkit. \
+             This run is not validation evidence; use ./scripts/qa.sh."
+        );
+    }
+}
+
 fn require_container() {
     if in_container() || host_run() {
         return;
     }
-    panic!(
-        "QA scenarios run only in the pinned container: use ./scripts/qa.sh \
-         (STRATA_QA_CONTAINER=1 is set there). A host run needs the owner's explicit \
-         consent and STRATA_QA_HOST=1, and is never validation evidence."
-    );
+    panic!("{CONTAINER_ONLY}");
 }
 
 fn render_toml(values: &OrderedMap) -> String {

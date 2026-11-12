@@ -14,6 +14,9 @@ pub(crate) mod alphabet;
 #[path = "fuzz/command.rs"]
 mod command;
 
+#[path = "fuzz/command_tests.rs"]
+mod command_tests;
+
 #[path = "fuzz/compare.rs"]
 pub(crate) mod compare;
 
@@ -72,5 +75,6 @@ pub(crate) use self::{command::main, tests::UNIT_TESTS};
 pub(crate) const DATA: &str = "tests/qa/fuzz";
 /// Where a run leaves its streams, transcripts and summaries, under the checkout.
 pub(crate) const ARTIFACTS: &str = "target/qa-fuzz";
-/// The first argument that sends the runner here instead of to its scenarios.
-pub(crate) const ARGUMENT: &str = "fuzz";
+/// The option that, given first, sends the runner here instead of to its scenarios. An
+/// option and not a word, so that it can never be read as a test filter.
+pub(crate) const OPTION: &str = "--fuzz";

@@ -7,9 +7,8 @@ use serde_json::json;
 
 use super::{
     alphabet,
-    command::checked,
-    generate::{generate, name, seed_of},
-    options::{Command, Options, seeds},
+    corpus::still_written,
+    generate::{Origin, generate},
     random::Random,
     sequence::{Sequence, check_step},
 };
@@ -74,18 +73,22 @@ pub(crate) fn a_seed_writes_the_same_sequence_on_every_machine() {
     );
     let alphabet = alphabet::parse(&sample()).expect("the sample alphabet should load");
     let sequence = generate(&alphabet, 7, 8);
-    assert_eq!(sequence.name, "fuzz-sample-0000000000000007");
-    assert_eq!(seed_of(&sequence.name), Some(7));
+    assert_eq!(sequence.name, "fuzz-sample-v1-0000000000000007");
+    let origin = Origin {
+        area: "sample".to_owned(),
+        version: 1,
+        seed: 7,
+    };
+    assert_eq!(Origin::of(&sequence.name), Some(origin));
     assert_eq!(
         sequence.header,
-        r#"{"scenario":"fuzz-sample-0000000000000007","modes":["columns"]}"#
+        r#"{"scenario":"fuzz-sample-v1-0000000000000007","modes":["columns"]}"#
     );
     assert_eq!(sequence.steps, SEED_SEVEN);
     // A longer sequence of the seed starts with the shorter one, and another seed differs.
     let longer = generate(&alphabet, 7, 20);
     assert_eq!(longer.steps[..SEED_SEVEN.len()], SEED_SEVEN);
     assert_ne!(generate(&alphabet, 8, 8).steps, sequence.steps);
-    assert_eq!(name("sample", u64::MAX), "fuzz-sample-ffffffffffffffff");
     assert_eq!(
         generate(&alphabet, u64::MAX, 4).steps[1],
         SEED_SEVEN[2].replace("shift", "ctrl")
@@ -167,8 +170,8 @@ pub(crate) fn an_alphabet_is_refused_for_what_a_replay_could_not_run() {
 
 pub(crate) fn a_sequence_is_scenario_text_and_takes_only_steps_that_act() {
     let sequence = Sequence {
-        name: "fuzz-sample-0000000000000001".to_owned(),
-        header: r#"{"scenario":"fuzz-sample-0000000000000001","modes":["columns"]}"#.to_owned(),
+        name: "fuzz-sample-v1-0000000000000001".to_owned(),
+        header: r#"{"scenario":"fuzz-sample-v1-0000000000000001","modes":["columns"]}"#.to_owned(),
         steps: vec![r#"{"key":"Down"}"#.to_owned(), r#"{"type":"a"}"#.to_owned()],
     };
     assert_eq!(Sequence::parse(&sequence.text()), Ok(sequence.clone()));
@@ -211,79 +214,75 @@ pub(crate) fn a_sequence_is_scenario_text_and_takes_only_steps_that_act() {
     }
 }
 
-pub(crate) fn a_fuzz_command_names_what_it_needs_and_refuses_the_rest() {
-    let parse = |line: &str| Options::parse(line.split_whitespace().map(str::to_owned));
-    assert_eq!(seeds("7"), Ok(vec![7]));
-    assert_eq!(seeds("3..6"), Ok(vec![3, 4, 5, 6]));
-    assert_eq!(seeds("3,9,0x2a"), Ok(vec![3, 9, 42]));
-    assert!(seeds("6..3").is_err() && seeds("seven").is_err());
-    let run = parse(
-        "run --alphabet calibration --seeds 1..3 --length 12 --repeats 3 --jobs 2 --rest-samples 6",
-    )
-    .expect("the selections should parse");
-    assert_eq!(
-        (run.command, run.alphabet.as_deref(), run.seeds.len()),
-        (Command::Run, Some("calibration"), 3)
-    );
-    assert_eq!(
-        (run.length, run.repeats, run.jobs, run.rest.samples),
-        (12, 3, 2, 6)
-    );
-    assert!(parse("replay").is_ok() && parse("check").is_ok());
-    assert!(parse("shrink tests/qa/fuzz/corpus/a/fuzz-a-0000000000000001.jsonl").is_ok());
-    for (line, expected) in [
-        ("run --seeds 1", "--alphabet and --seeds"),
-        ("run --alphabet calibration", "--alphabet and --seeds"),
-        (
-            "run --alphabet calibration --seeds 1 --repeats 1",
-            "--repeats 2 or more",
-        ),
-        (
-            "run --alphabet calibration --seeds 1 some.jsonl",
-            "takes no file",
-        ),
-        (
-            "shrink --alphabet calibration --seeds 1..2",
-            "one seed or one file",
-        ),
-        ("scenario", "one sequence file"),
-        ("compare one.jsonl", "two stream files"),
-        (
-            "run --alphabet calibration --seeds 1 --length 0",
-            "positive number",
-        ),
-        (
-            "run --alphabet calibration --seeds 1 --fast",
-            "no option --fast",
-        ),
-        ("fuzz", "no fuzz command"),
-        (
-            r#"shrink --alphabet calibration --seeds 1 --corpus --perturb {"after":{"key":"a"},"field":"app.focused","value":1}"#,
-            "never joins the corpus",
-        ),
+pub(crate) fn a_sequence_s_name_says_the_alphabet_version_and_the_seed_it_came_from() {
+    let origin = Origin {
+        area: "columns-pilot".to_owned(),
+        version: 12,
+        seed: u64::MAX,
+    };
+    assert_eq!(origin.name(), "fuzz-columns-pilot-v12-ffffffffffffffff");
+    assert_eq!(Origin::of(&origin.name()), Some(origin));
+    for name in [
+        // A seed alone names no sequence: another version writes another one.
+        "fuzz-sample-0000000000000007",
+        "fuzz-sample-v0-0000000000000007",
+        "fuzz-sample-v1-7",
+        "fuzz-sample-v1-000000000000000G",
+        "fuzz-sample-v01-0000000000000007",
+        "sample-v1-0000000000000007",
+        "fuzz--v1-0000000000000007",
     ] {
-        let error = parse(line).expect_err(expected);
+        assert_eq!(Origin::of(name), None, "{name}");
+    }
+}
+
+pub(crate) fn an_alphabet_s_version_is_pinned_to_what_its_seeds_write() {
+    let sample = sample();
+    let alphabet = alphabet::parse(&sample).expect("the sample alphabet should load");
+    let pins = format!("other v4 0000000000000000\n{}\n", alphabet.pin());
+    assert_eq!(alphabet.check_pin(&pins), Ok(()));
+    // What a seed does not depend on is not pinned.
+    let reworded = sample.replace("three actions", "3 actions");
+    let reworded = alphabet::parse(&reworded).expect("the alphabet should load");
+    assert_eq!(reworded.check_pin(&pins), Ok(()));
+    // A change to what seeds write, without a new version, is refused; so is a new
+    // version nobody pinned, and an alphabet with no line at all.
+    for (changed, expected) in [
+        (
+            sample.replace("weight = 3", "weight = 4"),
+            "raise `version`",
+        ),
+        (sample.replace("\"todo.txt\", ", ""), "raise `version`"),
+        (
+            sample.replace("\"key\":\"Escape\"", "\"key\":\"Up\""),
+            "raise `version`",
+        ),
+        (sample.replace("version = 1", "version = 2"), "does not pin"),
+    ] {
+        let changed = alphabet::parse(&changed).expect("the alphabet should load");
+        let error = changed.check_pin(&pins).expect_err(expected);
         assert!(
             error.contains(expected),
             "{error:?} should say {expected:?}"
         );
     }
+    assert!(alphabet.check_pin("").is_err());
 }
 
-pub(crate) fn the_tree_s_alphabets_map_mask_and_corpus_load_as_a_run_loads_them() {
-    let lines = checked().unwrap_or_else(|error| panic!("{error}"));
-    assert!(
-        lines
-            .iter()
-            .any(|line| line.starts_with("FUZZ alphabet calibration ")),
-        "the calibration alphabet is what the rest rule was fixed on: {lines:?}"
-    );
-    for area in alphabet::areas() {
-        let alphabet = alphabet::load(&area).unwrap_or_else(|error| panic!("{error}"));
-        for seed in 1..=3 {
-            generate(&alphabet, seed, 60)
-                .load()
-                .unwrap_or_else(|error| panic!("{error}"));
-        }
-    }
+pub(crate) fn a_kept_file_of_the_alphabet_s_version_is_made_of_steps_its_seed_writes() {
+    let alphabet = alphabet::parse(&sample()).expect("the sample alphabet should load");
+    let written = generate(&alphabet, 7, 8);
+    // A sequence cut short or shrunk is steps of the seed's, in their order.
+    let shrunk: Vec<String> = [0, 3, 6, 11]
+        .iter()
+        .map(|index| SEED_SEVEN[*index].to_owned())
+        .collect();
+    assert!(still_written(&alphabet, 7, &written.with_steps(shrunk)));
+    assert!(still_written(&alphabet, 7, &written.with_steps(Vec::new())));
+    // One from another alphabet or another seed is not, whatever its name says.
+    let other = vec![
+        SEED_SEVEN[0].to_owned(),
+        r#"{"key":"Down","when":{"focused_pane":true}}"#.to_owned(),
+    ];
+    assert!(!still_written(&alphabet, 7, &written.with_steps(other)));
 }

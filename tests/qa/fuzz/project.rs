@@ -140,24 +140,10 @@ pub(crate) fn differences(left: &Value, right: &Value) -> Vec<Difference> {
 
 fn walk(path: &str, left: &Value, right: &Value, found: &mut Vec<Difference>) {
     match (left, right) {
-        (Value::Object(left), Value::Object(right)) => {
-            let mut keys: Vec<&String> = left.keys().chain(right.keys()).collect();
-            keys.sort_unstable();
-            keys.dedup();
-            for key in keys {
-                walk(
-                    &format!("{path}.{key}"),
-                    left.get(key).unwrap_or(&Value::Null),
-                    right.get(key).unwrap_or(&Value::Null),
-                    found,
-                );
-            }
-        }
+        (Value::Object(left), Value::Object(right)) => walk_keys(path, left, right, found),
         // A list of records is compared record by record while both have as many; a list of
         // names is one value, since which name is where is the observation.
-        (Value::Array(left), Value::Array(right))
-            if left.len() == right.len() && left.iter().chain(right).all(Value::is_object) =>
-        {
+        (Value::Array(left), Value::Array(right)) if are_records(left, right) => {
             for (index, (left, right)) in left.iter().zip(right).enumerate() {
                 walk(&format!("{path}[{index}]"), left, right, found);
             }
@@ -171,108 +157,145 @@ fn walk(path: &str, left: &Value, right: &Value, found: &mut Vec<Difference>) {
     }
 }
 
-/// A field with its list indexes taken out, as the map and the mask name it:
-/// `app.panes[1].selected` is `app.panes[].selected`.
-pub(crate) fn pattern_of(field: &str) -> String {
-    let mut pattern = String::with_capacity(field.len());
-    let mut rest = field;
-    while let Some(start) = rest.find('[') {
-        let Some(end) = rest[start..].find(']') else {
-            break;
-        };
-        let inside = &rest[start + 1..start + end];
-        pattern.push_str(&rest[..=start]);
-        if inside.is_empty() || !inside.bytes().all(|byte| byte.is_ascii_digit()) {
-            pattern.push_str(inside);
-        }
-        pattern.push(']');
-        rest = &rest[start + end + 1..];
-    }
-    pattern.push_str(rest);
-    pattern
-}
-
-/// Whether a map or mask entry covers a field: the field itself or anything below it.
-pub(crate) fn covers(entry: &str, field: &str) -> bool {
-    let field = pattern_of(field);
-    field
-        .strip_prefix(entry)
-        .is_some_and(|below| below.is_empty() || below.starts_with(['.', '[']))
-}
-
-/// Whether an entry names something an observation can hold: a root, or an `app` key and
-/// anything below it.
-pub(crate) fn names_a_field(entry: &str) -> bool {
-    let mut parts = entry.splitn(2, ['.', '[']);
-    let root = parts.next().unwrap_or_default();
-    let below = parts.next();
-    if !ROOTS.contains(&root) || entry.ends_with('.') || entry != pattern_of(entry) {
-        return false;
-    }
-    match (root, below) {
-        (APP, Some(below)) => {
-            let key = below.split(['.', '[']).next().unwrap_or_default();
-            APP_KEYS.contains(&key)
-        }
-        (RESULT | CRITICALS, Some(_)) => false,
-        _ => true,
+fn walk_keys(
+    path: &str,
+    left: &Map<String, Value>,
+    right: &Map<String, Value>,
+    found: &mut Vec<Difference>,
+) {
+    let mut keys: Vec<&String> = left.keys().chain(right.keys()).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    for key in keys {
+        walk(
+            &format!("{path}.{key}"),
+            left.get(key).unwrap_or(&Value::Null),
+            right.get(key).unwrap_or(&Value::Null),
+            found,
+        );
     }
 }
 
-/// The value at a field of an observation, for a perturbation's condition.
-pub(crate) fn value_at<'a>(observation: &'a Value, field: &str) -> Option<&'a Value> {
-    let mut value = observation;
-    for part in parts(field) {
-        value = match part {
-            Part::Key(key) => value.get(key)?,
-            Part::Index(index) => value.get(index)?,
-        };
-    }
-    Some(value)
+fn are_records(left: &[Value], right: &[Value]) -> bool {
+    left.len() == right.len() && left.iter().chain(right).all(Value::is_object)
 }
 
-/// Sets the value at a field that exists; false when the observation has no such field.
-pub(crate) fn set_at(observation: &mut Value, field: &str, new: Value) -> bool {
-    let mut value = observation;
-    for part in parts(field) {
-        let next = match part {
-            Part::Key(key) => value.get_mut(key),
-            Part::Index(index) => value.get_mut(index),
-        };
-        let Some(next) = next else {
-            return false;
-        };
-        value = next;
-    }
-    *value = new;
-    true
-}
-
+/// One part of a field's path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Part<'a> {
     Key(&'a str),
     Index(usize),
+    /// `[]` in a map or mask entry: every element of a list.
+    Every,
 }
 
-/// `app.panes[1].selected` as `app`, `panes`, 1, `selected`. Only `app` fields are split at
-/// dots: a file's path or a setting's key is one key however many dots it has.
+/// A field as its parts: `app.panes[1].selected` is `app`, `panes`, 1, `selected`.
+///
+/// What is below `fs` is one key, a file's path, whatever dots and brackets its name has.
+/// What is below `app` and `settings` is split at dots, and a key's `[n]` or `[]` is a
+/// place in a list.
 fn parts(field: &str) -> Vec<Part<'_>> {
     let (root, below) = field.split_once('.').unwrap_or((field, ""));
     let mut parts = vec![Part::Key(root)];
     if below.is_empty() {
         return parts;
     }
-    if root != APP {
+    if root == FS {
         parts.push(Part::Key(below));
         return parts;
     }
     for key in below.split('.') {
-        let (name, indexes) = key.split_once('[').unwrap_or((key, ""));
+        let (name, places) = key.split_once('[').unwrap_or((key, ""));
         parts.push(Part::Key(name));
-        for index in indexes.split('[') {
-            if let Ok(index) = index.trim_end_matches(']').parse() {
-                parts.push(Part::Index(index));
-            }
+        if places.is_empty() && !key.contains('[') {
+            continue;
+        }
+        for place in places.split('[') {
+            let place = place.trim_end_matches(']');
+            parts.push(place.parse().map_or(Part::Every, Part::Index));
         }
     }
     parts
+}
+
+/// A field with its list indexes taken out, as the map and the mask name it:
+/// `app.panes[1].selected` is `app.panes[].selected`. A file's path is left as it is.
+pub(crate) fn pattern_of(field: &str) -> String {
+    let mut pattern = String::with_capacity(field.len());
+    for (index, part) in parts(field).into_iter().enumerate() {
+        match part {
+            Part::Key(key) if index == 0 => pattern.push_str(key),
+            Part::Key(key) => {
+                pattern.push('.');
+                pattern.push_str(key);
+            }
+            Part::Index(_) | Part::Every => pattern.push_str("[]"),
+        }
+    }
+    pattern
+}
+
+/// Whether a map or mask entry covers a field: the field itself, or what is below it at a
+/// boundary of the path. `app.focused` does not cover `app.focused_pane`, and
+/// `fs.documents/notes` does not cover `fs.documents/notes.txt`; `fs.documents` covers
+/// every file of the folder.
+pub(crate) fn covers(entry: &str, field: &str) -> bool {
+    let (entry, field) = (parts(entry), parts(field));
+    if entry.first() == Some(&Part::Key(FS)) {
+        return match (entry.get(1), field.get(1)) {
+            (Some(Part::Key(folder)), Some(Part::Key(path))) if field[0] == entry[0] => path
+                .strip_prefix(folder)
+                .is_some_and(|below| below.is_empty() || below.starts_with('/')),
+            _ => false,
+        };
+    }
+    entry.len() <= field.len()
+        && entry.iter().zip(&field).all(|(entry, field)| match entry {
+            Part::Every => matches!(field, Part::Index(_) | Part::Every),
+            entry => entry == field,
+        })
+}
+
+/// Whether an entry names something a map or a mask may leave out: an `app` key or what is
+/// below it, a path of the tree, a key of the settings. A whole root is refused, and so
+/// are `result` and `criticals`: one line must not blind a run. A list is written `[]`.
+pub(crate) fn names_a_field(entry: &str) -> bool {
+    let parts = parts(entry);
+    let below_root = match parts.as_slice() {
+        [Part::Key(APP), Part::Key(key), ..] => APP_KEYS.contains(key),
+        [Part::Key(FS | SETTINGS), Part::Key(key), ..] => !key.is_empty(),
+        _ => false,
+    };
+    let well_formed = parts.iter().all(|part| match part {
+        Part::Key(key) => !key.is_empty(),
+        Part::Index(_) => false,
+        Part::Every => true,
+    });
+    below_root && well_formed && entry == pattern_of(entry)
+}
+
+/// The value at a field of an observation, for a perturbation's condition.
+pub(crate) fn value_at<'a>(observation: &'a Value, field: &str) -> Option<&'a Value> {
+    parts(field)
+        .into_iter()
+        .try_fold(observation, |value, part| match part {
+            Part::Key(key) => value.get(key),
+            Part::Index(index) => value.get(index),
+            Part::Every => None,
+        })
+}
+
+/// Sets the value at a field that exists; false when the observation has no such field.
+pub(crate) fn set_at(observation: &mut Value, field: &str, new: Value) -> bool {
+    let place = parts(field)
+        .into_iter()
+        .try_fold(observation, |value, part| match part {
+            Part::Key(key) => value.get_mut(key),
+            Part::Index(index) => value.get_mut(index),
+            Part::Every => None,
+        });
+    place.is_some_and(|place| {
+        *place = new;
+        true
+    })
 }

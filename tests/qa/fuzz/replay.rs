@@ -17,21 +17,24 @@ use std::{
 use serde_json::{Value, json};
 
 use super::{
-    observe::{Observation, Outcome, Rest, Rested, Sample, at_rest, settings, tree},
+    generate::Origin,
+    observe::{Observation, Outcome, Rest, Rested, Sample, at_rest, milliseconds, settings, tree},
     perturb::Perturbation,
     project::{self, Places as Names},
     sequence::{Loaded, strip},
 };
 use crate::{
-    Application, COMMAND_TIMEOUT, CONTROLLER_PANIC, Display, INPUT_LOG, LAUNCH_TIMEOUT, Launch,
-    STEP_WHEN, WAIT_MARGIN,
+    Application, COMMAND_TIMEOUT, CONTAINER_ONLY, CONTROLLER_PANIC, Display, INPUT_LOG,
+    LAUNCH_TIMEOUT, Launch, STEP_WHEN, WAIT_MARGIN,
     drive::wait_for_fs,
     fixture::{Manifest, fixture_time},
     fs_check::FsState,
     host_run, in_container,
     process::wait_for_exit,
+    scenario::Scenario,
     seed,
     steps::run_steps,
+    target::Target,
     variables::{Places, substitute, substitute_text, unescape, variables},
 };
 
@@ -48,10 +51,113 @@ pub(crate) struct Replay<'a> {
     pub(crate) perturbation: Option<&'a Perturbation>,
 }
 
+/// What a stream is a stream of: the first line of its file. Two streams are compared only
+/// when they are of one sequence, one version of its alphabet and one rest rule, and the
+/// normalisation map applies when their targets differ.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Header {
+    /// `gtk` or `rune`.
+    pub(crate) target: String,
+    pub(crate) sequence: String,
+    pub(crate) alphabet: String,
+    pub(crate) version: u32,
+    pub(crate) rest: Rest,
+    /// Whether the harness changed an observation of this replay on purpose.
+    pub(crate) perturbed: bool,
+}
+
+impl Header {
+    fn line(&self) -> Value {
+        json!({ "stream": {
+            "target": self.target,
+            "sequence": self.sequence,
+            "alphabet": self.alphabet,
+            "version": self.version,
+            "rest": {
+                "samples": self.rest.samples,
+                "poll_ms": milliseconds(self.rest.poll),
+                "budget_ms": milliseconds(self.rest.budget),
+            },
+            "perturbed": self.perturbed,
+        } })
+    }
+
+    fn from_line(line: &Value) -> Option<Self> {
+        let stream = line.get("stream")?;
+        let rest = &stream["rest"];
+        Some(Self {
+            target: stream["target"].as_str()?.to_owned(),
+            sequence: stream["sequence"].as_str()?.to_owned(),
+            alphabet: stream["alphabet"].as_str()?.to_owned(),
+            version: u32::try_from(stream["version"].as_u64()?).ok()?,
+            rest: Rest {
+                samples: u32::try_from(rest["samples"].as_u64()?).ok()?,
+                poll: Duration::from_millis(rest["poll_ms"].as_u64()?),
+                budget: Duration::from_millis(rest["budget_ms"].as_u64()?),
+            },
+            perturbed: stream["perturbed"].as_bool()?,
+        })
+    }
+
+    /// Why this stream and another cannot be compared, when they cannot.
+    pub(crate) fn mismatch(&self, other: &Self) -> Option<String> {
+        let parts = [
+            ("sequence", self.sequence == other.sequence),
+            (
+                "alphabet version",
+                (&self.alphabet, self.version) == (&other.alphabet, other.version),
+            ),
+            ("rest rule", self.rest == other.rest),
+        ];
+        parts
+            .iter()
+            .find(|(_, same)| !same)
+            .map(|(part, _)| format!("the two streams are not of one {part}"))
+    }
+}
+
+/// How the driver and its files name a target.
+pub(crate) fn target_name(target: Target) -> &'static str {
+    match target {
+        Target::Gtk => "gtk",
+        Target::Rune => "rune",
+    }
+}
+
+impl Replay<'_> {
+    /// What this replay's stream is a stream of.
+    fn header(&self) -> Result<Header, String> {
+        let name = &self.loaded.scenario.header.scenario;
+        let origin = Origin::of(name).ok_or("a sequence is named fuzz-<area>-v<version>-<seed>")?;
+        Ok(Header {
+            target: target_name(Target::from_environment()?).to_owned(),
+            sequence: name.clone(),
+            alphabet: origin.area,
+            version: origin.version,
+            rest: self.rest,
+            perturbed: self.perturbation.is_some(),
+        })
+    }
+}
+
+/// The variables a sequence's header adds to the target's environment.
+fn environment(scenario: &Scenario, variables: &[(String, String)]) -> Vec<(String, String)> {
+    scenario
+        .header
+        .env
+        .iter()
+        .map(|(key, value)| {
+            let value = substitute_text(value, variables).replace("$$", "$");
+            (key.clone(), value)
+        })
+        .collect()
+}
+
 /// The observations of one replay, the launch first. `gone` says why the target went away,
 /// when it did; the stream then ends at the step that lost it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Stream {
+    pub(crate) header: Header,
     pub(crate) observations: Vec<Observation>,
     pub(crate) gone: Option<String>,
 }
@@ -66,8 +172,10 @@ pub(crate) struct Replayed {
 }
 
 impl Stream {
+    /// The stream's file: the header, then one observation to a line.
     pub(crate) fn text(&self) -> String {
         let mut text = String::new();
+        let _ = writeln!(text, "{}", self.header.line());
         for observation in &self.observations {
             let _ = writeln!(text, "{}", observation.line());
         }
@@ -82,7 +190,10 @@ impl Stream {
         for (index, line) in text.lines().enumerate() {
             let line: Value = serde_json::from_str(line)
                 .map_err(|error| format!("line {}: {error}", index + 1))?;
-            if let Some(gone) = line["gone"].as_str() {
+            if index == 0 {
+                stream.header = Header::from_line(&line)
+                    .ok_or("line 1: a stream starts with its header, {\"stream\":…}")?;
+            } else if let Some(gone) = line["gone"].as_str() {
                 stream.gone = Some(gone.to_owned());
             } else {
                 stream.observations.push(
@@ -170,11 +281,10 @@ struct Files {
 /// does once it is up is in the stream.
 pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
     if !(in_container() || host_run()) {
-        return Err(
-            "a fuzz replay runs only in the pinned container: use ./scripts/qa-fuzz.sh".to_owned(),
-        );
+        return Err(CONTAINER_ONLY.to_owned());
     }
     let Loaded { scenario, run } = request.loaded;
+    let header = request.header()?;
     let ground = Ground::new()?;
     let variables = variables(run, &ground.places());
     let sent = run_steps(scenario, run, &variables)?;
@@ -205,15 +315,7 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
         runtime: &ground.runtime,
         log: ground.scratch.path().join("strata.log"),
         input_log: &input_log,
-        extra: scenario
-            .header
-            .env
-            .iter()
-            .map(|(key, value)| {
-                let value = substitute_text(value, &variables).replace("$$", "$");
-                (key.clone(), value)
-            })
-            .collect(),
+        extra: environment(scenario, &variables),
         bus: None,
         portal: false,
         audit: None,
@@ -230,7 +332,8 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
             sent: unescape(sent),
         })
         .collect();
-    let stream = session.run(&steps, request.perturbation, &mut files);
+    let mut stream = session.run(&steps, request.perturbation, &mut files);
+    stream.header = header;
     session.application.stop();
     Ok(Replayed {
         stream,
@@ -322,15 +425,10 @@ impl<'a> Session<'a> {
         stream
     }
 
-    /// What a target that no longer answers did: closed, when it exited as an application
-    /// does once its window is closed, and crashed with the reason otherwise.
+    /// What a target that no longer answers did, once it has had time to finish exiting.
     fn lost(&mut self, error: String) -> (Outcome, Option<String>) {
         let exited = wait_for_exit(&mut self.application.child, CLOSING);
-        if exited.is_some_and(|status| status.success()) {
-            (Outcome::Closed, None)
-        } else {
-            (Outcome::Crashed, Some(error))
-        }
+        gone(exited.map(|status| status.success()), error)
     }
 
     fn record(&mut self, command: &Value, reply: &Value) {
@@ -358,23 +456,14 @@ impl<'a> Session<'a> {
     /// Sends one step, or acts on the fixture for an `fs` step. The second value says why
     /// the target is gone, when the step lost it.
     fn take(&mut self, step: &Value, files: &mut Files) -> (Outcome, Option<String>) {
-        if let Some(condition) = step.get(STEP_WHEN) {
-            match self.send(&json!({ "holds": condition }), COMMAND_TIMEOUT) {
-                Ok(reply) if reply["result"] == json!(true) => {}
-                Ok(reply) if reply["error"].is_null() => return (Outcome::Skipped, None),
-                Ok(reply) => return self.answered(&reply),
-                Err(error) => return self.lost(error),
-            }
+        if let Some(condition) = step.get(STEP_WHEN)
+            && let Some(ended) = self.guard(condition)
+        {
+            return ended;
         }
         let step = strip(step, STEP_WHEN);
         if step.get("fs").is_some() {
-            return match wait_for_fs(&step, self.fixture, files.time, &mut files.state) {
-                Ok(()) => (Outcome::Ok, None),
-                Err(error) => {
-                    self.record(&step, &json!({ "ok": false, "error": error }));
-                    (Outcome::Refused, None)
-                }
-            };
+            return self.act_on_files(&step, files);
         }
         let timeout = step
             .get("timeout_ms")
@@ -383,22 +472,31 @@ impl<'a> Session<'a> {
                 (Duration::from_millis(ms) + WAIT_MARGIN).max(COMMAND_TIMEOUT)
             });
         match self.send(&step, timeout) {
-            Ok(reply) => self.answered(&reply),
+            Ok(reply) => answered(&reply),
             Err(error) => self.lost(error),
         }
     }
 
-    /// What a reply says of the step it answers.
-    fn answered(&self, reply: &Value) -> (Outcome, Option<String>) {
-        let error = reply["error"].as_str();
-        match error {
-            _ if reply["ok"] == json!(true) => (Outcome::Ok, None),
-            // The session ends itself after a panic, so no later step would be answered.
-            Some(error) if error.contains(CONTROLLER_PANIC) => {
-                (Outcome::Crashed, Some(error.to_owned()))
+    /// Asks whether a step's `when` holds. `None` when it does and the step is to be sent;
+    /// otherwise how the step ended without being sent.
+    fn guard(&mut self, condition: &Value) -> Option<(Outcome, Option<String>)> {
+        match self.send(&json!({ "holds": condition }), COMMAND_TIMEOUT) {
+            Ok(reply) if reply["result"] == json!(true) => None,
+            Ok(reply) if reply["error"].is_null() => Some((Outcome::Skipped, None)),
+            Ok(reply) => Some(answered(&reply)),
+            Err(error) => Some(self.lost(error)),
+        }
+    }
+
+    /// An `fs` step is the runner's own: one it cannot do is refused, as a step the target
+    /// cannot do is.
+    fn act_on_files(&mut self, step: &Value, files: &mut Files) -> (Outcome, Option<String>) {
+        match wait_for_fs(step, self.fixture, files.time, &mut files.state) {
+            Ok(()) => (Outcome::Ok, None),
+            Err(error) => {
+                self.record(step, &json!({ "ok": false, "error": error }));
+                (Outcome::Refused, None)
             }
-            Some(_) => (Outcome::Refused, None),
-            None => (Outcome::Failed, None),
         }
     }
 
@@ -407,20 +505,24 @@ impl<'a> Session<'a> {
     fn observe(&mut self, step: (usize, Value), outcome: Outcome) -> (Observation, Option<String>) {
         let rest = self.rest;
         let (mut rested, error) = at_rest(&mut || self.sample(), &rest);
-        let (outcome, gone) = match error {
-            Some(error) => self.lost(error),
-            None if rested.sample.app == left_the_fixture() => (Outcome::Left, None),
-            None => (outcome, None),
-        };
-        if outcome.ends_the_replay() {
-            rested.sample.app = Value::Null;
+        if let Some(error) = error {
+            let (outcome, gone) = self.lost(error);
+            return (self.unseen(step, outcome), gone);
         }
+        let outcome = if rested.sample.app == left_the_fixture() {
+            rested.sample.app = Value::Null;
+            Outcome::Left
+        } else {
+            outcome
+        };
         let criticals = std::mem::take(&mut self.criticals);
-        (Observation::new(step, outcome, criticals, rested), gone)
+        (Observation::new(step, outcome, criticals, rested), None)
     }
 
     /// The observation of a step that ended the replay before anything could be read: the
-    /// files as the target left them, and no `app`, since nothing answers.
+    /// files as the target left them, and no `app`, since nothing answers. After a closed
+    /// window the process has exited, so the files are at rest and are compared; after a
+    /// crash they are not.
     fn unseen(&mut self, step: (usize, Value), outcome: Outcome) -> Observation {
         let rested = Rested {
             sample: Sample {
@@ -428,7 +530,7 @@ impl<'a> Session<'a> {
                 fs: self.names.normalise(&tree(self.fixture)),
                 settings: self.names.normalise(&settings(&self.settings)),
             },
-            settled: false,
+            settled: outcome == Outcome::Closed,
             polls: 0,
             waited: Duration::ZERO,
             changes: Vec::new(),
@@ -455,6 +557,31 @@ impl<'a> Session<'a> {
             fs,
             settings: self.names.normalise(&settings(&self.settings)),
         })
+    }
+}
+
+/// What a reply says of the step it answers.
+pub(crate) fn answered(reply: &Value) -> (Outcome, Option<String>) {
+    let error = reply["error"].as_str();
+    match error {
+        _ if reply["ok"] == json!(true) => (Outcome::Ok, None),
+        // The session ends itself after a panic, so no later step would be answered.
+        Some(error) if error.contains(CONTROLLER_PANIC) => {
+            (Outcome::Crashed, Some(error.to_owned()))
+        }
+        Some(_) => (Outcome::Refused, None),
+        None => (Outcome::Failed, None),
+    }
+}
+
+/// What a target that no longer answers did. `exited` says whether it exited, and whether
+/// with success: an application whose window was closed exits so, and that is the step's
+/// outcome. One that exited otherwise, or is still there and silent, crashed.
+pub(crate) fn gone(exited: Option<bool>, error: String) -> (Outcome, Option<String>) {
+    if exited == Some(true) {
+        (Outcome::Closed, None)
+    } else {
+        (Outcome::Crashed, Some(error))
     }
 }
 

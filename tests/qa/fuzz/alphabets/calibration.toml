@@ -3,7 +3,7 @@
 # every kind of action the driver has, in Columns on the canonical fixture, so that every
 # field of an observation moves at least sometimes.
 area = "calibration"
-version = 1
+version = 3
 about = "Columns on the canonical fixture: keyboard navigation and selection, clicks by name, typed text, a context menu, the preview, rename, hidden files, and files made and removed behind the application's back"
 header = '{"modes":["columns"]}'
 

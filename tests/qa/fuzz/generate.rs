@@ -10,21 +10,43 @@ use super::{
     sequence::{PREFIX, Sequence},
 };
 
-/// Raised by every change here that makes a seed write another sequence.
+/// Raised by every change here that makes a seed write another sequence. It is part of
+/// what an alphabet's version is pinned to, so every alphabet's version rises with it.
 pub(crate) const GENERATOR: u32 = 1;
 
-/// `fuzz-<area>-<seed>`, the seed as sixteen hex digits: a scenario name, so the seed names
-/// the file a sequence is kept in.
-pub(crate) fn name(area: &str, seed: u64) -> String {
-    format!("{PREFIX}-{area}-{seed:016x}")
+/// Where a sequence came from, which is what its name says:
+/// `fuzz-<area>-v<version>-<seed>`, the alphabet's version and the seed as sixteen hex
+/// digits. A seed means nothing without the version: another version of the alphabet makes
+/// another sequence of the same seed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Origin {
+    pub(crate) area: String,
+    pub(crate) version: u32,
+    pub(crate) seed: u64,
 }
 
-/// The seed a sequence name ends with.
-pub(crate) fn seed_of(name: &str) -> Option<u64> {
-    let digits = name.rsplit('-').next()?;
-    (digits.len() == 16)
-        .then(|| u64::from_str_radix(digits, 16).ok())
-        .flatten()
+impl Origin {
+    pub(crate) fn name(&self) -> String {
+        format!(
+            "{PREFIX}-{}-v{}-{:016x}",
+            self.area, self.version, self.seed
+        )
+    }
+
+    /// The origin a sequence name holds, when it is one a seed could have written.
+    pub(crate) fn of(name: &str) -> Option<Self> {
+        let rest = name.strip_prefix(PREFIX)?.strip_prefix('-')?;
+        let (rest, seed) = rest.rsplit_once('-')?;
+        let (area, version) = rest.rsplit_once("-v")?;
+        let origin = Self {
+            area: area.to_owned(),
+            version: version.parse().ok().filter(|version| *version > 0)?,
+            seed: (seed.len() == 16)
+                .then(|| u64::from_str_radix(seed, 16).ok())
+                .flatten()?,
+        };
+        (!origin.area.is_empty() && origin.name() == name).then_some(origin)
+    }
 }
 
 /// `actions` picks from the alphabet. A longer sequence of one seed starts with the shorter
@@ -54,7 +76,12 @@ pub(crate) fn generate(alphabet: &Alphabet, seed: u64, actions: usize) -> Sequen
             }));
         }
     }
-    let name = name(&alphabet.area, seed);
+    let name = Origin {
+        area: alphabet.area.clone(),
+        version: alphabet.version,
+        seed,
+    }
+    .name();
     Sequence {
         header: alphabet.header_line(&name),
         name,

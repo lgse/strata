@@ -34,7 +34,7 @@ impl Shrunk {
 
 struct Search<'a, 'b> {
     oracle: &'a mut Oracle<'b>,
-    signature: String,
+    found: &'a Divergence,
     asked: usize,
     limit: usize,
 }
@@ -43,7 +43,7 @@ impl Search<'_, '_> {
     /// The divergence the steps show, when it is the one being shrunk.
     fn same(&mut self, steps: &[String]) -> Result<Option<Divergence>, String> {
         self.asked += 1;
-        Ok((self.oracle)(steps)?.filter(|divergence| divergence.signature() == self.signature))
+        Ok((self.oracle)(steps)?.filter(|divergence| divergence.is(self.found)))
     }
 
     fn spent(&self) -> bool {
@@ -56,7 +56,7 @@ impl Search<'_, '_> {
 ///
 /// Steps after the divergence are dropped first, since nothing after it can matter. Then
 /// runs of steps are taken out, halves first and single steps last, keeping every removal
-/// after which the same field still differs first.
+/// after which the same divergence still shows first (`Divergence::is`).
 pub(crate) fn shrink(
     steps: &[String],
     found: &Divergence,
@@ -65,7 +65,7 @@ pub(crate) fn shrink(
 ) -> Result<Shrunk, String> {
     let mut search = Search {
         oracle,
-        signature: found.signature(),
+        found,
         asked: 0,
         limit,
     };

@@ -16,20 +16,19 @@
 use std::{fs, path::Path};
 
 use super::{DATA, project};
-use crate::REPOSITORY;
+use crate::{
+    REPOSITORY,
+    twins::{PLATFORM, TWIN_BEARING},
+};
 
 pub(crate) const MAP: &str = "normalisation.map";
 pub(crate) const MASK: &str = "calibration.mask";
-/// The plan's exception codes (`docs/rune/parity/README.md`, "Exceptions to total parity").
-pub(crate) const EXCEPTIONS: [&str; 7] = [
-    "timing",
-    "a11y",
-    "rune",
-    "oracle",
-    "toolkit",
-    "deviation",
-    "platform",
-];
+/// The plan's exception codes (`docs/rune/parity/README.md`, "Exceptions to total parity"),
+/// as the runner's twins spell them: one list for a twin's label and for a rule of the map.
+pub(crate) fn exceptions() -> Vec<&'static str> {
+    TWIN_BEARING.iter().copied().chain([PLATFORM]).collect()
+}
+
 /// Why two replays on one target can differ on a field (`docs/testing.md`, "Calibration").
 /// `unsettled`: the application is still working when the reply is written and shows
 /// nothing to wait on. `clock`: the value follows the time of day or how long the run took.
@@ -55,7 +54,7 @@ impl Ignored {
     /// one target with itself is given `same_target` and leaves them out.
     pub(crate) fn load(same_target: bool) -> Result<Self, String> {
         let mut ignored = Self {
-            rules: read(MAP, &EXCEPTIONS)?,
+            rules: read(MAP, &exceptions())?,
             masks: read(MASK, &CAUSES)?,
         };
         if same_target {
@@ -124,7 +123,9 @@ fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {
     };
     if !project::names_a_field(field) {
         return Err(format!(
-            "{field:?} names no field of an observation; lists are written with []"
+            "{field:?} names no field an entry may leave out: a key of app, a path of fs or \
+             a key of settings, with a list written []. A whole root, result and criticals \
+             are not left out"
         ));
     }
     if !codes.contains(code) {

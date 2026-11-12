@@ -16,6 +16,7 @@ usage: ./scripts/qa-fuzz.sh <command> [selections]
                                       times and compare the replays
   replay [--alphabet AREA] [FILE...]  the same for kept sequences: an area's corpus, every
                                       area's without a selection, or the files named
+  replay --parked [--alphabet AREA]   a survey: the parked sequences, replayed on purpose
   shrink --alphabet AREA --seeds SEED shrink one seed's divergence, or a FILE's, and confirm
   shrink FILE                         it three times out of three
   generate --alphabet AREA --seeds SEED   print the sequence and replay nothing
@@ -28,7 +29,8 @@ usage: ./scripts/qa-fuzz.sh <command> [selections]
   --seeds SEEDS       7, 1..200 (both ends) or 3,9,0x2a
   --length N          actions in a generated sequence (default 40)
   --repeats N         replays of each sequence (default 2)
-  --jobs N            sequences replayed at once (default: one per CPU)
+  --jobs N            sequences replayed at once (default: one per CPU; at most 256, a
+                      display each)
   --target gtk|rune   the target every replay starts (default gtk); the script sets it
   --keep              keep the streams of sequences that agree too
   --corpus            shrink: write a confirmed sequence into the area's corpus
@@ -38,6 +40,9 @@ usage: ./scripts/qa-fuzz.sh <command> [selections]
   --rest-samples N --rest-poll-ms N --rest-budget-ms N
                       how rest is told; calibration set the defaults
 ";
+
+/// The X displays the runner has (`DISPLAY_TRIES` in `tests/qa.rs`): a replay holds one.
+const MOST_AT_ONCE: usize = crate::DISPLAY_TRIES as usize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -59,6 +64,8 @@ pub(crate) struct Options {
     pub(crate) repeats: usize,
     pub(crate) jobs: usize,
     pub(crate) keep: bool,
+    /// `replay`: the parked sequences, and only those.
+    pub(crate) parked: bool,
     pub(crate) corpus: bool,
     pub(crate) limit: usize,
     pub(crate) perturbation: Option<Perturbation>,
@@ -88,6 +95,7 @@ impl Options {
             repeats: 2,
             jobs: std::thread::available_parallelism().map_or(1, usize::from),
             keep: false,
+            parked: false,
             corpus: false,
             limit: 200,
             perturbation: None,
@@ -108,6 +116,7 @@ impl Options {
                 "--jobs" => options.jobs = positive(&argument, &value()?)?,
                 "--limit" => options.limit = positive(&argument, &value()?)?,
                 "--keep" => options.keep = true,
+                "--parked" => options.parked = true,
                 "--corpus" => options.corpus = true,
                 "--perturb" => options.perturbation = Some(Perturbation::parse(&value()?)?),
                 "--rest-samples" => {
@@ -130,15 +139,21 @@ impl Options {
             || (self.command == Command::Shrink && self.files.is_empty())
     }
 
+    /// What is wrong with the selections for this command, the first fault found.
     fn check(&self) -> Result<(), String> {
+        let faults = [self.sequence_faults(), self.option_faults()].concat();
+        match faults.iter().find(|(fault, _)| *fault) {
+            Some((_, message)) => Err((*message).to_owned()),
+            None => Ok(()),
+        }
+    }
+
+    /// Faults in which sequences the command names.
+    fn sequence_faults(&self) -> Vec<(bool, &'static str)> {
         let generates = self.generates();
         let named = self.seeds.len() + self.files.len();
         let one_sequence = matches!(self.command, Command::Shrink | Command::Generate);
-        let compares = matches!(
-            self.command,
-            Command::Run | Command::Replay | Command::Shrink
-        );
-        let faults = [
+        vec![
             (
                 generates && (self.alphabet.is_none() || self.seeds.is_empty()),
                 "this command takes --alphabet and --seeds",
@@ -159,19 +174,35 @@ impl Options {
                 self.command == Command::Compare && self.files.len() != 2,
                 "compare takes two stream files",
             ),
+        ]
+    }
+
+    /// Faults in how the command is to replay them.
+    fn option_faults(&self) -> Vec<(bool, &'static str)> {
+        let compares = matches!(
+            self.command,
+            Command::Run | Command::Replay | Command::Shrink
+        );
+        let survey_of_files = self.command != Command::Replay || !self.files.is_empty();
+        vec![
             (
                 compares && self.repeats < 2,
                 "a comparison needs --repeats 2 or more",
             ),
             (
+                self.jobs > MOST_AT_ONCE,
+                "--jobs is at most 256: every replay has a display of its own, and the runner \
+                 has that many",
+            ),
+            (
+                self.parked && survey_of_files,
+                "--parked is replay's survey of an area's parked sequences, and takes no file",
+            ),
+            (
                 self.corpus && self.perturbation.is_some(),
                 "a perturbed divergence is not the application's and never joins the corpus",
             ),
-        ];
-        match faults.iter().find(|(fault, _)| *fault) {
-            Some((_, message)) => Err((*message).to_owned()),
-            None => Ok(()),
-        }
+        ]
     }
 }
 

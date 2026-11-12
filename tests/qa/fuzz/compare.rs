@@ -29,10 +29,22 @@ impl Divergence {
             .map_or("", |difference| difference.field.as_str())
     }
 
-    /// The first differing field with its list indexes taken out. Two divergences with one
-    /// signature are taken for the same one: the shrinker keeps to it.
+    /// The first differing field with its list indexes taken out.
     pub(crate) fn signature(&self) -> String {
         pattern_of(self.field())
+    }
+
+    /// Whether this is the divergence `other` is, shown by other steps: the same field
+    /// first, after the same action, between the same two values, whichever replay had
+    /// which. For a GLib warning the values are its messages. The shrinker keeps to this,
+    /// so that it cannot slide to another difference that happens to be on the same field.
+    pub(crate) fn is(&self, other: &Self) -> bool {
+        let (Some(ours), Some(theirs)) = (self.fields.first(), other.fields.first()) else {
+            return false;
+        };
+        let same_values = (&ours.left, &ours.right) == (&theirs.left, &theirs.right)
+            || (&ours.left, &ours.right) == (&theirs.right, &theirs.left);
+        self.signature() == other.signature() && self.action == other.action && same_values
     }
 
     /// The title a `divergence` issue takes: the area, the first differing field and the
@@ -81,8 +93,7 @@ pub(crate) fn compare(left: &Stream, right: &Stream, ignored: &Ignored) -> Optio
             .filter(|difference| !ignored.covers(&difference.field))
             .collect();
         if fields.is_empty() {
-            let fault = shared_fault(ours, theirs);
-            fields.extend(fault.filter(|fault| !ignored.covers(&fault.field)));
+            fields.extend(shared_fault(ours, theirs));
         }
         if !fields.is_empty() {
             return Some(Divergence {

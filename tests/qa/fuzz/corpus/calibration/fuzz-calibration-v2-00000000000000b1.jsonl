@@ -1,4 +1,4 @@
-{"scenario":"fuzz-calibration-00000000000000b1","modes":["columns"]}
+{"scenario":"fuzz-calibration-v2-00000000000000b1","modes":["columns"]}
 {"key":"Up"}
 {"fs":{"path":"fuzz-a.txt","write":"fuzz\n"}}
 {"click":{"entry":"documents"},"button":3,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}

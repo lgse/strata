@@ -7,28 +7,33 @@
 #                                             and compare the replays: the smoke tier
 #   ./scripts/qa-fuzz.sh run --alphabet calibration --seeds 7 --length 80 --repeats 3
 #   ./scripts/qa-fuzz.sh replay               every kept sequence of tests/qa/fuzz/corpus
-#   ./scripts/qa-fuzz.sh replay --alphabet calibration
+#                                             that is not parked
+#   ./scripts/qa-fuzz.sh replay --parked --repeats 24
+#                                             a survey: the parked ones, on purpose
 #   ./scripts/qa-fuzz.sh shrink --alphabet calibration --seeds 7
 #                                             shrink one seed's divergence and confirm it
 #                                             three times out of three; --corpus keeps it
 #   ./scripts/qa-fuzz.sh generate --alphabet calibration --seeds 7
 #                                             print the sequence, a scenario file
 #   ./scripts/qa-fuzz.sh scenario <file>      run a sequence file as the scenario it is
+#   ./scripts/qa-fuzz.sh compare <stream> <stream>
+#                                             compare two kept streams of one sequence
 #   ./scripts/qa-fuzz.sh check                read the alphabets, the map, the mask and the
 #                                             corpus, and print their counts
 #   --target gtk|rune                         the target every replay starts (default gtk)
-# The other selections are in docs/testing.md, "Fuzzing". A file is
-# named by its path under the checkout. Artifacts go to target/qa-fuzz/<area>/<sequence>.
-# Shares target/qa-container with qa.sh: one QA script at a time.
+# The commands and their other selections are the runner's (tests/qa/fuzz/options.rs): it
+# refuses what it does not know and prints them. A file is named by its path under the
+# checkout. Artifacts go to target/qa-fuzz/<area>/<sequence>.
+# Shares target/qa-container with qa.sh, so one QA script at a time. The script takes no
+# lock of its own: on a machine several sessions share, the caller holds theirs.
 set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-usage='Usage: scripts/qa-fuzz.sh run|replay|shrink|generate|scenario|compare|check [selections] [--target gtk|rune]
+usage='Usage: scripts/qa-fuzz.sh <command> [selections] [--target gtk|rune]
 See the head of this script, and docs/testing.md, "Fuzzing".'
 case "${1:-}" in
-  run|replay|shrink|generate|scenario|compare|check) ;;
-  *) echo "$usage" >&2; exit 2 ;;
+  ""|-*) echo "$usage" >&2; exit 2 ;;
 esac
 target=gtk
 arguments=()
@@ -69,5 +74,7 @@ exec "$engine" run "${options[@]}" "${mounts[@]}" \
       cargo build --locked -p strata-rune --features qa
       export STRATA_QA_RUNE_BINARY="$CARGO_TARGET_DIR/debug/strata-rune"
     fi
-    cargo test --locked --features qa,invariant-checks --test qa -- fuzz "$@"
+    # --fuzz first sends the runner to the fuzz driver; it is an option, so that no test
+    # filter can be taken for it.
+    cargo test --locked --features qa,invariant-checks --test qa -- --fuzz "$@"
   ' bash "${arguments[@]}"

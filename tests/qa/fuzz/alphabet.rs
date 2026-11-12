@@ -17,7 +17,7 @@ use std::{
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::{DATA, sequence::Sequence};
+use super::{DATA, generate::GENERATOR, observe::digest, sequence::Sequence};
 use crate::REPOSITORY;
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +47,10 @@ pub(crate) struct Action {
     #[serde(default)]
     pub(crate) choose: BTreeMap<String, Vec<String>>,
 }
+
+/// The file beside the alphabets that pins each one's version to what its seeds write:
+/// `<area> v<version> <digest>`, one line for each alphabet, sorted by area.
+pub(crate) const PINS: &str = "pins";
 
 pub(crate) fn directory() -> PathBuf {
     Path::new(REPOSITORY).join(DATA).join("alphabets")
@@ -85,6 +89,8 @@ pub(crate) fn load(area: &str) -> Result<Alphabet, String> {
             alphabet.area
         ));
     }
+    let pins = fs::read_to_string(directory().join(PINS)).unwrap_or_default();
+    alphabet.check_pin(&pins)?;
     Ok(alphabet)
 }
 
@@ -105,6 +111,61 @@ fn is_area(name: &str) -> bool {
 }
 
 impl Alphabet {
+    /// A digest of everything a seed's sequence depends on: the generator's version, the
+    /// header, and each action's name, weight, steps and choices, in the file's order.
+    /// Comments and `about` are not in it.
+    pub(crate) fn digest(&self) -> String {
+        let actions: Vec<Value> = self
+            .actions
+            .iter()
+            .map(|action| {
+                serde_json::json!({
+                    "name": action.name,
+                    "weight": action.weight,
+                    "steps": action.steps,
+                    "choose": action.choose,
+                })
+            })
+            .collect();
+        digest(&serde_json::json!({
+            "generator": GENERATOR,
+            "header": self.header,
+            "actions": actions,
+        }))
+    }
+
+    /// The line that pins this alphabet as it is.
+    pub(crate) fn pin(&self) -> String {
+        format!("{} v{} {}", self.area, self.version, self.digest())
+    }
+
+    /// Holds the alphabet to its line in `pins`. A seed means nothing across versions, so
+    /// a change to what seeds write without a new version would leave parked seeds and
+    /// kept results naming sequences nobody replayed.
+    pub(crate) fn check_pin(&self, pins: &str) -> Result<(), String> {
+        let pin = self.pin();
+        let pinned = pins
+            .lines()
+            .find(|line| line.split_whitespace().next() == Some(self.area.as_str()));
+        match pinned {
+            Some(line) if line == pin => Ok(()),
+            Some(line) if line.split_whitespace().nth(1) == pin.split_whitespace().nth(1) => {
+                Err(format!(
+                    "the alphabet {} writes other sequences than its version {} did: raise \
+                     `version`, then write `{} v<version> <digest>` in {DATA}/alphabets/{PINS} \
+                     (the digest is now {})",
+                    self.area,
+                    self.version,
+                    self.area,
+                    self.digest()
+                ))
+            }
+            _ => Err(format!(
+                "{DATA}/alphabets/{PINS} does not pin the alphabet as it is: its line is `{pin}`"
+            )),
+        }
+    }
+
     pub(crate) fn weight(&self) -> u64 {
         self.actions
             .iter()
