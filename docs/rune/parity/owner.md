@@ -13,6 +13,17 @@ session's notes, the item says so.
 
 ### Tracking and findings
 
+- **Does a `scope` row that names another package count as pending outside the package?**
+  The plan's deliverable 4 says an area package closes with no `scope` run left. But
+  `docs/testing.md` ("The ledger", the `pending` statuses) defines `scope` as a run that needs
+  a part of the interface no package has ported yet. So an A1 row that stays `scope` with
+  another package named as its blocker, such as `right-click-selects-entry/icons-file` waiting
+  on B3's opener, would stop A1 from ever closing. Every area package meets this. The two
+  readings: such a row counts as "pending on a blocker outside the package", or it needs
+  another reason code or another owner. Default in force, the orchestrating session's: it
+  counts as outside the package, provided the row names the blocking package and what it
+  waits for, and E1 closes whatever is left. Source: the review of A1's
+  [#2199](https://github.com/lgse/strata/pull/2199), 2026-11-12.
 - **What a reference to a new finding looks like.** Every record behind an exception names
   its reference, and the readers accept two forms only. `tests/qa/twins.rs` (lines 70 to 99)
   and `scripts/qa_parity_check.py` (lines 239 to 263) take a packet entry,
