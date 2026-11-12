@@ -58,8 +58,9 @@ Rules that keep them in step:
 
 Merges should stay cheap because `src/ui`, `src/assets` and `src/qa` never move on the
 branch. What needs a hand merge is a fix that touches code an extraction has rewritten.
-One part of `src/ui` did move, by an owner ruling: the settings schema.
-[slice/V5b](slice/V5b-settings-store.md) says where a change from `main` goes.
+Two parts of `src/ui` did move, by owner rulings: the settings schema, and the four stores
+both interfaces keep. [slice/V5b](slice/V5b-settings-store.md) and
+[shared-state.md](shared-state.md) say where a change from `main` goes.
 
 ## Target layout on the branch
 

@@ -143,6 +143,9 @@ Apply it to the moved file by hand:
 A new setting on `main` therefore needs a hand merge of its field and its default. Its
 setter, its binding and its tests merge as before.
 
+Files that moved after the slice, starting with the per-folder views' model, are in
+[shared-state.md](../shared-state.md#merging-from-main).
+
 ## Tests
 
 The tests did not move. `src/ui/preferences/tests` and `fixtures.rs` exercise the moved
