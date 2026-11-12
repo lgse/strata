@@ -665,3 +665,26 @@ fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
         },
     );
 }
+
+/// An empty folder's column is described as GTK's directory surface on a column is then, and
+/// draws what it says (`show_empty` in `src/ui/browser/presentation.rs`): the mirrored
+/// `archive`, the fixture's empty folder.
+#[test]
+fn an_empty_column_says_so() {
+    hosted("an_empty_column_says_so", |mut host| {
+        let folder = fixture();
+        open(&mut host, folder.path());
+        press(&mut host, "Down");
+        press(&mut host, "Up");
+        let empty = "This directory is empty";
+
+        let seen = wait(&mut host, "the empty column's status", |seen| {
+            seen.panes.get(1).is_some_and(|pane| pane.list[2] == empty)
+        });
+
+        assert_eq!(seen.panes[1].list[1], "archive");
+        assert!(seen.panes[1].rows.is_empty());
+        let tree = host.tree().to_string();
+        assert!(tree.matches(empty).count() >= 2, "drawn and heard: {tree}");
+    });
+}

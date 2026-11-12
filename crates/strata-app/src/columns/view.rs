@@ -10,7 +10,6 @@ use strata_components::{
 use strata_core::i18n::tr;
 
 use super::intents;
-use crate::listing::Load;
 use crate::{App, rename};
 
 /// The view's words, translated once: the language changes only on restart.
@@ -31,16 +30,21 @@ impl Labels {
     }
 }
 
-/// What a column shows in place of rows when its folder could not be read: the browser's
-/// message.
-fn failure(app: &App, depth: usize) -> Option<El> {
-    let Load::Failed(message) = app.columns.listings.columns.get(depth)?.load() else {
-        return None;
-    };
+/// What column `depth` says in place of rows while it shows none ([`crate::surface`]), and
+/// whether it draws it.
+fn status(app: &App, depth: usize) -> Option<(&str, bool)> {
+    let listing = app.columns.listings.columns.get(depth)?;
+    app.columns.surface.status(depth, listing)
+}
+
+/// What a column draws in place of rows: the empty page's text or the browser's message, as
+/// GTK's column draws them (`show_empty` and `show_error` in `src/ui/browser/presentation.rs`).
+fn shown_status(app: &App, depth: usize) -> Option<El> {
+    let (message, _) = status(app, depth).filter(|(_, drawn)| *drawn)?;
     let look = &app.look;
     Some(
         col().w_full().px(look.space.lg).py(look.space.lg).child(
-            text(message.clone())
+            text(message.to_owned())
                 .font(look.kit.ty.ui)
                 .color(look.kit.c.text_muted),
         ),
@@ -62,7 +66,12 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     )
     .labels(app.columns.labels.0.clone())
     .collection(|app, depth, collection| {
-        let collection = collection.empty(move |app: &App| failure(app, depth));
+        let collection = collection.empty(move |app: &App| shown_status(app, depth));
+        // A column with no rows is described as GTK's directory surface is then.
+        let collection = match status(app, depth) {
+            Some((said, _)) => collection.description(said.to_owned()),
+            None => collection,
+        };
         let collection = match &app.columns.keys {
             Some(keys) => collection.settings(keys.clone()),
             None => collection,
