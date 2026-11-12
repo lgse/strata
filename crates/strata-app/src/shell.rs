@@ -17,6 +17,7 @@ use strata_components::contract::EntryId;
 use strata_components::header::{
     self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
 };
+use strata_components::thumbnails::{Settings, ThumbnailStore};
 use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::sort_preferences;
 use strata_fs::{
@@ -83,6 +84,9 @@ pub(crate) struct Window {
     /// How many of the browser's events, and of the rows they copied, `apply_queued` has
     /// seen, for its trace line.
     applied: (u64, u64),
+    /// The window's decoded thumbnails, which every view that draws them reads, each through
+    /// a viewer of its own ([`crate::thumbnails`] has the render pool, one per process).
+    thumbnails: ThumbnailStore,
 }
 
 /// The window's own share of an event: the columns or the active one changed, so the window
@@ -145,6 +149,7 @@ impl App {
         });
         let built = Built::new(&setup);
         let keys = Live::registered(saved);
+        let thumbnails = thumbnail_store(saved);
         let window = Window {
             settings,
             events,
@@ -157,6 +162,7 @@ impl App {
             keys,
             labels: Labels::translated(),
             applied: (0, 0),
+            thumbnails,
         };
         Self::assemble(Look::fallback(true), browser, window, built)
     }
@@ -250,6 +256,27 @@ fn title_for(location: Option<&Location>) -> String {
 
 pub(crate) fn csd_of(app: &mut App) -> &mut Csd {
     &mut app.window.csd
+}
+
+/// The store and the pool as the saved settings set them: thumbnails on or off, and the
+/// number of workers (`thumbnail_workers`, which GTK hands the pool the same way).
+fn thumbnail_store(saved: &strata_desktop::settings::Preferences) -> ThumbnailStore {
+    strata_preview::sandbox::browser::set_worker_limit(saved.thumbnail_workers);
+    let mut store = ThumbnailStore::new(Settings::default());
+    let _ = store.set_enabled(saved.show_thumbnails);
+    store
+}
+
+impl Window {
+    /// The window's thumbnails, for a view's handlers: borrow this field with the view's own.
+    pub(crate) fn thumbnails_mut(&mut self) -> &mut ThumbnailStore {
+        &mut self.thumbnails
+    }
+}
+
+/// The window's thumbnails, as a view's build reads them.
+pub(crate) fn thumbnails(app: &App) -> &ThumbnailStore {
+    &app.window.thumbnails
 }
 
 /// The view that is shown, as the parts that work in it see it: the rename editor, a context

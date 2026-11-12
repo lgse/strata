@@ -6,7 +6,7 @@ use rune::El;
 use strata_components::icons_grid::{IconsGrid, IconsParts};
 
 use super::{Icons, VIEW};
-use crate::{App, single, slots::Frame};
+use crate::{App, shell, single, slots::Frame};
 
 pub(super) fn grid() -> IconsGrid<App> {
     IconsGrid::new(
@@ -19,10 +19,15 @@ pub(super) fn grid() -> IconsGrid<App> {
             size: app.icons.size,
             listing: app.icons.single.pane.version(),
             look: &app.look,
-            thumbs: None,
+            thumbs: app.icons.thumbs.id().map(|id| (shell::thumbnails(app), id)),
         },
         |app: &mut App| &mut app.icons.grid,
     )
+    .thumbs_mut(|app: &mut App| {
+        let id = app.icons.thumbs.id()?;
+        let source = app.icons.single.pane.source();
+        Some((app.window.thumbnails_mut(), id, source))
+    })
 }
 
 /// The view: the pane's group around the grid.

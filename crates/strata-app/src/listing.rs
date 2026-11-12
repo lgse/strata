@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 
-use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget};
+use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget, ThumbKey};
 use strata_core::{
     i18n::tr,
     model::{EntryKind as Kind, FileEntry, Location},
@@ -97,6 +97,10 @@ pub(crate) struct Row {
     kind: EntryKind,
     described: Described,
     hidden: bool,
+    /// The key of the entry's thumbnail, for a file that gets one ([`crate::thumbnails`]): a
+    /// hash, so a row holds eight bytes for it and no path. A view finds the file again
+    /// through the browser.
+    thumbnail: Option<ThumbKey>,
 }
 
 impl Row {
@@ -108,6 +112,7 @@ impl Row {
             kind,
             described,
             hidden: entry.is_hidden,
+            thumbnail: crate::thumbnails::key_of(entry),
         }
     }
 
@@ -328,7 +333,11 @@ impl EntrySource for Column {
     fn entry(&self, index: usize) -> Entry<'_> {
         let row = &self.rows[self.shown[index]];
         // No icon name: the view falls back to its folder and file icons.
-        Entry::new(row.id, &row.name, row.kind, "")
+        let entry = Entry::new(row.id, &row.name, row.kind, "");
+        match row.thumbnail {
+            Some(key) => entry.thumbnail(key),
+            None => entry,
+        }
     }
 }
 
