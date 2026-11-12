@@ -195,7 +195,7 @@ that the Rune interface matches the same catalog through the same tables.
 | `keys/label.rs` | `Keys`, `Shown`, `Digits`, `Letters`, `label` and the functions beside it |
 
 The moved files changed in visibility, in paths, and where they called GDK or the
-preference manager, which are the three seams below. Five new files hold what is new:
+preference manager, which are the three seams below. Six new files hold what is new:
 
 | New in `crates/strata-desktop/src/keys/` | Holds |
 | --- | --- |
@@ -204,6 +204,7 @@ preference manager, which are the three seams below. Five new files hold what is
 | `active.rs` | `Active`, `Fixed` and `set_active` |
 | `alias.rs` | `rewrite` and `Context`: the half of `src/ui/keys/alias.rs` that touches no widget, moved as text |
 | `parts.rs` | `KeyPress::from_parts`, for an interface whose events are not GDK's |
+| `command/matcher.rs` | What a `Matcher` reads (`command()`, `map()`, `ignored()`), for an interface that lists the keys its commands answer. `command.rs` declares the module and takes nothing else. Whether a structural matcher reads its command's alternates as pressed is not exposed: its type is private to `command.rs` |
 
 ### Keys and modifiers
 
@@ -494,6 +495,7 @@ Where each file is:
 | `src/ui/keys/bindings.rs`, the files under `bindings/`, `command.rs`, `label.rs` | The file of the same name under `crates/strata-desktop/src/keys/` |
 | `src/ui/keys/alias.rs` | The same file as on `main`, less the rewrite. A change from `main` to `FALLBACK`, `Context`'s fields, `Aliasing`, `Alias`, `structural` or `rewrite` conflicts there, against lines that are gone, and is applied by hand to `crates/strata-desktop/src/keys/alias.rs`. `Context::of` and `Context::of_controller` are the free functions `context_of` and `context_of_controller` |
 | `src/ui/keys/capture.rs`, `composition.rs`, `conflicts.rs` and every test under `src/ui/keys/` | The same file as on `main` |
+| A change to `Matcher`'s fields in `command.rs` | It merges clean. `keys/command/matcher.rs`, which is new on this branch and reads `command`, `map` and `ignored` by name, then does not build, or builds and answers for a field that no longer says it: carry the change into its three accessors by hand |
 | A new item in a moved key file | It merges clean. `pub(crate)` builds in `strata-desktop` and fails where the application names the item: make it `pub`, and re-export it from `src/ui/keys/mod.rs` |
 | A new `#[cfg(test)]` item in a moved key file, such as a test's helper or a listing | It merges clean and compiles in `strata-desktop`, where the application's tests cannot see it: they are another crate's, and `cfg(test)` is on only for the crate under test. Make it `#[cfg(any(test, feature = "test-support"))]` and `pub`, as the move did for every such item, and re-export it from `src/ui/keys/mod.rs` under `#[cfg(test)]`. A new name that `src/ui/keys/command/tests.rs` takes from `super::` is added to the test-only `mod command` in `src/ui/keys/mod.rs` |
 | A call of GDK or GTK in a moved key file, or of `PreferenceManager` | It merges clean and does not build. A question about a key goes through `Key`'s methods, to the backend; a live setting through `Active`. A new question is a new method of the trait, answered in `src/ui/keys/gdk_backend.rs` |
