@@ -3,8 +3,14 @@
 //! A row's file type, as the List view groups rows by it: `entry_type`'s description in
 //! strata-fs, which GTK's grouped List orders and heads its groups by
 //! (`entry_model_value` and `type_group_header_factory` in `src/ui`). A row keeps a small key
-//! into one table of the descriptions met, not a string of its own; the table holds one name
-//! for each type the desktop's MIME database describes, and no more.
+//! into one table of the descriptions met, not a string of its own.
+//!
+//! - **One table, on the interface thread only:** a thread-local, filled and read where the
+//!   browser's events are read and the views built, never from a worker.
+//! - **Bounded** by the descriptions there are: one for each type the desktop's MIME database
+//!   describes, plus Folder, Broken link and Other. A name is added once and never removed.
+//! - **A key's number means nothing:** it is the order types were first met. The order of
+//!   groups comes from strata-fs's `compare_type_groups`, never from the key.
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
