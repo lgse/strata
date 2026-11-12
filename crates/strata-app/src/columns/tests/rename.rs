@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use rune::{Key, KeyEvent, Mods, PhysicalInput};
+use rune::{Key, KeyEvent, Mods};
 
 use super::{
     MODULE, Seen, assert_browser_agrees, click, find, fixture, folder_name, has_state, host_listed,
@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     host::offscreen::Offscreen,
-    test_support::{PATIENCE, hosted_after},
+    test_support::{PATIENCE, hosted_after, send_key},
 };
 
 /// The rename field, as assistive technology hears it.
@@ -80,13 +80,8 @@ fn select_all(host: &mut Offscreen) {
         cmd: true,
         ..Mods::default()
     };
-    let runtime = host.runtime();
-    runtime.physical_input(PhysicalInput::Modifiers(mods));
-    runtime.key(KeyEvent {
-        key: Key::Command('a'),
-        mods,
-    });
-    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
+    let key = Key::Command('a');
+    send_key(host, KeyEvent { key, mods });
     idle(host);
 }
 

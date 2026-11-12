@@ -3,19 +3,23 @@
 //! The registry over the window the crate registers: what a key, a menu row and a button
 //! reach, and what the catalog reads of the saved settings.
 
-use rune::{Key, KeyEvent, Mods, PhysicalInput, Tx};
+use rune::{Key, KeyEvent, Mods, Tx};
+use strata_components::contract::Rect;
 use strata_core::model::Location;
-use strata_desktop::keys::{Map, SHORTCUT_MODIFIERS};
+use strata_desktop::keys::{Map, Modifiers, SHORTCUT_MODIFIERS};
 
 use super::{On, Outcome, Reads, Stage, bound, has, run};
 use crate::{
     App,
     host::offscreen::Offscreen,
+    menus::{self, Request},
     shell,
-    test_support::{PATIENCE, fixture, hosted, hosted_after},
+    test_support::{PATIENCE, fixture, hosted, hosted_after, send_key},
 };
 
 const MODULE: &str = "commands::tests";
+
+mod routing;
 
 /// Opens the fixture and waits for the browser to list it.
 fn listed(host: &mut Offscreen) -> tempfile::TempDir {
@@ -29,10 +33,7 @@ fn listed(host: &mut Offscreen) -> tempfile::TempDir {
 
 /// A key with its modifiers held, as a keyboard sends one.
 fn press(host: &mut Offscreen, key: Key, mods: Mods) {
-    let runtime = host.runtime();
-    runtime.physical_input(PhysicalInput::Modifiers(mods));
-    runtime.key(KeyEvent { key, mods });
-    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
+    send_key(host, KeyEvent { key, mods });
     while host.turn() {}
 }
 
@@ -124,6 +125,44 @@ fn a_command_runs_by_its_name_as_it_does_by_its_key() {
     );
 }
 
+/// `input_owner` gives a menu every key, so the chain's commands wait under one; what follows
+/// a key the chain left still runs there, and refresh is one of those window actions
+/// (`input_owner.rs:21`, `keyboard.rs:147`).
+#[test]
+fn under_an_open_menu_the_chains_commands_wait_and_refresh_still_runs() {
+    hosted(
+        MODULE,
+        "under_an_open_menu_the_chains_commands_wait_and_refresh_still_runs",
+        |mut host| {
+            let _folder = listed(&mut host);
+            let shown = |host: &Offscreen| host.app().browser().preferences().show_hidden;
+            let before = shown(&host);
+            let ctrl = Mods {
+                cmd: true,
+                ctrl: true,
+                ..Mods::default()
+            };
+            act(&mut host, |app, tx| {
+                let folder = Request {
+                    depth: 0,
+                    entry: None,
+                    anchor: Rect::new(40.0, 80.0, 0.0, 0.0),
+                };
+                menus::open(app, folder, tx);
+            });
+            assert!(host.app().menu.state.is_open());
+
+            press(&mut host, Key::Command('h'), ctrl);
+            assert_eq!(shown(&host), before, "Ctrl+H waited under the menu");
+
+            let copied = host.app().rows_copied();
+            press(&mut host, Key::Function(5), Mods::default());
+            let read_again = host.run_until(PATIENCE, |host| host.app().rows_copied() > copied);
+            assert!(read_again, "F5 read nothing under the menu");
+        },
+    );
+}
+
 /// What each of the header's five buttons does comes from the registry. None has a command
 /// until the part that owns it registers one, and the list shrinks as those parts land.
 #[test]
@@ -157,7 +196,7 @@ fn the_keys_a_command_answers_are_listed_with_their_catalog_command_and_stage() 
         MODULE,
         "the_keys_a_command_answers_are_listed_with_their_catalog_command_and_stage",
         |host| {
-            let mut refresh = None;
+            let mut refresh = Vec::new();
             for key in bound(host.app()) {
                 let Reads::Commands(matchers) = key.reads else {
                     continue;
@@ -166,12 +205,15 @@ fn the_keys_a_command_answers_are_listed_with_their_catalog_command_and_stage() 
                     assert_eq!(Some(matcher.command()), key.command, "{}", key.id);
                 }
                 if key.id == "refresh" {
-                    refresh = Some((key.stage, matchers[0].map(), matchers[0].ignored()));
+                    refresh.push((key.stage, matchers[0].map(), matchers[0].ignored()));
                 }
             }
             assert_eq!(
                 refresh,
-                Some((Stage::FileCommands, None, SHORTCUT_MODIFIERS))
+                [
+                    (Stage::FileCommands, None, SHORTCUT_MODIFIERS),
+                    (Stage::AfterYield, None, Modifiers::empty()),
+                ]
             );
         },
     );
