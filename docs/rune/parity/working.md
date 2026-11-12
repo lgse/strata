@@ -132,7 +132,10 @@ The checkpoint a package feeds is its wave's, in the plan's
   `./scripts/quality.sh test`. No mutation set is run: a patch is proven once, alone, as the
   plan's [When a mutation run is right](README.md#when-a-mutation-run-is-right) says.
 - **The merge**, once the gate and the checks in place of CI have passed and the review is
-  answered; on `strata-next` it does not wait for CI, which does not run. A merge commit,
+  answered; on `strata-next` it does not wait for CI, which does not run. A `CI` run that does
+  appear on a pull request into `strata-next` (started before CI was turned off there, or by
+  hand) is not waited for, and a red one is not a reason to hold a merge whose own checks
+  passed. A merge commit,
   `gh pr merge <number> -R lgse/strata --merge`, never a squash or a rebase
   ([`owner.md`](owner.md#ruled)).
 - **A GTK unit test failing on something the change did not touch** (in

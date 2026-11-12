@@ -593,11 +593,11 @@ check skipped is named with its reason. This list is the orchestrating session's
 
 | When | Check |
 | --- | --- |
-| Always | `typos` |
-| `scripts/`, `tests/qa/`, a ledger row, a twin or a mutation patch changed | `mise run scripts`: the Python tests under `scripts/`, which hold the ledger, the mutation patches' rules and the fuzz files |
+| Always | `typos`, and `mise run scripts`: the Python tests under `scripts/`, which hold the ledger, the mutation patches' rules and the fuzz files, and read `.github/workflows/`, `tests/container/`, the manifests and `packaging/`. CI ran them on every pull request; they take seconds |
 | `src/`, a shared crate, `tests/` or a manifest changed | `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` |
 | A Rune-side crate changed | The Rune lane's `cargo fmt --all --check`, and `cargo clippy $(python3 scripts/lanes.py rune) --all-targets --all-features --locked -- -D warnings` |
 | `src/` or a shared crate changed | `./scripts/quality.sh test`. With CI off it is the only run of the GTK unit tests, so it is required there |
+| `src/` or a shared crate changed | The build without UnRAR: the GTK lane checked with `--no-default-features --features test-support`, and four tests under it, below |
 | A manifest, `Cargo.lock` or `deny.toml` changed | `cargo deny check`, and the two `cargo tree` guards of `ci.yml`'s "Quality build and lint", below |
 
 The two guards, from the repository root; each holds when it prints nothing:
@@ -606,6 +606,31 @@ The two guards, from the repository root; each holds when it prints nothing:
 cargo tree --locked --no-default-features -e normal,build --prefix none | grep -E "^unrar(_sys)? v"
 { cargo tree --locked --no-default-features -e normal,build --prefix none; cargo tree --locked -e normal,build --prefix none; } | grep -E "^(x11rb|wayland-client|wayland-protocols-(misc|wlr)|xkbcommon) v"
 ```
+
+The build without UnRAR, from `ci.yml`'s step "Check and exercise the build without UnRAR".
+CI runs it inside the pinned image, by a `docker run` of the quality image, and no script
+wraps it; `./scripts/test-headless.py` cannot select `--no-default-features`. The same
+commands run on the host from the repository root, the last under the private Xvfb and
+D-Bus session the workflow gives it, never the desktop's:
+
+```bash
+gtk="$(python3 scripts/lanes.py gtk)"
+cargo check --locked $gtk --all-targets --no-default-features --features test-support
+cargo test --locked $gtk --all-targets --no-default-features --features test-support launch_mode
+cargo test --locked $gtk --all-targets --no-default-features --features test-support services::operations::tests
+cargo test --locked $gtk --all-targets --no-default-features --features test-support rar_disabled
+xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- \
+  env -u WAYLAND_DISPLAY GDK_BACKEND=x11 GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
+  cargo test --locked $gtk --all-targets --no-default-features --features test-support archive_extraction_actions_follow_build_support
+```
+
+Where the loss is largest:
+
+- **A merge of `main` into `strata-next`** brings GTK changes with no CI run. Whoever is
+  delegated one runs the full gate, `./scripts/quality.sh test` and the build without UnRAR
+  included.
+- **`cargo deny`** no longer sees a new advisory on `strata-next` unless a manifest changes
+  there; `main`'s CI still checks nearly the same lock file.
 
 ### When a mutation run is right
 

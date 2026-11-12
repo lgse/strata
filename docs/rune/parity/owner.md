@@ -123,7 +123,9 @@ are in force meanwhile. Source: the archived issue
 - **The trigger change must not reach `main` at the cutover.** `ci.yml` on `strata-next` no
   longer runs for `strata-next`'s pushes and pull requests; if `main` takes `strata-next` by
   merge at [E4](packages/E4.md), that change must not turn CI off for anything `main` needs.
-  Meanwhile: E4 owns it. Source: the pull request that changed the triggers.
+  The review of that pull request finds it harmless there: `push` on `main` and "ignore pull
+  requests based on `strata-next`" turn off nothing `main` needs, so this is not urgent.
+  Meanwhile: E4 checks it. Source: the pull request that changed the triggers.
 
 ### B2: Shared state out of the GTK package
 
