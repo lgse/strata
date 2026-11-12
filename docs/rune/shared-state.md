@@ -234,6 +234,8 @@ own queued table and its own set of changed keys, which never emptied.
 - **A part reads** `Setup::settings` once when it is built, and keeps what it shows in its
   own state. Nothing follows a change made by another window or another process.
 - The shell saves the sort and the hidden-files choice the same way.
+- **One `Saved` for the process.** `startup::load_settings` makes it and the window owns it.
+  A second window on Rune would have to share it, which is an open question for the owner.
 
 Sharing the bookkeeping changed what the Rune interface writes, to what the GTK application
 writes:

@@ -19,6 +19,8 @@ use strata_desktop::settings::{
 
 use crate::{App, slots::Later};
 
+/// One for the process, made at start-up and owned by the window: two would lose each
+/// other's saves (`strata_desktop::settings::Saving`).
 pub(crate) struct Saved {
     preferences: Preferences,
     saving: Saving,
