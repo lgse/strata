@@ -172,11 +172,12 @@ its `Preferences` however it holds state, changes them, and commits.
 | `load() -> (Preferences, Saving)` | Reads the file, salvaged and brought within range, and starts the bookkeeping. What loading repaired is saved with the first change |
 | `Saving::commit(&mut self, &Preferences) -> Commit` | Finds a change by comparing with the values of the commit before, and queues a save of the keys changed since a save last succeeded. The commit says whether anything changed, hands back the pending save, and names a problem: the file was unreadable at start-up, or the values could not be put in the file's form |
 | `PendingSave::finished().await`, `Saving::saved(FinishedSave) -> SaveOutcome` | The interface awaits the save where it awaits things and tells the bookkeeping how it went: saved, failed, or superseded by a later save. A writer that went away is a cancelled write |
-| `record_adopted`, `rebase` | Values another process saved and this one adopted are not saved again; a repair made at start-up is not a change |
+| `record_adopted`, `rebase` | Values another process saved and this one adopted are not saved again; a repair made at start-up is not a change. Each is safe only as GTK calls it: `record_adopted` for keys the caller found not unsaved, and `rebase` at start-up, before the first commit |
 | `revision`, `setting_unsaved`, `unsaved`, `load_failure`, the start-up locale and renderer | What an interface reads |
 
 Nothing in it schedules or calls back, so `strata_desktop::settings` still uses no GLib main
-context. Its bodies are the manager's, moved as text: `load`, `save_preferences`,
+context. `load` applies nothing process-wide: the caller sets the locale from
+`Saving::startup_locale`. Its bodies are the manager's, moved as text: `load`, `save_preferences`,
 `queue_settings_save`, `settings_saved`, and the bookkeeping inside
 `normalize_loaded_theme_selection` and `adopt_defaults`.
 
@@ -202,7 +203,12 @@ Two things it keeps exactly as GTK had them, because changing either changes wha
   `save_preferences` asserts in debug builds that they agree.
 - **The process-wide effects of loading:** reduced motion, the date format and the locale
   are applied by `PreferenceManager::load`, from what the shared `load` returned.
-- **`shared()`, `existing()` and the thread-local.** The bookkeeping is not a singleton.
+- **`shared()`, `existing()` and the thread-local.** `Saving` keeps no instance of itself,
+  and there must be exactly one for the file in a process. The settings writer coalesces
+  the saves queued for a path and gives every waiting save the result of the newest
+  contents, so a second `Saving` would be told its save succeeded and forget keys that were
+  never written. GTK's one is the shared manager's. The Rune interface holds one for the
+  process, and whether a second Rune window shares it is an open question for the owner.
 
 ### The rule for a setter's body
 
@@ -220,11 +226,14 @@ is its state bookkeeping and its persistence.
 
 `src/ui/preferences/tests` and `fixtures.rs` did not move. They drive the real path, setter
 to commit to writer, through the manager, and are the saved-preferences coverage
-[preferences.md](../preferences.md) describes. `settings/saving/tests.rs` adds seven tests of
-what only the bookkeeping promises, each in a process of its own and with no GLib context:
-only changed keys are written, an unreadable file is never saved over, a failed save is
-tried again, only the latest save counts, a save nobody reports is written again, adopted
-values are not saved back, and a start-up repair is no change.
+[preferences.md](../preferences.md) describes. `settings/saving/tests.rs` adds eight tests of
+what only the bookkeeping promises, each in a process of its own. A save's result is polled
+by hand, so they show that delivering it needs no executor and no dispatch; the helper that
+waits for the writer does iterate GLib's default context. They cover: only changed keys are
+written, a salvaged file is saved with every value loading filled in, an unreadable file is
+never saved over, a failed save is tried again, only the latest save counts, a save nobody
+reports is written again, adopted values are not saved back, and a start-up repair is no
+change.
 
 ## Merging from `main`
 
@@ -256,12 +265,15 @@ Where each file is:
 | --- | --- |
 | `src/ui/preferences/folder_views.rs`, `folder_views/keys.rs`, `folder_views/tests.rs` | The file of the same name under `crates/strata-desktop/src/settings/` |
 | `mod folder_views;` in `src/ui/preferences.rs` | `use strata_desktop::settings::folder_views;` in the same file |
-| `src/ui/preferences/folder_view_settings.rs`, `trashed.rs` | The same file as on `main` |
+| `src/ui/preferences/folder_view_settings.rs` | The same file as on `main`, with the lines of `adopt_defaults_saved_elsewhere` and `adopt_defaults` that the rows on `Saving` below name |
+| `src/ui/preferences/trashed.rs` | The same file as on `main` |
 | `src/ui/tabs_session.rs`, `tabs_session/tests.rs` | The file of the same name under `crates/strata-desktop/src/` |
 | `mod tabs_session;` in `src/ui/mod.rs` | `use strata_desktop::tabs_session;` in the same file |
-| A getter or setter of `PreferenceManager`, a binding, a notice, a test or the fixture | The same file as on `main`: none of them moved or changed |
-| `PreferenceManager`'s fields and `load` in `src/ui/preferences.rs`; `src/ui/preferences/persistence.rs`; the bookkeeping in `adopt_defaults` (`folder_view_settings.rs`) and in `normalize_loaded_theme_selection` | Rewritten around `Saving`. A change from `main` conflicts there and is applied by hand: to `crates/strata-desktop/src/settings/saving.rs` when it changes what is recorded or saved, to the wrapper when it changes what GTK does around it |
+| A getter or setter of `PreferenceManager`, a binding, a notice, a test or the fixture | The same file as on `main`. Five lines of those files changed, and a change from `main` beside one conflicts there: `appearance_settings.rs:200` and `:213` (the two start-up values, now read from `Saving`), and three assertions that read `saving.borrow().unsaved()` (`bindings/tests.rs:92` and `:96`, `tests/preferences/saving.rs:259`) |
+| `PreferenceManager`'s fields and `load` in `src/ui/preferences.rs`; `src/ui/preferences/persistence.rs`; in `folder_view_settings.rs`, the load-failure read at `:385` and the bookkeeping in `adopt_defaults`; the bookkeeping in `normalize_loaded_theme_selection` | Rewritten around `Saving`. A change from `main` conflicts there and is applied by hand: to `crates/strata-desktop/src/settings/saving.rs` when it changes what is recorded or saved, to the wrapper when it changes what GTK does around it |
 | A new process-wide effect of loading | `PreferenceManager::load` in `src/ui/preferences.rs`, after the shared `load` |
+| A new call of `changes.record` or `changes.reset_baseline` | It merges clean and builds, and the next `save_preferences` then panics in debug builds, so in the QA runs: the bindings' snapshot and `Saving`'s no longer agree. Add the matching call beside it: `commit` for a save, `record_adopted` for adopted values, `rebase` for a start-up repair |
+| A new use of `last_queued`, `dirty_keys`, `persistence_dirty`, `saves_requested`, `load_failure` or a start-up value | It merges clean and does not build: the field is in `Saving` now |
 
 [slice/V5b](slice/V5b-settings-store.md#merging-from-main) has the table for the settings
 schema.
