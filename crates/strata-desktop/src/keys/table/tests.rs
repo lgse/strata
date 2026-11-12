@@ -45,7 +45,7 @@ fn every_declared_key_reads_back_by_its_own_name() {
 }
 
 #[test]
-fn a_character_is_its_latin_1_or_unicode_keysym_and_a_named_key_types_nothing() {
+fn a_character_is_its_latin_1_or_unicode_keysym_and_only_keypad_keys_type_by_name() {
     for code in (0x20..=0x7e).chain(0xa0..=0xff) {
         let character = char::from_u32(code).expect("a Latin-1 character");
         let key = Table.key_from_unicode(character);
@@ -57,12 +57,17 @@ fn a_character_is_its_latin_1_or_unicode_keysym_and_a_named_key_types_nothing() 
         assert_eq!(key.keysym(), UNICODE + u32::from(character));
         assert_eq!(Table.key_to_unicode(key), Some(character));
     }
+    for (keypad, character) in [(Key::KP_5, '5'), (Key::KP_Add, '+'), (Key::KP_Space, ' ')] {
+        assert_eq!(Table.key_to_unicode(keypad), Some(character), "{keypad:?}");
+        assert_ne!(Table.key_from_unicode(character), keypad, "{character:?}");
+    }
     for named in [
         Key::Return,
         Key::Escape,
-        Key::KP_5,
+        Key::KP_Enter,
         Key::Cyrillic_es,
         Key::VoidSymbol,
+        Key::from_keysym(UNICODE),
     ] {
         assert_eq!(Table.key_to_unicode(named), None, "{named:?}");
     }
@@ -174,6 +179,8 @@ fn the_first_install_decides_and_the_catalog_then_works_without_a_library() {
                 pressed(Key::c, NONE, Typed::Character('c')).text(),
                 Some('c')
             );
+            let keypad = pressed(Key::KP_5, NONE, Typed::Key(Key::KP_5));
+            assert_eq!(keypad.text(), Some('5'), "a keypad digit types its digit");
 
             assert_eq!(
                 label_in_map("en", &Keys::One(COPY.shown()), Map::Default),

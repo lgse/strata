@@ -9,7 +9,8 @@
 //!   key. `VoidSymbol`, which is no key, has no name and its name reads as none.
 //! - **Characters:** a printable Latin-1 character is its own keysym, and any other character
 //!   is its Unicode keysym, `0x0100_0000` plus the code point, as the X protocol defines
-//!   both. A named key types nothing here, not even a keypad digit.
+//!   both. The sixteen keypad keys that type a character type it ([`KEYPAD`]). No other
+//!   named key types anything here.
 //! - **Case:** the ASCII letters. Every other key is its own lower and upper case.
 //! - **Accelerator strings:** not read and not written. See [`Table`].
 //!
@@ -46,6 +47,27 @@ const WRITTEN_AS: &[(Key, &str)] = &[
     (Key::dead_tilde, "dead_perispomeni"),
     (Key::Mode_switch, "Arabic_switch"),
     (Key::KP_Page_Down, "KP_Next"),
+];
+
+/// The keypad keys that type a character, which GDK answers too: a press of one reports
+/// the keypad key, and its text is this.
+const KEYPAD: &[(Key, char)] = &[
+    (Key::KP_Space, ' '),
+    (Key::KP_Equal, '='),
+    (Key::KP_Multiply, '*'),
+    (Key::KP_Add, '+'),
+    (Key::KP_Subtract, '-'),
+    (Key::KP_Divide, '/'),
+    (Key::KP_0, '0'),
+    (Key::KP_1, '1'),
+    (Key::KP_2, '2'),
+    (Key::KP_3, '3'),
+    (Key::KP_4, '4'),
+    (Key::KP_5, '5'),
+    (Key::KP_6, '6'),
+    (Key::KP_7, '7'),
+    (Key::KP_8, '8'),
+    (Key::KP_9, '9'),
 ];
 
 fn printable_latin_1(code: u32) -> bool {
@@ -89,10 +111,16 @@ impl Backend for Table {
     fn key_to_unicode(&self, key: Key) -> Option<char> {
         let keysym = key.keysym();
         if printable_latin_1(keysym) {
-            char::from_u32(keysym)
-        } else {
-            keysym.checked_sub(UNICODE).and_then(char::from_u32)
+            return char::from_u32(keysym);
         }
+        if let Some((_, character)) = KEYPAD.iter().find(|(keypad, _)| *keypad == key) {
+            return Some(*character);
+        }
+        // The Unicode keysym of no character at all types nothing.
+        keysym
+            .checked_sub(UNICODE)
+            .filter(|code| *code != 0)
+            .and_then(char::from_u32)
     }
 
     fn key_from_unicode(&self, character: char) -> Key {
