@@ -25,7 +25,7 @@ Source: the workspace proposal, revision 7 of 2026-11-09. Status below is as of 
 | --- | --- | --- |
 | Finish strata-components first, and verify drag and drop and the file chooser by hand, before anything changes in Strata | The branch was started while strata-components was still in progress | Owner, 2026-11-10 |
 | Import the component crates, then cut cycles and extract | The cycles were cut and the shared crates extracted first. The import follows | Owner, 2026-11-10 |
-| Every migration change is a pull request to `strata-next` | Work lands as focused commits directly on `strata-next` until a vertical slice is approved. The branch then becomes an integration branch for pull requests | Owner, 2026-11-10 |
+| Every migration change is a pull request to `strata-next` | Work landed as focused commits directly on `strata-next` until the vertical slice was approved, on 2026-11-11. Since then the branch is an integration branch: every migration change is a pull request to it | Owner, 2026-11-10 and 2026-11-11 |
 | Four shared crates and `strata-test-support` | The same, plus `strata-qa` from the slice plan | Owner, 2026-11-10 |
 | `strata-core` has no GIO | `strata-core` depends on `gio` and `glib`. It has no interface toolkit | Not ruled; see `docs/workspace.md` |
 | The browser's state sits in `strata-core` | `app` with `Browser` is in `strata-fs`, because it uses GLib sources and the services | Not ruled |

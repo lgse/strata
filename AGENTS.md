@@ -266,9 +266,9 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
   and every move makes the merges from `main` harder. The settings schema is the one part
   that moved, by an owner ruling; `docs/rune/slice/V5b-settings-store.md` says where a
   change from `main` to it goes.
-- Until the vertical slice in `docs/rune/slice/` is approved, the owner has migration work
-  land as focused commits directly on `strata-next`. The issue and pull request rules above
-  apply to `main` and to everything else.
+- The vertical slice in `docs/rune/slice/` was approved on 2026-11-11. Since then migration
+  work on `strata-next` follows the issue and pull request rules above, with pull requests
+  targeting `strata-next`. The rules for `main` are unchanged.
 - Work package documents are the exception to keeping task records out of the tree: the
   plans and their status under `docs/rune/` stay in the repository as Markdown.
 
