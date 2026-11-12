@@ -254,6 +254,11 @@ pub(crate) struct View<S: 'static> {
     pub(crate) shows: fn(&str) -> bool,
     /// The key of the element that takes the keyboard when a field or a menu gives it back.
     pub(crate) focus: &'static str,
+    /// Whether the view shows a folder in file-type groups when the saved `group_by_type`
+    /// asks (`BrowserMode::supports_type_grouping` in `src/ui/browser_modes.rs`: the List
+    /// view alone). The one source of it: the shell tells the browser
+    /// (`Browser::set_type_grouping`), and a view's pane follows the browser.
+    pub(crate) supports_type_grouping: bool,
     pub(crate) pointer_at: Option<PointerAt<S>>,
     pub(crate) rows: Rows<S>,
     pub(crate) editing: Editing<S>,

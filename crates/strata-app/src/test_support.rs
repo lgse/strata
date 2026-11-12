@@ -82,6 +82,7 @@ pub(crate) fn idle_view<S>(
         build,
         shows,
         focus: name,
+        supports_type_grouping: false,
         pointer_at: None,
         rows: Rows {
             position: |_, _| None,

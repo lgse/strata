@@ -3,9 +3,10 @@
 use std::path::Path;
 
 use strata_components::contract::{EntryKind, EntrySource};
-use strata_core::model::{EntryKind as Kind, FileEntry, Location, MetadataValue};
+use strata_core::model::{EntryKind as Kind, FileEntry, Location, MetadataValue, ViewPreferences};
+use strata_fs::{app::compare_type_groups, services::entry_type};
 
-use super::{Column, Edit, Row};
+use super::{Column, Edit, Row, TypeGroup};
 use crate::slots::Ids;
 
 const FOLDER: &str = "/listing";
@@ -178,4 +179,65 @@ fn a_refilled_row_keeps_its_place_and_shows_what_it_became() {
     let described = |index: usize| column.rows[column.position_at(index).expect("shown")].described;
     assert_eq!(described(0), super::Described::LockedFolder);
     assert_eq!(described(1), super::Described::FileLink);
+}
+
+/// The preferences a grouped folder is shown under: sorted by name, folders first.
+fn by_name() -> ViewPreferences {
+    ViewPreferences {
+        folders_first: true,
+        ..ViewPreferences::default()
+    }
+}
+
+/// Grouped, the rows show in strata-fs's group order (`compare_type_groups` over each type's
+/// description), each group in the browser's order; positions and ids still cross as the
+/// browser's.
+#[test]
+fn a_grouped_listing_shows_type_groups_in_strata_fs_order_and_each_in_the_browsers() {
+    let ids = Ids::default();
+    let names = ["b.txt", "a.png", "docs/", "c.txt", "z.png"];
+    let mut column = column(&ids, &names);
+    let preferences = by_name();
+
+    assert!(column.set_grouping(Some(preferences)));
+
+    let described = |name: &str| entry_type(&entry(name)).description().to_owned();
+    let (text, image) = (described("b.txt"), described("a.png"));
+    let mut files = [(text, ["b.txt", "c.txt"]), (image, ["a.png", "z.png"])];
+    files.sort_by(|(left, _), (right, _)| compare_type_groups(left, right, preferences));
+    let mut expected = vec!["docs".to_owned()];
+    expected.extend(files.iter().flat_map(|(_, rows)| rows.map(str::to_owned)));
+    assert_eq!(shown(&column), expected);
+    for (index, name) in expected.iter().enumerate() {
+        let id = column.id_at(index);
+        assert_eq!(column.index_of(id), Some(index), "{name}");
+        let position = column.position_at(index).expect("a position");
+        let browser = names.iter().position(|n| n.trim_end_matches('/') == name);
+        assert_eq!(Some(position), browser, "{name}");
+    }
+}
+
+/// Ungrouped, nothing changes from the browser's order, no type is read and no lookup is
+/// built; turning grouping off again goes back to the browser's order.
+#[test]
+fn an_ungrouped_listing_keeps_the_browsers_order_and_builds_no_lookup() {
+    let ids = Ids::default();
+    let names = ["b.txt", "a.png", "docs/", "c.txt"];
+    let mut column = column(&ids, &names);
+    let browser_order = shown(&column);
+
+    assert!(!column.set_grouping(None));
+    assert!(column.back.is_empty());
+    assert_eq!(
+        TypeGroup::interned(),
+        0,
+        "no type is read for an ungrouped listing"
+    );
+    assert!(column.set_grouping(Some(by_name())));
+    assert!(column.set_grouping(None));
+
+    assert_eq!(shown(&column), browser_order);
+    assert!(column.back.is_empty());
+    let id = column.id_at(2);
+    assert_eq!(column.index_of(id), Some(2));
 }
