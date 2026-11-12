@@ -244,8 +244,16 @@ pub(crate) fn the_target_picks_the_binary_and_only_rune_is_told_the_layout() {
     let unknown = Target::named(Some("qt")).expect_err("no such target");
     assert!(unknown.contains(TARGET_VARIABLE), "{unknown}");
 
+    // These tests also run from a bundle of test binaries alone, with no application binary
+    // on disk. Whether the GTK binary is built is the launch's to find out; its path is
+    // cargo's, and absolute, so no installed build is found through PATH instead. The Rune
+    // target checks its file itself, so the test makes one to stand for strata-rune.
+    let stand_in = tempfile::NamedTempFile::new().expect("a file to stand for strata-rune");
+    let rune = stand_in.path().as_os_str();
     let gtk = Target::Gtk.binary(None).expect("the application's binary");
-    assert!(gtk.is_file(), "{}", gtk.display());
+    assert!(gtk.is_absolute(), "{}", gtk.display());
+    assert_eq!(gtk.file_name(), Some("strata".as_ref()));
+    assert_eq!(Target::Gtk.binary(Some(rune)), Ok(gtk), "GTK takes no path");
     let unset = Target::Rune.binary(None).expect_err("no path");
     assert!(unset.contains(RUNE_BINARY_VARIABLE), "{unset}");
     assert!(Target::Rune.binary(Some("".as_ref())).is_err());
@@ -253,7 +261,10 @@ pub(crate) fn the_target_picks_the_binary_and_only_rune_is_told_the_layout() {
         .binary(Some("/nonexistent/strata-rune".as_ref()))
         .expect_err("no file");
     assert!(missing.contains("/nonexistent/strata-rune"), "{missing}");
-    assert_eq!(Target::Rune.binary(Some(gtk.as_os_str())), Ok(gtk));
+    assert_eq!(
+        Target::Rune.binary(Some(rune)),
+        Ok(stand_in.path().to_owned())
+    );
     assert_ne!(Target::Gtk.artifacts(), Target::Rune.artifacts());
 
     let manifest = crate::fixture::manifest();
