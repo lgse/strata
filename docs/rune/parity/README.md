@@ -633,8 +633,11 @@ the commands.
 6. `cargo tree` shows no `gtk4`, `gdk4`, `sourceview5` or `gdk-pixbuf`.
 
 The thumbnail worker is the ruled exception to criterion 6 until E4: by the owner's ruling
-of 2026-11-12 it uses `gdk-pixbuf` in `strata-rune`, which `strata-fs` brings into its tree
-already, and E4 removes it ([`owner.md`](owner.md#ruled)). It is an exception for
+of 2026-11-12 it uses `gdk-pixbuf` in `strata-rune`, and E4 removes it
+([`owner.md`](owner.md#ruled)). `gdk-pixbuf` is in `strata-rune`'s tree already, without the
+worker: `strata-fs` depends on it directly and through `strata-preview`, so E4's removal
+covers those too, unless the owner narrows the criterion
+([`owner.md`](owner.md#e4-exit-criterion-6)). It is an exception for
 `gdk-pixbuf` alone: `gtk4`, `gdk4` and `sourceview5` stay out of `strata-app` and
 `strata-rune`, and `cargo tree -p strata-rune -i gtk4` still finds nothing.
 

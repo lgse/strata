@@ -28,11 +28,20 @@ session's notes, the item says so.
 ### E4: exit criterion 6
 
 - **`gdk-pixbuf` in the Rune binary through `strata-fs`.** Exit criterion 6 names
-  `gdk-pixbuf`, which `strata-fs` brings into `strata-rune` today, directly and through
-  `strata-preview`, before any thumbnail worker. Whether E4 removes it from `strata-fs`'s
-  path as well, or criterion 6 is narrowed, is the owner's to say. Meanwhile: criterion 6
-  stays as written and [E4](packages/E4.md) owns it. Source: A1's layering check,
-  2026-11-12, confirmed with `cargo tree -p strata-rune -i gdk-pixbuf`.
+  `gdk-pixbuf`, which `strata-fs` brings into `strata-rune` today by two paths, before any
+  thumbnail worker: `crates/strata-fs/Cargo.toml` depends on `gdk-pixbuf` directly (line 35)
+  and on `strata-preview` (line 29), neither optional. Whether E4 removes it from
+  `strata-fs` as well, or criterion 6 is narrowed, is the owner's to say. Meanwhile:
+  criterion 6 stays as written and [E4](packages/E4.md) owns it. Source: A1's layering
+  check, 2026-11-12, confirmed from the manifests and with
+  `cargo tree -p strata-rune -i gdk-pixbuf`.
+
+  A correction of the premise, not a new ruling (recorded by the orchestrating session,
+  2026-11-12): the thumbnail question was put to the owner on the premise that the worker
+  would bring `gdk-pixbuf` into the Rune binary, which was wrong. The ruling stands as
+  given. But the two answers not chosen, a separate worker binary and a client crate free of
+  GDK, would not have kept `gdk-pixbuf` out of `strata-rune` either unless `strata-fs`
+  changed too.
 
 ### The plan's copy
 
@@ -306,11 +315,13 @@ Rulings of the owner on the parity work, oldest first.
   [E4](packages/E4.md) owns removing it, and exit criterion 6 is knowingly not met until
   then. The other two answers were a separate worker binary and a client crate split from
   `strata-preview`. In fact `gdk-pixbuf`, `poppler-rs`, `cairo-rs` and `pango` are in
-  `strata-rune`'s tree already, through `strata-app` → `strata-fs`, which depends on
-  `gdk-pixbuf` itself and on `strata-preview` (`cargo tree -p strata-rune -i gdk-pixbuf`). So
-  the ruling adds a direct edge from `strata-app` to `strata-preview`, not a new library,
-  and criterion 6 was not met before it either; E4 owns removing `gdk-pixbuf` from the
-  whole tree, of which the thumbnail worker's direct use is one part.
+  `strata-rune`'s tree already, by two paths that have nothing to do with thumbnails in the
+  Rune interface: `strata-app` depends on `strata-fs`, and `crates/strata-fs/Cargo.toml`
+  depends on `strata-preview` (line 29) and on `gdk-pixbuf` directly (line 35), neither
+  optional (`cargo tree -p strata-rune -i gdk-pixbuf`). So the ruling adds a direct edge
+  from `strata-app` to `strata-preview`, not a new library, and criterion 6 was not met
+  before it either. E4 owns removing `gdk-pixbuf` from the whole tree: `strata-fs`'s own
+  use of it, its use of `strata-preview`, and the thumbnail worker's direct use.
 
 ## Housekeeping
 
