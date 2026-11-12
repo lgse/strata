@@ -148,6 +148,7 @@
 //! | `events.rs` and `listing.rs`: the reader a view's listener calls, and the listing it fills | The contract |
 //! | `handover.rs`: the cursor and selection every view hands the browser and takes from it | The contract |
 //! | `pane.rs`: the one folder a single-pane view (Icons, List) shows, the browser's active column | The contract |
+//! | `single/`: what the single-pane views share beside their pane (intents, rename, the listener, the base collection, `Rows`) | The contract |
 //! | `lib.rs` | Each package, under its own comment and nowhere else |
 //! | A part's module | The package that registered it |
 //! | `columns/` | No area package: a change to it by any package is a `contract` pull request |

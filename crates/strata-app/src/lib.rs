@@ -24,6 +24,8 @@ mod pane;
 mod qa;
 mod settings;
 mod shell;
+// What the single-pane views, Icons and List, share beside their pane.
+mod single;
 mod slots;
 mod startup;
 #[cfg(test)]
