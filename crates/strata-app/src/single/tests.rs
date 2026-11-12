@@ -287,3 +287,41 @@ fn an_empty_folder_says_so_in_icons() {
 fn an_empty_folder_says_so_in_list() {
     an_empty_folder_says_so(&LIST, "an_empty_folder_says_so_in_list");
 }
+
+/// A folder that cannot be read: the list says the browser's message, and shows it. Skipped
+/// where the folder stays readable, as it does for root.
+fn an_unreadable_folder_says_why(case: &Case, name: &str) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let folder = tempfile::tempdir().expect("folder");
+    let locked = folder.path().join("locked");
+    std::fs::create_dir(&locked).expect("folder");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("mode");
+    if std::fs::read_dir(&locked).is_ok() {
+        eprintln!("skipped: {} stays readable to this user", locked.display());
+        return;
+    }
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        host.app().open(Location::local(&locked));
+
+        let said = wait(&mut host, case.shape, "the folder's failure", |seen| {
+            seen.list
+                .as_ref()
+                .is_some_and(|[_, described]| !described.is_empty() && described != "Files")
+        });
+
+        let [_, message] = said.list.clone().expect("the list");
+        assert!(said.texts.contains(&message), "{said:#?}");
+    });
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("mode");
+}
+
+#[test]
+fn an_unreadable_folder_says_why_in_icons() {
+    an_unreadable_folder_says_why(&ICONS, "an_unreadable_folder_says_why_in_icons");
+}
+
+#[test]
+fn an_unreadable_folder_says_why_in_list() {
+    an_unreadable_folder_says_why(&LIST, "an_unreadable_folder_says_why_in_list");
+}

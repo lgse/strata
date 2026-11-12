@@ -34,6 +34,7 @@ use strata_components::{
 };
 use strata_core::i18n::tr;
 
+use self::status::Surface;
 use crate::{
     App, events,
     listing::{Column, Load, Words},
@@ -55,10 +56,8 @@ pub(crate) struct Single {
     described: String,
     /// `ENTRY_CONTAINER_DESCRIPTION` there: what the list of entries is.
     entries: String,
-    /// What an empty folder's pane says, and what one being read is described as
-    /// (`LOADING_SURFACE_DESCRIPTION`).
-    empty: String,
-    loading: String,
+    /// What the pane says while it shows no entry.
+    surface: Surface,
 }
 
 fn clicks(count: u8) -> ClickCount {
@@ -93,8 +92,7 @@ impl Single {
             words: Words::translated(),
             described,
             entries: tr("Files"),
-            empty: tr("This directory is empty"),
-            loading: tr("Loading"),
+            surface: Surface::translated(),
         }
     }
 }
@@ -127,21 +125,11 @@ pub(crate) fn title<V: SinglePane>(app: &App) -> String {
         .to_owned()
 }
 
-/// What the view says in place of entries while it shows none, as GTK's status page does:
-/// the browser's message for a folder that could not be read, the empty page's for an empty
-/// one, and nothing while the folder is read (`DirectorySurface::sync` in
-/// `src/ui/loading_skeleton/surface.rs`; the loading skeleton itself is not drawn).
+/// What the view says in place of entries while it shows none ([`status`]), and whether it
+/// draws it.
 fn status<V: SinglePane>(app: &App) -> Option<(&str, bool)> {
     let single = V::single(app);
-    let listing = single.pane.listing()?;
-    if listing.len() > 0 {
-        return None;
-    }
-    match listing.load() {
-        Load::Failed(message) => Some((message, true)),
-        _ if listing.is_loading() => Some((&single.loading, false)),
-        _ => Some((&single.empty, true)),
-    }
+    single.surface.status(single.pane.listing()?)
 }
 
 /// What the entry list is described as: what it is, or, while it shows no entry, what the
@@ -217,6 +205,14 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El) -> El {
         .grow(1.0)
         .min_h(0.0)
         .child(component)
+}
+
+/// One poll of what the view says while it shows no entry: a read is announced once it
+/// outlasts GTK's grace period. True when the view has to run.
+pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let single = V::single_mut(app);
+    let Single { pane, surface, .. } = single;
+    surface.watch(pane.listing(), clock, tx)
 }
 
 /// What reads the view's share of each event out of the browser.
@@ -368,6 +364,8 @@ pub(crate) fn lists<V: SinglePane>(app: &App) -> Vec<String> {
         None => Vec::new(),
     }
 }
+
+mod status;
 
 #[cfg(test)]
 mod tests;

@@ -66,7 +66,8 @@ impl Part for List {
         single::publish::<Self>(app);
     }
 
-    fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
-        view::ticked(app).tick(app, tx)
+    fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+        let said = single::poll::<Self>(app, clock, tx);
+        view::ticked(app).tick(app, tx) | said
     }
 }

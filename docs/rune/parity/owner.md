@@ -320,13 +320,10 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    has Left leave the pane with or without a cursor, as GTK does. Items 3, 4 and 5 (Up from
    the first row, focus after Back, Forward and Up, "Arrows scoped to content") differ in
    List as they do in Icons, with the same defaults in force.
-3. **"Loading" at once.** While a folder is read, GTK first shows a grace page and
-   describes its pane surface by nothing, and says "Loading" only once the loading page
-   shows (`DirectorySurface::sync`, `src/ui/loading_skeleton/surface.rs:76-95`), so a
-   reload that finishes within the grace period stays quiet. The Icons and List views say
-   "Loading" from the start of the read. A deviation for the owner to rule; it would go to
-   the loading skeleton's package with the grace period. Meanwhile: "Loading" at once; no run
-   pins it.
+3. **Nothing drawn while a folder is read.** GTK shows its loading skeleton once a read
+   outlasts its grace period; Rune has no loading skeleton yet, so the Icons and List views
+   draw nothing then, though they say "Loading" as GTK does. Meanwhile: nothing drawn; no
+   run pins it.
 
 ### Packages added later
 

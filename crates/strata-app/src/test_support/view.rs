@@ -52,7 +52,7 @@ pub(crate) struct Seen {
     pub(crate) focused: Option<String>,
     /// The list itself has the keyboard.
     pub(crate) keyboard: bool,
-    /// The texts drawn in the list, other than its entries'.
+    /// The labels the list draws outside its entries: a status in place of entries.
     pub(crate) texts: Vec<String>,
 }
 
@@ -100,6 +100,21 @@ fn keyed_as_entry(node: &Value) -> bool {
     id.is_ok_and(|id| row_key(EntryId::new(id)) == key)
 }
 
+/// The labels under `node` that are not in an entry: what the list draws besides its rows.
+fn outside_entries(node: &Value, shape: Shape) -> Vec<&Value> {
+    let mut found = Vec::new();
+    for child in node["children"].as_array().map_or(&[][..], Vec::as_slice) {
+        if child["role"] == shape.entry && keyed_as_entry(child) {
+            continue;
+        }
+        if child["role"] == "label" {
+            found.push(child);
+        }
+        found.extend(outside_entries(child, shape));
+    }
+    found
+}
+
 pub(crate) fn seen(host: &Offscreen, shape: Shape) -> Seen {
     let tree = host.tree();
     let pane = all(&tree, &|node| node["description"] == shape.described);
@@ -128,7 +143,7 @@ pub(crate) fn seen(host: &Offscreen, shape: Shape) -> Seen {
             .find(|entry| entry["key"] == *active)
             .map(|entry| text(entry, "name")),
         keyboard: has_state(list, "focused"),
-        texts: all(list, &|node| node["role"] == "label")
+        texts: outside_entries(list, shape)
             .iter()
             .map(|label| text(label, "name"))
             .collect(),
