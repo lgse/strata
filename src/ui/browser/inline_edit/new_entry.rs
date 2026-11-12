@@ -256,7 +256,10 @@ impl ViewState {
 
     fn may_create_in(&self, location: &Location) -> bool {
         let interactive = self.interactive || self.chooser_allows_create.get();
-        interactive && !is_trash_location(location) && !location.is_recent_location()
+        interactive
+            && !is_trash_location(location)
+            && !location.is_recent_location()
+            && !location.is_computer_root()
     }
 
     fn begin_new_entry_inner(self: &Rc<Self>, depth: usize, entry: NewEntry) {

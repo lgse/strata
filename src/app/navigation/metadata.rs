@@ -179,9 +179,19 @@ fn merge_known<T: Clone + PartialEq>(
     true
 }
 
-fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool {
+pub(super) fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool {
+    let update_size = if entry.is_computer_item() {
+        &MetadataValue::Unknown
+    } else {
+        &update.size
+    };
+    let update_child_count = if entry.is_computer_item() {
+        &MetadataValue::Unknown
+    } else {
+        &update.child_count
+    };
     let changed = [
-        merge_known(&mut entry.size, &update.size),
+        merge_known(&mut entry.size, update_size),
         merge_known(
             &mut entry.modified_unix_seconds,
             &update.modified_unix_seconds,
@@ -192,7 +202,7 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
         ),
         merge_known(&mut entry.mode, &update.mode),
         merge_known(&mut entry.image_dimensions, &update.image_dimensions),
-        merge_known(&mut entry.child_count, &update.child_count),
+        merge_known(&mut entry.child_count, update_child_count),
         merge_known(&mut entry.duration_seconds, &update.duration_seconds),
         merge_known(&mut entry.listable, &update.listable),
     ];

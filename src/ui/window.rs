@@ -21,6 +21,7 @@ mod device_lock;
 mod device_menu;
 mod device_order;
 mod device_release;
+pub(crate) use device_release::refresh_sidebars;
 mod devices;
 mod drive_dialogs;
 mod drive_ops;

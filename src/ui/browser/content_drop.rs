@@ -66,6 +66,7 @@ pub(super) fn accepts_offer(
     if !offered.actions().intersects(target.actions())
         || is_trash_location(destination)
         || destination.is_recent_location()
+        || destination.is_computer_root()
     {
         return false;
     }

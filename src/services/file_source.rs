@@ -94,7 +94,7 @@ impl fmt::Display for LocationValidationError {
             Self::UnsupportedScheme(scheme) => write!(
                 formatter,
                 "The {scheme}:// scheme isn't supported. Use an absolute local path or one of: \
-                 smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///."
+                 smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, recent:///, or computer:///."
             ),
             Self::EmbeddedCredential => formatter.write_str(
                 "Passwords typed into the address bar aren't accepted. Enter the address \
@@ -126,7 +126,7 @@ impl LocationValidationError {
             .into_owned(),
             Self::UnsupportedShorthand(message) | Self::Refused(message) => tr(message),
             Self::UnsupportedScheme(scheme) => rust_i18n::t!(
-                "The %{scheme}:// scheme isn't supported. Use an absolute local path or one of: smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, or recent:///.",
+                "The %{scheme}:// scheme isn't supported. Use an absolute local path or one of: smb://, sftp://, ftp://, ftps://, dav://, davs://, admin://, recent:///, or computer:///.",
                 scheme = scheme
             )
             .into_owned(),

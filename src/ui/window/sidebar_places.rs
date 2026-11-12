@@ -79,6 +79,19 @@ impl SidebarState {
                 });
                 self.make_place_reorderable(&row, place);
             }
+            "computer" => {
+                if self.local_only {
+                    return;
+                }
+                let location = Location::uri("computer:///");
+                let row = self.append_place(
+                    crate::assets::icons::MONITOR,
+                    &crate::i18n::tr("Computer"),
+                    location.clone(),
+                );
+                crate::ui::accessibility::set_description(&row, Some("computer:///"));
+                self.make_place_reorderable(&row, place);
+            }
             "trash" => {
                 if !self.local_only && self.preference_manager.sidebar_show_trash() {
                     self.append_trash_place();

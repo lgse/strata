@@ -68,6 +68,7 @@ impl TransferRequest {
         };
         is_trash_location(&self.destination)
             || self.destination.is_recent_location()
+            || self.destination.is_computer_root()
             || (self.move_sources && unremovable())
     }
 }
@@ -154,11 +155,18 @@ fn transfer_is_noop(source: &Location, destination: &Location, move_sources: boo
 }
 
 pub(super) fn duplicate_transfer(entries: &[FileEntry]) -> Option<(Location, Vec<Location>)> {
+    if entries.iter().any(FileEntry::is_computer_item) {
+        return None;
+    }
     let destination = entries.first()?.location.parent()?;
     let shares_parent = entries
         .iter()
         .all(|entry| entry.location.parent().as_ref() == Some(&destination));
-    if is_trash_location(&destination) || !shares_parent {
+    if is_trash_location(&destination)
+        || destination.is_recent_location()
+        || destination.is_computer_root()
+        || !shares_parent
+    {
         return None;
     }
     let sources = entries.iter().map(|entry| entry.location.clone()).collect();

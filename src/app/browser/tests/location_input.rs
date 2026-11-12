@@ -193,6 +193,10 @@ fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
         ("network:", "network:///"),
         ("Trash:", "trash:///"),
         ("trash://", "trash:///"),
+        ("computer:///", "computer:///"),
+        ("computer://", "computer:///"),
+        ("computer:", "computer:///"),
+        ("Computer:", "computer:///"),
     ] {
         assert_eq!(browser.navigate_input(typed), Ok(()), "{typed}");
         assert_eq!(

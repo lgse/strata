@@ -11,6 +11,7 @@ use super::home_directory;
 
 pub(super) const STANDARD_PLACE_IDS: &[&str] = &[
     "home",
+    "computer",
     "trash",
     "network",
     "recent",

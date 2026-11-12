@@ -286,7 +286,10 @@ impl ViewState {
         entry: &FileEntry,
     ) -> bool {
         self.cancel_click_rename();
-        if self.rename_operation_pending() || is_trash_location(&entry.location) {
+        if self.rename_operation_pending()
+            || is_trash_location(&entry.location)
+            || entry.is_computer_item()
+        {
             return false;
         }
         self.cancel_new_entry();
@@ -353,7 +356,7 @@ impl ViewState {
         entry: FileEntry,
         naming: Naming,
     ) -> bool {
-        if is_trash_location(&entry.location) {
+        if is_trash_location(&entry.location) || entry.is_computer_item() {
             return false;
         }
         if self.mode_views.borrow().mode() != BrowserMode::Columns {

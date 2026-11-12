@@ -82,7 +82,9 @@ impl FolderMenuOptions {
             toggle_hidden_label,
             customize: context_menu_option(icons::PALETTE, "Customize…", ContextHint::None),
             properties: context_menu_option(icons::INFO, "Properties", ContextHint::None),
-            directory_actions: !is_trash_location(location) && !location.is_recent_location(),
+            directory_actions: !is_trash_location(location)
+                && !location.is_recent_location()
+                && !location.is_computer_root(),
         };
         options.apply_location(location);
         options.arrange();
@@ -99,7 +101,8 @@ impl FolderMenuOptions {
             .set_visible(directory_actions && !location.is_administrator());
         self.open_terminal.set_visible(directory_actions);
         self.paste.set_visible(directory_actions);
-        self.properties.set_visible(!location.is_recent_location());
+        self.properties
+            .set_visible(!location.is_recent_location() && !location.is_computer_root());
     }
 
     fn arrange(&self) {

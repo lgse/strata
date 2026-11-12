@@ -20,14 +20,15 @@ use crate::{
     services::{DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationValidationError},
 };
 
+#[cfg(feature = "qa")]
+use super::RELEASE_ROW_TOOLTIP;
 use super::{
-    DeviceIds, RELEASE_ROW_TOOLTIP, ReleaseKey, ReleaseKind, ReleasePhase, begin_pending,
-    clear_release_dismissed, complete_release_success, enter_releasing, is_pending,
-    location_at_flush_for_test, note_unmount_progress, pending_device_shell,
-    present_release_overlay, release_body_text, release_error_count, release_is_dismissed,
-    release_is_pending, release_overlay_presented, release_phase, release_shows_spinner,
-    reset_releases, settle_pending_attempt, start_release, syncs_before_flush_for_test,
-    unmatched_pending,
+    DeviceIds, ReleaseKey, ReleaseKind, ReleasePhase, begin_pending, clear_release_dismissed,
+    complete_release_success, enter_releasing, is_pending, location_at_flush_for_test,
+    note_unmount_progress, pending_device_shell, present_release_overlay, release_body_text,
+    release_error_count, release_is_dismissed, release_is_pending, release_overlay_presented,
+    release_phase, release_shows_spinner, reset_releases, settle_pending_attempt, start_release,
+    syncs_before_flush_for_test, unmatched_pending,
 };
 
 fn key(unix_device: &str) -> ReleaseKey {

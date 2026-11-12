@@ -24,6 +24,17 @@ fn caption_details(widget: &gtk::Widget) -> Option<gtk::Label> {
     None
 }
 
+fn caption_progress(widget: &gtk::Widget) -> Option<gtk::ProgressBar> {
+    let mut sibling = widget.first_child();
+    while let Some(child) = sibling {
+        if let Ok(progress) = child.clone().downcast::<gtk::ProgressBar>() {
+            return Some(progress);
+        }
+        sibling = child.next_sibling();
+    }
+    None
+}
+
 fn caption_editor(widget: &gtk::Widget) -> Option<gtk::Widget> {
     let mut sibling = widget.first_child();
     while let Some(child) = sibling {
@@ -269,13 +280,15 @@ mod imp {
             } else {
                 for_size
             };
-            // The single-line label reserves its font height even before details arrive.
+            let progress_height = caption_progress(widget)
+                .filter(|progress| progress.is_visible())
+                .map_or(0, |progress| progress.measure(orientation, width).1);
             let details_height =
                 caption_details(widget).map_or(0, |details| details.measure(orientation, width).1);
             let content_height = self
                 .reserved_height(&label, width)
                 .max(caption_editor(widget).map_or(0, |field| field.measure(orientation, width).1));
-            let height = content_height + details_height;
+            let height = content_height + progress_height + details_height;
             (height, height, -1, -1)
         }
 
@@ -283,11 +296,29 @@ mod imp {
             let Some(label) = caption_label(widget) else {
                 return;
             };
+            let progress_widget = caption_progress(widget).filter(|progress| progress.is_visible());
+            let details_widget = caption_details(widget).filter(|details| details.is_visible());
+            let progress_width = (width - 16).max(32);
+            let reserved_progress = progress_widget.as_ref().map_or(0, |progress| {
+                progress
+                    .measure(gtk::Orientation::Vertical, progress_width)
+                    .1
+            });
+            let reserved_details = details_widget.as_ref().map_or(0, |details| {
+                details.measure(gtk::Orientation::Vertical, width).1
+            });
+            let max_caption_height = if reserved_progress > 0 {
+                (height - reserved_progress - reserved_details)
+                    .max(ICONS_CARD_LABEL_LINE_PX)
+                    .min(height)
+            } else {
+                height
+            };
             let mut current_y = 0;
             if label.is_visible() {
                 let (caption_width, caption_height) = self.extent(&label, width);
                 let caption_width = caption_width.min(width);
-                let caption_height = caption_height.min(height);
+                let caption_height = caption_height.min(max_caption_height);
                 label.allocate(
                     caption_width,
                     caption_height,
@@ -307,12 +338,22 @@ mod imp {
                 field.allocate(width, field_height, -1, None);
                 current_y = current_y.max(field_height);
             }
-            if let Some(details) = caption_details(widget).filter(|details| details.is_visible()) {
+            if let Some(progress) = progress_widget {
+                let progress_height = reserved_progress.min((height - current_y).max(0));
+                progress.allocate(
+                    progress_width,
+                    progress_height,
+                    -1,
+                    Some(gsk::Transform::new().translate(&graphene::Point::new(
+                        ((width - progress_width) / 2) as f32,
+                        current_y as f32,
+                    ))),
+                );
+                current_y += progress_height;
+            }
+            if let Some(details) = details_widget {
                 let details_width = width;
-                let details_height = details
-                    .measure(gtk::Orientation::Vertical, details_width)
-                    .1
-                    .min((height - current_y).max(0));
+                let details_height = reserved_details.min((height - current_y).max(0));
                 details.allocate(
                     details_width,
                     details_height,

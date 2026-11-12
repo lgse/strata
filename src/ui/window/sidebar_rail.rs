@@ -196,6 +196,16 @@ pub(super) fn sync_sidebar_button(button: &gtk::Button, rail: bool) {
             && !label.has_css_class("sidebar-keycap")
         {
             sync_rail_label(button, label, rail);
+        } else if let Some(text_box) = widget.downcast_ref::<gtk::Box>() {
+            text_box.set_visible(!rail);
+            if let Some(label) = text_box.first_child().and_downcast::<gtk::Label>() {
+                button.set_tooltip_text(rail.then_some(label.label().as_str()));
+                if rail {
+                    crate::ui::accessibility::set_stand_in_label(button, &label.label());
+                } else {
+                    crate::ui::accessibility::clear_stand_in_label(button);
+                }
+            }
         }
     }
     content.set_halign(if rail {

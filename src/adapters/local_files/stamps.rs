@@ -65,6 +65,7 @@ pub(super) fn stamped_remotely(location: &Location) -> bool {
     location.uri_value().is_some_and(|uri| {
         !location.is_recent_location()
             && !location.is_camera_photo_root()
+            && !location.is_computer_root()
             && glib::Uri::parse_scheme(uri).is_some_and(|scheme| scheme != "trash")
     })
 }

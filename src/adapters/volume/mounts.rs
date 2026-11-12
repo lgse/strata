@@ -4,11 +4,12 @@
 mod tests;
 
 use std::{
+    collections::{HashMap, HashSet},
     ffi::OsString,
     os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
+    sync::{Arc, LazyLock, Mutex},
+    time::{Duration, Instant},
 };
 
 use super::names::{NameEncoding, NameProfile, NameRules, PrivateUse, Reserved, Strip, byte_limit};
@@ -679,4 +680,128 @@ fn unescape(field: impl AsRef<[u8]>) -> OsString {
         }
     }
     OsString::from_vec(out)
+}
+
+/// Whether `path` is hosted on a local block device (such as an internal or USB disk),
+/// and is safe for synchronous capacity queries without blocking on remote I/O or
+/// userspace FUSE network daemons.
+pub(crate) fn is_local_block_filesystem(path: &Path) -> bool {
+    #[cfg(test)]
+    if path.starts_with("/tmp") || path.starts_with(std::env::temp_dir()) {
+        return true;
+    }
+    if path == Path::new("/") {
+        return true;
+    }
+    let table = super::mount_watch::latest();
+    is_local_block_in_table(&table, path)
+}
+
+pub(crate) fn is_local_block_in_table(table: &MountTable, path: &Path) -> bool {
+    if path == Path::new("/") {
+        return true;
+    }
+    if table.is_remote_share(path) {
+        return false;
+    }
+    table
+        .source_for(path)
+        .is_some_and(|source| source.starts_with("/dev"))
+}
+
+type UsageCacheEntry = (Option<(u64, u64)>, Instant);
+
+static USAGE_CACHE: LazyLock<Mutex<HashMap<PathBuf, UsageCacheEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+static PENDING_PROBES: LazyLock<Mutex<HashSet<PathBuf>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// FUSE / `rclone` mounts report synthetic placeholder capacities (`1 PiB` = `1 << 50`
+/// when `About` is unsupported, or `(u64::MAX / block) * block` ≈ `18.4 EB` when
+/// `Statfs` is uninitialized or fails). Treat capacities at or above `1 PiB` as
+/// unbounded/unknown so fake numbers never appear in capacity bars.
+const SYNTHETIC_CAPACITY_THRESHOLD: u64 = 1u64 << 50;
+
+pub(crate) fn sanitize_statvfs_bytes(
+    blocks: u64,
+    bavail: u64,
+    block_size: u64,
+) -> Option<(u64, u64)> {
+    if blocks == 0 || block_size == 0 {
+        return None;
+    }
+    let total = blocks.checked_mul(block_size)?;
+    if total >= SYNTHETIC_CAPACITY_THRESHOLD {
+        return None;
+    }
+    let avail = bavail.checked_mul(block_size)?.min(total);
+    Some((total, avail))
+}
+
+fn raw_statvfs(path: &Path) -> Option<(u64, u64)> {
+    let stat = rustix::fs::statvfs(path).ok()?;
+    let block = if stat.f_frsize > 0 {
+        stat.f_frsize
+    } else {
+        stat.f_bsize.max(1)
+    };
+    sanitize_statvfs_bytes(stat.f_blocks, stat.f_bavail, block)
+}
+
+/// Total and available bytes for a mounted path. Local block filesystems are
+/// measured immediately; remote/cloud/FUSE filesystems return cached usage or
+/// trigger a background probe without blocking the UI thread.
+pub(crate) fn filesystem_usage(path: &Path) -> Option<(u64, u64)> {
+    if is_local_block_filesystem(path) {
+        return raw_statvfs(path);
+    }
+
+    let now = Instant::now();
+    let cached = if let Ok(cache) = USAGE_CACHE.lock() {
+        if let Some(&(cached_usage, timestamp)) = cache.get(path) {
+            let ttl = if cached_usage.is_some() {
+                Duration::from_secs(60)
+            } else {
+                Duration::from_secs(5)
+            };
+            if now.duration_since(timestamp) < ttl {
+                return cached_usage;
+            }
+            cached_usage
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let should_probe = if let Ok(mut pending) = PENDING_PROBES.lock() {
+        pending.insert(path.to_path_buf())
+    } else {
+        false
+    };
+
+    if should_probe {
+        let path_buf = path.to_path_buf();
+        std::thread::spawn(move || {
+            let usage = raw_statvfs(&path_buf);
+            if let Ok(mut pending) = PENDING_PROBES.lock() {
+                pending.remove(&path_buf);
+            }
+            let changed = if let Ok(mut cache) = USAGE_CACHE.lock() {
+                let previous = cache.insert(path_buf, (usage, Instant::now()));
+                previous.map(|(prev_usage, _)| prev_usage) != Some(usage)
+            } else {
+                false
+            };
+            if changed && usage.is_some() {
+                glib::idle_add_once(|| {
+                    crate::ui::refresh_sidebars();
+                });
+            }
+        });
+    }
+
+    cached
 }

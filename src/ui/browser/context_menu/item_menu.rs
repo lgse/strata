@@ -447,7 +447,7 @@ impl MenuTarget<'_> {
     fn removable(&self) -> bool {
         self.entries
             .iter()
-            .all(|entry| can_remove_location(&entry.location))
+            .all(|entry| !entry.is_computer_item() && can_remove_location(&entry.location))
     }
 
     /// Whether the pane lists a real folder that new items can appear in.
@@ -458,7 +458,9 @@ impl MenuTarget<'_> {
                 .browser
                 .location_at(self.depth)
                 .is_some_and(|location| {
-                    !is_trash_location(&location) && !location.is_recent_location()
+                    !is_trash_location(&location)
+                        && !location.is_recent_location()
+                        && !location.is_computer_root()
                 })
     }
 
@@ -565,6 +567,7 @@ impl ItemMenuOptions {
     }
 
     fn refresh_transfer_rows(&self, target: &MenuTarget, removable: bool) {
+        let computer_item = target.entries.iter().any(FileEntry::is_computer_item);
         for button in [
             &self.single.cut,
             &self.multiple.cut,
@@ -573,6 +576,16 @@ impl ItemMenuOptions {
         ] {
             button.set_visible(removable);
         }
+        for button in [
+            &self.single.copy,
+            &self.multiple.copy,
+            &self.single.copy_to,
+            &self.multiple.copy_to,
+            &self.single.duplicate,
+            &self.multiple.duplicate,
+        ] {
+            button.set_visible(!computer_item);
+        }
         let groupable = target.groupable(removable);
         self.single_open.group.set_visible(groupable);
         self.multiple_open.group.set_visible(groupable);
@@ -580,21 +593,24 @@ impl ItemMenuOptions {
         self.multiple_open.group_separator.set_visible(groupable);
         self.single
             .rename
-            .set_visible(!is_trash_location(&target.entry.location));
-        let can_compress = target
-            .entries
-            .iter()
-            .all(|entry| entry.location.native_path().is_some());
+            .set_visible(!computer_item && !is_trash_location(&target.entry.location));
+        let can_compress = !computer_item
+            && target
+                .entries
+                .iter()
+                .all(|entry| entry.location.native_path().is_some());
         self.single.compress.set_visible(can_compress);
         self.multiple.compress.set_visible(can_compress);
     }
 
     fn refresh_delete_rows(&self, target: &MenuTarget, removable: bool) {
         let browser = &target.state.browser;
-        let trash_visible = removable
+        let computer_item = target.entries.iter().any(FileEntry::is_computer_item);
+        let trash_visible = !computer_item
+            && removable
             && move_to_trash_is_visible(self.in_trash, browser.can_trash_at(target.depth));
-        let permanent_visible =
-            permanently_delete_is_visible(self.in_trash, browser.can_delete_at(target.depth));
+        let permanent_visible = !computer_item
+            && permanently_delete_is_visible(self.in_trash, browser.can_delete_at(target.depth));
         let remote = permanent_visible
             && crate::ui::browser::trash::deletion_reach(target.entries)
                 == crate::ui::browser::trash::DeletionReach::Remote;

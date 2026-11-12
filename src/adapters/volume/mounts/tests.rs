@@ -3,8 +3,8 @@
 use std::{path::Path, time::Duration};
 
 use super::{
-    FAT32_MAX_FILE_SIZE, MountKey, MountTable, MountType, holds_symlinks, is_remote_fs_type,
-    max_file_size, unescape,
+    FAT32_MAX_FILE_SIZE, MountKey, MountTable, MountType, holds_symlinks, is_local_block_in_table,
+    is_remote_fs_type, max_file_size, unescape,
 };
 use crate::adapters::volume::names::{
     NameEncoding, NameLimit, NameProfile, NameRules, PrivateUse, Reserved, Strip,
@@ -44,6 +44,24 @@ fn parses_mount_points_and_filesystem_types() {
         )),
         Some("fuse.gvfsd-fuse")
     );
+}
+
+#[test]
+fn local_block_mounts_identified_correctly() {
+    let table = MountTable::parse(SAMPLE);
+    assert!(is_local_block_in_table(&table, Path::new("/")));
+    assert!(is_local_block_in_table(
+        &table,
+        Path::new("/home/user/file")
+    ));
+    assert!(is_local_block_in_table(&table, Path::new("/mnt/nfs/local")));
+    assert!(!is_local_block_in_table(&table, Path::new("/mnt/nfs")));
+    assert!(!is_local_block_in_table(&table, Path::new("/mnt/nfs/docs")));
+    assert!(!is_local_block_in_table(
+        &table,
+        Path::new("/run/user/1000/gvfs")
+    ));
+    assert!(!is_local_block_in_table(&table, Path::new("/mnt/my share")));
 }
 
 #[test]
@@ -587,4 +605,36 @@ fn name_rules_follow_the_driver_its_options_and_its_name_length() {
             "{id} {device_format:?}"
         );
     }
+}
+
+#[test]
+fn filesystem_usage_runs_synchronously_for_local_and_asynchronously_for_non_local() {
+    let root_usage = super::filesystem_usage(Path::new("/"));
+    assert!(root_usage.is_some());
+    let (total, avail) = root_usage.expect("root usage");
+    assert!(total > 0);
+    assert!(avail <= total);
+
+    let remote_path = Path::new("/non_existent_or_remote_probe_test");
+    let probe_init = super::filesystem_usage(remote_path);
+    assert!(probe_init.is_none());
+}
+
+#[test]
+fn sanitize_statvfs_rejects_rclone_synthetic_placeholders() {
+    // Normal 5 TB Google Drive quota
+    assert_eq!(
+        super::sanitize_statvfs_bytes(1_342_177_280, 1_340_300_143, 4096),
+        Some((5_497_558_138_880, 5_489_869_385_728))
+    );
+    // rclone `-1` blocks placeholder (~18,446,744.1 TB)
+    assert_eq!(
+        super::sanitize_statvfs_bytes(4_503_599_627_370_495, 4_503_599_627_370_495, 4096),
+        None
+    );
+    // rclone `1 PiB` (`1 << 50`) unknown-quota placeholder
+    assert_eq!(
+        super::sanitize_statvfs_bytes(274_877_906_944, 274_877_906_944, 4096),
+        None
+    );
 }

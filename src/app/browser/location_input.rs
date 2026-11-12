@@ -48,6 +48,7 @@ pub(super) fn location_from_input_with_home(
             | "trash"
             | "network"
             | "recent"
+            | "computer"
             | crate::model::ADMIN_SCHEME
     ) {
         return Err(LocationValidationError::UnsupportedScheme(
@@ -87,10 +88,11 @@ fn without_query_or_fragment(uri: String) -> String {
 
 /// GIO's spelling of the roots of schemes without a host, which it also reads from
 /// `network:` and `network://`.
-const VIRTUAL_ROOTS: [(&str, &str); 3] = [
+const VIRTUAL_ROOTS: [(&str, &str); 4] = [
     ("network", "network:///"),
     ("trash", "trash:///"),
     ("recent", "recent:///"),
+    ("computer", "computer:///"),
 ];
 
 fn virtual_root(input: &str) -> Option<&'static str> {

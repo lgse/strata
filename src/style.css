@@ -2480,6 +2480,37 @@ scrollbar.horizontal > range > trough > slider {
   transition: background 220ms ease-out, outline-color 220ms ease-out;
 }
 
+.sidebar-capacity-progress {
+  min-height: 4px;
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.sidebar-capacity-progress trough {
+  background: alpha(@strata_border, 0.45);
+  border-radius: 2px;
+  min-height: 4px;
+}
+
+.sidebar-capacity-progress progress {
+  background: @strata_accent;
+  border-radius: 2px;
+  min-height: 4px;
+}
+
+.sidebar-capacity-progress.warning progress {
+  background: #e5a50a;
+}
+
+.sidebar-capacity-progress.danger progress {
+  background: @strata_danger;
+}
+
+.sidebar-device-capacity {
+  color: @strata_dim_text;
+  font-size: 0.82em;
+}
+
 .sidebar-device.focused {
   outline-color: @strata_accent;
 }
@@ -6051,6 +6082,32 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   color: @strata_dim_text;
   font-size: 0.82em;
   padding: 0 4px 2px;
+}
+
+.icons-card-progress {
+  min-height: 4px;
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.icons-card-progress trough {
+  background: alpha(@strata_border, 0.45);
+  border-radius: 2px;
+  min-height: 4px;
+}
+
+.icons-card-progress progress {
+  background: @strata_accent;
+  border-radius: 2px;
+  min-height: 4px;
+}
+
+.icons-card-progress.warning progress {
+  background: #e5a50a;
+}
+
+.icons-card-progress.danger progress {
+  background: @strata_danger;
 }
 
 .file-icons > child .icons-card.drop-destination .icons-card-icon-frame,

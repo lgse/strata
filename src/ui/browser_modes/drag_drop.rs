@@ -87,9 +87,11 @@ pub(super) fn install_folder_peek(
     .install(card, item);
 }
 
-/// Trash and Recent folders refuse dropped files.
+/// Trash, Recent, and Computer roots refuse dropped files.
 fn refuses_drops(destination: &Location) -> bool {
-    is_trash_location(destination) || destination.is_recent_location()
+    is_trash_location(destination)
+        || destination.is_recent_location()
+        || destination.is_computer_root()
 }
 
 pub(super) fn install_mode_directory_drop_target(

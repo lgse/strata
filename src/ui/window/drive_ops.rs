@@ -242,19 +242,7 @@ pub(super) fn block_device_for_volume(volume: &gio::Volume) -> Option<PathBuf> {
 /// Total and available bytes for a mounted path, or `None` when the
 /// filesystem does not report capacity.
 pub(super) fn usage_for_path(path: &Path) -> Option<(u64, u64)> {
-    let stat = rustix::fs::statvfs(path).ok()?;
-    if stat.f_blocks == 0 {
-        return None;
-    }
-    let block = if stat.f_frsize > 0 {
-        stat.f_frsize
-    } else {
-        stat.f_bsize.max(1)
-    };
-    Some((
-        stat.f_blocks.saturating_mul(block),
-        stat.f_bavail.saturating_mul(block),
-    ))
+    crate::adapters::filesystem_usage(path)
 }
 
 pub(super) fn block_device_for_path(path: &Path) -> Option<PathBuf> {

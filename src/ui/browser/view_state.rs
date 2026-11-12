@@ -270,11 +270,13 @@ impl ViewState {
             .set_visible_child_name(if show_actions { "actions" } else { "hidden" });
     }
 
-    /// Trash and Recent take no drops, so they never look like a destination.
+    /// Trash, Recent, and Computer take no drops, so they never look like a destination.
     fn accepts_drops_at(&self, depth: usize) -> bool {
-        self.browser
-            .location_at(depth)
-            .is_some_and(|location| !is_trash_location(&location) && !location.is_recent_location())
+        self.browser.location_at(depth).is_some_and(|location| {
+            !is_trash_location(&location)
+                && !location.is_recent_location()
+                && !location.is_computer_root()
+        })
     }
 
     pub(super) fn focused_column_depth(&self) -> Option<usize> {

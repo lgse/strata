@@ -13,6 +13,21 @@ pub(super) fn display_name(
         .unwrap_or_else(|| system_name.to_owned())
 }
 
+fn find_row_label(row: &gtk::Button) -> Option<gtk::Label> {
+    let content = row.child()?;
+    let last = content.last_child()?;
+    if let Ok(label) = last.clone().downcast::<gtk::Label>() {
+        return Some(label);
+    }
+    if let Ok(text_box) = last.downcast::<gtk::Box>()
+        && let Some(first) = text_box.first_child()
+        && let Ok(label) = first.downcast::<gtk::Label>()
+    {
+        return Some(label);
+    }
+    None
+}
+
 pub(super) fn bind_row_label(
     row: &gtk::Button,
     preferences: &Rc<PreferenceManager>,
@@ -21,13 +36,11 @@ pub(super) fn bind_row_label(
 ) {
     bind_display_name(row, preferences, id, system_name, |widget, display_name| {
         let row = widget.downcast_ref::<gtk::Button>().expect("device row");
-        let label_widget = row
-            .child()
-            .and_then(|content| content.last_child())
-            .and_downcast::<gtk::Label>()
-            .expect("device row label");
+        let label_widget = find_row_label(row).expect("device row label");
         label_widget.set_text(display_name);
-        crate::ui::accessibility::set_own_label(row, display_name);
+        if row.is_sensitive() {
+            crate::ui::accessibility::set_own_label(row, display_name);
+        }
     });
 }
 

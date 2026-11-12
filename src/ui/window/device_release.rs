@@ -193,7 +193,7 @@ fn sidebar_browsers() -> Vec<Rc<crate::app::Browser>> {
     })
 }
 
-pub(super) fn refresh_sidebars() {
+pub(crate) fn refresh_sidebars() {
     let hooks: Vec<Rc<RebuildHook>> = REBUILDERS.with(|hooks| {
         hooks
             .borrow()
@@ -201,8 +201,18 @@ pub(super) fn refresh_sidebars() {
             .filter_map(|(_, hook)| hook.upgrade())
             .collect()
     });
-    for hook in hooks {
+    for hook in &hooks {
         (hook.rebuild)();
+    }
+    for browser in sidebar_browsers() {
+        if browser
+            .active_location()
+            .as_ref()
+            .and_then(|loc| loc.uri_value())
+            .is_some_and(|uri| uri.starts_with("computer:"))
+        {
+            browser.reload_active();
+        }
     }
 }
 

@@ -22,6 +22,7 @@ fn existing_sidebar_order_gains_music_after_downloads() {
         upgraded,
         [
             "home",
+            "computer",
             "trash",
             "network",
             "recent",

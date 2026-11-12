@@ -522,10 +522,16 @@ fn paste_destination(
     load_cursor: bool,
 ) -> Option<Location> {
     match selected {
-        [folder] if folder.is_directory() && !load_cursor => Some(folder.location.clone()),
+        [folder] if folder.is_directory() && !folder.is_computer_item() && !load_cursor => {
+            Some(folder.location.clone())
+        }
         _ => column,
     }
-    .filter(|location| !is_trash_location(location) && !location.is_recent_location())
+    .filter(|location| {
+        !is_trash_location(location)
+            && !location.is_recent_location()
+            && !location.is_computer_root()
+    })
 }
 
 /// Keyboard-triggered folder creation must ignore the pointer so a resting mouse

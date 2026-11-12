@@ -191,7 +191,7 @@ pub(crate) fn administrator_access_available() -> bool {
     })
 }
 
-fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
+pub(crate) fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
     gio::glib::Uri::parse_scheme(uri).is_some_and(|parsed| parsed.eq_ignore_ascii_case(scheme))
 }
 
@@ -275,8 +275,18 @@ impl Location {
         })
     }
 
+    pub fn is_computer_root(&self) -> bool {
+        self.uri_value().is_some_and(|uri| {
+            if !uri_scheme_eq(uri, "computer") {
+                return false;
+            }
+            uri.split_once(':')
+                .is_some_and(|(_, rest)| rest.trim_start_matches('/').is_empty())
+        })
+    }
+
     pub fn parent(&self) -> Option<Self> {
-        if self.is_recent_root() {
+        if self.is_recent_root() || self.is_computer_root() {
             return None;
         }
         match &self.kind {
@@ -470,6 +480,9 @@ impl Location {
         if self.is_recent_root() {
             return crate::i18n::tr("Recent");
         }
+        if self.is_computer_root() {
+            return crate::i18n::tr("Computer");
+        }
         if self.is_camera_photo_root() {
             return crate::i18n::tr("Photos");
         }
@@ -489,7 +502,7 @@ impl Location {
     }
 
     pub fn breadcrumbs(&self) -> Vec<Self> {
-        if self.is_recent_root() {
+        if self.is_recent_root() || self.is_computer_root() {
             return vec![self.clone()];
         }
         if let Some(path) = self.native_path() {
@@ -683,6 +696,12 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
+    pub fn is_computer_item(&self) -> bool {
+        self.recent_uri
+            .as_ref()
+            .is_some_and(|uri| uri_scheme_eq(uri, "computer"))
+    }
+
     pub fn local_thumbnail_path(&self) -> Option<&Path> {
         self.location
             .native_path()

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::metadata::apply_metadata_update;
 use super::*;
 
 /// The details a metadata fill can supply for an entry.
@@ -283,4 +284,30 @@ fn creation_sort_requests_birth_times_without_refilling_complete_size_metadata()
         .expect("missing modification time");
     assert_eq!(modified.len(), 1);
     assert_eq!(modified[0].1, location("/fixture/no-birth"));
+}
+
+#[test]
+fn computer_item_capacity_is_preserved_across_metadata_updates() {
+    let mut computer_entry = file_entry("/fixture/drive", "My Drive");
+    computer_entry.recent_uri = Some("computer:///drive.link".to_string());
+    computer_entry.size = MetadataValue::Known(1_000_000_000);
+    computer_entry.child_count = MetadataValue::Known(400_000_000);
+
+    let update = MetadataUpdate {
+        size: MetadataValue::Known(50),
+        child_count: MetadataValue::Known(12),
+        modified_unix_seconds: MetadataValue::Known(12345),
+        ..unknown_update("/fixture/drive")
+    };
+
+    assert!(apply_metadata_update(&mut computer_entry, &update));
+    assert_eq!(computer_entry.size, MetadataValue::Known(1_000_000_000));
+    assert_eq!(
+        computer_entry.child_count,
+        MetadataValue::Known(400_000_000)
+    );
+    assert_eq!(
+        computer_entry.modified_unix_seconds,
+        MetadataValue::Known(12345)
+    );
 }

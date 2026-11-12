@@ -49,10 +49,11 @@ impl SidebarState {
         let mounts = self.mounts_without_volumes(&volumes);
         let password_drives =
             orphaned_password_drives(&volumes, &self.volume_monitor.connected_drives());
-        let listed = volumes
-            .iter()
-            .filter(|volume| !self.hides_volume(volume))
-            .count()
+        let listed = 1
+            + volumes
+                .iter()
+                .filter(|volume| !self.hides_volume(volume))
+                .count()
             + mounts.len()
             + password_drives.len();
         if listed == 0 && !device_release::any_pending() {
@@ -62,6 +63,19 @@ impl SidebarState {
             self.append_separator();
         }
         let section = self.append_devices_section();
+        let has_root = mounts.iter().any(|(_, loc, _)| {
+            loc.native_path()
+                .is_some_and(|p| p == std::path::Path::new("/"))
+        }) || volumes.iter().any(|volume| {
+            volume
+                .get_mount()
+                .and_then(|mount| location_for_file(&mount.root()))
+                .and_then(|loc| loc.native_path().map(|p| p == std::path::Path::new("/")))
+                .unwrap_or(false)
+        });
+        if !has_root {
+            self.append_root_device();
+        }
         let mut shown = Vec::new();
         let groups = self.device_row_groups(volumes, password_drives, mounts);
         for (index, group) in groups.into_iter().enumerate() {
@@ -84,6 +98,22 @@ impl SidebarState {
             self.rail.get(),
         );
         self.devices_section.replace(Some(section));
+    }
+
+    pub(super) fn append_root_device(self: &Rc<Self>) {
+        let root_path = std::path::Path::new("/");
+        let usage = crate::adapters::filesystem_usage(root_path);
+        let name = crate::i18n::tr("File System");
+        let location = Location::local(root_path);
+        let row = sidebar_device_button(crate::assets::icons::HARD_DRIVE, &name, usage);
+        crate::ui::accessibility::set_description(&row, Some("/"));
+        self.bind_place_row(&row, location.clone(), PlaceNavigation::Validate);
+        sidebar::install_open_in_tab(&row, &self.view, &location, &self.drop_feedback);
+        self.place_rows
+            .borrow_mut()
+            .push((location.clone(), row.clone()));
+        install_sidebar_file_drop(self, &row, location);
+        self.append_sidebar_row(&row);
     }
 
     fn device_row_groups(
@@ -163,7 +193,10 @@ impl SidebarState {
             self.append_network_share(name, location, mount);
             return None;
         }
-        let row = sidebar_button(crate::assets::icons::HARD_DRIVE, name);
+        let usage = location
+            .native_path()
+            .and_then(crate::adapters::filesystem_usage);
+        let row = sidebar_device_button(crate::assets::icons::HARD_DRIVE, name, usage);
         if let Some(id) = PropertiesTarget::Mount(mount.clone()).label_id() {
             device_labels::bind_row_label(&row, &self.preference_manager, &id, name);
         }
@@ -208,7 +241,15 @@ impl SidebarState {
 
     fn append_volume(self: &Rc<Self>, volume: gio::Volume) -> device_release::DeviceIds {
         let name = volume.name().to_string();
-        let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
+        let mounted_location = volume
+            .get_mount()
+            .as_ref()
+            .and_then(|mount| location_for_file(&mount.root()));
+        let usage = mounted_location
+            .as_ref()
+            .and_then(|loc| loc.native_path())
+            .and_then(crate::adapters::filesystem_usage);
+        let row = sidebar_device_button(crate::assets::icons::HARD_DRIVE, &name, usage);
         if let Some(id) = PropertiesTarget::Volume(volume.clone()).label_id() {
             device_labels::bind_row_label(&row, &self.preference_manager, &id, &name);
         }
@@ -578,4 +619,110 @@ fn device_action_button(label: &str, icon: &str, on_click: impl Fn() + 'static) 
     button.set_width_request(24);
     button.connect_clicked(move |_| on_click());
     button
+}
+
+pub(super) fn sidebar_device_button(
+    icon: &str,
+    name: &str,
+    usage: Option<(u64, u64)>,
+) -> gtk::Button {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let image = crate::assets::primary_icon(icon, 17);
+    image.set_valign(gtk::Align::Center);
+    content.append(&image);
+
+    let text_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    text_box.add_css_class("sidebar-device-text");
+    text_box.set_hexpand(true);
+    text_box.set_valign(gtk::Align::Center);
+
+    let label = gtk::Label::new(Some(name));
+    label.add_css_class("sidebar-device-name");
+    label.set_xalign(0.0);
+    label.set_hexpand(true);
+    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    text_box.append(&label);
+
+    if let Some((total, free)) = usage.filter(|(total, _)| *total > 0) {
+        let used = total.saturating_sub(free);
+        let fraction = (used as f64 / total as f64).clamp(0.0, 1.0);
+
+        let progress = gtk::ProgressBar::new();
+        progress.add_css_class("sidebar-capacity-progress");
+        progress.set_fraction(fraction);
+        if fraction >= 0.90 {
+            progress.add_css_class("danger");
+        } else if fraction >= 0.80 {
+            progress.add_css_class("warning");
+        }
+        text_box.append(&progress);
+
+        let capacity_label = gtk::Label::new(Some(&format!(
+            "{} free of {}",
+            crate::i18n::file_size(free),
+            crate::i18n::file_size(total),
+        )));
+        capacity_label.add_css_class("sidebar-device-capacity");
+        capacity_label.set_xalign(0.0);
+        capacity_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        text_box.append(&capacity_label);
+    }
+
+    content.append(&text_box);
+
+    let row = gtk::Button::builder()
+        .child(&content)
+        .halign(gtk::Align::Fill)
+        .build();
+    row.add_css_class("sidebar-row");
+    row.add_css_class("sidebar-device-button");
+    row.set_cursor_from_name(Some("pointer"));
+    row.set_has_frame(false);
+    row
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sidebar_device_button_renders_capacity_progress_and_label() {
+        crate::test_support::gtk_test(
+            "ui::window::sidebar_devices::tests::sidebar_device_button_renders_capacity_progress_and_label",
+            || {
+                let button = sidebar_device_button(
+                    crate::assets::icons::HARD_DRIVE,
+                    "Local Disk",
+                    Some((1000 * 1000 * 1000, 250 * 1000 * 1000)),
+                );
+                assert!(button.has_css_class("sidebar-device-button"));
+                let content = button
+                    .child()
+                    .and_downcast::<gtk::Box>()
+                    .expect("content box");
+                let text_box = content
+                    .last_child()
+                    .and_downcast::<gtk::Box>()
+                    .expect("text box");
+                assert!(text_box.has_css_class("sidebar-device-text"));
+                let name = text_box
+                    .first_child()
+                    .and_downcast::<gtk::Label>()
+                    .expect("name label");
+                assert_eq!(name.text(), "Local Disk");
+                let progress = name
+                    .next_sibling()
+                    .and_downcast::<gtk::ProgressBar>()
+                    .expect("progress bar");
+                assert!(progress.has_css_class("sidebar-capacity-progress"));
+                assert!((progress.fraction() - 0.75).abs() < 0.01);
+                let capacity = progress
+                    .next_sibling()
+                    .and_downcast::<gtk::Label>()
+                    .expect("capacity label");
+                assert!(capacity.has_css_class("sidebar-device-capacity"));
+                assert!(capacity.text().contains("free of"));
+            },
+        );
+    }
 }

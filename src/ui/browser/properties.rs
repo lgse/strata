@@ -388,7 +388,7 @@ fn set_measurement_warning(warning: &gtk::Image, message: Option<&str>) {
 
 impl ViewState {
     pub(super) fn show_folder_properties(self: &Rc<Self>, location: &Location) {
-        if location.is_recent_location() {
+        if location.is_recent_location() || location.is_computer_root() {
             return;
         }
         self.show_properties(location.clone(), None, None);

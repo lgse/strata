@@ -85,7 +85,11 @@ impl Browser {
                 let locations = column
                     .entries
                     .iter_mut()
-                    .filter(|entry| entry.is_directory() && affected(&entry.location))
+                    .filter(|entry| {
+                        entry.is_directory()
+                            && !entry.is_computer_item()
+                            && affected(&entry.location)
+                    })
                     .map(|entry| {
                         entry.child_count = MetadataValue::Unknown;
                         entry.location.clone()

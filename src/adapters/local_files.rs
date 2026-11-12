@@ -220,6 +220,10 @@ fn listed_entry(
 }
 
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
+    let is_computer = location
+        .uri_value()
+        .is_some_and(|uri| crate::model::uri_scheme_eq(uri, "computer"));
+    let recent_uri = is_computer.then(|| location.uri_value().unwrap_or("computer:///").to_owned());
     let location = if matches!(
         info.file_type(),
         gio::FileType::Shortcut | gio::FileType::Mountable
@@ -245,17 +249,29 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
             .map_or(EntryKind::SymbolicLink, symlink_kind),
         _ => EntryKind::Other,
     };
-    let size = if matches!(
-        kind,
-        EntryKind::Directory | EntryKind::DirectorySymbolicLink
-    ) {
-        MetadataValue::Unknown
-    } else if info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE) {
-        u64::try_from(info.size())
-            .map(MetadataValue::Known)
-            .unwrap_or(MetadataValue::Unavailable)
+    let (size, child_count) = if is_computer {
+        let usage = location
+            .native_path()
+            .and_then(crate::adapters::filesystem_usage);
+        if let Some((total, available)) = usage {
+            (MetadataValue::Known(total), MetadataValue::Known(available))
+        } else {
+            (MetadataValue::Unknown, MetadataValue::Unknown)
+        }
     } else {
-        MetadataValue::Unknown
+        let s = if matches!(
+            kind,
+            EntryKind::Directory | EntryKind::DirectorySymbolicLink
+        ) {
+            MetadataValue::Unknown
+        } else if info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE) {
+            u64::try_from(info.size())
+                .map(MetadataValue::Known)
+                .unwrap_or(MetadataValue::Unavailable)
+        } else {
+            MetadataValue::Unknown
+        };
+        (s, MetadataValue::Unknown)
     };
     let modified_unix_seconds = if info.has_attribute(gio::FILE_ATTRIBUTE_TIME_MODIFIED) {
         info.modification_date_time()
@@ -283,11 +299,11 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         recent_unix_seconds: MetadataValue::Unknown,
         mode: info_mode(&info),
         image_dimensions: MetadataValue::Unknown,
-        child_count: MetadataValue::Unknown,
+        child_count,
         duration_seconds: MetadataValue::Unknown,
         listable: MetadataValue::Unknown,
         is_hidden: info_is_hidden(&info),
-        recent_uri: None,
+        recent_uri,
     }
 }
 
@@ -564,7 +580,10 @@ impl FileSource for LocalFileSource {
     fn responsiveness(&self, location: &Location) -> Responsiveness {
         match location.native_path() {
             Some(path) => mount_lanes::responsiveness(path),
-            None if location.is_recent_root() || location.is_camera_photo_root() => {
+            None if location.is_recent_root()
+                || location.is_camera_photo_root()
+                || location.is_computer_root() =>
+            {
                 Responsiveness::Answering
             }
             None => mount_lanes::remote_responsiveness(mount_lanes::authority(

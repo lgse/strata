@@ -256,7 +256,7 @@ impl Browser {
     }
 
     fn create_entry(self: &Rc<Self>, entry: NewEntry) {
-        if entry.parent.is_recent_location() {
+        if entry.parent.is_recent_location() || entry.parent.is_computer_root() {
             return;
         }
         if let Err(message) = validate_basename(&entry.name) {
@@ -326,7 +326,7 @@ impl Browser {
             move_sources,
             reveal,
         } = transfer;
-        if items.is_empty() || destination.is_recent_location() {
+        if items.is_empty() || destination.is_recent_location() || destination.is_computer_root() {
             return;
         }
         let Some(provider) = self.available_operation_provider() else {
@@ -395,6 +395,10 @@ impl Browser {
 
     fn delete_to(self: &Rc<Self>, entries: Vec<FileEntry>, destination: OperationDestination) {
         let permanent = !matches!(destination, OperationDestination::Trash);
+        let entries: Vec<FileEntry> = entries
+            .into_iter()
+            .filter(|entry| !entry.is_computer_item())
+            .collect();
         if entries.is_empty() {
             return;
         }

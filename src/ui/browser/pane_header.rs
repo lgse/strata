@@ -39,7 +39,7 @@ pub(in crate::ui) fn pane_new_folder_button(
         if state
             .browser
             .location_at(depth)
-            .is_some_and(|location| location.is_recent_location())
+            .is_some_and(|location| location.is_recent_location() || location.is_computer_root())
         {
             button.set_visible(false);
         }

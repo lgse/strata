@@ -692,7 +692,7 @@ fn classify_file_drop(
         hover_override(target, &state.last_override)
     };
     let destination = destination?;
-    if destination.is_recent_location() {
+    if destination.is_recent_location() || destination.is_computer_root() {
         return None;
     }
     let (relation, is_noop) = state.classify(target, destination, sources.clone());
@@ -826,7 +826,7 @@ pub(in crate::ui) fn file_drag_content(
     source: &gtk::DragSource,
     entries: &[FileEntry],
 ) -> Option<gtk::gdk::ContentProvider> {
-    if entries.is_empty() {
+    if entries.is_empty() || entries.iter().any(FileEntry::is_computer_item) {
         return None;
     }
     let files = entries
@@ -1232,6 +1232,9 @@ fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Location]) {
 
 impl ViewState {
     pub(super) fn copy_entries(&self, entries: &[FileEntry]) {
+        if entries.iter().any(FileEntry::is_computer_item) {
+            return;
+        }
         if set_files_clipboard(entries, false) {
             let locations: Vec<Location> =
                 entries.iter().map(|entry| entry.location.clone()).collect();
@@ -1242,7 +1245,7 @@ impl ViewState {
     pub(super) fn cut_entries(&self, entries: &[FileEntry]) -> bool {
         if entries
             .iter()
-            .any(|entry| !can_remove_location(&entry.location))
+            .any(|entry| entry.is_computer_item() || !can_remove_location(&entry.location))
         {
             return false;
         }
@@ -1333,7 +1336,10 @@ impl ViewState {
         focus: ConflictFocus,
         nothing: Rc<dyn Fn()>,
     ) {
-        if is_trash_location(&destination) || destination.is_recent_location() {
+        if is_trash_location(&destination)
+            || destination.is_recent_location()
+            || destination.is_computer_root()
+        {
             return;
         }
         let Some(display) = gtk::gdk::Display::default() else {
