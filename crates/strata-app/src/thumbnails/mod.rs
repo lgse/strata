@@ -282,7 +282,10 @@ fn look_up(path: &Path, edge: u32, cancellation: &Cancellation) -> Looked {
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
         .and_then(|since| i64::try_from(since.as_secs()).ok());
     match modified.and_then(|mtime| thumbnail_cache::lookup(path, mtime)) {
-        Some(png) => Looked::Done(decode(&png, edge)),
+        Some(png) => {
+            tracing::debug!("browser thumbnail disk hit");
+            Looked::Done(decode(&png, edge))
+        }
         None => Looked::Missed(modified),
     }
 }
