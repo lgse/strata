@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use rune::Tx;
 use strata_components::contract::EntrySource;
-use strata_core::i18n::tr;
+use strata_core::{i18n::tr, model::Location};
 
 use crate::listing::{Column, Load};
 
@@ -30,7 +30,7 @@ pub(crate) const GRACE: Duration = Duration::from_millis(150);
 /// clock, and whether it has outlasted the grace period.
 #[derive(Debug, Default)]
 struct Reading {
-    of: Option<String>,
+    of: Option<Location>,
     since: f64,
     announced: bool,
 }
@@ -55,9 +55,9 @@ impl Reading {
         let Some(listing) = listing.filter(|listing| reading(listing)) else {
             return std::mem::take(self).announced;
         };
-        if self.of.as_deref() != Some(listing.title()) {
+        if self.of.as_ref() != Some(listing.location()) {
             *self = Self {
-                of: Some(listing.title().to_owned()),
+                of: Some(listing.location().clone()),
                 since: clock,
                 announced: false,
             };

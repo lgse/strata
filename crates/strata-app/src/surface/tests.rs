@@ -92,3 +92,23 @@ fn each_column_waits_out_its_own_read_and_a_closed_one_is_forgotten() {
     assert!(!surface.watch([Some(&root)].into_iter(), 1.0 + grace * 2.0, &mut tx));
     assert_eq!(surface.readings.len(), 1);
 }
+
+/// A folder of the same name in another place, opened where the first was, waits out a
+/// grace period of its own: the reading is the folder's, not its name's.
+#[test]
+fn another_folder_of_the_same_name_in_the_same_place_restarts_the_grace_period() {
+    let mut surface = Surface::translated();
+    let mut tx = rune::Tx::default();
+    let grace = GRACE.as_secs_f64();
+    let first = folder("/a/docs");
+    surface.watch(one(&first), 1.0, &mut tx);
+    assert!(surface.watch(one(&first), 1.0 + grace, &mut tx));
+    assert_eq!(read(&surface, 0, &first), loading());
+
+    let second = folder("/b/docs");
+    assert_eq!(first.title(), second.title());
+    assert!(!surface.watch(one(&second), 1.0 + grace * 1.5, &mut tx));
+    assert_eq!(read(&surface, 0, &second), silent());
+    assert!(surface.watch(one(&second), 1.0 + grace * 2.5, &mut tx));
+    assert_eq!(read(&surface, 0, &second), loading());
+}
