@@ -10,6 +10,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'build.rs'
+      - 'crates/*/Cargo.toml'
+      - 'crates/*/build.rs'
       - 'data/licenses/**'
       - 'data/icons/scalable/apps/**'
       - 'data/io.github.lgse.Strata.*'
@@ -27,6 +29,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'build.rs'
+      - 'crates/*/Cargo.toml'
+      - 'crates/*/build.rs'
       - 'data/licenses/**'
       - 'data/icons/scalable/apps/**'
       - 'data/io.github.lgse.Strata.*'
@@ -78,12 +82,12 @@ jobs:
 
       - name: Verify the build configuration
         run: |
-          strata_rustc=$(grep -E -- '--crate-name strata --edition=[0-9]+ src/main\.rs' rpmbuild.log)
-          if ! grep -q -- '--cfg strata_updater_disabled' <<<"$strata_rustc"; then
+          workspace_rustc=$(grep -E -- '--crate-name strata(_[a-z]+)* ' rpmbuild.log)
+          if ! grep -q -- '--cfg strata_updater_disabled' <<<"$workspace_rustc"; then
             echo "The RPM build kept the in-app updater." >&2
             exit 1
           fi
-          if grep -q 'feature="rar"' <<<"$strata_rustc"; then
+          if grep -q 'feature="rar"' <<<"$workspace_rustc"; then
             echo "The RPM build enabled RAR support." >&2
             exit 1
           fi

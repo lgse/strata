@@ -195,7 +195,7 @@ rpmbuild --rebuild target/rpm/strata-*.src.rpm
 rpmlint target/rpm/strata-*.src.rpm ~/rpmbuild/RPMS/*/strata-*.rpm
 ```
 
-`--ref` packages any commit under a release tag's identity, which `.github/workflows/rpm.yml` uses to build pull requests. That workflow runs on every change to the package's inputs, including `Cargo.toml` and `Cargo.lock`, because a dependency update can add a crate under a license COPR does not accept. It builds on `x86_64` with the newest Fedora only; the COPR builds at release time cover the other releases and `aarch64`, and a failed one can be retried with `publish-copr.yml`. `--release` raises the RPM release number to rebuild a version that is already published.
+`--ref` packages any commit under a release tag's identity, which `.github/workflows/rpm.yml` uses to build pull requests. That workflow runs on every change to the package's inputs, including the workspace's `Cargo.toml` files and `Cargo.lock`, because a dependency update can add a crate under a license COPR does not accept. It builds on `x86_64` with the newest Fedora only; the COPR builds at release time cover the other releases and `aarch64`, and a failed one can be retried with `publish-copr.yml`. `--release` raises the RPM release number to rebuild a version that is already published.
 
 ### Publishing
 

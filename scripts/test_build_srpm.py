@@ -76,13 +76,18 @@ class LicenseExpressionTests(unittest.TestCase):
 class UpdaterSwitchTests(unittest.TestCase):
 
     def test_only_sources_that_can_compile_out_the_updater_are_packaged(self):
-        for build_script, packaged in (
-            ('println!("cargo::rerun-if-env-changed=STRATA_UPDATER");', True),
-            ('println!("cargo::rerun-if-env-changed=STRATA_BUILD_COMMIT");', False),
+        switch = 'println!("cargo::rerun-if-env-changed=STRATA_UPDATER");'
+        other = 'println!("cargo::rerun-if-env-changed=STRATA_BUILD_COMMIT");'
+        for build_scripts, packaged in (
+            ({"build.rs": switch}, True),
+            ({"build.rs": other, "crates/strata-desktop/build.rs": switch}, True),
+            ({"build.rs": other, "crates/strata-core/build.rs": other}, False),
         ):
-            with self.subTest(packaged=packaged), tempfile.TemporaryDirectory() as scratch:
+            with self.subTest(build_scripts=build_scripts), tempfile.TemporaryDirectory() as scratch:
                 source = pathlib.Path(scratch)
-                (source / "build.rs").write_text(build_script)
+                for path, contents in build_scripts.items():
+                    (source / path).parent.mkdir(parents=True, exist_ok=True)
+                    (source / path).write_text(contents)
                 if packaged:
                     require_updater_switch(source, "v1.2.1")
                 else:

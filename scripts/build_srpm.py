@@ -130,7 +130,8 @@ def run(arguments: list[str], cwd: pathlib.Path | None = None) -> str:
 
 def require_updater_switch(source: pathlib.Path, tag: str) -> None:
     """Older sources ignore `STRATA_UPDATER`, so their RPM would ship the in-app updater."""
-    if "STRATA_UPDATER" not in (source / "build.rs").read_text():
+    build_scripts = [source / "build.rs", *source.glob("crates/*/build.rs")]
+    if not any("STRATA_UPDATER" in script.read_text() for script in build_scripts):
         raise PackagingError(f"{tag} predates STRATA_UPDATER and cannot be packaged as an RPM")
 
 
