@@ -13,6 +13,9 @@ publish = false
 workspace = true
 
 [features]
+# UnRAR, by default as in the GTK application: `--no-default-features` builds without it.
+default = ["rar"]
+rar = ["strata-app/rar"]
 # `strata-rune --qa <directory>`: the scripted QA mode. Never in a release build.
 qa = ["strata-app/qa"]
 
