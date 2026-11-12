@@ -114,6 +114,10 @@ closed issue is not a fixed finding: the state given here is the finding's.
   `ui::window::tests::keyboard_dispatch::pane_focus::default_map_tab_leaves_the_listing_in_one_press`,
   and, added in a comment,
   `ui::window::tests::keyboard_dispatch::folder_jump::tenxer_z_ranks_history_and_opens_the_chosen_folder_once`;
+  `ui::window::tests::keyboard_dispatch::icon_motion::tenxer_icons_move_spatially_open_explicitly_and_peek`
+  (`src/ui/window/tests/keyboard_dispatch/icon_motion.rs:195`, "Key(104) landed on …"), which
+  failed once in CI's shard 3 on [#2200](https://github.com/lgse/strata/pull/2200), a change to `crates/strata-app` and Markdown that the
+  GTK lane does not compile;
   and, in `strata-fs`,
   `services::search::tests::folder_path_search_leads_with_a_folder_the_query_names_outright`
   (`crates/strata-fs/src/services/search/tests.rs:819`).
