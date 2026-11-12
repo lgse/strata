@@ -10,7 +10,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 
 use super::{intents, listing::Load};
-use crate::{rename, shell::App};
+use crate::{App, rename};
 
 /// The view's words, translated once: the language changes only on restart.
 pub(super) struct Labels(ColumnsLabels);
@@ -70,7 +70,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         match app.columns.scope(depth) {
             Some(scope) => collection.rename(
                 move |app: &App| app.rename.state.renaming_in(&scope),
-                rename::editor().slot(),
+                rename::editor(app).slot(),
             ),
             None => collection,
         }

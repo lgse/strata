@@ -12,9 +12,9 @@ use strata_components::{
 
 use super::Input;
 use crate::{
+    App,
     menus::{self, EntryTarget, FolderTarget, Opening, Wired},
-    rename,
-    shell::{self, App},
+    rename, shell,
 };
 
 impl App {

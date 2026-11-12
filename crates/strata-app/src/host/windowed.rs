@@ -19,8 +19,9 @@ use strata_platform::{
 };
 
 use crate::{
+    App,
     settings::Saved,
-    shell::{self, App},
+    shell,
     startup::{APPLICATION_ID, UiThread},
 };
 
