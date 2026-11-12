@@ -18,6 +18,10 @@
 >   [`packages/`](packages/) a file for each, [`owner.md`](owner.md) the questions and
 >   rulings, [`findings.md`](findings.md) the findings, and [`working.md`](working.md) how
 >   a package is worked on.
+> - Since the owner's rule of 2026-11-12 on mutation testing, the routine checks and the
+>   merge gate run no mutation patches, so "Before a package's pull request" and "The merge
+>   gate" differ from the document too, and [When a mutation run is
+>   right](#when-a-mutation-run-is-right) is this copy's own.
 
 2026-11-11 · William
 
@@ -546,7 +550,6 @@ checkpoints.
 | --- | --- |
 | The runs it claims, on both targets | `./scripts/qa-parity.sh <selection> --scenario <name>`. Selections by folder and package arrive with H1 |
 | Which pending runs already pass on Rune | `./scripts/qa-parity.sh <selection> --pending` |
-| Its Rune mutation patches | `./scripts/qa-parity.sh mutations` |
 | Rune-side unit and gallery tests | `mise run test-rune <filter>`, with a filter that matches at least one test |
 | The GTK side, when a shared crate or `src/` changed | `./scripts/qa.sh <scenario>` and `./scripts/test-headless.py <filter>` |
 | The fuzz smoke tier for its alphabet | F1's command |
@@ -557,8 +560,33 @@ checkpoints.
 
 The package's agent runs the gate itself before merging, on its branch with the integration
 branch merged in. CI checks only linting and unit tests. The gate runs the package's ledger
-selection on both targets and its mutation patches. It adds the full GTK suite and its 22
-patches when the runner, `strata-qa`, a shared crate or `src/` changed.
+selection on both targets (`./scripts/qa-parity.sh <package>`). When the runner,
+`strata-qa`, a shared crate or `src/` changed, it is the full gate instead: every required
+and parallel run on both targets (`./scripts/qa-parity.sh all`), the whole GTK suite
+(`./scripts/qa.sh`) and `./scripts/quality.sh test`. Neither runs a mutation patch.
+`./scripts/qa.sh` does not read the slice's flaky allowance, so a failure there of
+`new-folder-with-selection-groups/columns` is finding #2162, not the change's.
+
+### When a mutation run is right
+
+Mutation runs are too heavy on wall-clock time to be routine verification. By the owner's
+rule of 2026-11-12 ([`owner.md`](owner.md#ruled)), one is run only when there is a question
+whether tests are effective:
+
+- **A Rune mutation patch a package wrote or changed** is proven once, alone: apply it in the
+  worktree (`git apply tests/qa/parity/mutations/<scenario>.patch`), run its one scenario on
+  Rune (`./scripts/qa-parity.sh <folder> --target rune --scenario <scenario>`) and see it
+  fail, then reverse it (`git apply -R …`). `./scripts/qa-parity.sh mutations` runs every
+  Rune patch and has no per-patch selection yet.
+- **A patch that stopped applying** because the code it breaks moved, once it is refreshed.
+- **A run suspected of passing for the wrong reason.**
+- **A GTK scenario whose `mutation` changed**, or whose patch stopped applying:
+  `./scripts/qa-mutation.sh <scenario>`, as `AGENTS.md`, "QA scenarios", says.
+- **The exit checks:** E2's soak and exit criterion 3 are deliberate checks that the tests
+  are effective, and stay as written.
+
+Deliverable 5, a twin's patch and the risk row on twins are about a patch existing and
+having been proven once, not about running the sets again.
 
 ### Checkpoints
 

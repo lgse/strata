@@ -807,8 +807,12 @@ and `target/qa-mutation/summary.md` has one row per patch. The script restores
 only the files the patch touched, refuses a patch whose files have uncommitted
 changes, and refuses to run with `STRATA_QA_UPDATE_BASELINES=1`. It exits 0
 when every mutation is caught. It shares the build cache with `qa.sh`, so
-never run it alongside another QA command. Run it after changing the runner,
-and when adding a scenario for a workflow that does not have a mutation yet.
+never run it alongside another QA command. It is not routine verification: by
+the owner's rule of 2026-11-12, run it only when there is a question whether
+tests are effective, such as a scenario whose `mutation` changed or whose patch
+stopped applying, a runner change to how a step is judged, or a scenario added
+for a workflow that does not have a mutation yet
+(`docs/rune/parity/README.md`, "When a mutation run is right").
 
 ### The Rune target and the parity ledger
 
@@ -913,12 +917,13 @@ It ends by listing each allowance it used or refused, or saying it used none,
 and then `== slice exits <status> ==`. A whole run takes about 14 minutes with
 a warm cache, 11 of them the GTK mutation patches.
 
-As a gate before a merge, `slice` covers the slice's gated runs on both
-targets, both sets of mutation patches, and the whole GTK suite with its two
-allowances. It runs no required run outside the gates. None exists yet; once
-an area package has made one, a change to the runner, the protocol, a shared
-crate or `src/` passes `slice` and `./scripts/qa-parity.sh all`, which runs
-every required run of the ledger on both targets.
+`slice` runs both sets of mutation patches, so it is not the routine gate
+before a merge: by the owner's rule of 2026-11-12 mutation runs are kept for
+questions of whether tests are effective. A change to the runner, the
+protocol, a shared crate or `src/` passes `./scripts/qa-parity.sh all`, which
+runs every required and parallel run of the ledger on both targets, the whole
+GTK suite with `./scripts/qa.sh`, and `./scripts/quality.sh test`
+(`docs/rune/parity/README.md`, "The merge gate").
 
 `mutations` proves the Rune target's runs can fail, as `scripts/qa-mutation.sh`
 does for the GTK application. Each patch under `tests/qa/parity/mutations/`
@@ -933,7 +938,9 @@ reverted, so its files must have no uncommitted changes; logs and
 no run of its own on the Rune target is refused: one with no required run, or
 one whose every run is parallel, whose patch is its twin's. The scenario may be
 in any folder. Add a patch when an area gains its first required runs and with
-every twin, and check it when its scenario or `strata-app`'s adapter changes.
+every twin, and prove it once, alone, when it is written or changed, when it
+stops applying, or when its runs are suspected of passing for the wrong
+reason (`docs/rune/parity/README.md`, "When a mutation run is right").
 
 #### The ledger
 

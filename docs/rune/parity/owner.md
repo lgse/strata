@@ -300,6 +300,12 @@ Rulings of the owner on the parity work, oldest first.
   move tracking into Markdown checked in under `docs/`, as agents finish and new ones start
   (recorded by the orchestrating session, 2026-11-12). So a package's state, its record and
   its open questions live under `docs/rune/parity/`, and the closed issues are an archive.
+- **2026-11-12: mutation runs are not routine verification.** The owner said: "As a general
+  rule going forward, mutation testing should only be run if there's a question about whether
+  tests are effective; it is far too heavy on wall-clock time to run as a routine
+  verification" (recorded by the orchestrating session, 2026-11-12). So the routine checks
+  and the merge gate run no mutation set; the plan's
+  [When a mutation run is right](README.md#when-a-mutation-run-is-right) says when one is.
 
 ## Housekeeping
 

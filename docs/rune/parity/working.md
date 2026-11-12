@@ -106,9 +106,11 @@ The checkpoint a package feeds is its wave's, in the plan's
   what is right, answer what is not, on the pull request.
 - **The merge gate** is the plan's ([The merge gate](README.md#the-merge-gate)), run by the
   package's agent on its branch with `strata-next` merged in: the package's ledger selection
-  on both targets (`./scripts/qa-parity.sh <package>`) and its Rune mutation patches
-  (`./scripts/qa-parity.sh mutations`); and, when the runner, `strata-qa`, a shared crate or
-  `src/` changed, `./scripts/qa-parity.sh slice` and `./scripts/quality.sh test` too.
+  on both targets (`./scripts/qa-parity.sh <package>`); or, when the runner, `strata-qa`, a
+  shared crate or `src/` changed, every required run on both targets
+  (`./scripts/qa-parity.sh all`), the whole GTK suite (`./scripts/qa.sh`) and
+  `./scripts/quality.sh test`. No mutation set is run: a patch is proven once, alone, as the
+  plan's [When a mutation run is right](README.md#when-a-mutation-run-is-right) says.
 - **The merge**, once the gate and CI are green: a merge commit,
   `gh pr merge <number> -R lgse/strata --merge`, never a squash or a rebase
   ([`owner.md`](owner.md#ruled)).

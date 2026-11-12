@@ -337,9 +337,13 @@ run stays `pending` with a blocker.
 
 5. **Prove the twin can fail.** Add
    `tests/qa/parity/mutations/<scenario>-rune.patch`, which breaks the
-   behaviour the twin's own steps check in `crates/strata-app`, and run
-   `./scripts/qa-parity.sh mutations`. A scenario whose every run is
-   parallel has no patch of its own: `git mv` it to the twin's name.
+   behaviour the twin's own steps check in `crates/strata-app`, and prove it
+   once, alone: `git apply` it, run the twin on Rune with
+   `./scripts/qa-parity.sh <folder> --target rune --scenario <scenario>-rune`
+   and see it fail, then `git apply -R` it (`./scripts/qa-parity.sh
+   mutations` runs every patch and has no per-patch selection yet). A
+   scenario whose every run is parallel has no patch of its own: `git mv` it
+   to the twin's name.
 6. **Check and run the pair.** `./scripts/qa-parity.sh <folder> --twins`
    reads the ledger, every label and both files, says what to do about a
    pair that does not hold, and lists each twin with how many of its steps
