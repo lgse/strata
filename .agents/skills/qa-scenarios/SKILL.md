@@ -298,9 +298,10 @@ run stays `pending` with a blocker.
    and why none of those three fits (label `exception`; `oracle` for a bug in
    Strata itself). A `rune` twin cites its packet entry instead,
    `docs/rune/upstream/rune/<number>-<name>.md`. A `deviation` twin needs the
-   owner's ruling on its issue before it is written. Parity findings are now
-   recorded in `docs/rune/parity/findings.md`; what a twin cites for one with
-   no issue is an open question in `docs/rune/parity/owner.md`.
+   owner's ruling before it is written. The ruling is recorded under "Ruled" in
+   `docs/rune/parity/owner.md` and names the finding's reference issue, which
+   the twin cites. A parity finding's issue is its reference, and may be closed
+   at once; `docs/rune/parity/findings.md` holds its state.
 2. **Write the twin** beside the original. It holds only the modes or
    variants that differ, and starts from the same `tree`, `images`,
    `fixture_root`, `setup`, `teardown`, `prefs`, `layout`, `portal`, `env`,
@@ -337,9 +338,16 @@ run stays `pending` with a blocker.
 
 5. **Prove the twin can fail.** Add
    `tests/qa/parity/mutations/<scenario>-rune.patch`, which breaks the
-   behaviour the twin's own steps check in `crates/strata-app`, and run
-   `./scripts/qa-parity.sh mutations`. A scenario whose every run is
-   parallel has no patch of its own: `git mv` it to the twin's name.
+   behaviour the twin's own steps check in `crates/strata-app`, and prove it
+   once, alone (`./scripts/qa-parity.sh mutations` runs every patch and has
+   no per-patch selection yet). With the patched files clean, run the twin
+   on Rune unpatched, `./scripts/qa-parity.sh <folder> --target rune
+   --scenario <scenario>-rune`, and see it pass; `git apply` the patch, run
+   the same selection and see a step fail, not a build or launch failure;
+   restore the files with `git restore -- <files>` or `git apply -R`, and see
+   `git status --porcelain` empty before committing anything. A
+   scenario whose every run is parallel has no patch of its own: `git mv` it
+   to the twin's name.
 6. **Check and run the pair.** `./scripts/qa-parity.sh <folder> --twins`
    reads the ledger, every label and both files, says what to do about a
    pair that does not hold, and lists each twin with how many of its steps
