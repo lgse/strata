@@ -9,10 +9,10 @@ use std::{
 };
 
 use rune::{El, Key as Logical, KeyEvent, Mods, Tx, el};
-use strata_desktop::keys::{Binding, Key, KeyPress, bindings::TAB_NUMBERS};
+use strata_desktop::keys::{Binding, Key, KeyPress, Map, bindings::TAB_NUMBERS};
 
 use super::super::{
-    Action, Call, Holds, Keys, On, Outcome, Reads, Situation, Stage, always, on_key, run,
+    Action, Call, Holds, Keys, On, Outcome, Reads, Situation, Stage, always, on_key, read, run,
 };
 use super::{MODULE, act, press};
 use crate::{
@@ -28,6 +28,8 @@ thread_local! {
     static LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     /// What the made-up owner has of the keyboard.
     static HOLDS: Cell<Option<Holds>> = const { Cell::new(None) };
+    /// How often the made-up view has been built.
+    static BUILT: Cell<u32> = const { Cell::new(0) };
 }
 
 fn note(line: impl Into<String>) {
@@ -87,6 +89,7 @@ fn part<P: 'static>(
 }
 
 fn made_view(_: &App, _: &mut Frame<'_, App>) -> Option<El> {
+    BUILT.set(BUILT.get() + 1);
     Some(el().key("made-view").w(40.0).h(20.0).focusable(true))
 }
 
@@ -231,7 +234,7 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
     const TAIL: [&str; 3] = ["after yield, the owner's", "after yield", "unclaimed"];
     let chain =
         |stages: &[&'static str]| -> Vec<&'static str> { [&HEAD[..], stages, &TAIL[..]].concat() };
-    let cases: [(Option<Holds>, Vec<&str>, bool); 7] = [
+    let cases: [(Option<Holds>, Vec<&str>, bool); 8] = [
         (
             None,
             chain(&[
@@ -269,7 +272,12 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
         (Some(Holds::Menu), chain(&[]), false),
         // The tab strip is blocked, the layer's own action runs, and the next one takes the key.
         (
-            Some(Holds::Modal),
+            Some(Holds::Modal { field: false }),
+            vec!["entry", "zoom", "after yield, the owner's"],
+            true,
+        ),
+        (
+            Some(Holds::Modal { field: true }),
             vec!["entry", "zoom", "after yield, the owner's"],
             true,
         ),
@@ -295,16 +303,112 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
     );
 }
 
+/// `context_of` in `src/ui/keys/alias.rs` counts any focused editable, so a letter typed in a
+/// modal layer's field is text, where beside the field it is the arrow it stands for.
+#[test]
+fn a_letter_is_text_in_any_field_and_an_arrow_elsewhere() {
+    let cases = [
+        (None, true),
+        (Some(Holds::Field), false),
+        (Some(Holds::Modal { field: false }), true),
+        (Some(Holds::Modal { field: true }), false),
+    ];
+    hosted_over(
+        MODULE,
+        "routing::a_letter_is_text_in_any_field_and_an_arrow_elsewhere",
+        an_owner_and_every_stage,
+        move |mut host| {
+            act(&mut host, |app, _| {
+                shell::saved(app).change(|settings| settings.type_to_search = false);
+            });
+            for (holds, an_arrow) in cases {
+                HOLDS.set(holds);
+
+                let press = act(&mut host, |app, tx| {
+                    let at = Situation::of(app, tx);
+                    read(app, &key(Logical::Text("j".to_owned())), &at, tx)
+                });
+
+                // A binding on Down matches `j` only once the aliases read it as Down.
+                assert_eq!(press.is(Binding::plain(Key::Down)), an_arrow, "{holds:?}");
+            }
+        },
+    );
+}
+
+/// The GTK application reads its preference manager at each press, wherever the press lands.
+#[test]
+fn a_press_in_a_field_is_read_with_the_map_the_settings_select_now() {
+    hosted_over(
+        MODULE,
+        "routing::a_press_in_a_field_is_read_with_the_map_the_settings_select_now",
+        an_owner_and_every_stage,
+        |mut host| {
+            HOLDS.set(Some(Holds::Field));
+
+            let map = act(&mut host, |app, tx| {
+                shell::saved(app).change(|settings| settings.tenxer_mode = true);
+                let at = Situation::of(app, tx);
+                read(app, &key(Logical::Function(9)), &at, tx);
+                Map::active()
+            });
+
+            assert_eq!(map, Map::Tenxer);
+        },
+    );
+}
+
+/// Queues an update as a service's callback does, and finds the press is not its own.
+fn queues_and_declines(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    app.later().then(|_, _| {
+        note("applied");
+        true
+    });
+    Outcome::Declined
+}
+
+const QUEUES: &[Action<App>] =
+    &[Action::new("queues", queues_and_declines).keys(&[at(Stage::Entry, f8)])];
+
+fn a_view_and_one_that_queues() -> Vec<Entry<App>> {
+    struct Queues;
+    vec![view(), part::<Queues>("queues", QUEUES, |_| None)]
+}
+
+/// Rune commits nothing for a key no handler took, so what is in the queue then is applied
+/// by the frame's `poll`, whose answer runs the view.
+#[test]
+fn what_was_queued_when_a_command_declined_still_runs_the_view() {
+    hosted_over(
+        MODULE,
+        "routing::what_was_queued_when_a_command_declined_still_runs_the_view",
+        a_view_and_one_that_queues,
+        |mut host: Offscreen| {
+            while host.turn() {}
+            let built = BUILT.get();
+
+            press(&mut host, Logical::Function(8), Mods::default());
+
+            assert_eq!(noted(), ["applied"]);
+            assert!(BUILT.get() > built, "the view did not run for the update");
+        },
+    );
+}
+
 says! {
     in_the_view: "the view has the keyboard" => Outcome::Declined;
     in_a_made_part: "a made-up part has the keyboard" => Outcome::Declined;
+    in_a_longer_name: "a part whose name only starts the key has the keyboard" => Outcome::Declined;
 }
 
 const WHERE: &[Action<App>] = &[
     Action::new("in-view", in_the_view)
         .keys(&[at(Stage::ItemNavigation, f9).when(|_, at: &Situation| at.in_view())]),
     Action::new("within", in_a_made_part)
-        .keys(&[at(Stage::ItemNavigation, f9).when(|_, at: &Situation| at.within("made-"))]),
+        .keys(&[at(Stage::ItemNavigation, f9).when(|_, at: &Situation| at.within("made"))]),
+    // `made-view` is not a key of a part named `mad`.
+    Action::new("within-a-longer-name", in_a_longer_name)
+        .keys(&[at(Stage::ItemNavigation, f9).when(|_, at: &Situation| at.within("mad"))]),
 ];
 
 fn a_view_and_guards() -> Vec<Entry<App>> {

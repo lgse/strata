@@ -56,7 +56,7 @@
 //! | The id of an entry | `shell::id_of(app, &location)`: the window's one table, which [`Setup::ids`] also hands a part for its listener |
 //! | A context menu on one of its rows, or on its folder | A view's handler calls `menus::open(app, Request { depth, entry, anchor }, tx)` for the collection's `Intent::ContextMenu`, with no entry for the folder. The opener decides what the menu is for and lists, once for every view, and asks the view only for a row's position ([`Rows`]) |
 //! | Its commands: a window chord, a menu row, a header button | [`Part::COMMANDS`], a table of [`Action`]s. Each has the name a menu row or a header button asks for it by, the shared catalog's command it is, the stage of the GTK window's dispatcher that reads its keys with that stage's matcher and guard, and what it does. `rename.rs` is the example. Two parts that are active together may not register one name: the window does not start |
-//! | The window's commands to wait while it has the keyboard | [`Part::keyboard`] says which of the GTK window's owners of input the part is now ([`Holds`]): an inline edit, a menu, a modal layer, the location bar, the filter, another text field. `commands/owners.rs` holds what each leaves of the stages. A part whose element takes text or is a Rune modal answers it |
+//! | The window's commands to wait while it has the keyboard | [`Part::keyboard`] says which of the GTK window's owners of input the part is now ([`Holds`]): an inline edit, a menu, a modal layer and whether a field of its own is being typed in, the location bar, the filter, another text field. `commands/owners.rs` holds what each leaves of the stages. A part whose element takes text or is a Rune modal answers it |
 //!
 //! # Rules for a part
 //!

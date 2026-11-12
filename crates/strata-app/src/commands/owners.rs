@@ -40,15 +40,18 @@ pub(crate) enum Holds {
     Menu,
     /// A modal layer: `input_owner` gives it every key (`input_owner.rs:30`), the tab
     /// strip's commands are blocked (`composition/tabs.rs:760`), and a window action takes
-    /// its key without running (`composition.rs:239`).
-    Modal,
+    /// its key without running (`composition.rs:239`). `field` says whether a text field of
+    /// the layer has the keyboard (a palette's query, a dialog's name): typing is then the
+    /// field's, as under any focused editable (`context_of` in `src/ui/keys/alias.rs`).
+    #[cfg_attr(not(test), expect(dead_code, reason = "no part is a modal layer yet"))]
+    Modal { field: bool },
 }
 
 impl Holds {
     /// The last stage of the chain that still runs: after it the key is the owner's.
     const fn last(self) -> Stage {
         match self {
-            Self::Modal | Self::Menu => Stage::ZoomShortcut,
+            Self::Modal { .. } | Self::Menu => Stage::ZoomShortcut,
             Self::Edit => Stage::InlineEditing,
             Self::Location => Stage::TextInput,
             Self::Filter | Self::Field => Stage::ItemNavigation,
@@ -89,7 +92,13 @@ impl Situation {
     pub(crate) fn text(&self) -> bool {
         matches!(
             self.holds(),
-            Some(Holds::Field | Holds::Filter | Holds::Location | Holds::Edit)
+            Some(
+                Holds::Field
+                    | Holds::Filter
+                    | Holds::Location
+                    | Holds::Edit
+                    | Holds::Modal { field: true }
+            )
         )
     }
 
@@ -110,8 +119,9 @@ impl Situation {
         self.focused.is_some() && self.focused.as_deref() == self.view
     }
 
-    /// Whether an element of the part named `part` has it. A part's element keys start with
-    /// its name (`slots`, "Rules for a part"): GTK's `sidebar.contains(focused)`.
+    /// Whether an element of the part whose keys start with `part` has it (`slots`, "Rules
+    /// for a part"): GTK's `sidebar.contains(focused)`. `part` is the name alone, and the key
+    /// is that name or goes on from it at a separator: `tabs-strip` is not within `tab`.
     #[cfg_attr(
         not(test),
         expect(
@@ -120,12 +130,15 @@ impl Situation {
         )
     )]
     pub(crate) fn within(&self, part: &str) -> bool {
-        let focused = self.focused.as_deref();
-        focused.is_some_and(|key| key.starts_with(part))
+        let rest = self
+            .focused
+            .as_deref()
+            .and_then(|key| key.strip_prefix(part));
+        rest.is_some_and(|rest| !rest.starts_with(char::is_alphanumeric))
     }
 
     /// What owns typing where the press lands, for the aliases (`context_of` in
-    /// `src/ui/keys/alias.rs`): a text field, or a popover.
+    /// `src/ui/keys/alias.rs`): a text field, a modal layer's among them, or a popover.
     pub(super) fn typing(&self) -> bool {
         self.text() || self.holds() == Some(Holds::Menu)
     }
@@ -152,11 +165,11 @@ pub(super) fn reach(at: &Situation, stage: Stage, part: &str) -> Reach {
     let runs = match stage {
         // What the dispatcher does on every press, and what the focused widget left.
         Stage::Entry | Stage::Unclaimed => true,
-        Stage::TabStrip => holds != Holds::Modal,
+        Stage::TabStrip => !matches!(holds, Holds::Modal { .. }),
         // Follows every answer but "taken" (`keyboard.rs:147`). The guard of a window action
         // lets through the action that owns the layer on top, so that it can close it.
         Stage::AfterYield => match holds {
-            Holds::Modal if part != owner => return Reach::Taken,
+            Holds::Modal { .. } if part != owner => return Reach::Taken,
             Holds::Edit => return Reach::Taken,
             _ => true,
         },

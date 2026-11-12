@@ -29,7 +29,7 @@ use crate::{App, shell, slots::At};
 
 mod browser;
 mod owners;
-pub(crate) mod press;
+mod press;
 
 pub(crate) use owners::{Holds, Situation};
 use owners::{Reach, reach};
@@ -173,7 +173,7 @@ pub(crate) enum Outcome {
     Ran,
     /// Not for it after all: the next command that reads the press is asked. A command
     /// answers this when it did nothing, never after it changed something: the next command
-    /// would then act on top of it.
+    /// would then act on top of it, and a key nothing takes gets no commit to show it.
     Declined,
     /// The focused element's: nothing else is asked, and Rune is told the key is not taken.
     #[cfg_attr(
@@ -337,20 +337,19 @@ pub(crate) fn bound(app: &App) -> impl Iterator<Item = Bound> {
     })
 }
 
-/// What a call did: the command's answer, and whether the view has to run for what the
-/// browser said while it ran.
-struct Called {
-    outcome: Outcome,
-    changed: bool,
-}
-
 /// One call, between the two halves of a handler that makes the browser act: the browser
 /// takes what the parts changed first, and what it answers at once is applied after.
-fn call(app: &mut App, action: &Action<App>, call: &Call<'_>, tx: &mut Tx) -> Called {
+///
+/// Applied only when the command ran. Rune commits for a key a handler took and for a `poll`
+/// that says something changed, and for nothing else: what the browser had queued when a
+/// command declined stays queued for the frame's `poll`, which gets the view run for it.
+fn call(app: &mut App, action: &Action<App>, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     shell::publish(app);
     let outcome = (action.run)(app, call, tx);
-    let changed = shell::settle(app, tx);
-    Called { outcome, changed }
+    if outcome == Outcome::Ran {
+        shell::settle(app, tx);
+    }
+    outcome
 }
 
 /// Runs the command `id` on `on`: a chosen menu row, a pressed header button, a palette's
@@ -360,7 +359,7 @@ pub(crate) fn run(app: &mut App, id: &str, on: On, tx: &mut Tx) -> Outcome {
         tracing::debug!(id, "a command no part of this interface has");
         return Outcome::Declined;
     };
-    call(app, action, &Call { on, press: None }, tx).outcome
+    call(app, action, &Call { on, press: None }, tx)
 }
 
 /// The commands that read `press` at `stage` where it lands, in the order they are asked.
@@ -380,32 +379,24 @@ fn reading(
 /// Offers `press` to each stage in the GTK chain's order, and within a stage to each command
 /// that reads it there, until one runs or leaves it. Who has the keyboard decides which
 /// stages are left ([`owners::reach`]).
-fn walk(app: &mut App, press: &KeyPress, at: &Situation, tx: &mut Tx) -> Called {
+fn walk(app: &mut App, press: &KeyPress, at: &Situation, tx: &mut Tx) -> Outcome {
     let key = Call {
         on: On::Focus,
         press: Some(press),
     };
-    let mut changed = false;
     for stage in Stage::ALL {
         for (part, action) in reading(app, press, at, *stage) {
             let outcome = match reach(at, *stage, part) {
                 Reach::Cut => Outcome::Declined,
                 Reach::Taken => Outcome::Ran,
-                Reach::Runs => {
-                    let called = call(app, action, &key, tx);
-                    changed |= called.changed;
-                    called.outcome
-                }
+                Reach::Runs => call(app, action, &key, tx),
             };
             if outcome != Outcome::Declined {
-                return Called { outcome, changed };
+                return outcome;
             }
         }
     }
-    Called {
-        outcome: Outcome::Declined,
-        changed,
-    }
+    Outcome::Declined
 }
 
 /// The press `event` is where it lands, as every reader of a key on this interface reads
@@ -413,7 +404,10 @@ fn walk(app: &mut App, press: &KeyPress, at: &Situation, tx: &mut Tx) -> Called 
 /// with what owns typing there (a field, a menu, or type-to-search). A part that hears a key
 /// in its own element and wants the catalog's answer for it calls this.
 pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyPress {
-    let typing = at.typing() || shell::live_keys(app).type_to_search_active();
+    // Asked first, whoever owns typing: it takes the saved map as it is now, which the
+    // aliases and every matcher after them read.
+    let live = shell::live_keys(app);
+    let typing = at.typing() || live.type_to_search_active();
     let press = press::read(event, press::Origin::of(tx));
     keys::rewrite(press, Context { typing })
 }
@@ -423,13 +417,9 @@ pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyP
 pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
     let at = Situation::of(app, tx);
     let press = read(app, event, &at, tx);
-    let walked = walk(app, &press, &at, tx);
-    if walked.outcome != Outcome::Ran && !walked.changed {
-        // Nothing the view reads changed: no commit for a key that is not the window's. A
-        // command that declined after the browser answered it still gets its frame.
-        tx.live_only();
-    }
-    walked.outcome == Outcome::Ran
+    // A key no command takes is not the window's: Rune goes on with it, and commits nothing
+    // for this handler.
+    walk(app, &press, &at, tx) == Outcome::Ran
 }
 
 #[cfg(test)]

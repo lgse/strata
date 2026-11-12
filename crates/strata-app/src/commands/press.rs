@@ -32,14 +32,14 @@ use strata_desktop::keys::{Key, KeyPress, KeyPressParts, Modifiers, Typed};
 
 /// Where a key is and what it types with nothing held, as far as Rune says.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Origin {
-    pub(crate) physical: Option<PhysicalKeyCode>,
-    pub(crate) base: Option<char>,
+pub(super) struct Origin {
+    pub(super) physical: Option<PhysicalKeyCode>,
+    pub(super) base: Option<char>,
 }
 
 impl Origin {
     /// The origin of the key a handler is seeing.
-    pub(crate) fn of(tx: &Tx) -> Self {
+    pub(super) fn of(tx: &Tx) -> Self {
         Self {
             physical: tx.physical_key(),
             base: tx.key_base(),
@@ -300,7 +300,7 @@ fn of_character(named: char, command: bool, mods: Mods, origin: Origin) -> KeyPr
 }
 
 /// The press `event` is, before any alias is read (`strata_desktop::keys::rewrite`).
-pub(crate) fn read(event: &KeyEvent, origin: Origin) -> KeyPress {
+pub(super) fn read(event: &KeyEvent, origin: Origin) -> KeyPress {
     let mods = event.mods;
     match &event.key {
         Logical::Command(character) => of_character(*character, true, mods, origin),
