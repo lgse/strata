@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! The context menus: which rows a target gets, in Strata's words, and what a chosen row
-//! does. strata-components' C21 draws them and holds no policy.
+//! The context menus: which rows a target gets, in Strata's words, what a chosen row does,
+//! and the one way a view opens one ([`open`]). strata-components' C21 draws them and holds
+//! no policy.
 //!
 //! Ported from the GTK views: the rows and their order from `item_options.rs` and
 //! `folder_menu.rs` under `src/ui/browser/context_menu/`, their visibility from
@@ -26,7 +27,7 @@ use strata_components::{
     context_menu::{
         ContextMenu, ContextMenuState, Item, MenuIntent, MenuModel, MenuTarget, Section,
     },
-    contract::Point,
+    contract::{EntryId, Point, Rect},
 };
 use strata_core::{
     i18n::{count, tr},
@@ -39,23 +40,105 @@ use crate::{
 };
 
 /// The one menu the window has open, and what it was opened on.
-#[derive(Default)]
 pub(crate) struct Menu {
     pub(crate) state: ContextMenuState,
     /// The column the menu is for.
     depth: usize,
     /// What assistive technology hears the menu called: its entry or its folder.
     name: String,
+    /// "Type to search" takes plain keys, so a row hides a hint that is one.
+    typing: bool,
 }
 
-/// A menu to open: what it is for, and where.
-pub(crate) struct Opening {
-    /// The column the menu is for.
+/// A menu to open: what it is for, and what it lists.
+struct Opening {
+    name: String,
+    target: MenuTarget,
+    model: MenuModel,
+}
+
+/// The menu of entry `id` in column `depth` of the shown view, or of the selection it is
+/// part of.
+fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
+    let rows = &shell::shown_view(app)?.rows;
+    let position = (rows.position)(app, (depth, id))?;
+    let entry = app.browser.entry_at(depth, position)?;
+    // `context_entries` in `src/ui/browser/context_menu.rs`: the selection when the entry is
+    // in it, else the entry alone.
+    let selected = app.browser.selected_entries();
+    let within = selected
+        .iter()
+        .any(|other| other.location == entry.location);
+    let entries = if within {
+        selected
+    } else {
+        vec![entry.clone()]
+    };
+    let model = self::entry(&EntryTarget {
+        entry: &entry,
+        entries: &entries,
+        can_trash: app.browser.can_trash_at(depth),
+        can_delete: app.browser.can_delete_at(depth),
+        typing: app.menu.typing,
+    });
+    Some(Opening {
+        name: entry.display_name,
+        target: MenuTarget::Entry(id),
+        model,
+    })
+}
+
+/// The menu of column `depth`'s folder: a press on its empty space or its header, or the
+/// Menu key with no selected cursor.
+fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
+    // The name the pane has: `src/ui/browser/columns/append.rs`.
+    let name = app.browser.location_at(depth)?.display_name();
+    let counts = app.browser.column_entry_counts(depth);
+    let model = folder(&FolderTarget {
+        has_entries: counts.is_some_and(|counts| counts.total > 0),
+        hidden_shown: app.browser.preferences().show_hidden,
+        typing: app.menu.typing,
+    });
+    Some(Opening {
+        name,
+        target: MenuTarget::Background,
+        model,
+    })
+}
+
+/// A menu asked for, in any view: by a secondary press, or by the Menu key.
+pub(crate) struct Request {
+    /// The browser's column the menu is for.
     pub(crate) depth: usize,
-    pub(crate) name: String,
-    pub(crate) target: MenuTarget,
-    /// In window points.
-    pub(crate) at: Point,
+    /// The row's entry, or `None` for the column's folder.
+    pub(crate) entry: Option<EntryId>,
+    /// Where it opens, in window points.
+    pub(crate) anchor: Rect,
+}
+
+/// Opens the context menu of a row of the shown view, or of a column's folder. A view's
+/// handler calls it for the collection's `Intent::ContextMenu`, and for whatever else of its
+/// own opens a folder's menu.
+///
+/// A press with any button outside the field commits an open rename in the GTK view. The
+/// press that opens a menu leaves Rune's field the keyboard, so the edit is ended here.
+pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
+    let Request {
+        depth,
+        entry,
+        anchor,
+    } = request;
+    rename::commit(app, tx);
+    // The menu acts on the browser's selection, which takes what the view changed first.
+    shell::publish(app);
+    let opening = match entry {
+        Some(id) => entry_menu(app, depth, id),
+        None => folder_menu(app, depth),
+    };
+    if let Some(opening) = opening {
+        app.menu
+            .show(depth, opening, Point::new(anchor.x, anchor.y));
+    }
 }
 
 /// A row of the open menu was chosen. The menu has closed, and the keyboard is back in the
@@ -104,16 +187,23 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
 impl Part for Menu {
     const PLACE: Place<App> = Place::Overlays(build);
 
-    fn new(_: &Setup<'_>) -> Self {
-        Self::default()
+    fn new(setup: &Setup<'_>) -> Self {
+        let settings = setup.settings;
+        Self {
+            state: ContextMenuState::default(),
+            depth: 0,
+            name: String::new(),
+            // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
+            typing: settings.type_to_search && !settings.tenxer_mode,
+        }
     }
 }
 
 impl Menu {
-    pub(crate) fn show(&mut self, opening: Opening, model: MenuModel) {
-        self.depth = opening.depth;
+    fn show(&mut self, depth: usize, opening: Opening, at: Point) {
+        self.depth = depth;
         self.name = opening.name;
-        self.state.open(opening.target, opening.at, model);
+        self.state.open(opening.target, at, opening.model);
     }
 
     pub(crate) fn depth(&self) -> usize {

@@ -74,8 +74,6 @@ pub(crate) struct Columns {
     clicks: ClickModes,
     /// The keys the view reads other than by its default, when the saved settings ask.
     keys: Option<KeySettings>,
-    /// "Type to search" is on, so a plain key starts a search and menus hide its hint.
-    typing: bool,
     labels: view::Labels,
 }
 
@@ -109,7 +107,6 @@ impl Columns {
                 clicks(settings.columns_folder_clicks),
             ),
             keys: keys(typing),
-            typing,
             labels: view::Labels::translated(),
         }
     }
@@ -117,20 +114,6 @@ impl Columns {
     /// How many columns both the listings and the view hold.
     fn open(&self) -> usize {
         self.state.len().min(self.listings.columns.len())
-    }
-
-    pub(crate) fn typing(&self) -> bool {
-        self.typing
-    }
-
-    /// The folder column `depth` shows, as its header names it.
-    pub(crate) fn title(&self, depth: usize) -> Option<&str> {
-        self.listings.columns.get(depth).map(Column::title)
-    }
-
-    /// How many rows column `depth` shows, mounted or not.
-    pub(crate) fn rows_shown(&self, depth: usize) -> usize {
-        self.listings.columns.get(depth).map_or(0, Column::len)
     }
 
     /// The browser's position of entry `id` in column `depth`.
@@ -338,6 +321,14 @@ impl Columns {
 impl Columns {
     pub(crate) fn load(&self, depth: usize) -> Option<&Load> {
         self.listings.columns.get(depth).map(Column::load)
+    }
+}
+
+#[cfg(test)]
+impl Columns {
+    /// How many rows column `depth` shows, mounted or not.
+    pub(crate) fn rows_shown(&self, depth: usize) -> usize {
+        self.listings.columns.get(depth).map_or(0, Column::len)
     }
 }
 

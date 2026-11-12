@@ -6,8 +6,9 @@ description: >
   and work with the `strata --qa` JSON-lines protocol behind them. Use for any
   task that writes or changes a scenario file or its header (modes, variants,
   cost, quality, skip, known_bug, parity, targets), writes a Rune twin of a
-  scenario, reads a QA failure or its artifacts in target/qa-artifacts, or
-  changes the QA runner.
+  scenario, reads a QA failure or its artifacts in target/qa-artifacts,
+  changes the QA runner, or writes or runs a fuzz alphabet or sequence
+  (tests/qa/fuzz, ./scripts/qa-fuzz.sh).
 ---
 
 # QA scenarios
@@ -298,9 +299,10 @@ run stays `pending` with a blocker.
    and why none of those three fits (label `exception`; `oracle` for a bug in
    Strata itself). A `rune` twin cites its packet entry instead,
    `docs/rune/upstream/rune/<number>-<name>.md`. A `deviation` twin needs the
-   owner's ruling on its issue before it is written. Parity findings are now
-   recorded in `docs/rune/parity/findings.md`; what a twin cites for one with
-   no issue is an open question in `docs/rune/parity/owner.md`.
+   owner's ruling before it is written. The ruling is recorded under "Ruled" in
+   `docs/rune/parity/owner.md` and names the finding's reference issue, which
+   the twin cites. A parity finding's issue is its reference, and may be closed
+   at once; `docs/rune/parity/findings.md` holds its state.
 2. **Write the twin** beside the original. It holds only the modes or
    variants that differ, and starts from the same `tree`, `images`,
    `fixture_root`, `setup`, `teardown`, `prefs`, `layout`, `portal`, `env`,
@@ -337,9 +339,16 @@ run stays `pending` with a blocker.
 
 5. **Prove the twin can fail.** Add
    `tests/qa/parity/mutations/<scenario>-rune.patch`, which breaks the
-   behaviour the twin's own steps check in `crates/strata-app`, and run
-   `./scripts/qa-parity.sh mutations`. A scenario whose every run is
-   parallel has no patch of its own: `git mv` it to the twin's name.
+   behaviour the twin's own steps check in `crates/strata-app`, and prove it
+   once, alone (`./scripts/qa-parity.sh mutations` runs every patch and has
+   no per-patch selection yet). With the patched files clean, run the twin
+   on Rune unpatched, `./scripts/qa-parity.sh <folder> --target rune
+   --scenario <scenario>-rune`, and see it pass; `git apply` the patch, run
+   the same selection and see a step fail, not a build or launch failure;
+   restore the files with `git restore -- <files>` or `git apply -R`, and see
+   `git status --porcelain` empty before committing anything. A
+   scenario whose every run is parallel has no patch of its own: `git mv` it
+   to the twin's name.
 6. **Check and run the pair.** `./scripts/qa-parity.sh <folder> --twins`
    reads the ledger, every label and both files, says what to do about a
    pair that does not hold, and lists each twin with how many of its steps
@@ -415,6 +424,47 @@ run.
 - **A GLib warning failed the run.** The failure names it; it is an app bug,
   not a scenario bug.
 
+## Fuzz sequences
+
+`./scripts/qa-fuzz.sh` drives the same runner with sequences a seed generates
+from an area's alphabet, and compares what a user could observe after every
+step between replays. "Fuzzing" in `docs/testing.md` has the method;
+[reference.md](reference.md#fuzz-sequences) has the file formats.
+
+```bash
+./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..20   # generate, replay twice, compare
+./scripts/qa-fuzz.sh replay                                     # every kept sequence that is not parked
+./scripts/qa-fuzz.sh replay --parked --repeats 24               # the parked ones, on purpose
+./scripts/qa-fuzz.sh shrink --alphabet calibration --seeds 7    # the fewest steps that still differ
+./scripts/qa-fuzz.sh scenario <file>                            # a sequence file, as the scenario it is
+./scripts/qa-fuzz.sh check                                      # load everything; print the rule and mask counts
+```
+
+- **An alphabet is data**, `tests/qa/fuzz/alphabets/<area>.toml`: actions
+  with weights, each one or more scenario steps copied as they are. Name
+  targets by role and name, give a step a `when` wherever its target may not
+  be there (an unguarded miss waits 15 seconds), and keep the sequence inside
+  the fixture. When a change makes a seed write another sequence, raise
+  `version` and write the line the runner names in
+  `tests/qa/fuzz/alphabets/pins`: a seed means nothing across versions.
+- **A sequence is a scenario file** named `fuzz-<area>-v<version>-<seed>`. It holds
+  steps that act and `fs` actions, and no checks: every step is followed by
+  an observation at rest. A `wait` belongs only where the area knows what the
+  application shows when a slow action is done.
+- **`DIFFER` is not yet a bug.** Shrink it first: a divergence counts when
+  the shortest sequence shows it three times out of three. One that does not
+  confirm is noise, and goes to calibration.
+- **Never mask to get a run green.** `tests/qa/fuzz/calibration.mask` grows
+  only when two GTK replays of a seed differ and no longer rest cures it, and
+  each line says what can no longer be seen. An exception between the two
+  targets goes in `tests/qa/fuzz/normalisation.map` with its code and issue.
+  Both counts are printed in every summary.
+- **A GTK bug the fuzzer finds** is an `oracle` issue: file it, keep its
+  sequence in `tests/qa/fuzz/corpus/<area>/` and park it in that folder's
+  `parked`, and go on. Before blaming one target for a difference, replay it
+  on the other alone many times: a race agrees with itself most of the time.
+- It shares `target/qa-container` with the other QA scripts: one at a time.
+
 ## Change the runner
 
 Runner unit tests live in `tests/qa/scenario_tests.rs`,
@@ -422,8 +472,9 @@ Runner unit tests live in `tests/qa/scenario_tests.rs`,
 `tests/qa/twin_tests.rs` and must be listed in the `unit_tests!` macro in
 `tests/qa/unit_tests.rs`: the custom harness ignores `#[test]` and
 `#[cfg(test)]`, and `no_test_attribute_hides_a_runner_test` rejects them.
-Unit tests run in every `./scripts/qa.sh` run that names no scenario. Script
-tests: `python3 -m unittest discover -s scripts -p 'test_*.py'`.
+The fuzz driver's are in `tests/qa/fuzz/tests.rs`, listed in that file's own
+`unit_tests!`. Unit tests run in every `./scripts/qa.sh` run that names no
+scenario. Script tests: `python3 -m unittest discover -s scripts -p 'test_*.py'`.
 
 The main-thread I/O audit also runs through the runner: with
 `STRATA_QA_MAIN_IO` set, `tests/qa/main_io.rs` starts every Strata launch
