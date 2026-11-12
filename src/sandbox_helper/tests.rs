@@ -23,7 +23,7 @@ use super::{
     bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
     exceeds_decoded_frame_budget, image_dimensions, is_svg_head, pdf_render_request,
     read_exif_thumbnail, read_limited, read_png_dimensions, render_camera_raw,
-    render_camera_raw_preview, render_pixbuf, render_raw, render_simple_dcraw, run,
+    render_camera_raw_preview, render_pixbuf, render_raw, render_simple_dcraw, render_webp, run,
     scale_embedded_thumbnail, svg_source,
 };
 
@@ -200,21 +200,74 @@ fn embedded_thumbnails_scale_to_the_requested_size() {
 }
 
 #[test]
-fn image_previews_preserve_small_sources_and_bound_large_decodes() {
+fn image_previews_and_thumbnails_preserve_small_sources_and_bound_large_decodes() {
     let directory = tempfile::tempdir().expect("image fixture");
-    let path = directory.path().join("image.png");
-    for (width, height, expected) in [(80, 40, (80, 40)), (1200, 600, (800, 400))] {
-        let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, width, height)
-            .expect("source image");
-        source.fill(0x3366_99ff);
-        source.savev(&path, "png", &[]).expect("save source");
-        let png = render_raw(&path, 800).expect("render image preview");
-        let loader = gdk_pixbuf::PixbufLoader::new();
-        loader.write(&png).expect("load preview");
-        loader.close().expect("finish preview");
-        let preview = loader.pixbuf().expect("decoded preview");
-        assert_eq!((preview.width(), preview.height()), expected);
+    for format in [image::ImageFormat::Png, image::ImageFormat::WebP] {
+        let path = directory
+            .path()
+            .join("image")
+            .with_extension(format.extensions_str()[0]);
+        for (width, height, preview, thumbnail) in [
+            (80, 40, (80, 40), (80, 40)),
+            (1200, 600, (800, 400), (256, 128)),
+        ] {
+            image::RgbImage::from_pixel(width, height, image::Rgb([0x33, 0x66, 0x99]))
+                .save_with_format(&path, format)
+                .expect("save source");
+            let png = render_raw(&path, 800).expect("render image preview");
+            assert_eq!(
+                read_png_dimensions(&mut std::io::Cursor::new(png)),
+                Some(preview)
+            );
+            let response =
+                super::browser_render(&path, crate::sandbox::browser::wire::Operation::Image);
+            assert_eq!(
+                read_png_dimensions(&mut std::io::Cursor::new(response.png)),
+                Some(thumbnail)
+            );
+        }
     }
+}
+
+#[test]
+fn webp_decodes_without_a_system_pixbuf_loader() {
+    let directory = tempfile::tempdir().expect("webp fixture");
+    let path = directory.path().join("image.webp");
+    image::RgbImage::new(1200, 600)
+        .save(&path)
+        .expect("save webp");
+    let png = render_webp(&path, 800).expect("decode with the built-in decoder");
+    assert_eq!(
+        read_png_dimensions(&mut std::io::Cursor::new(png)),
+        Some((800, 400))
+    );
+}
+
+fn oversized_fixtures() -> [(&'static str, Vec<u8>, u32, u32); 2] {
+    let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 10, 10)
+        .expect("allocate small source");
+    let mut png = source
+        .save_to_bufferv("png", &[])
+        .expect("encode small png");
+    png[16..20].copy_from_slice(&18354u32.to_be_bytes());
+    png[20..24].copy_from_slice(&23598u32.to_be_bytes());
+
+    let mut webp = Vec::new();
+    image::RgbImage::new(10, 10)
+        .write_to(
+            &mut std::io::Cursor::new(&mut webp),
+            image::ImageFormat::WebP,
+        )
+        .expect("encode small webp");
+    // The lossless header packs width - 1 and height - 1 into two 14-bit fields.
+    let header = u32::from_le_bytes(webp[21..25].try_into().expect("lossless header"));
+    let header = (header & !0x0fff_ffff) | 0x3ffe | (0x3ffe << 14);
+    webp[21..25].copy_from_slice(&header.to_le_bytes());
+
+    [
+        ("oversized.png", png, 18354, 23598),
+        ("oversized.webp", webp, 16383, 16383),
+    ]
 }
 
 #[test]
@@ -225,52 +278,46 @@ fn oversized_images_exceeding_decoded_frame_budget_are_rejected_safely() {
     assert!(exceeds_decoded_frame_budget(20000, 20000));
 
     let directory = tempfile::tempdir().expect("image fixture");
-    let path = directory.path().join("oversized.png");
+    for (name, bytes, width, height) in oversized_fixtures() {
+        let path = directory.path().join(name);
+        std::fs::write(&path, &bytes).expect("write oversized fixture");
 
-    let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 10, 10)
-        .expect("allocate small source");
-    let mut png = source
-        .save_to_bufferv("png", &[])
-        .expect("encode small png");
-    png[16..20].copy_from_slice(&18354u32.to_be_bytes());
-    png[20..24].copy_from_slice(&23598u32.to_be_bytes());
-    std::fs::write(&path, &png).expect("write oversized fixture");
+        let raw_err = render_raw(&path, 256).expect_err("render_raw must reject oversized image");
+        assert!(raw_err.contains("decoded frame budget"));
 
-    let raw_err = render_raw(&path, 256).expect_err("render_raw must reject oversized image");
-    assert!(raw_err.contains("decoded frame budget"));
+        let pixbuf_err = render_pixbuf(&path, 256, image_dimensions(&path))
+            .expect_err("render_pixbuf must reject oversized image");
+        assert!(pixbuf_err.contains("decoded frame budget"));
 
-    let pixbuf_err = render_pixbuf(&path, 256, image_dimensions(&path))
-        .expect_err("render_pixbuf must reject oversized image");
-    assert!(pixbuf_err.contains("decoded frame budget"));
+        let raw_thumb_err = render_camera_raw(&path, 256)
+            .expect_err("render_camera_raw must reject oversized image");
+        assert!(raw_thumb_err.contains("decoded frame budget"));
 
-    let raw_thumb_err =
-        render_camera_raw(&path, 256).expect_err("render_camera_raw must reject oversized image");
-    assert!(raw_thumb_err.contains("decoded frame budget"));
+        let output = directory.path().join("out.png");
+        let result = run(&[
+            "thumbnail-image".into(),
+            path.to_string_lossy().into_owned(),
+            output.to_string_lossy().into_owned(),
+            "256".into(),
+            "software".into(),
+        ]);
+        assert!(result.is_err());
+        assert!(!output.exists());
 
-    let output = directory.path().join("out.png");
-    let result = run(&[
-        "thumbnail-image".into(),
-        path.to_string_lossy().into_owned(),
-        output.to_string_lossy().into_owned(),
-        "256".into(),
-        "software".into(),
-    ]);
-    assert!(result.is_err());
-    assert!(!output.exists());
+        let response =
+            super::browser_render(&path, crate::sandbox::browser::wire::Operation::Image);
+        assert!(response.png.is_empty());
+        let metadata: serde_json::Value =
+            serde_json::from_slice(&response.metadata).expect("valid metadata json");
+        assert_eq!(metadata["streams"][0]["width"], width);
+        assert_eq!(metadata["streams"][0]["height"], height);
 
-    let response = super::browser_render(&path, crate::sandbox::browser::wire::Operation::Image);
-    assert!(response.png.is_empty());
-    assert!(!response.metadata.is_empty());
-    let metadata: serde_json::Value =
-        serde_json::from_slice(&response.metadata).expect("valid metadata json");
-    assert_eq!(metadata["streams"][0]["width"], 18354);
-    assert_eq!(metadata["streams"][0]["height"], 23598);
-
-    let preview_response = super::browser_render(
-        &path,
-        crate::sandbox::browser::wire::Operation::PreviewImage,
-    );
-    assert!(preview_response.png.is_empty());
+        let preview_response = super::browser_render(
+            &path,
+            crate::sandbox::browser::wire::Operation::PreviewImage,
+        );
+        assert!(preview_response.png.is_empty());
+    }
 }
 
 fn with_exif_thumbnail(main_jpeg: &[u8], thumb_width: i32, thumb_height: i32) -> Vec<u8> {

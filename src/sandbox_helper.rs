@@ -36,7 +36,7 @@ use raster::render_raw;
 #[cfg(test)]
 use raster::{
     exceeds_decoded_frame_budget, image_dimensions, read_exif_thumbnail, read_png_dimensions,
-    render_camera_raw, render_camera_raw_preview, render_pixbuf, render_simple_dcraw,
+    render_camera_raw, render_camera_raw_preview, render_pixbuf, render_simple_dcraw, render_webp,
     scale_embedded_thumbnail,
 };
 
