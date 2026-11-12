@@ -27,7 +27,7 @@ fn wheel(
     zoom.handle(
         &PreferenceManager::shared(),
         &fixture.view,
-        modifiers,
+        crate::ui::keys::gdk_modifiers(modifiers),
         gtk::gdk::ScrollUnit::Wheel,
         None,
         delta,

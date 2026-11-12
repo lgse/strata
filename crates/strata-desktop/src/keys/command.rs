@@ -4,7 +4,7 @@
 //! map. The catalog declares each command beside its area's other keys; a
 //! press matches a command through the active map's table.
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use std::cell::RefCell;
 use std::{
     collections::HashMap,
@@ -12,29 +12,26 @@ use std::{
     rc::Rc,
 };
 
-use gtk::gdk::ModifierType as Modifiers;
-
-use super::{Binding, KeyPress, Match, Shown, bindings};
+use super::{Binding, KeyPress, Match, Modifiers, Shown, active::active, bindings};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum Map {
+pub enum Map {
     Default,
     Tenxer,
 }
 
 impl Map {
-    /// The map the preferences select now, read at each press as handlers
-    /// read 10xer mode. Without a live preference manager it is the default.
-    pub(crate) fn active() -> Self {
-        let tenxer = crate::ui::preferences::PreferenceManager::existing()
-            .is_some_and(|preferences| preferences.tenxer_mode());
+    /// The map the settings select now, read at each press as handlers
+    /// read 10xer mode. Without a registered source it is the default.
+    pub fn active() -> Self {
+        let tenxer = active().is_some_and(|settings| settings.tenxer_mode());
         if tenxer { Self::Tenxer } else { Self::Default }
     }
 }
 
 /// A fixed chord group. Its trigger and steps rebind; the group does not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum Group {
+pub enum Group {
     Go,
     CopyAs,
     Sort,
@@ -46,8 +43,8 @@ pub(crate) enum Group {
 
 impl Group {
     /// The trigger's id and the prefix of each step's id.
-    #[cfg(test)]
-    pub(crate) const fn id(self) -> &'static str {
+    #[cfg(any(test, feature = "test-support"))]
+    pub const fn id(self) -> &'static str {
         match self {
             Self::Go => "go",
             Self::CopyAs => "copy_as",
@@ -61,7 +58,7 @@ impl Group {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Kind {
+pub enum Kind {
     Single,
     Trigger(Group),
     /// Matches only while its group's trigger is pending.
@@ -72,17 +69,17 @@ pub(crate) enum Kind {
 }
 
 #[derive(Debug)]
-pub(crate) struct Spec {
-    pub(crate) id: &'static str,
-    pub(crate) kind: Kind,
+pub struct Spec {
+    pub id: &'static str,
+    pub kind: Kind,
     /// Ordered bindings; the first is the one menus show.
-    pub(crate) default: &'static [Binding],
-    pub(crate) tenxer: &'static [Binding],
+    pub default: &'static [Binding],
+    pub tenxer: &'static [Binding],
 }
 
 /// A rebindable action. Two commands are the same when their ids are.
 #[derive(Clone, Copy)]
-pub(crate) struct Command(&'static Spec);
+pub struct Command(&'static Spec);
 
 impl PartialEq for Command {
     fn eq(&self, other: &Self) -> bool {
@@ -105,86 +102,86 @@ impl std::fmt::Debug for Command {
 }
 
 impl Command {
-    pub(crate) const fn new(spec: &'static Spec) -> Self {
+    pub const fn new(spec: &'static Spec) -> Self {
         Self(spec)
     }
 
     /// The stable name settings files store.
-    pub(crate) fn id(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         self.0.id
     }
 
-    pub(crate) fn parse(id: &str) -> Option<Self> {
+    pub fn parse(id: &str) -> Option<Self> {
         registry().find(|command| command.id() == id)
     }
 
     /// The shipped bindings in `map`, primary first; empty where the map
     /// leaves the command unbound.
-    pub(crate) fn defaults(self, map: Map) -> &'static [Binding] {
+    pub fn defaults(self, map: Map) -> &'static [Binding] {
         match map {
             Map::Default => self.0.default,
             Map::Tenxer => self.0.tenxer,
         }
     }
 
-    pub(crate) fn kind(self) -> Kind {
+    pub fn kind(self) -> Kind {
         self.0.kind
     }
 
     /// The key a structural command's alternates are read as.
-    pub(crate) fn canonical(self) -> Option<Binding> {
+    pub fn canonical(self) -> Option<Binding> {
         (self.0.kind == Kind::Structural)
             .then(|| self.0.default.first().copied())
             .flatten()
     }
 
     /// The bindings the active map's table holds, primary first.
-    pub(crate) fn bindings(self) -> Vec<Binding> {
+    pub fn bindings(self) -> Vec<Binding> {
         self.bindings_in(Map::active())
     }
 
-    pub(crate) fn bindings_in(self, map: Map) -> Vec<Binding> {
+    pub fn bindings_in(self, map: Map) -> Vec<Binding> {
         active_keymap().bindings(map, self).to_vec()
     }
 
     /// The binding a menu shows, from the active map.
-    pub(crate) fn primary(self) -> Option<Binding> {
+    pub fn primary(self) -> Option<Binding> {
         self.bindings().first().copied()
     }
 
     /// Also matches while any of `modifiers` is held, for each binding.
-    pub(crate) const fn ignoring(self, modifiers: Modifiers) -> Matcher {
+    pub const fn ignoring(self, modifiers: Modifiers) -> Matcher {
         Matcher::new(self).ignoring(modifiers)
     }
 
     /// Matches `map`'s bindings whichever map is active, for a stage that
     /// claims another map's keys.
-    pub(crate) const fn in_map(self, map: Map) -> Matcher {
+    pub const fn in_map(self, map: Map) -> Matcher {
         Matcher::new(self).in_map(map)
     }
 
     /// A structural command's other keys as pressed, whether or not they were
     /// read as the canonical key: **h** but not ← for `left`.
-    pub(crate) const fn alternates(self) -> Matcher {
+    pub const fn alternates(self) -> Matcher {
         Matcher::new(self).alternates()
     }
 
     /// A structural command, or one of its other keys where no alias applied,
     /// as for **h** in a popover.
-    pub(crate) const fn or_alternates(self) -> Matcher {
+    pub const fn or_alternates(self) -> Matcher {
         Matcher::new(self).or_alternates()
     }
 
     /// The one binding at `index` in the shown map, 0 being the primary, for a
     /// label that shows one alternate.
-    pub(crate) const fn alternate(self, index: usize) -> Alternate {
+    pub const fn alternate(self, index: usize) -> Alternate {
         Alternate {
             command: self,
             index,
         }
     }
 
-    pub(crate) const fn shown(self) -> Shown {
+    pub const fn shown(self) -> Shown {
         Shown::Command(self)
     }
 }
@@ -203,7 +200,7 @@ impl Match for Command {
 
 /// A command matched in a fixed map, or with extra modifiers tolerated.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Matcher {
+pub struct Matcher {
     command: Command,
     map: Option<Map>,
     ignored: Modifiers,
@@ -228,28 +225,28 @@ impl Matcher {
         }
     }
 
-    pub(crate) const fn ignoring(self, modifiers: Modifiers) -> Self {
+    pub const fn ignoring(self, modifiers: Modifiers) -> Self {
         Self {
             ignored: self.ignored.union(modifiers),
             ..self
         }
     }
 
-    pub(crate) const fn in_map(self, map: Map) -> Self {
+    pub const fn in_map(self, map: Map) -> Self {
         Self {
             map: Some(map),
             ..self
         }
     }
 
-    pub(crate) const fn alternates(self) -> Self {
+    pub const fn alternates(self) -> Self {
         Self {
             alternates: Alternates::Only,
             ..self
         }
     }
 
-    pub(crate) const fn or_alternates(self) -> Self {
+    pub const fn or_alternates(self) -> Self {
         Self {
             alternates: Alternates::Also,
             ..self
@@ -314,7 +311,7 @@ impl Match for Matcher {
 
 /// One alternate of a command, by its position in a map's entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Alternate {
+pub struct Alternate {
     command: Command,
     index: usize,
 }
@@ -327,7 +324,7 @@ impl Alternate {
     /// The binding at the alternate's position in the shipped entry. Once the
     /// entry is overridden, the first alternate shows all of it and the others
     /// nothing, so a row never hides a key the user added.
-    pub(crate) fn bindings_in(self, map: Map) -> Vec<Binding> {
+    pub fn bindings_in(self, map: Map) -> Vec<Binding> {
         let keymap = active_keymap();
         let entry = keymap.bindings(map, self.command);
         if !keymap.overrides(map, self.command) {
@@ -339,12 +336,12 @@ impl Alternate {
         }
     }
 
-    pub(crate) const fn shown(self) -> Shown {
+    pub const fn shown(self) -> Shown {
         Shown::Alternate(self)
     }
 }
 
-pub(crate) fn registry() -> impl Iterator<Item = Command> {
+pub fn registry() -> impl Iterator<Item = Command> {
     bindings::entries().filter_map(|entry| match entry {
         bindings::Entry::Command(command) => Some(command),
         bindings::Entry::Binding(_) | bindings::Entry::Digits(_) | bindings::Entry::Letters(_) => {
@@ -354,13 +351,13 @@ pub(crate) fn registry() -> impl Iterator<Item = Command> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Keymap {
+pub struct Keymap {
     default: HashMap<Command, Vec<Binding>>,
     tenxer: HashMap<Command, Vec<Binding>>,
 }
 
 impl Keymap {
-    pub(crate) fn defaults() -> Self {
+    pub fn defaults() -> Self {
         let table = |map| {
             registry()
                 .map(|command| (command, command.defaults(map).to_vec()))
@@ -374,7 +371,7 @@ impl Keymap {
 
     /// The same tables with `map`'s entry for `command` replaced, as a saved
     /// override replaces it.
-    pub(crate) fn with(mut self, map: Map, command: Command, bindings: Vec<Binding>) -> Self {
+    pub fn with(mut self, map: Map, command: Command, bindings: Vec<Binding>) -> Self {
         let table = match map {
             Map::Default => &mut self.default,
             Map::Tenxer => &mut self.tenxer,
@@ -387,7 +384,7 @@ impl Keymap {
     /// accelerators, primary first, repeats dropped. An empty list unbinds the
     /// command. An entry whose id names no command, or that holds anything but
     /// accelerators, is left out whole and passed to `rejected`.
-    pub(crate) fn overridden<'a>(
+    pub fn overridden<'a>(
         self,
         map: Map,
         entries: impl IntoIterator<Item = (&'a str, &'a toml::Value)>,
@@ -432,7 +429,7 @@ impl Keymap {
         keymap
     }
 
-    pub(crate) fn bindings(&self, map: Map, command: Command) -> &[Binding] {
+    pub fn bindings(&self, map: Map, command: Command) -> &[Binding] {
         let table = match map {
             Map::Default => &self.default,
             Map::Tenxer => &self.tenxer,
@@ -441,14 +438,14 @@ impl Keymap {
     }
 
     /// Whether `map`'s entry for `command` differs from the shipped one.
-    pub(crate) fn overrides(&self, map: Map, command: Command) -> bool {
+    pub fn overrides(&self, map: Map, command: Command) -> bool {
         self.bindings(map, command) != command.defaults(map)
     }
 }
 
 /// A saved keymap entry that cannot apply.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum Rejected<'a> {
+pub enum Rejected<'a> {
     UnknownCommand(&'a str),
     /// An unquoted dotted id such as `go.home`, which TOML reads as a table.
     Table(&'a str),
@@ -458,41 +455,38 @@ pub(crate) enum Rejected<'a> {
 
 thread_local! {
     static DEFAULT_KEYMAP: Rc<Keymap> = Rc::new(Keymap::defaults());
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     static TEST_KEYMAP: RefCell<Option<Rc<Keymap>>> = const { RefCell::new(None) };
 }
 
 /// The tables presses and labels resolve through: the preference manager's,
 /// with the saved overrides, or the shipped defaults while none is loaded.
-pub(crate) fn active_keymap() -> Rc<Keymap> {
-    #[cfg(test)]
+pub fn active_keymap() -> Rc<Keymap> {
+    #[cfg(any(test, feature = "test-support"))]
     if let Some(keymap) = TEST_KEYMAP.with(|keymap| keymap.borrow().clone()) {
         return keymap;
     }
-    crate::ui::preferences::PreferenceManager::existing().map_or_else(
+    active().map_or_else(
         || DEFAULT_KEYMAP.with(Rc::clone),
-        |preferences| preferences.keymap(),
+        |settings| settings.keymap(),
     )
 }
 
 /// Resolves presses and labels through `keymap` until the guard drops,
 /// whatever the preference manager holds.
-#[cfg(test)]
-pub(crate) fn use_keymap(keymap: Keymap) -> KeymapGuard {
+#[cfg(any(test, feature = "test-support"))]
+pub fn use_keymap(keymap: Keymap) -> KeymapGuard {
     KeymapGuard(TEST_KEYMAP.with(|active| active.replace(Some(Rc::new(keymap)))))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[must_use = "the keymap reverts when the guard drops"]
-pub(crate) struct KeymapGuard(Option<Rc<Keymap>>);
+pub struct KeymapGuard(Option<Rc<Keymap>>);
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Drop for KeymapGuard {
     fn drop(&mut self) {
         let previous = self.0.take();
         TEST_KEYMAP.with(|active| active.replace(previous));
     }
 }
-
-#[cfg(test)]
-mod tests;

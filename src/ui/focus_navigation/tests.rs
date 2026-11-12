@@ -42,14 +42,14 @@ fn native_arrow_aliases_use_gtk_spatial_selection() {
                 }
                 assert!(collection.grab_focus());
                 assert_eq!(selection.selected(), 0);
-                assert!(activate_native_arrow(&window, gdk::Key::Down));
+                assert!(activate_native_arrow(&window, keys::Key::Down));
                 assert_eq!(selection.selected(), if grid { 3 } else { 1 });
-                assert!(activate_native_arrow(&window, gdk::Key::Up));
+                assert!(activate_native_arrow(&window, keys::Key::Up));
                 assert_eq!(selection.selected(), 0);
                 if grid {
-                    assert!(activate_native_arrow(&window, gdk::Key::Right));
+                    assert!(activate_native_arrow(&window, keys::Key::Right));
                     assert_eq!(selection.selected(), 1);
-                    assert!(activate_native_arrow(&window, gdk::Key::Left));
+                    assert!(activate_native_arrow(&window, keys::Key::Left));
                     assert_eq!(selection.selected(), 0);
                 }
                 window.close();

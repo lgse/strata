@@ -4,7 +4,7 @@ use super::acceptance::{request, visible_collection_selection, wait_until};
 use super::*;
 use crate::test_support::widgets::BackHistoryKey;
 use crate::ui::browser_modes::BrowserMode;
-use gtk::gdk::{Key, ModifierType};
+use crate::ui::keys::{Key, Modifiers as ModifierType};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -91,8 +91,14 @@ impl Chooser {
     }
 
     fn press_with(&self, key: Key, modifiers: ModifierType) -> bool {
-        self.keys
-            .emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+        self.keys.emit_by_name::<bool>(
+            "key-pressed",
+            &[
+                &crate::ui::keys::gdk_key(key),
+                &0u32,
+                &crate::ui::keys::gdk_modifiers(modifiers),
+            ],
+        )
     }
 
     fn press_reference(&self, key: Key) -> bool {
@@ -106,7 +112,14 @@ impl Chooser {
                     .and_downcast::<gtk::EventControllerKey>()
             })
             .expect("reference key controller")
-            .emit_by_name::<bool>("key-pressed", &[&key, &0u32, &ModifierType::empty()])
+            .emit_by_name::<bool>(
+                "key-pressed",
+                &[
+                    &crate::ui::keys::gdk_key(key),
+                    &0u32,
+                    &crate::ui::keys::gdk_modifiers(ModifierType::empty()),
+                ],
+            )
     }
 
     fn focus_files(&self) {
@@ -992,7 +1005,11 @@ fn save_name_and_location_do_not_dispatch_listing_shortcuts() {
                 entry.select_region(0, 0);
                 assert!(chooser.keys.emit_by_name::<bool>(
                     "key-pressed",
-                    &[&Key::Cyrillic_ef, &38u32, &ModifierType::CONTROL_MASK],
+                    &[
+                        &crate::ui::keys::gdk_key(Key::Cyrillic_ef),
+                        &38u32,
+                        &crate::ui::keys::gdk_modifiers(ModifierType::CONTROL_MASK)
+                    ],
                 ));
                 assert_eq!(
                     entry.selection_bounds(),
@@ -1391,7 +1408,11 @@ fn enter_in_the_filter_field_chooses_the_top_result_in_every_view() {
                     .any(|keys| {
                         keys.emit_by_name::<bool>(
                             "key-pressed",
-                            &[&Key::Return, &0u32, &ModifierType::empty()],
+                            &[
+                                &crate::ui::keys::gdk_key(Key::Return),
+                                &0u32,
+                                &crate::ui::keys::gdk_modifiers(ModifierType::empty()),
+                            ],
                         )
                     });
                 assert!(handled, "{mode:?}: Enter in the field was not handled");
@@ -1426,10 +1447,10 @@ fn context_menu_keys_on_back_list_the_back_history() {
                         window: chooser.state.window.upcast_ref(),
                         browser: &browser,
                         case: &format!("{mode:?} {modifiers:?}+{key:?}"),
-                        key,
-                        modifiers,
+                        key: crate::ui::keys::gdk_key(key),
+                        modifiers: crate::ui::keys::gdk_modifiers(modifiers),
                     }
-                    .assert_lists_history(|key, modifiers| chooser.press_with(key, modifiers));
+                    .assert_lists_history(|_, _| chooser.press_with(key, modifiers));
                 }
             }
         },

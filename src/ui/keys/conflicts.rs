@@ -5,11 +5,9 @@
 //! keys that never fire. Findings are data for Settings and the load-time log
 //! to render. See `docs/keyboard-shortcuts.md`.
 
-use gtk::gdk::{Key, ModifierType as Modifiers};
-
 use super::{
-    Binding, CUSTOM_ACTIONS, Command, DIRECT_IN_TENXER, Digits, Keymap, Map, SHORTCUT_MODIFIERS,
-    alias,
+    Binding, CUSTOM_ACTIONS, Command, CommandKind, DIRECT_IN_TENXER, Digits, Group, Key, Keymap,
+    Map, Modifiers, SHORTCUT_MODIFIERS, alias,
     bindings::{
         ACTIONS_NUMBERS, ARROW_SCOPE, BACKSPACE, CHOOSE_FOLDER, COMPLETE, CONTEXT_MENU, COPY,
         COPY_PATH, CUT, DELETE_PERMANENTLY, DOWN, END_KEY, ENTER, ESCAPE, EXTEND_DOWN, EXTEND_LEFT,
@@ -31,8 +29,7 @@ use super::{
         THUMBNAILS_LARGER, THUMBNAILS_RESET, THUMBNAILS_SMALLER, UNDO, UP, VIEW_COLUMNS,
         VIEW_ICONS, VIEW_LIST,
     },
-    command::{Group, Kind as CommandKind, registry},
-    digit_value, direct_commands,
+    digit_value, direct_commands, registry,
 };
 
 /// What the checker cannot read from the table.

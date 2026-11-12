@@ -125,10 +125,10 @@ fn context_menu_keys_on_back_list_the_back_history() {
                         window: fixture.window.upcast_ref(),
                         browser: &browser,
                         case: &format!("{mode:?} {modifiers:?}+{key:?}"),
-                        key: *key,
-                        modifiers: *modifiers,
+                        key: crate::ui::keys::gdk_key(*key),
+                        modifiers: crate::ui::keys::gdk_modifiers(*modifiers),
                     }
-                    .assert_lists_history(|key, modifiers| fixture.press(key, modifiers));
+                    .assert_lists_history(|_, _| fixture.press(*key, *modifiers));
                 }
             }
         },

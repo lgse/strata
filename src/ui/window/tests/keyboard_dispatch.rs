@@ -3,7 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gtk::gdk::{Key, ModifierType};
+use crate::ui::keys::{Key, Modifiers as ModifierType};
 
 use crate::app::BrowserEvent;
 use crate::model::{SortDirection, SortKey};
@@ -168,8 +168,14 @@ impl KeyboardFixture {
     }
 
     fn press(&self, key: Key, modifiers: ModifierType) -> bool {
-        self.keys
-            .emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+        self.keys.emit_by_name::<bool>(
+            "key-pressed",
+            &[
+                &crate::ui::keys::gdk_key(key),
+                &0u32,
+                &crate::ui::keys::gdk_modifiers(modifiers),
+            ],
+        )
     }
 
     fn selected(&self) -> Vec<usize> {

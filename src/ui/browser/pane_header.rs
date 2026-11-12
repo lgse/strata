@@ -10,11 +10,11 @@ use crate::model::{SortDirection, SortKey};
 use crate::ui::browser::ViewState;
 use crate::ui::controls::menu_action_with_detail;
 use crate::ui::focus_navigation::vim_focus_direction;
+use crate::ui::keys::Modifiers;
 use crate::ui::keys::{
     self,
     bindings::{BACKSPACE, CONTEXT_MENU},
 };
-use gtk::gdk::ModifierType as Modifiers;
 use gtk::glib;
 use gtk::prelude::*;
 use std::rc::Rc;

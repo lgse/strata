@@ -171,7 +171,11 @@ fn hidden_shortcut_button_keeps_prompt_chord_and_feedback_usable() {
 fn russian_tilde(fixture: &KeyboardFixture) -> bool {
     fixture.keys.emit_by_name::<bool>(
         "key-pressed",
-        &[&Key::Cyrillic_IO, &49u32, &ModifierType::SHIFT_MASK],
+        &[
+            &crate::ui::keys::gdk_key(Key::Cyrillic_IO),
+            &49u32,
+            &crate::ui::keys::gdk_modifiers(ModifierType::SHIFT_MASK),
+        ],
     )
 }
 
@@ -383,9 +387,14 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
 }
 
 fn press_code(fixture: &KeyboardFixture, key: Key, keycode: u32, modifiers: ModifierType) -> bool {
-    fixture
-        .keys
-        .emit_by_name::<bool>("key-pressed", &[&key, &keycode, &modifiers])
+    fixture.keys.emit_by_name::<bool>(
+        "key-pressed",
+        &[
+            &crate::ui::keys::gdk_key(key),
+            &keycode,
+            &crate::ui::keys::gdk_modifiers(modifiers),
+        ],
+    )
 }
 
 fn clipboard_text(fixture: &KeyboardFixture) -> Option<String> {

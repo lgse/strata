@@ -8,7 +8,11 @@ mod modes;
 mod reference;
 
 fn press(key: gdk::Key, modifiers: gdk::ModifierType) -> KeyPress {
-    KeyPress::from_signal(key, 0, modifiers)
+    KeyPress::from_signal(
+        crate::ui::keys::key_from_gdk(key),
+        0,
+        crate::ui::keys::modifiers_from_gdk(modifiers),
+    )
 }
 
 fn expect_key(

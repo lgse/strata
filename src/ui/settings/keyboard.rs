@@ -10,7 +10,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use gtk::{gdk::Key, glib, prelude::*};
+use gtk::{glib, prelude::*};
 
 use super::{page_content, scrollable_page, search};
 use crate::{
@@ -23,7 +23,7 @@ use crate::{
             segmented_control,
         },
         keys::{
-            self, Binding, Command, CommandKind, Group, Keys, Map,
+            self, Binding, Command, CommandKind, Group, Key, Keys, Map,
             bindings::*,
             conflicts::{self, FieldLimit, Finding, Fixed, Kind, Outcome, Policy, Severity},
         },
@@ -1043,7 +1043,7 @@ fn message(map: Map, command: Command, finding: Finding) -> String {
     let keys = keys.as_str();
     let named = title;
     let plain = |message: &str| rust_i18n::t!(message, keys = keys).into_owned();
-    let shift = keys::modifiers_label(gtk::gdk::ModifierType::SHIFT_MASK);
+    let shift = keys::modifiers_label(crate::ui::keys::Modifiers::SHIFT_MASK);
     match finding.kind {
         Kind::Duplicate(other) => {
             let message = match conflicts::duplicate_outcome(map, command, finding.binding, other) {

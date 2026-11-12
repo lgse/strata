@@ -398,7 +398,11 @@ fn escape_when_the_transfer_starts(fixture: &KeyboardFixture) {
         if let Some(keys) = keys.take() {
             assert!(keys.emit_by_name::<bool>(
                 "key-pressed",
-                &[&Key::Escape, &0u32, &ModifierType::empty()]
+                &[
+                    &crate::ui::keys::gdk_key(Key::Escape),
+                    &0u32,
+                    &crate::ui::keys::gdk_modifiers(ModifierType::empty())
+                ]
             ));
         }
     });

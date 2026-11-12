@@ -11,12 +11,12 @@ use crate::ui::browser::entry::{
 use crate::ui::controls::{
     ModalLayout, ModalTone, focus_button, message_dialog_description, message_dialog_layout,
 };
+use crate::ui::keys::Modifiers;
 use crate::ui::keys::{
     self, KeyPress,
     bindings::{ENTER_ANY, ESCAPE_ANY, LEFT, RIGHT, TENXER_DELETE_CONFIRM},
 };
 use crate::ui::modal::{ModalHost, remember_modal_focus_for_listing};
-use gtk::gdk::ModifierType as Modifiers;
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};

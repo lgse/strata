@@ -5,7 +5,8 @@ use std::{
     rc::Rc,
 };
 
-use gtk::{gdk::ModifierType as Modifiers, glib, prelude::*};
+use crate::ui::keys::Modifiers;
+use gtk::{glib, prelude::*};
 
 use crate::ui::keys::{
     self,

@@ -8,7 +8,11 @@ use crate::test_support::gtk_test;
 mod reopen;
 
 fn press(key: gdk::Key, modifiers: gdk::ModifierType) -> KeyPress {
-    KeyPress::from_signal(key, 0, modifiers)
+    KeyPress::from_signal(
+        crate::ui::keys::key_from_gdk(key),
+        0,
+        crate::ui::keys::modifiers_from_gdk(modifiers),
+    )
 }
 
 fn application() -> gtk::Application {
@@ -486,8 +490,12 @@ fn tab_shortcuts_work_in_both_modes_and_follow_reordering() {
                 tabs.handle_key(&press(Key::exclam, M::CONTROL_MASK | M::SHIFT_MASK));
                 assert_eq!(tabs.active.get(), new_id);
                 // Swiss German types + with Shift on the 1 key: that is Ctrl++.
-                let swiss_plus =
-                    KeyPress::from_signal(Key::plus, 10, M::CONTROL_MASK | M::SHIFT_MASK);
+                let swiss_plus = KeyPress::from_signal(
+                    crate::ui::keys::Key::plus,
+                    10,
+                    crate::ui::keys::Modifiers::CONTROL_MASK
+                        | crate::ui::keys::Modifiers::SHIFT_MASK,
+                );
                 assert!(!is_tab_shortcut(&swiss_plus));
                 assert_eq!(tabs.handle_key(&swiss_plus), glib::Propagation::Proceed);
                 assert_eq!(tabs.active.get(), new_id);

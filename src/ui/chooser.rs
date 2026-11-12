@@ -31,7 +31,9 @@ use ashpd::{
     PortalError, WindowIdentifierType,
     desktop::file_chooser::{Choice, FileFilter, SelectedFiles},
 };
-use gtk::{gdk::ModifierType, gio, glib, prelude::*};
+use gtk::{gio, glib, prelude::*};
+
+use crate::ui::keys::Modifiers as ModifierType;
 
 use crate::{
     adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider, probes},

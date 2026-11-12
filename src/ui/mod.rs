@@ -70,6 +70,7 @@ pub(crate) use browser::read_mime_bytes as read_clipboard_mime_bytes;
 pub(crate) use chooser::{cancel_chooser, present_chooser};
 #[cfg(feature = "qa")]
 pub(crate) use enter_target::CSS_CLASS as ENTER_TARGET_CLASS;
+pub(crate) use keys::install_backend as install_key_backend;
 pub(crate) use settings::schedule_rollback_cleanup;
 pub(crate) use window::default_save_folder;
 #[cfg(test)]
