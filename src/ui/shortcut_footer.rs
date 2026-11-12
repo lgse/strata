@@ -61,6 +61,7 @@ pub(super) struct ShortcutFooter {
     current: CurrentHit,
     filter_source: FilterSource,
     filter_retry: Rc<Cell<bool>>,
+    disposed: Rc<Cell<bool>>,
     observed: Rc<RefCell<std::rc::Weak<crate::app::Browser>>>,
     reference_scope: Rc<Cell<ReferenceScope>>,
 }
@@ -207,7 +208,7 @@ impl ShortcutFooter {
 
     /// Refreshes once on idle, after focus settles on the cursor row.
     pub(in crate::ui) fn schedule_filter_refresh(&self) {
-        if self.filter_retry.replace(true) {
+        if self.disposed.get() || self.filter_retry.replace(true) {
             return;
         }
         let footer = self.clone();
@@ -239,6 +240,9 @@ impl ShortcutFooter {
     }
 
     pub(in crate::ui) fn refresh_filter(&self) {
+        if self.disposed.get() {
+            return;
+        }
         let Some(status) = self.read_filter() else {
             self.schedule_filter_refresh();
             return;
@@ -255,6 +259,12 @@ impl ShortcutFooter {
         if let Some(browser) = browser {
             self.show_listing_status(&browser, status.as_ref());
         }
+    }
+
+    pub(in crate::ui) fn dispose(&self) {
+        self.disposed.set(true);
+        self.filter_source.borrow_mut().take();
+        self.observed.replace(std::rc::Weak::new());
     }
 
     fn show_filter_mark(&self, named: Option<&FilterStatus>) {

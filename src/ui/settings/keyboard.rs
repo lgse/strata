@@ -1255,6 +1255,7 @@ const NAMES: &[(Command, &str)] = &[
     (TAB_MOVE_RIGHT, "Move tab right"),
     (EXTRA_PANE, "Show or hide the extra pane"),
     (OTHER_PANE, "Switch to the other pane"),
+    (PANE_TERMINAL, "Show or hide the terminal"),
     (COPY_TO_OTHER_PANE, "Copy to Other Pane"),
     (MOVE_TO_OTHER_PANE, "Move to Other Pane"),
     (JUMP_TO_FOLDER, "Jump to a folder"),

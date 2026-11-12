@@ -1160,5 +1160,8 @@
   "Press the new key for “%{action}”": "Nhấn phím mới cho “%{action}”",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} để hủy, và %{backspace} để gỡ mọi phím của hành động này.",
   "“%{group}” has no key, so this action cannot run.": "“%{group}” chưa có phím nào, nên không thể chạy thao tác này.",
-  "Custom action %{number}": "Hành động tùy chỉnh %{number}"
+  "Custom action %{number}": "Hành động tùy chỉnh %{number}",
+  "Show or hide the terminal": "Hiện hoặc ẩn thiết bị đầu cuối",
+  "Unable to start terminal: %{error}": "Không thể khởi động thiết bị đầu cuối: %{error}",
+  "A command is still running in a terminal. Finish it before closing this tab or window.": "Một lệnh vẫn đang chạy trong thiết bị đầu cuối. Hãy kết thúc lệnh trước khi đóng thẻ hoặc cửa sổ này."
 }

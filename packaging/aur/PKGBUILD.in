@@ -17,6 +17,7 @@ depends=(
   'gst-plugins-base'
   'gtk4>=4.12'
   'gtksourceview5'
+  'vte4'
   'gvfs'
   'poppler-glib'
 )

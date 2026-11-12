@@ -6,6 +6,7 @@
   wrapGAppsHook4,
   glib,
   gtk4,
+  vte-gtk4,
   gtksourceview5,
   poppler,
   fontconfig,
@@ -80,6 +81,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   ];
   buildInputs = [
     gtk4
+    vte-gtk4
     gtksourceview5
     poppler
     fontconfig

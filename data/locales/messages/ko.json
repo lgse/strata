@@ -1160,5 +1160,8 @@
   "Press the new key for “%{action}”": "“%{action}”에 사용할 새 키를 누르세요",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} 키를 누르면 취소되고, %{backspace} 키를 누르면 이 동작의 모든 키가 제거됩니다.",
   "“%{group}” has no key, so this action cannot run.": "“%{group}”에 키가 없으므로 이 작업을 실행할 수 없습니다.",
-  "Custom action %{number}": "사용자 지정 동작 %{number}"
+  "Custom action %{number}": "사용자 지정 동작 %{number}",
+  "Show or hide the terminal": "터미널 표시 또는 숨기기",
+  "Unable to start terminal: %{error}": "터미널을 시작할 수 없습니다: %{error}",
+  "A command is still running in a terminal. Finish it before closing this tab or window.": "터미널에서 명령이 아직 실행 중입니다. 이 탭이나 창을 닫기 전에 명령을 종료하세요."
 }

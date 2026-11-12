@@ -51,6 +51,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 
 - **Four browser modes:** navigable Columns, an Icons grid, a sortable List table, and Compact: small icons with names beside them in columns that scroll sideways, like Nemo's compact view. The Compact Appearance menu can show full filenames instead of truncating them.
 - **Extra pane:** the toolbar's pane toggle or <kbd>F3</kbd> splits a tab into two independently navigable panes, each with its own location bar. <kbd>F6</kbd> switches panes, and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> copy or move the selection into the other pane's folder. The sidebar, search, view switches and preview act on the active pane; see [Extra pane](docs/keyboard-navigation.md#extra-pane).
+- **Pane terminals:** Each file pane has an optional terminal below its file listing. Click the terminal icon or press <kbd>F4</kbd> to show or hide it, and drag the divider to resize it. Each shell starts in its pane’s local folder (or Home for a remote location), keeps its directory and session while hidden, and follows the selected Strata theme live. Browsing elsewhere does not change a running shell’s directory. Use <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>/<kbd>V</kbd> for terminal copy/paste; ordinary shell shortcuts remain available. Finish running commands before closing their tab or window.
 - **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also shows clipboard status. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md). Optional [10xer mode](docs/10xer-mode.md) hides window and pane chrome and uses Yazi-style keys. Change, add, or remove shortcuts, separately for each mode, in **Settings → Keyboard**; see [Keymap](docs/keymap.md).
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and the mounted local drives listed under **Devices** in the sidebar, regardless of the current folder; system mounts that Devices hides, such as a btrfs subvolume for a package cache, are not searched. The dialog warns when results are incomplete; raise or remove the indexing time and entry limits under **Settings → General → Search & filtering** for slow or network mounts. Folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
 - **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. Audio opens in a now-playing view with artwork and a live spectrum; video gets technical badges, a keyframe storyboard while scrubbing, ambient light around the frame, silent autoplay that eases its sound in, and <kbd>Enter</kbd> hands the position to your default player. File Properties shows available media resolution, duration, bitrate, codecs, HDR, subtitle and chapter counts, and audio/video rates. RAW previews and Properties also show dimensions, camera, lens, focal length, shutter speed, ISO, and GPS coordinates, with `N/A` for unavailable values.
@@ -246,7 +247,7 @@ Before changing anything:
    my default file-manager association.
 
 Then:
-- Install the required GTK4, GtkSourceView 5, Poppler GLib, Fontconfig, Bubblewrap,
+- Install the required GTK4, GtkSourceView 5, VTE for GTK 4, Poppler GLib, Fontconfig, Bubblewrap,
   FFmpeg/GStreamer, and desktop-integration runtime dependencies using the system
   package manager. Add gvfs-smb only if I want SMB support.
 - Ask whether I want phone access. On Arch/Omarchy, add gvfs-afc and usbmuxd for
@@ -298,7 +299,7 @@ On Arch Linux or Omarchy:
 
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib vte4
 # Optional SMB, AppImage icon, and broader camera RAW support:
 sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw squashfs-tools
 ```
@@ -831,9 +832,9 @@ Plain-text and source previews are different: they stay in process because they 
 | --- | --- |
 | Platform | 64-bit Linux with glibc 2.39+; designed for Omarchy and Wayland. GTK may use another backend supplied by the host, but Wayland is the primary display stack. |
 | Release architectures | `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` |
-| UI and runtime | Rust 2024, GTK 4.12+, GIO/GLib, Cairo, GtkSourceView 5, Poppler GLib, GDK Pixbuf, GStreamer, and Fontconfig |
+| UI and runtime | Rust 2024, GTK 4.12+, GIO/GLib, Cairo, GtkSourceView 5, VTE for GTK 4, Poppler GLib, GDK Pixbuf, GStreamer, and Fontconfig |
 | Filesystems | Native Linux paths (including non-UTF-8 names) and GIO/GVfs locations; remote protocol availability depends on installed GVfs backends |
-| Preview boundary | Bubblewrap is mandatory for native parser-backed previews; helpers have no network and fail closed. Plain text is read in process with a 1 MiB cap. |
+| Preview boundary | Unprivileged Bubblewrap with user namespaces is mandatory for native parser-backed previews; helpers have no network and fail closed. Plain text is read in process with a 1 MiB cap. |
 | Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick, classic `dcraw`, and LibRaw `simple_dcraw` expand camera RAW support; `squashfs-tools` (`unsquashfs`) extracts icons embedded in AppImages |
 | Hardware acceleration | Media-only VA-API or Vulkan decoding with software fallback; GPU and codec support depend on host drivers |
 | Scale targets | Virtualized browser models and bounded asynchronous updates are tested with deterministic directories up to 100,000 entries |
@@ -841,11 +842,11 @@ Plain-text and source previews are different: they stay in process because they 
 
 ## Development and documentation
 
-Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, Fontconfig, and GStreamer 1.20+ (including its app/base development libraries). [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
+Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, VTE for GTK 4, Poppler GLib, Fontconfig, and GStreamer 1.20+ (including its app/base development libraries). [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
 
 ```bash
 sudo pacman -S --needed base-devel bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib vte4
 mise run install-local    # build an optimized release and install it for your user
 mise run start-dev        # rebuild and restart as files change
 mise run dev              # build and launch the main app once

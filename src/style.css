@@ -7756,3 +7756,17 @@ popover.settings-action-library > contents {
 menubutton.sort-menu-button > button {
   color: @strata_text;
 }
+
+/* Per-pane terminals use the same surfaces, borders and text as the browser. */
+.pane-terminal {
+  background: @strata_bg;
+  color: @strata_text;
+}
+.pane-terminal-header {
+  padding: 2px 8px;
+  border-top: 1px solid @strata_border;
+  border-bottom: 1px solid alpha(@strata_border, 0.6);
+}
+.embedded-terminal {
+  padding: 6px;
+}

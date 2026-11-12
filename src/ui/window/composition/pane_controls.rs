@@ -34,4 +34,10 @@ pub(super) fn bind(content: &Rc<WindowContent>) {
             content.run_pane_command(PaneCommand::Toggle);
         }
     });
+    let weak = Rc::downgrade(content);
+    content.header.terminal.connect_clicked(move |_| {
+        if let Some(content) = weak.upgrade() {
+            content.run_pane_command(PaneCommand::ToggleTerminal);
+        }
+    });
 }

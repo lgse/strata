@@ -1305,6 +1305,7 @@ const DEFAULT_TOOLS: &[Shortcut] = &[
     ),
     SELECT_TAB,
     row(One(EXTRA_PANE.shown()), "Show or hide the extra pane"),
+    row(One(PANE_TERMINAL.shown()), "Show or hide the terminal"),
     row(One(OTHER_PANE.shown()), "Switch to the other pane"),
     row(One(COPY_TO_OTHER_PANE.shown()), "Copy to Other Pane"),
     row(One(MOVE_TO_OTHER_PANE.shown()), "Move to Other Pane"),
@@ -1515,6 +1516,7 @@ const TENXER_REFERENCE: &[Shortcut] = &[
 
 const PANES: &[Shortcut] = &[
     row(One(EXTRA_PANE.shown()), "Show or hide the extra pane"),
+    row(One(PANE_TERMINAL.shown()), "Show or hide the terminal"),
     row(One(OTHER_PANE.shown()), "Switch to the other pane"),
     row(One(COPY_TO_OTHER_PANE.shown()), "Copy to Other Pane"),
     row(One(MOVE_TO_OTHER_PANE.shown()), "Move to Other Pane"),

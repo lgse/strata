@@ -1160,5 +1160,8 @@
   "Press the new key for “%{action}”": "Nyomja meg az új billentyűt a következőhöz: „%{action}”",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "Az %{escape} megszakítja, a %{backspace} pedig eltávolítja a művelet összes billentyűjét.",
   "“%{group}” has no key, so this action cannot run.": "A(z) „%{group}” nem rendelkezik billentyűvel, így ez a művelet nem futtatható.",
-  "Custom action %{number}": "%{number}. egyéni művelet"
+  "Custom action %{number}": "%{number}. egyéni művelet",
+  "Show or hide the terminal": "Terminál megjelenítése vagy elrejtése",
+  "Unable to start terminal: %{error}": "Nem sikerült elindítani a terminált: %{error}",
+  "A command is still running in a terminal. Finish it before closing this tab or window.": "Egy parancs még fut az egyik terminálban. Fejezze be a lap vagy az ablak bezárása előtt."
 }

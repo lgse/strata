@@ -22,14 +22,20 @@ mod search;
 mod settings;
 mod tabs;
 mod tenxer_splash;
+mod terminal;
 
 pub(super) use tabs::{TabWindow, is_tab_shortcut, tab_index};
+
+pub(in crate::ui::window) fn terminal_owns_focus(window: &gtk::Window) -> bool {
+    terminal::owns_focus(window)
+}
 
 /// What the tab-level pane shortcuts ask of a tab.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PaneCommand {
     Toggle,
     FocusOther,
+    ToggleTerminal,
     CopyToOther,
     MoveToOther,
 }
@@ -125,6 +131,10 @@ impl WindowContent {
         self.panes.has_background_operations()
     }
 
+    pub(super) fn has_terminal_jobs(&self) -> bool {
+        self.panes.all().iter().any(|pane| pane.terminal.has_jobs())
+    }
+
     pub(super) fn set_presence(&self, presence: crate::app::Presence, power_saver: bool) {
         self.panes.set_presence(presence, power_saver);
     }
@@ -151,6 +161,7 @@ impl WindowContent {
                 self.header.extra_pane.set_active(self.panes.is_split());
             }
             PaneCommand::FocusOther => self.panes.focus_other(),
+            PaneCommand::ToggleTerminal => self.panes.toggle_terminal(),
             PaneCommand::CopyToOther => self.panes.transfer_to_other(false),
             PaneCommand::MoveToOther => self.panes.transfer_to_other(true),
         }
@@ -325,7 +336,9 @@ impl WindowContent {
         }
         self.preview.clear_target();
         for pane in self.panes.all() {
+            pane.terminal.shutdown();
             let footer = &pane.footer;
+            footer.shortcuts.dispose();
             footer.shortcuts.cancel_chord();
             footer.shortcuts.dismiss_prompt();
             footer.disconnect_clipboard();

@@ -131,12 +131,16 @@ impl TabWindow {
         let weak = Rc::downgrade(&state);
         crate::ui::close_guard::install(window, move |_| {
             let state = weak.upgrade()?;
-            state
-                .tabs
-                .borrow()
+            let tabs = state.tabs.borrow();
+            if tabs
                 .iter()
                 .any(|tab| tab.content.has_background_operations())
-                .then(operations_active)
+            {
+                return Some(operations_active());
+            }
+            tabs.iter()
+                .any(|tab| tab.content.has_terminal_jobs())
+                .then(terminal_jobs_active)
         });
         let retained = state.clone();
         window.connect_unrealize(move |window| {
@@ -375,6 +379,10 @@ impl TabWindow {
         };
         if tabs[index].content.has_background_operations() {
             operations_active().show(window.upcast_ref());
+            return;
+        }
+        if tabs[index].content.has_terminal_jobs() {
+            terminal_jobs_active().show(window.upcast_ref());
             return;
         }
         if tabs.len() == 1 {
@@ -748,6 +756,14 @@ impl TabWindow {
     }
 
     fn handle_key(self: &Rc<Self>, press: &KeyPress) -> glib::Propagation {
+        if self
+            .window
+            .upgrade()
+            .is_some_and(|window| super::terminal::owns_focus(window.upcast_ref()))
+            && !press.is(PANE_TERMINAL)
+        {
+            return glib::Propagation::Proceed;
+        }
         if press.is(ESCAPE_ANY) && self.strip.cancel_drag() {
             return glib::Propagation::Stop;
         }
@@ -822,6 +838,15 @@ impl TabWindow {
     }
 }
 
+fn terminal_jobs_active() -> crate::ui::close_guard::CloseBlocker {
+    crate::ui::close_guard::CloseBlocker {
+        title: crate::i18n::tr("Terminal"),
+        detail: crate::i18n::tr(
+            "A command is still running in a terminal. Finish it before closing this tab or window.",
+        ),
+    }
+}
+
 fn operations_active() -> crate::ui::close_guard::CloseBlocker {
     crate::ui::close_guard::CloseBlocker {
         title: crate::i18n::tr("File operations are still active"),
@@ -850,6 +875,7 @@ fn pane_command(press: &KeyPress) -> Option<PaneCommand> {
     [
         (EXTRA_PANE, PaneCommand::Toggle),
         (OTHER_PANE, PaneCommand::FocusOther),
+        (PANE_TERMINAL, PaneCommand::ToggleTerminal),
         (COPY_TO_OTHER_PANE, PaneCommand::CopyToOther),
         (MOVE_TO_OTHER_PANE, PaneCommand::MoveToOther),
     ]

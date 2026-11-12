@@ -1160,5 +1160,8 @@
   "Press the new key for “%{action}”": "Press the new key for “%{action}”",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} cancels, and %{backspace} removes every key of this action.",
   "“%{group}” has no key, so this action cannot run.": "“%{group}” has no key, so this action cannot run.",
-  "Custom action %{number}": "Custom action %{number}"
+  "Custom action %{number}": "Custom action %{number}",
+  "Show or hide the terminal": "Show or hide the terminal",
+  "Unable to start terminal: %{error}": "Unable to start terminal: %{error}",
+  "A command is still running in a terminal. Finish it before closing this tab or window.": "A command is still running in a terminal. Finish it before closing this tab or window."
 }

@@ -1160,5 +1160,8 @@
   "Press the new key for “%{action}”": "按下“%{action}”的新按鍵",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "按 %{escape} 取消，按 %{backspace} 移除此動作的所有按鍵。",
   "“%{group}” has no key, so this action cannot run.": "“%{group}”沒有按鍵，因此無法執行此操作。",
-  "Custom action %{number}": "自訂動作 %{number}"
+  "Custom action %{number}": "自訂動作 %{number}",
+  "Show or hide the terminal": "顯示或隱藏終端機",
+  "Unable to start terminal: %{error}": "無法啟動終端機：%{error}",
+  "A command is still running in a terminal. Finish it before closing this tab or window.": "終端機中仍有指令正在執行。請先結束指令，再關閉此分頁或視窗。"
 }

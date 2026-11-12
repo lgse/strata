@@ -143,6 +143,9 @@ fn connect_key_presses(
         if !accepts_input(&key_root) || !dispatcher.reads_input() {
             return Propagation::Proceed;
         }
+        if super::composition::terminal_owns_focus(&dispatcher.window) {
+            return Propagation::Proceed;
+        }
         if dispatcher.cancel_pending_bookmark(press) {
             return Propagation::Stop;
         }

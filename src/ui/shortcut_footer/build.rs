@@ -382,6 +382,7 @@ impl ShortcutFooter {
             current: row.current,
             filter_source: Rc::new(RefCell::new(None)),
             filter_retry: Rc::new(Cell::new(false)),
+            disposed: Rc::new(Cell::new(false)),
             observed: Rc::new(RefCell::new(std::rc::Weak::new())),
             reference_scope: panel.reference_scope,
         };

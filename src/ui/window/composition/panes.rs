@@ -118,6 +118,7 @@ pub(super) struct Pane {
     pub(super) view: BrowserView,
     pub(super) footer: FooterBinding,
     pub(super) input: PaneInput,
+    pub(super) terminal: Rc<super::terminal::PaneTerminal>,
     shell: gtk::Box,
     location_bar: gtk::Box,
 }
@@ -131,12 +132,15 @@ impl Pane {
         let location_bar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         location_bar.add_css_class("pane-location");
         location_bar.set_visible(false);
+        let terminal = super::terminal::PaneTerminal::new(&view);
+        location_bar.append(&terminal.button);
         shell.append(&location_bar);
-        shell.append(&view.widget());
+        shell.append(&terminal.split(&view.widget()));
         Self {
             view,
             footer,
             input: Rc::new(Cell::new(true)),
+            terminal,
             shell,
             location_bar,
         }
@@ -146,7 +150,7 @@ impl Pane {
         let widget = self.view.location_widget();
         if split && widget.parent().as_ref() == Some(locations.upcast_ref()) {
             locations.remove(&widget);
-            self.location_bar.append(&widget);
+            self.location_bar.prepend(&widget);
         } else if !split && widget.parent().as_ref() == Some(self.location_bar.upcast_ref()) {
             self.location_bar.remove(&widget);
             locations.add_child(&widget);
@@ -403,6 +407,10 @@ impl Panes {
             self.apply();
             self.active().focus_listing();
         }
+    }
+
+    pub(super) fn toggle_terminal(&self) {
+        self.active().terminal.toggle();
     }
 
     /// Shows the current layout: which pane takes keys, highlights, location

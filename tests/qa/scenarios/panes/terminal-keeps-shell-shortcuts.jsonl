@@ -1,0 +1,24 @@
+{"scenario":"terminal-keeps-shell-shortcuts","modes":["list"],"layout":"us","prefs":{"single_click_previews":false},"quality":{"impact":3,"coverage":4,"criticality":4,"diagnostic":4,"score":49,"note":"F4 routes real Ctrl+C/W/L to the shell and returns file keys on hide; shell/session GTK tests do not inject key events"}}
+{"wait":{"entries":{"contains":["documents","pictures"]}},"message":"the initial folder to finish listing"}
+{"key":"F4"}
+{"wait":{"present":{"role":"*","name":"Terminal","states":["focused"]}},"message":"F4 to focus the pane terminal"}
+{"type":"printf ready > shell-ready; sleep 120"}
+{"key":"Return"}
+{"fs":{"path":"shell-ready","text":"ready"},"message":"the terminal shell to start its command in this pane's folder"}
+{"key":"ctrl+c"}
+{"type":"printf interrupted > shell-interrupted"}
+{"key":"Return"}
+{"fs":{"path":"shell-interrupted","text":"interrupted"},"message":"Ctrl+C to interrupt the shell command and leave the shell usable"}
+{"type":"printf kept > wrong"}
+{"key":"ctrl+w"}
+{"type":"shell-word"}
+{"key":"Return"}
+{"fs":{"path":"shell-word","text":"kept"},"message":"Ctrl+W to edit the shell command rather than close the file tab"}
+{"key":"ctrl+l"}
+{"type":"printf cleared > shell-clear"}
+{"key":"Return"}
+{"fs":{"path":"shell-clear","text":"cleared"},"message":"Ctrl+L to clear the terminal rather than open Strata's location editor"}
+{"key":"F4"}
+{"wait":{"absent":{"role":"*","name":"Terminal","states":["focused"]}},"message":"F4 to hide the terminal and return keyboard focus to the file listing"}
+{"key":"F3"}
+{"wait":{"panes":["$root","$root"]},"message":"file-pane shortcuts to work again after hiding the terminal"}

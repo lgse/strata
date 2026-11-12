@@ -32,6 +32,7 @@ pub(super) struct Header {
     pub(super) actions: gtk::Box,
     pub(super) new_tab: gtk::Button,
     pub(super) extra_pane: gtk::ToggleButton,
+    pub(super) terminal: gtk::Button,
     pub(super) content: gtk::Box,
     pub(super) sidebar_toggle: SidebarToggle,
     pub(super) search: gtk::Button,
@@ -143,6 +144,8 @@ impl Header {
         actions.append(&search);
         let extra_pane = super::pane_controls::toggle();
         actions.append(&extra_pane);
+        let terminal = super::terminal::button();
+        actions.append(&terminal);
         actions.append(&appearance);
         actions.append(&settings);
         actions.append(&minimize);
@@ -170,6 +173,7 @@ impl Header {
             actions,
             new_tab,
             extra_pane,
+            terminal,
         }
     }
 }

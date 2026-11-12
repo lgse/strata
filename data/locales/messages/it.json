@@ -1160,5 +1160,8 @@
   "Press the new key for “%{action}”": "Premi il nuovo tasto per “%{action}”",
   "%{escape} cancels, and %{backspace} removes every key of this action.": "%{escape} annulla e %{backspace} rimuove tutti i tasti di questa azione.",
   "“%{group}” has no key, so this action cannot run.": "“%{group}” non ha un tasto, quindi questa azione non può essere eseguita.",
-  "Custom action %{number}": "Azione personalizzata %{number}"
+  "Custom action %{number}": "Azione personalizzata %{number}",
+  "Show or hide the terminal": "Mostra o nascondi il terminale",
+  "Unable to start terminal: %{error}": "Impossibile avviare il terminale: %{error}",
+  "A command is still running in a terminal. Finish it before closing this tab or window.": "Un comando è ancora in esecuzione in un terminale. Terminalo prima di chiudere questa scheda o finestra."
 }

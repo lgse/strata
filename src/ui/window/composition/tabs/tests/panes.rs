@@ -6,6 +6,8 @@ use super::*;
 use crate::ui::browser_modes::BrowserMode::{Icons, List};
 use crate::ui::window::sidebar::PlaceNavigation;
 
+mod terminal;
+
 struct Split {
     root: tempfile::TempDir,
     window: gtk::ApplicationWindow,

@@ -34,7 +34,7 @@ RUN sh /opt/strata-install-packages.sh install \
         at-spi2-core bubblewrap ca-certificates cantarell-fonts dbus diffutils ffmpeg \
         fontconfig gobject-introspection-runtime gst-libav gst-plugins-base \
         gst-plugins-good gtk4 gtksourceview5 imagemagick libheif librsvg poppler-glib \
-        python-gobject strace xorg-server-xvfb xorg-xauth \
+        python-gobject strace vte4 xorg-server-xvfb xorg-xauth \
     && rm -rf /var/cache/pacman/pkg/* \
     && test "$(pacman -Q gtk4)" = 'gtk4 1:4.22.5-1' \
     && command -v cmp >/dev/null

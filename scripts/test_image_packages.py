@@ -61,7 +61,7 @@ class PinnedPackageTests(unittest.TestCase):
     def test_indexes_pin_https_archive_and_force_metadata_refresh(self):
         result, calls = self.run_installer("indexes", create_indexes=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(calls, [["-Syy", "--noconfirm"]])
+        self.assertEqual(calls, [["-Syy", "--noconfirm", "--disable-download-timeout"]])
         self.assertEqual((self.root / "etc/pacman.d/mirrorlist").read_text(), SERVER)
 
     def test_install_upgrades_the_snapshot_as_one_signed_transaction(self):
@@ -70,7 +70,7 @@ class PinnedPackageTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             calls[-1],
-            ["-Su", "--noconfirm", "--needed", "gtk4", "python-gobject"],
+            ["-Su", "--noconfirm", "--needed", "--disable-download-timeout", "gtk4", "python-gobject"],
         )
 
     def test_install_requires_the_exact_mirror_and_both_repository_indexes(self):

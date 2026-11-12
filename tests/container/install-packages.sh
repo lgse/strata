@@ -24,14 +24,14 @@ case "${1:-}" in
         [ "$#" -eq 1 ] || fail 'indexes takes no package names'
         mkdir -p "$(dirname "$mirrorlist")"
         printf '%s\n' "$server" > "$mirrorlist"
-        pacman -Syy --noconfirm
+        pacman -Syy --noconfirm --disable-download-timeout
         ;;
     install)
         shift
         [ "$#" -gt 0 ] || fail 'install requires package names'
         [ "$(cat "$mirrorlist" 2>/dev/null)" = "$server" ] || fail 'mirror does not use the dated snapshot'
         [ -f "$sync/core.db" ] && [ -f "$sync/extra.db" ] || fail 'fetch signed snapshot indexes before installing packages'
-        pacman -Su --noconfirm --needed "$@"
+        pacman -Su --noconfirm --needed --disable-download-timeout "$@"
         ;;
     *) fail 'usage: install-packages.sh indexes|install [packages...]' ;;
 esac

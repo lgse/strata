@@ -89,6 +89,7 @@ catalog! {
         // Nemo's extra pane keys; F5 refreshes, so the transfers take Ctrl+Shift.
         EXTRA_PANE: Command "extra_pane" = Binding::plain(Key::F3);
         OTHER_PANE: Command "other_pane" = Binding::plain(Key::F6);
+        PANE_TERMINAL: Command "pane_terminal" = Binding::plain(Key::F4);
         COPY_TO_OTHER_PANE: Command "copy_to_other_pane" = Binding::ctrl_shift(Key::c);
         MOVE_TO_OTHER_PANE: Command "move_to_other_pane" = Binding::ctrl_shift(Key::x);
     }
@@ -113,6 +114,8 @@ catalog! {
         CUSTOM_ACTION_10: Command "custom_action.10" => default [], tenxer [];
     }
     unlisted {
+        TERMINAL_COPY: Binding = Binding::ctrl_shift(Key::c);
+        TERMINAL_PASTE: Binding = Binding::ctrl_shift(Key::v);
         /// While type-to-search is on, **/** opens the filter without typing.
         FILTER_SLASH: Command "type_to_search_filter" = Binding::plain(Key::slash),
             live in default;
