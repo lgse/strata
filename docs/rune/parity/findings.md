@@ -209,3 +209,24 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, not taken up, and not to be fixed on `strata-next`. Until it is fixed on
   `main`, the same test can fail a shard; whoever meets it reads the failure, and it is this
   entry and not a new flaky test.
+
+### `calibration` seed `0x1de`: Space in the sort menu does two different things
+
+- **Code:** `oracle`. No issue: recorded here, in [#2181](https://github.com/lgse/strata/pull/2181).
+- With the sort menu opened from the keyboard (Up, Right, Right, Return), after a right-click
+  and Down, Space either closes the menu and sorts the folder by name, in 16 of 24 replays,
+  or leaves the menu open over another order, in the other 8. The input logs are identical
+  and every step is at rest.
+- **Concerns:** fuzz seed `0x1de` of version 3 of the `calibration` alphabet; step 32 of its
+  sequence, `{"key":"space"}`, where `app.matches` and `app.menu` differ. The shrinker takes
+  it from 40 steps to 10 and calls it noise, since the shortest sequence differed in 2
+  confirmations of 3. To reproduce:
+  `./scripts/qa-fuzz.sh run --alphabet calibration --seeds 0x1de --repeats 24 --jobs 1`.
+- **State:** open, recorded and **not parked**. A `parked` line must cite
+  `lgse/strata#<number>`, and how a new finding is referenced is the owner's open question
+  ([`owner.md`](owner.md#tracking-and-findings)); it is parked when that is answered, which
+  [F2](packages/F2.md) inherits. Its sequence is not kept in the corpus either: an unparked
+  kept sequence would fail `replay` about one time in three, and the seed and the alphabet's
+  version write it again. Until it is parked,
+  `./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..500` fails on this seed about
+  4 times in 9; the smoke tier, seeds 1 to 20, is unaffected.

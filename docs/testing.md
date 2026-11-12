@@ -1854,7 +1854,7 @@ wait. 250 ms was enough for these seeds, and the rule keeps a margin over it.
 | `app.field.caret`, `app.field.selection`: after Shift+click on the entry being renamed | A race in GTK, whatever the rest: the same input events clear the selection in 28 replays of 34 and select the whole name in the other 6 | An `oracle` issue, lgse/strata#2173, and its seed parked. The alphabet does not click an entry while a name is edited: where such a click puts the caret is a matter of pixels in any case |
 | `app.preview`: which file the preview shows after Move to Trash from a context menu on a filtered pane | A race in GTK, whatever the rest: a file that is neither focused nor selected in 23 replays of 24, the focused one in the other | An `oracle` issue, lgse/strata#2177, and its seed parked. The alphabet is left as it is, so another seed can meet it |
 | `app.focused`, `app.panes[].focused`: after a click that opens a folder's column, with 96 sequences at once | A race in GTK between the column's listing and focus moving into it: focus on the column in one replay, on its first entry in the other. Seen once, and not at one sequence to a core | An `oracle` issue, lgse/strata#2180, and its seed parked |
-| `app.matches`, `app.menu`: after Space in the sort menu, opened from the keyboard, once a right-click and Down have gone to it | A race in GTK, whatever the rest: from the same input events the menu closes and the folder is sorted by name in 16 replays of 24, and the menu stays open over another order in the other 8. Met by seed `0x1de` in the last run of seeds 1 to 1000; the shrinker took it from 40 steps to 10, which differed in two confirmations of three | Nothing yet. It is not parked, because a parked line cites an issue and what a new finding is cited by is not settled (`docs/rune/parity/packages/F1.md`, "Open"). Until it is, `run` reports that seed as differing about four times in nine |
+| `app.matches`, `app.menu`: after Space in the sort menu, opened from the keyboard, once a right-click and Down have gone to it | A race in GTK, whatever the rest: from the same input events the menu closes and the folder is sorted by name in 16 replays of 24, and the menu stays open over another order in the other 8. Met by seed `0x1de` in the last run of seeds 1 to 1000; the shrinker took it from 40 steps to 10, which differed in two confirmations of three | Recorded in `docs/rune/parity/findings.md`, and not parked: a parked line cites an issue, and what a new finding is cited by is the owner's open question. Its sequence is not kept either; the seed and the alphabet's version write it again |
 
 One more `oracle` issue is not a difference: GTK logs a critical, the same one
 at the same step in both replays (lgse/strata#2176). A GLib warning is a
@@ -1873,7 +1873,19 @@ itself races or warns:
 | 120 actions, three replays, 24 at once: seeds 2001 to 2100 | 100 | 100 | |
 
 No step was left unsettled and no GLib warning was logged in any of them:
-139,867 observations in 2,898 replays.
+139,867 observations in 2,898 replays. Five GTK faults were found in all, and
+four of them are parked.
+
+**Seed `0x1de` is not parked, so a run that includes it can fail.** Until it
+is parked, `./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..500`
+fails on that seed about 4 times in 9. The smoke tier, seeds 1 to 20, is
+unaffected. Read a range that includes `0x1de` with that in mind: a `DIFFER`
+on `app.matches` or `app.menu` after Space in the sort menu is this fault and
+not a new one.
+
+These runs were made with `strata-next` at `682fa0e7f`. They were not repeated
+after #2192 and #2195 to #2197 merged application code: the driver is the
+same, and the smoke tier agrees at the head.
 
 `replay --parked --repeats 24` says what the parked sequences do on the same
 code: the critical of lgse/strata#2176 in every replay; the Shift+click of
@@ -1913,15 +1925,24 @@ sequence that agrees is not thereby fixed.
 
 #### What the next packages build on
 
-- **The sentence for the checkpoint.** Two GTK replays of one seed agree with
-  nothing masked: on 999 of 1,000 seeds at 40 actions, and on 100 of 100 at
-  120 actions and three replays. Every seed that did not agree, there or
-  while the driver was built, is a fault of GTK's own that is named above.
-  That holds for one alphabet, Columns on the canonical fixture, on a machine
-  that is not starved of CPU; with an alphabet that keeps every
-  click, Ctrl+click, Shift+click and right-click off the entries while a name
-  is edited; and with a replay ending where it leaves the fixture, which
-  left 1.3 % of the observations unmade at 40 actions and 5.2 % at 120.
+- **The sentence for the checkpoint.** On the final code, 999 of 1,000 seeds
+  agreed at 24 at once, 299 of 299 at 96 at once and 100 of 100 at 120
+  actions with three replays, with nothing masked and no step unsettled; the
+  one that differed is a race in GTK's own sort menu; five GTK faults were
+  found in all, four of them parked. That holds for one alphabet, Columns on
+  the canonical fixture, on a machine that is not starved of CPU; with an
+  alphabet that keeps every click, Ctrl+click, Shift+click and right-click
+  off the entries while a name is edited; and with a replay ending where it
+  leaves the fixture, which left 1.3 % of the observations unmade at 40
+  actions and 5.2 % at 120. The calibration ran with `strata-next` at
+  `682fa0e7f` and was not repeated after #2192 and #2195 to #2197 merged
+  application code: the driver is identical, and the smoke tier agrees at the
+  head.
+- **One seed is not parked.** `0x1de` of `calibration` v3 meets the sort menu
+  race about 4 times in 9, so `run --alphabet calibration --seeds 1..500`
+  fails that often and the smoke tier, seeds 1 to 20, does not. It is recorded
+  in `docs/rune/parity/findings.md` and is parked once the owner has ruled
+  what a new finding is cited by, which is F2's to do.
 - **"Agree" is a rate.** Two replays catch a race that goes the rare way once
   in 24 about 8 % of the time, one that does so once in 6 about 28 %, and one
   that does so once in 3 about 44 %. Two of the races above agreed in a whole
