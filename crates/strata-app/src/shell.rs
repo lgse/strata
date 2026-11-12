@@ -4,13 +4,15 @@
 //! keeps for itself.
 //!
 //! The header is the one strata-components' X1 demo draws
-//! (`crates/strata-gallery/src/scenes/x1/shell.rs`). Its actions do nothing yet; the window
-//! buttons go to the window manager. Everything else is a part: [`crate::slots`] says where
-//! each slot is and what a part gets from the shell.
+//! (`crates/strata-gallery/src/scenes/x1/shell.rs`). Each of its five actions runs a command
+//! of the registry ([`crate::commands`]) and is inert until a part registers that command;
+//! the window buttons go to the window manager. The window's keys are the registry's too.
+//! Everything else is a part: [`crate::slots`] says where each slot is and what a part gets
+//! from the shell.
 
 use std::rc::Rc;
 
-use rune::{Cx, El, KeyEvent, Keybind, Tx, col, row};
+use rune::{Cx, El, Tx, col, row};
 use strata_components::contract::EntryId;
 use strata_components::header::{
     self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
@@ -25,7 +27,8 @@ use strata_kit::{icons::IconName, look::Look};
 use strata_platform::csd::{self, Csd};
 
 use crate::{
-    App, Built, PARTS, rename,
+    App, Built, PARTS,
+    commands::{self, Live, On},
     settings::Saved,
     slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, Slot, View},
     startup::UiThread,
@@ -74,6 +77,8 @@ pub(crate) struct Window {
     csd: Csd,
     /// Whether the window has keyboard focus.
     active: bool,
+    /// What the key catalog reads of the settings at each press and label.
+    keys: Rc<Live>,
     labels: Labels,
     /// How many of the browser's events, and of the rows they copied, `apply_queued` has
     /// seen, for its trace line.
@@ -139,6 +144,7 @@ impl App {
             });
         });
         let built = Built::new(&setup);
+        let keys = Live::registered(saved);
         let window = Window {
             settings,
             events,
@@ -148,6 +154,7 @@ impl App {
             title: title_for(None),
             csd,
             active: true,
+            keys,
             labels: Labels::translated(),
             applied: (0, 0),
         };
@@ -282,29 +289,81 @@ fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
     tracing::debug!(?action, ?outcome, "window button");
 }
 
+/// One of the header's five actions: the key its element ends with, its icon, its name, and
+/// the command a press runs (`commands::run`). What the command does is whichever part
+/// registers it; until one does the button is drawn and inert.
+struct Button {
+    key: &'static str,
+    icon: IconName,
+    label: fn(&Labels) -> &str,
+    command: &'static str,
+}
+
+/// Before the location bar.
+const LEADING: Button = Button {
+    key: "sidebar-toggle",
+    icon: IconName::Sidebar,
+    label: |labels| &labels.toggle_sidebar,
+    command: "toggle-sidebar",
+};
+
+/// After the location bar, in the header's order.
+const TRAILING: [Button; 4] = [
+    Button {
+        key: "new-tab",
+        icon: IconName::Plus,
+        label: |labels| &labels.new_tab,
+        command: "tab-new",
+    },
+    Button {
+        key: "search",
+        icon: IconName::Search,
+        label: |labels| &labels.search,
+        command: "search",
+    },
+    Button {
+        key: "appearance",
+        icon: IconName::Menu,
+        label: |labels| &labels.appearance,
+        command: "appearance",
+    },
+    Button {
+        key: "settings",
+        icon: IconName::Settings,
+        label: |labels| &labels.settings,
+        command: "settings",
+    },
+];
+
+/// The commands the header's buttons run, in the header's order.
+#[cfg(test)]
+pub(crate) fn header_commands() -> impl Iterator<Item = &'static str> {
+    let buttons = std::iter::once(&LEADING).chain(&TRAILING);
+    buttons.map(|button| button.command)
+}
+
 /// The header, with the location slot's element in its middle.
 fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
     let look = &app.look;
     let labels = &app.window.labels;
-    let action = |part: &str, icon: IconName, label: &str| {
-        header::action(look, icon, label)
+    let action = |button: &Button| {
+        let command = button.command;
+        header::action(look, button.icon, (button.label)(labels))
+            .on_press_tx(move |app: &mut App, tx: &mut Tx| {
+                commands::run(app, command, On::Focus, tx);
+            })
             .build(&look.kit)
-            .key(format!("header-{part}"))
+            .key(format!("header-{}", button.key))
     };
-    let header = Header::new("header", look).leading(action(
-        "sidebar-toggle",
-        IconName::Sidebar,
-        &labels.toggle_sidebar,
-    ));
+    let header = Header::new("header", look).leading(action(&LEADING));
     let header = match location {
         Some(location) => header.center(location),
         None => header,
     };
+    let header = TRAILING
+        .iter()
+        .fold(header, |header, button| header.action(action(button)));
     header
-        .action(action("new-tab", IconName::Plus, &labels.new_tab))
-        .action(action("search", IconName::Search, &labels.search))
-        .action(action("appearance", IconName::Menu, &labels.appearance))
-        .action(action("settings", IconName::Settings, &labels.settings))
         .window_buttons(
             WindowButtons::default(),
             chrome,
@@ -382,6 +441,8 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
 }
 
 pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
+    // A label drawn in this run reads the map and type-to-search as they are now.
+    live_keys(app);
     let look = &app.look;
     let mut layer = Vec::new();
     let frame = &mut Frame {
@@ -470,46 +531,18 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
     changed
 }
 
-/// Chords, as Rune spells them, and what each does.
-type WindowKey = (&'static str, fn(&mut App, &mut Tx));
-
-/// The window's own keys. Shift may be held with a history key, as `history_jump` in
-/// `src/ui/window/keyboard/items.rs` lets it.
-const WINDOW_KEYS: &[WindowKey] = &[
-    // `HIDDEN_FILES`, `RENAME` and `REFRESH` in `src/ui/keys/bindings/window.rs`. F5 reads
-    // every column again in the Columns view (`refresh_browser`).
-    ("ctrl+h, ctrl+.", |app, _| app.browser.toggle_hidden()),
-    ("f2, ctrl+r", rename::begin_focused),
-    ("f5", |app, _| app.browser.refresh_all()),
-    // `HISTORY_BACK`, `HISTORY_FORWARD`, `PARENT_FOLDER` and `HOME_FOLDER` in
-    // `src/ui/keys/bindings/navigation.rs`.
-    ("alt+left, alt+shift+left", |app, _| app.browser.back()),
-    ("alt+right, alt+shift+right", |app, _| app.browser.forward()),
-    ("alt+up, alt+shift+up", |app, _| app.browser.parent()),
-    ("alt+home, alt+shift+home", |app, _| {
-        app.browser
-            .navigate(Location::local(crate::launch::home_directory()));
-    }),
-];
-
-/// The window's keys: what the focused element passed on. While a part's field has the
-/// keyboard they wait, as the GTK window's do: a key the field passes on is not a shortcut.
-pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
+/// Whether a part's field has the keyboard, so that the window's keys wait.
+pub(crate) fn holds_keyboard(app: &App) -> bool {
     let parts = app.window.parts;
-    let waiting = parts.active().any(|part| (part.holds_keyboard)(app));
-    let bound = WINDOW_KEYS
-        .iter()
-        .filter(|_| !waiting)
-        .find(|(keys, _)| Keybind::new(keys).matches_tx(event, tx));
-    let Some((_, act)) = bound else {
-        // Nothing the view reads changed: no commit for a key that is not the window's.
-        tx.live_only();
-        return false;
-    };
-    publish(app);
-    act(app, tx);
-    settle(app, tx);
-    true
+    parts.active().any(|part| (part.holds_keyboard)(app))
+}
+
+/// What the key catalog reads of the settings, brought up to the saved values as they are
+/// now: the GTK application reads its preference manager at each press and each label.
+pub(crate) fn live_keys(app: &App) -> &Live {
+    let live = &app.window.keys;
+    live.follow(app.window.settings.preferences());
+    live
 }
 
 #[cfg(test)]

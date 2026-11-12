@@ -167,13 +167,13 @@ mod c3 {
     #[test]
     fn a_tile_being_renamed_has_no_tooltip_and_a_renamed_one_shows_its_new_name() {
         let mut rt = mount("c3-default-light");
-        rt.update(|g, _| g.c3.renaming = Some(EntryId::new(11)));
+        rt.update(|g, _| g.c3.begin_rename(EntryId::new(11)));
         run(&mut rt, 0.1);
         assert_eq!(rest_on(&mut rt, "row-11/icon"), None);
         rt.pointer_move(1.0, 1.0);
         let renamed = "renamed-candidate-build-with-another-quite-long-tail-for-the-cut.zip";
         rt.update(|g, tx| {
-            g.c3.renaming = None;
+            g.c3.rename = strata_components::rename::RenameState::new();
             let mut entries = g.c3.listing.entries().to_vec();
             entries[10].name = renamed.to_owned();
             g.c3.listing.replace(entries);
@@ -181,6 +181,16 @@ mod c3 {
         });
         run(&mut rt, 0.2);
         assert_eq!(rest_on(&mut rt, "row-11/label").as_deref(), Some(renamed));
+    }
+
+    /// rename: the editor in a tile's caption takes the keyboard. A field that grows from no
+    /// width of its own, as C5's does, gets one from the tile: Rune gives the keyboard to no
+    /// field it cannot show.
+    #[test]
+    fn a_rename_field_in_a_tile_takes_the_keyboard() {
+        let rt = mount("c3-renaming-light");
+        let focused = rt.elements().into_iter().find(|e| e.focused);
+        assert_eq!(focused.and_then(|e| e.key).as_deref(), Some("rename-field"));
     }
 
     /// icons: "Keyboard focus on a card shows no name tooltip."

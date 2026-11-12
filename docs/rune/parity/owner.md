@@ -204,16 +204,68 @@ comments of 2026-11-12, unless another is named.
 
 ### B3: Commands and key dispatch
 
+Source for all of these: [B3](packages/B3.md), "Design", and the archived issue
+[#2126](https://github.com/lgse/strata/issues/2126). What the builder does is in
+`crates/strata-app/src/commands/press.rs`.
+
 - **B3 depends on B2's key-catalog move**, which the plan does not record: what B3 builds on
-  arrives with it. Meanwhile: B3 is held until the move merges. Source: the archived issues
-  [#2125](https://github.com/lgse/strata/issues/2125) and [#2126](https://github.com/lgse/strata/issues/2126).
-- **Seven cases where GTK and Rune would read a key differently**, measured against Rune at
-  the pinned revision: a non-Latin layout with a non-US Latin layout also configured; the
-  digit row above level 1 with AltGr; the keypad decimal and separator; every press in the
-  QA target; the keys Rune's host never delivers; a modifier's own press; and character to
-  keysym. Whether each is a parity requirement, a deviation, an upstream packet entry with a
-  workaround, or a shim. Meanwhile: none is decided, and they do not block the move.
-  Source: [#2126](https://github.com/lgse/strata/issues/2126) ([B3](packages/B3.md) lists them).
+  arrived with it. The move merged on 2026-11-12 and B3 started then; whether the plan's
+  table takes the dependency is still the owner's.
+- **A non-Latin layout with a non-US Latin layout also configured (case 1 of the seven).**
+  A deviation that needs the owner's word, not a default to confirm. GTK reads a key that
+  types no ASCII through the other configured layout, and Rune cannot see the layouts that
+  are configured and not active: its window host has already named the US key for a chord,
+  and the press builder falls back to the US position for a plain key. So for a user with a
+  Russian and a German layout, Ctrl with the key that is Z on QWERTZ is Undo on GTK and Redo
+  on Rune, and the reverse. No workaround exists in `strata-app`. Rune packet entry
+  [99](../upstream/rune/99-configured-layouts.md) asks for what would be needed. Meanwhile:
+  the US position, which is GTK's own rule when no other layout has a Latin key.
+- **The Menu key with Super held.** Rune reports Super, Hyper and Meta as one flag. GTK
+  opens the context menu with Hyper or Meta held and not with Super; strata-components' C21
+  opens with the flag set, on purpose, to keep Hyper and Meta. One of the three keys must
+  differ from GTK. Which is the owner's. Meanwhile, in force from the pull request that
+  binds the Menu key: the flag is read as Super, the common key, so the catalog's
+  `context_menu` does not match and no menu opens, as on GTK; Hyper and Meta then differ.
+  The same reading holds for every binding: Rune's flag counts as Super, which no shipped
+  binding holds.
+- **Where the Menu key is read.** On Rune a view's keyboard controller opens the menu, after
+  every stage of the chain through `dismissal` has declined the press. GTK's
+  `context_menu_command` sits in the middle of that chain. No shipped key shows the
+  difference; a user's binding that put the Menu key on an earlier or later command could.
+  Meanwhile: the controller's place.
+- **The other six cases, each with the default in force** from the registry's pull request:
+  2. *The digit row above level 1 (AltGr).* Read as GTK reads it where Rune gives the key's
+     base character and Shift is not held: such a character has no position, so it is a
+     digit only if it types one, and it never falls back. With Shift held the two levels
+     cannot be told apart and the position stands. A digit typed at such a level on a key
+     outside the digit row counts as a digit on Rune and not on GTK.
+  3. *The keypad's decimal and separator keys.* Read as GTK reads them wherever the key's
+     position is known: the keypad key itself, which is not the main block's period or
+     comma.
+  4. *Every press in the QA target.* It has no position and no base character until
+     anomalyco/rune#657 lands (packet entry 97), so the character is read as the US key
+     that types it. Exact on a US layout, which every required run uses. A plain letter of
+     another alphabet gets no Latin fallback there, which is the ledger's `rune` blocker.
+     A workaround outside Rune, the QA backend telling the window the next key's origin, is
+     [H3](packages/H3.md)'s to take or leave.
+  5. *Keys Rune's host never delivers* (dead keys, Compose, Caps Lock, AltGr, media keys,
+     F25 to F35, the keypad's 5 with Num Lock off). Nothing arrives, so nothing is routed.
+     What a dead key or Compose goes on to compose does arrive, as text at the last key's
+     position: a dead key and then Space types `^` on Rune, where GTK's list hears Space.
+  6. *A modifier's own press.* Built as GDK reports it, held without the key itself. Rune
+     sends none unless a host asks, and neither host asks yet.
+  7. *Character to keysym.* B2's one keysym for a character, `Key::from_char`.
+- **An eighth case, found in the review of the registry: a chord whose Shift or AltGr level
+  types no ASCII on a key whose base is ASCII.** With Ctrl held, Rune's window host
+  replaces a character that is not ASCII by the US key at that position and drops the
+  character typed. The press builder undoes that where the key's base character is not
+  ASCII either (a Russian or Greek key). Where the base is ASCII it cannot tell that
+  anything was replaced, and reads the US unshifted key: on AZERTY, Ctrl+Shift with the `*`
+  key (which types `µ`) reads as Ctrl+`\`, the arrow-scope key, where GTK reads Ctrl+`|`;
+  on a Polish layout Ctrl+AltGr+A (`ą`) reads as Ctrl+A, where GTK reads no shortcut. No
+  command with a registered key is reached by either today. Rune packet entry
+  [100](../upstream/rune/100-chord-typed-character.md) asks for the character back.
+  Meanwhile: the US key, as Rune names it.
 
 ### A6 and A18: keyboard settings
 
@@ -268,6 +320,10 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    has Left leave the pane with or without a cursor, as GTK does. Items 3, 4 and 5 (Up from
    the first row, focus after Back, Forward and Up, "Arrows scoped to content") differ in
    List as they do in Icons, with the same defaults in force.
+3. **Nothing drawn while a folder is read.** GTK shows its loading skeleton once a read
+   outlasts its grace period; Rune has no loading skeleton yet, so the Icons and List views
+   draw nothing then, though they say "Loading" as GTK does. Meanwhile: nothing drawn; no
+   run pins it.
 
 ### Packages added later
 
