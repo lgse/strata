@@ -71,7 +71,7 @@ fn ends_agree(saved: &str, name: &str) {
         let shown = seen(&host, LIST);
         let names = shown.names();
         let (first, last) = (names.first().copied(), names.last().copied());
-        assert_eq!(listed.names(), names, "the order shown settled at once");
+        assert_eq!(listed.names(), names, "the order shown, settled");
         let tree = host.tree();
         let headings = all(&tree, &|node| node["role"] == "heading");
         assert_eq!(headings.len(), 3, "a header for each group: {names:?}");

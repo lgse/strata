@@ -180,14 +180,26 @@ pub(crate) fn wait(
     seen
 }
 
-/// Opens `folder` and waits for its entries.
+/// How many entries `folder` lists with hidden files hidden: what a view shows once it has
+/// it all.
+fn shown_in(folder: &Path) -> usize {
+    let entries = std::fs::read_dir(folder).expect("a folder to read");
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
+        .count()
+}
+
+/// Opens `folder` and waits for all its entries: a listing can arrive over several turns,
+/// so a first look may show only part of it.
 pub(crate) fn open(host: &mut Offscreen, shape: Shape, folder: &Path) -> Seen {
     host.app().open(Location::local(folder));
-    let listed = wait(host, shape, "the folder's listing", |seen| {
-        !seen.entries.is_empty()
+    let count = shown_in(folder);
+    wait(host, shape, "the folder's whole listing", |seen| {
+        seen.entries.len() == count
     });
     idle(host);
-    listed
+    seen(host, shape)
 }
 
 /// Feeds the host a key with its modifiers held, as a keyboard sends one.
