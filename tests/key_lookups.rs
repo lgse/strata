@@ -59,8 +59,10 @@ fn header_names() -> Vec<String> {
         .collect()
 }
 
-/// One lookup compared over a domain: what differs, each as the row a rule table would hold
-/// for it, with what `Xkb` answered after it.
+/// One lookup compared over a domain: what differs, each as the table of
+/// `crates/strata-desktop/src/keys/xkb/tables.rs` it belongs in and the row that table would
+/// hold for it, with what `Xkb` answered after it. A vendor key's name goes in without its
+/// `XF86` prefix.
 struct Compared {
     lookup: &'static str,
     compared: usize,
@@ -223,10 +225,6 @@ fn names() -> Vec<String> {
     names
 }
 
-fn keysym_pair(keysym: &u32, gdk: &u32) -> String {
-    format!("({keysym:#x}, {gdk:#x}),")
-}
-
 #[test]
 fn every_key_lookup_answers_as_gdk_does() {
     let started = std::time::Instant::now();
@@ -236,7 +234,13 @@ fn every_key_lookup_answers_as_gdk_does() {
                 name: "name",
                 xkb: |keysym| Xkb.key_name(key(*keysym)),
                 gdk: |keysym| gdk_key(*keysym).name().map(String::from),
-                row: |keysym, name| format!("({keysym:#x}, {name:?}),"),
+                row: |keysym, name| match name {
+                    Some(name) if name.starts_with("0x") => {
+                        format!("WRITTEN_AS_A_NUMBER: {keysym:#x},")
+                    }
+                    Some(name) => format!("WRITTEN: ({keysym:#x}, {name:?}),"),
+                    None => format!("no table holds a key with no name at all: {keysym:#x}"),
+                },
                 tolerated: one_has_no_name,
             },
             keysyms(),
@@ -247,8 +251,8 @@ fn every_key_lookup_answers_as_gdk_does() {
                 xkb: |name: &String| Xkb.key_from_name(name).map(Key::keysym),
                 gdk: |name| gdk::Key::from_name(name.as_str()).map(IntoGlib::into_glib),
                 row: |name, keysym| match keysym {
-                    Some(keysym) => format!("({name:?}, Some({keysym:#x})),"),
-                    None => format!("({name:?}, None),"),
+                    Some(keysym) => format!("READ: ({name:?}, {keysym:#x}),"),
+                    None => format!("REFUSED: {name:?},"),
                 },
                 tolerated: one_does_not_read,
             },
@@ -259,7 +263,7 @@ fn every_key_lookup_answers_as_gdk_does() {
                 name: "to_unicode",
                 xkb: |keysym| Xkb.key_to_unicode(key(*keysym)),
                 gdk: |keysym| gdk_key(*keysym).to_unicode(),
-                row: |keysym, character| format!("({keysym:#x}, {character:?}),"),
+                row: |keysym, character| format!("TYPES: ({keysym:#x}, {character:?}),"),
                 tolerated: never,
             },
             keysyms(),
@@ -269,7 +273,7 @@ fn every_key_lookup_answers_as_gdk_does() {
                 name: "from_unicode",
                 xkb: |character: &char| Xkb.key_from_unicode(*character).keysym(),
                 gdk: |character| gdk::unicode_to_keyval(u32::from(*character)),
-                row: |character, keysym| format!("({character:?}, {keysym:#x}),"),
+                row: |character, keysym| format!("TYPED_BY: ({character:?}, {keysym:#x}),"),
                 tolerated: never,
             },
             characters(),
@@ -279,7 +283,7 @@ fn every_key_lookup_answers_as_gdk_does() {
                 name: "to_lower",
                 xkb: |keysym| Xkb.key_to_lower(key(*keysym)).keysym(),
                 gdk: |keysym| gdk_key(*keysym).to_lower().into_glib(),
-                row: keysym_pair,
+                row: |keysym, lower| format!("LOWER: ({keysym:#x}, {lower:#x}),"),
                 tolerated: case_skew,
             },
             keysyms(),
@@ -289,7 +293,7 @@ fn every_key_lookup_answers_as_gdk_does() {
                 name: "to_upper",
                 xkb: |keysym| Xkb.key_to_upper(key(*keysym)).keysym(),
                 gdk: |keysym| gdk_key(*keysym).to_upper().into_glib(),
-                row: keysym_pair,
+                row: |keysym, upper| format!("UPPER: ({keysym:#x}, {upper:#x}),"),
                 tolerated: case_skew,
             },
             keysyms(),

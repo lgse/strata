@@ -44,6 +44,8 @@ extend-ignore-re = [
   '(?s)\n  (?:fr|hu|de|es|ja|pt-BR|ko|vi|it|ru|zh-CN|zh-TW)\) INSTALLER_MESSAGES=\(.*?\n  \) ;;',
   # Localized desktop-entry values.
   '(?m)^\w+\[(?:fr|hu|de|es|ja|pt_BR|ko|vi|it|ru|zh_CN|zh_TW)\]=.*$',
+  # An X key name, spelled as libxkbcommon and the X headers spell it.
+  '"Calculater"',
   # "café" fixtures spelled as raw, escaped or percent-encoded bytes, and the name they fix to.
   'caf(\\x[0-9a-fA-F]{2}|\\u\{[0-9a-fA-F]+\}|%[0-9A-Fa-f]{2}|_\.txt)',
 ]

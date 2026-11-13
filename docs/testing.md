@@ -632,7 +632,8 @@ both are tied to the libraries of the pinned test image:
   GDK refuses), the character a key types, the key of a character, and both
   cases. It needs no display and takes about twelve seconds. A difference is
   written to `key-lookups/<lookup>.txt` under the test's target directory
-  (`CARGO_TARGET_TMPDIR`), as the row the table in `xkb/tables.rs` would need.
+  (`CARGO_TARGET_TMPDIR`), as the table of `xkb/tables.rs` it belongs in and the
+  row that table would hold, with GDK's answer in it.
 - **`ui::keys::tests::table`** holds `keys::Table`, which answers for the keys the
   code declares, to GDK, the three names GDK writes by another X name among them.
 
@@ -640,9 +641,10 @@ both are tied to the libraries of the pinned test image:
 with nothing tolerated, so a row that is missing, and a row that is there and no
 longer true, both fail it. So a change of the image's GTK, GLib or libxkbcommon
 fails these tests when an answer moved, and whoever makes that change runs the
-comparison in the new image and brings the tables to its rows: add the rows it
-prints, and take out a row whose key, name or character now needs none. A row is
-never written from a source file, only from what the test printed.
+comparison in the new image and brings the tables to its rows: a printed row is
+added, in its table's order, or put in the place of the row there for the same
+key, name or character. A row is never written from a source file, only from
+what the test printed.
 
 **On another machine two classes are counted and not failed,** because they follow
 the installed libraries and not the rules: a key or a name that only one of the
