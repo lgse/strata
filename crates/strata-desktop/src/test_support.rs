@@ -34,3 +34,6 @@ pub(crate) fn in_own_process(test: &str, run: impl FnOnce()) {
          and exited well. Give the test's whole path, with every module it is in."
     );
 }
+
+#[cfg(test)]
+mod tests;
