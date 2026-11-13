@@ -237,7 +237,9 @@ fn actions(app: &App, labels: &Labels) -> El {
                 act(app, tx);
             })
             .build(kit)
-            .w_full();
+            .w_full()
+            // GTK's `DefaultActions` are buttons that assistive technology hears as menu items.
+            .role("menuitem");
         buttons::on_return(key, button)
     };
     col()
