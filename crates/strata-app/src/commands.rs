@@ -110,11 +110,8 @@ pub(crate) enum Reads {
         expect(dead_code, reason = "no registered command reads a digit range yet")
     )]
     Digits(Digits),
-    /// What neither says: a key that types, for type-to-search. Nothing can list it.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no registered command reads a press that way yet")
-    )]
+    /// What neither says: a key that types, for type-to-search, or a key the catalog has as a
+    /// bare binding (BackSpace). Nothing can list it.
     Press(fn(&KeyPress) -> bool),
 }
 
