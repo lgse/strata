@@ -18,7 +18,7 @@ use crate::{
     error_dialog::{self, Error},
     host::offscreen::Offscreen,
     slots::{Entry, Frame, Place},
-    test_support::{PATIENCE, fixture, hosted_over, idle_view, view},
+    test_support::{PATIENCE, fixture, hosted_over, idle_view, send_key, view},
 };
 
 /// Roles whose own keys move among and press their items, Return included.
@@ -243,5 +243,36 @@ fn a_popovers_button_and_a_button_inside_an_item_must_take_return_themselves() {
         let mut deaf = deaf_to_return(&mut host);
         deaf.sort();
         assert_eq!(deaf, ["made-in-item", "made-popover-bare"]);
+    });
+}
+
+/// The Icons header's "Thumbnail size" popover, its two actions shown: a popover's buttons are
+/// checked like the rest.
+#[test]
+fn every_button_of_the_thumbnail_size_popover_takes_return() {
+    let name = "guard::every_button_of_the_thumbnail_size_popover_takes_return";
+    view::hosted_in(MODULE, "icons", name, |mut host| {
+        let _folder = open_two_deep(&mut host);
+        let focus = |key: &'static str| move |_: &mut App, tx: &mut rune::Tx| tx.focus(key, true);
+        let drawn = |host: &Offscreen, key: &str| {
+            let tree = host.tree();
+            !view::all(&tree, &|node| node["key"] == key).is_empty()
+        };
+        let key = |host: &mut Offscreen, key: rune::Key| {
+            let mods = rune::Mods::default();
+            send_key(host, rune::KeyEvent { key, mods });
+        };
+        host.runtime().update(focus("icons-thumbnail-size"));
+        idle(&mut host);
+        key(&mut host, rune::Key::Enter);
+        let opened = host.run_until(PATIENCE, |host| drawn(host, "icons-thumbnail-slider"));
+        assert!(opened, "the popover");
+        host.runtime().update(focus("icons-thumbnail-slider"));
+        idle(&mut host);
+        key(&mut host, rune::Key::Right);
+        let offered = host.run_until(PATIENCE, |host| drawn(host, "icons-thumbnail-make-default"));
+        assert!(offered, "the popover's actions");
+
+        assert_all_take_return(&mut host);
     });
 }

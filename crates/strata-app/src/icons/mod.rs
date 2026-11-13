@@ -23,7 +23,7 @@ use crate::{
 };
 
 mod part;
-mod size;
+pub(crate) mod size;
 mod view;
 
 /// The grid's key: its collection's, and the element that takes the keyboard. Every element
