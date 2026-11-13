@@ -43,17 +43,15 @@ host = "offscreen"
 scenario = "delete-without-trash-focuses-cancel"
 run = "columns"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7: the delete confirmation dialog (`show_delete_dialog` in `src/ui/browser/trash/delete_dialog.rs`), at the wait for it on line 11. Move to Trash is in; the dialog is the next pull request"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "delete-without-trash-focuses-cancel"
 run = "list"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7: the delete confirmation dialog (`show_delete_dialog` in `src/ui/browser/trash/delete_dialog.rs`), at the wait for it on line 11. Move to Trash is in; the dialog is the next pull request"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-file-collision-dialog"
@@ -239,17 +237,15 @@ host = "offscreen"
 scenario = "permanent-delete-symlinked-parent"
 run = "columns"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7: the delete confirmation dialog (`show_delete_dialog` in `src/ui/browser/trash/delete_dialog.rs`), at the wait for it on line 11. Move to Trash is in; the dialog is the next pull request"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "permanent-delete-symlinked-parent"
 run = "list"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7: the delete confirmation dialog (`show_delete_dialog` in `src/ui/browser/trash/delete_dialog.rs`), at the wait for it on line 11. Move to Trash is in; the dialog is the next pull request"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "rename-from-context-menu"
