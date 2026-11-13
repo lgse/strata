@@ -10,7 +10,7 @@ use crate::{
     commands::{self, On, Outcome},
     host::offscreen::Offscreen,
     shell,
-    test_support::{PATIENCE, folder_of, hosted, send_key},
+    test_support::{PATIENCE, folder_of, hosted, send_key, view},
 };
 
 const MODULE: &str = "location::tests";
@@ -132,6 +132,67 @@ fn a_typed_location_refused_at_once_is_reported() {
             idle(&mut host);
             let view = shell::view_focus(host.app()).map(str::to_owned);
             assert_eq!(focused(&mut host), view, "the keyboard back on the view");
+        },
+    );
+}
+
+/// Presses at the middle of the element keyed `key`.
+fn click(host: &mut Offscreen, key: &str) {
+    let elements = host.runtime().elements();
+    let target = elements
+        .iter()
+        .find(|element| !element.exiting && element.key.as_deref() == Some(key));
+    let [x, y, w, h] = target.unwrap_or_else(|| panic!("{key} is drawn")).visible;
+    let (x, y) = (x + w / 2.0, y + h / 2.0);
+    host.runtime().pointer_move(x, y);
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    idle(host);
+}
+
+/// A press anywhere on the strip but a crumb opens the entry, as on GTK, whose strip takes any
+/// release a crumb button does not: between two crumbs, on a separator, on the current crumb
+/// and on the empty space after it. Copy path, inside the current crumb, takes its own.
+#[test]
+fn a_press_on_the_strip_but_on_a_crumb_opens_the_entry() {
+    hosted(
+        MODULE,
+        "a_press_on_the_strip_but_on_a_crumb_opens_the_entry",
+        |mut host| {
+            let _folder = open(&mut host);
+            let tree = host.tree();
+            let ancestors = view::all(&tree, &|node| {
+                view::text(node, "key").starts_with("location-crumb-")
+            });
+            let current = format!("location-item-{}", ancestors.len());
+            let keys = [
+                "location-gap-1",
+                "location-sep-1",
+                current.as_str(),
+                "location-crumbs-space",
+            ];
+            for key in keys {
+                click(&mut host, key);
+                let state = &host.app().location.state;
+                assert!(state.entry_focused(), "a press on {key} opened the entry");
+                send_key(
+                    &mut host,
+                    KeyEvent {
+                        key: Key::Escape,
+                        mods: Mods::default(),
+                    },
+                );
+                idle(&mut host);
+                assert!(
+                    !host.app().location.state.entry_focused(),
+                    "Escape closed it"
+                );
+            }
+
+            click(&mut host, "location-copy");
+            let state = &host.app().location.state;
+            assert!(!state.entry_focused(), "Copy path takes its own press");
         },
     );
 }

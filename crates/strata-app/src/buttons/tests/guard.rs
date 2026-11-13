@@ -2,12 +2,11 @@
 
 //! Every button the keyboard can reach takes Return, so the next button added cannot forget
 //! it: each one comes through `buttons::on_return` or `buttons::taking_return`, sits in a
-//! group whose own keys press its items, or is on [`EXCEPTIONS`].
+//! group whose own keys press its items, is a component's that takes Return itself
+//! ([`IN_THEIR_COMPONENT`]), or is on [`EXCEPTIONS`].
 //!
 //! A group is told by its role alone, since an element's info does not say whether it is a
-//! `focus_group()`: a `list` that is not one passes its buttons all the same. C6's crumb strip
-//! is such a list today and so hides Copy path from this check; the crumbs' pull request,
-//! which makes them plain buttons, ends that.
+//! `focus_group()`: a `list` that is not one passes its buttons all the same.
 
 use rune::{El, col, el, row};
 use rune_kit::{Button, Kit, Popover};
@@ -33,6 +32,11 @@ const EXCEPTIONS: [&str; 3] = [
     "header-maximize",
     "header-close",
 ];
+
+/// Buttons a component draws and presses on Return itself, by key prefix: C6's ancestor crumbs
+/// (their own `on_key`) and its Copy path (`return_as_space` in its crumbs), which
+/// `super::return_presses_copy_path_and_a_crumb` presses.
+const IN_THEIR_COMPONENT: [&str; 2] = ["location-crumb-", "location-copy"];
 
 /// C15's dialog panel, whose own keys turn Return into Space: the `dialog` keyed `{key}-dialog`
 /// inside the layer keyed `{key}-layer` (`strata_components::dialog`'s shell). rune-kit gives
@@ -82,6 +86,11 @@ fn deaf_to_return(host: &mut Offscreen) -> Vec<String> {
         .filter(|element| !left_to_its_group(&elements, element))
         .map(|element| element.key.clone().unwrap_or_else(|| element.path.clone()))
         .filter(|key| !taking.contains(key) && !EXCEPTIONS.contains(&key.as_str()))
+        .filter(|key| {
+            !IN_THEIR_COMPONENT
+                .iter()
+                .any(|prefix| key.starts_with(prefix))
+        })
         .collect()
 }
 
