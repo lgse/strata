@@ -34,7 +34,7 @@ use strata_desktop::keys::{
 use strata_kit::icons::IconName;
 
 use crate::{
-    App,
+    App, buttons,
     commands::{self, Holds, On, Situation},
     location::labels::with_keys,
     shell,
@@ -141,7 +141,7 @@ fn navigation(app: &App, view: &str, button: &Button) -> El {
         .build(&look.kit)
         .key(format!("{view}-{}", button.suffix));
     if button.suffix != "back" {
-        return built;
+        return buttons::on_return(built);
     }
     let described = with_keys(
         "Right-click, hold, or press %{keys} to list the back history",
@@ -150,7 +150,7 @@ fn navigation(app: &App, view: &str, button: &Button) -> El {
     );
     let built = built.description(described);
     if !app.browser.can_go_back() {
-        return built;
+        return buttons::on_return(built);
     }
     built
         .on_layout_tx(|app: &mut App, rect, _: &mut Tx| app.pane_header.back = rect)
@@ -198,7 +198,7 @@ fn back_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
         }
         return true;
     }
-    menu_chord(event).is_some()
+    menu_chord(event).is_some() || buttons::pressed(event, tx)
 }
 
 /// Opens the back history under Back.
