@@ -364,7 +364,11 @@ impl Column {
         let retyped = current.name != row.name || current.entry_kind != row.entry_kind;
         let regroup = self.grouping.is_some() && retyped;
         let moved = current.id != row.id || current.hidden != row.hidden || regroup;
+        // A row read again carries no type (`Row::of` reads none): one whose type did not
+        // change keeps the one its group was found by, which `group_at` reads.
+        let group = current.group.filter(|_| !retyped);
         *current = row;
+        current.group = group;
         if moved {
             self.index();
         }
