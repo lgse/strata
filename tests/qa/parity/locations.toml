@@ -70,9 +70,8 @@ host = "offscreen"
 scenario = "scrolled-away-crumbs-and-columns-stay-reachable"
 run = "columns"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5: the crumb trail's scroll pane, at the `wheel` on line 52: C6 draws the trail in a sideways viewport with no scroll pane role (`role(\"none\")`), where GTK's is a scrolled window; A5's planned C6 pull request"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sidebar-place-navigates"
