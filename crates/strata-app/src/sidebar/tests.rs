@@ -427,14 +427,21 @@ fn saved_width() -> (bool, bool) {
             .and_then(toml::Value::as_bool)
             .unwrap_or(default)
     };
-    (flag("sidebar_expanded", true), flag("sidebar_compact", false))
+    (
+        flag("sidebar_expanded", true),
+        flag("sidebar_compact", false),
+    )
 }
 
 /// Waits for the step the toggle took to be saved and to show, and for the toggle to name the
 /// next step.
 fn stepped_to(host: &mut Offscreen, step: Step, saved: (bool, bool), next: &str) {
     let reached = host.run_until(PATIENCE, |_| saved_width() == saved);
-    assert!(reached, "{step:?} saved as {saved:?}, not {:?}", saved_width());
+    assert!(
+        reached,
+        "{step:?} saved as {saved:?}, not {:?}",
+        saved_width()
+    );
     assert_eq!(host.app().sidebar.state.width.shown(), step);
     let toggle = shown(host, TOGGLE);
     assert_eq!(text(&toggle, "name"), "Toggle sidebar (Ctrl+B)");
@@ -460,7 +467,12 @@ fn the_toggle_and_its_key_step_the_width_and_save_each_step() {
         "the_toggle_and_its_key_step_the_width_and_save_each_step",
         |mut host| {
             shown(&mut host, "sidebar-place-home");
-            stepped_to(&mut host, Step::Full, (true, false), "Compact sidebar (Ctrl+B)");
+            stepped_to(
+                &mut host,
+                Step::Full,
+                (true, false),
+                "Compact sidebar (Ctrl+B)",
+            );
 
             click(&mut host, TOGGLE);
             stepped_to(&mut host, Step::Rail, (true, true), "Hide sidebar (Ctrl+B)");
@@ -470,10 +482,20 @@ fn the_toggle_and_its_key_step_the_width_and_save_each_step() {
                 ..Mods::default()
             };
             press(&mut host, Key::Command('b'), ctrl);
-            stepped_to(&mut host, Step::Hidden, (false, true), "Show sidebar (Ctrl+B)");
+            stepped_to(
+                &mut host,
+                Step::Hidden,
+                (false, true),
+                "Show sidebar (Ctrl+B)",
+            );
 
             click(&mut host, TOGGLE);
-            stepped_to(&mut host, Step::Full, (true, false), "Compact sidebar (Ctrl+B)");
+            stepped_to(
+                &mut host,
+                Step::Full,
+                (true, false),
+                "Compact sidebar (Ctrl+B)",
+            );
         },
     );
 }

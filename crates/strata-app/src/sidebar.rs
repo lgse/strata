@@ -38,8 +38,9 @@ use strata_fs::{
 use strata_kit::look::Look;
 
 use crate::{
-    App, shell,
+    App,
     commands::Action,
+    shell,
     slots::{self, Frame, Later, Listener, Part, Place, Setup},
 };
 
