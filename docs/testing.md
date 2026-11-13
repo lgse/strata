@@ -1962,13 +1962,14 @@ other, or a differential run, kept:
 #### Tiers and budgets
 
 The plan's three fuzz tiers (`docs/rune/parity/README.md`, "Differential
-fuzzing"), with the budgets the Columns pilot (package F2) set from its own
-timings: warm caches, the pinned image, under the machine lock.
+fuzzing"). The Columns pilot (package F2) set the smoke tier's budget from its
+own timings: warm caches, the pinned image, under the machine lock. The long
+run is package F4's to set; what is written for it here is F2's proposal.
 
 | Tier | Commands | Clean when | Budget |
 | --- | --- | --- | --- |
 | Smoke, before an area's pull request merges | `./scripts/qa-fuzz.sh run --alphabet <area> --seeds 1..20 --target gtk,rune`, then `./scripts/qa-fuzz.sh replay --alphabet <area> --target gtk,rune` when the area's corpus holds a sequence that is not parked | Both exit 0: every sequence not parked agrees with itself on each target and across them, nothing is unsettled, no finding; both "fields that differed first" lines read `none`; the map has no rule the owner did not rule | About 1 to 3 minutes: 20 seeds of 40 actions, 2 replays on each target, 12 sequences at once, took 58 to 97 s for `columns` and 143 s for `entries`, about what the two one-target runs of the same seeds took together |
-| Long run, by an agent the owner delegates it to | `run --alphabet <area> --seeds 1..1000 --target gtk,rune` for every merged alphabet, and `--length 120 --seeds 2001..2100` | As smoke; a difference is triaged, not fixed in the run | About an hour for 1,000 seeds of one alphabet, by the smoke tier's rate |
+| Long run, package F4's | Proposed to F4: `run --alphabet <area> --seeds 1..1000 --target gtk,rune` for every merged alphabet, and `--length 120 --seeds 2001..2100` | As smoke; a difference is triaged, not fixed in the run | F4 sets it. By the smoke tier's rate, 1,000 seeds of one alphabet take about an hour |
 | Soak, at the exit | The long run's commands, repeated | No new divergence for the hours the owner sets | The owner's |
 
 What the budgets rest on:
