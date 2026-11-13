@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use rune::{Key, Mods};
 use serde_json::Value;
-use strata_components::sidebar::ItemId;
+use strata_components::sidebar::{ItemId, Step};
 use strata_core::model::Location;
 use strata_fs::adapters::bookmarks;
 
@@ -221,6 +221,77 @@ fn pins_come_from_the_bookmarks_file_and_follow_the_shared_store() {
                 "the store's change reaches the sidebar: {:?}",
                 named_buttons(&host)
             );
+        },
+    );
+}
+
+/// Writes `pins` as the bookmarks file, before the window starts.
+fn seed_pins(pins: &str) {
+    let file = bookmarks_file();
+    std::fs::create_dir_all(file.parent().expect("a folder")).expect("gtk-3.0");
+    std::fs::write(file, pins).expect("the bookmarks file");
+}
+
+#[test]
+fn left_comes_into_the_sidebar_on_the_open_places_row() {
+    hosted_after(
+        MODULE,
+        "left_comes_into_the_sidebar_on_the_open_places_row",
+        || {
+            std::fs::create_dir_all(home().join("work/inner")).expect("a pinned folder");
+            seed_pins(&pin(&home().join("work"), "Work"));
+        },
+        |mut host| {
+            opened(&home().join("work"), &mut host);
+            shown(&mut host, "sidebar-pin-0");
+            let reached = host.run_until(PATIENCE, |host| {
+                host.app().sidebar.current == Some(ItemId::Pin("0".into()))
+            });
+            assert!(reached, "the pin of the open folder is marked");
+
+            press(&mut host, Key::Down, Mods::default());
+            press(&mut host, Key::Left, Mods::default());
+            assert_eq!(focused(&host.tree()).as_deref(), Some("sidebar-pin-0"));
+        },
+    );
+}
+
+fn settings_file() -> PathBuf {
+    strata_core::storage::config_directory().join("settings.toml")
+}
+
+/// `sidebar_pinned_collapsed` and the sidebar's step start as saved, and the PINNED heading
+/// saves its own state (`docs/preferences.md`, "Sidebar collapsed sections").
+#[test]
+fn the_saved_sections_and_step_start_the_sidebar_and_a_heading_saves_its_state() {
+    hosted_after(
+        MODULE,
+        "the_saved_sections_and_step_start_the_sidebar_and_a_heading_saves_its_state",
+        || {
+            let file = settings_file();
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = "mode = \"theme\"\ntheme = \"azure-glow\"\n\
+                         sidebar_pinned_collapsed = true\nsidebar_compact = true\n";
+            std::fs::write(file, saved).expect("settings");
+            seed_pins(&pin(Path::new("/srv/work"), "Work"));
+        },
+        |mut host| {
+            shown(&mut host, "sidebar-heading-pinned");
+            let state = &host.app().sidebar.state;
+            assert!(state.pinned_collapsed, "PINNED starts collapsed, as saved");
+            assert_eq!(
+                state.width.chosen(),
+                Step::Rail,
+                "the sidebar starts as the rail"
+            );
+
+            click(&mut host, "sidebar-heading-pinned");
+            let reached = host.run_until(PATIENCE, |_| {
+                std::fs::read_to_string(settings_file())
+                    .is_ok_and(|saved| saved.contains("sidebar_pinned_collapsed = false"))
+            });
+            assert!(reached, "the heading saves PINNED as expanded");
+            assert!(!host.app().sidebar.state.pinned_collapsed);
         },
     );
 }

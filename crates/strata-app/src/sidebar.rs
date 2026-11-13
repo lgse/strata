@@ -12,8 +12,9 @@
 //!   clicked row is marked before its folder opens, as GTK's `select_sidebar_row` does, and
 //!   of two rows for one location the marked one stays marked (`sync_active_place`).
 //! - **The keyboard.** Left at the start of the view comes here (`shell::leave_view_at_start`),
-//!   onto the first row; the component's Left, Backspace and 10xer `h` give it back to the
-//!   view.
+//!   onto the open place's row, else the first (`focus_active_place`). In 10xer mode the
+//!   component's `h`, Left and Backspace give it back to the view; the default map's arrows
+//!   out of the sidebar (GTK's `sidebar_navigation`) are not here yet.
 //! - **The pins** come from GTK's bookmarks file, through the store both interfaces share
 //!   (`strata_fs::adapters::bookmarks`), read when the sidebar starts and again whenever the
 //!   store hears that the file changed.
@@ -48,7 +49,7 @@ use places::{Environment, Listed, Navigation};
 /// The key every element of the sidebar's starts with.
 const KEY: &str = "sidebar";
 
-/// The sidebar's list: what takes the keyboard when it leaves the view at its start.
+/// The sidebar's list: what takes the keyboard from the view while no row is open.
 const LIST: &str = "sidebar-list";
 
 pub(crate) struct Sidebar {
@@ -65,7 +66,10 @@ pub(crate) struct Sidebar {
 }
 
 impl Part for Sidebar {
-    const PLACE: Place<App> = Place::Sidebar(slots::Sidebar { build, focus: LIST });
+    const PLACE: Place<App> = Place::Sidebar(slots::Sidebar {
+        build,
+        focus: |app| app.sidebar.focus_key(),
+    });
 
     fn new(setup: &Setup<'_>) -> Self {
         Self {
@@ -173,6 +177,14 @@ fn relist(app: &mut App) {
 }
 
 impl Sidebar {
+    /// Where the keyboard comes in from the view: the open place's row, else the list's first
+    /// row (`focus_active_place` in `src/ui/window/sidebar_places.rs`).
+    fn focus_key(&self) -> String {
+        self.current
+            .as_ref()
+            .map_or_else(|| LIST.to_owned(), |item| item.key(KEY))
+    }
+
     fn location_of(&self, item: &ItemId) -> Option<&places::Row> {
         self.listed.rows.iter().find(|row| &row.item == item)
     }
