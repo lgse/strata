@@ -18,11 +18,34 @@ use super::roles;
 pub(crate) struct Node(Rc<str>);
 
 /// What `remember` holds of a node: its path, and the role it had, so a different element
-/// that later stands at the same place is not taken for it.
+/// that later stands at the same place is not taken for it; and for an entry's row, the
+/// browser's replacements as of then (`qa::replaced`), which the backend fills in.
 #[derive(Clone, Debug)]
 pub(crate) struct Kept {
     node: Node,
     role: String,
+    since: u64,
+}
+
+impl Kept {
+    /// Kept after the browser's `count`th replacement.
+    pub(super) fn after(self, count: u64) -> Self {
+        Self {
+            since: count,
+            ..self
+        }
+    }
+
+    pub(super) fn since(&self) -> u64 {
+        self.since
+    }
+
+    /// The entry whose row this is, read from the row's key.
+    pub(super) fn entry(&self) -> Option<EntryId> {
+        let key = self.node.0.rsplit('/').next()?;
+        let digits = key.trim_start_matches(|c: char| !c.is_ascii_digit());
+        is_entry_key(key).then(|| digits.parse().ok().map(EntryId::new))?
+    }
 }
 
 /// A row's name as the view draws it. Rune's row is one accessible node, and its name is an
@@ -514,6 +537,7 @@ impl Snapshot {
                 .get(node)
                 .map(|seen| seen.role.clone())
                 .unwrap_or_default(),
+            since: 0,
         }
     }
 

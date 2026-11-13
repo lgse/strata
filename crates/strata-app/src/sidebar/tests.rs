@@ -413,3 +413,122 @@ fn a_press_held_across_a_relist_opens_nothing_on_its_release() {
         },
     );
 }
+
+const TOGGLE: &str = "header-sidebar-toggle";
+
+/// The saved `sidebar_expanded` and `sidebar_compact`, with their defaults where the file
+/// leaves them out.
+fn saved_width() -> (bool, bool) {
+    let saved = std::fs::read_to_string(settings_file()).unwrap_or_default();
+    let saved: toml::Table = toml::from_str(&saved).unwrap_or_default();
+    let flag = |key: &str, default: bool| {
+        saved
+            .get(key)
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(default)
+    };
+    (
+        flag("sidebar_expanded", true),
+        flag("sidebar_compact", false),
+    )
+}
+
+/// Waits for the step the toggle took to be saved and to show, and for the toggle to name the
+/// next step.
+fn stepped_to(host: &mut Offscreen, step: Step, saved: (bool, bool), next: &str) {
+    let reached = host.run_until(PATIENCE, |_| saved_width() == saved);
+    assert!(
+        reached,
+        "{step:?} saved as {saved:?}, not {:?}",
+        saved_width()
+    );
+    assert_eq!(host.app().sidebar.state.width.shown(), step);
+    let toggle = shown(host, TOGGLE);
+    assert_eq!(text(&toggle, "name"), "Toggle sidebar (Ctrl+B)");
+    assert_eq!(text(&toggle, "description"), next, "at {step:?}");
+    let states = toggle["states"].as_array().cloned().unwrap_or_default();
+    let on = if step == Step::Hidden {
+        "unchecked"
+    } else {
+        "checked"
+    };
+    assert!(states.iter().any(|state| state == on), "{states:?}");
+    let rows = keyed(&host.tree(), "sidebar-place-home").is_some();
+    assert_eq!(rows, step != Step::Hidden, "the places at {step:?}");
+}
+
+/// The header's toggle and Ctrl+B step the sidebar full, rail, hidden and full again, as GTK's
+/// `SidebarMode::next` does; each step is saved as `bind_sidebar_modes` saves it, and the
+/// toggle's description names the step the next press takes.
+#[test]
+fn the_toggle_and_its_key_step_the_width_and_save_each_step() {
+    hosted(
+        MODULE,
+        "the_toggle_and_its_key_step_the_width_and_save_each_step",
+        |mut host| {
+            shown(&mut host, "sidebar-place-home");
+            stepped_to(
+                &mut host,
+                Step::Full,
+                (true, false),
+                "Compact sidebar (Ctrl+B)",
+            );
+
+            click(&mut host, TOGGLE);
+            stepped_to(&mut host, Step::Rail, (true, true), "Hide sidebar (Ctrl+B)");
+
+            let ctrl = Mods {
+                ctrl: true,
+                ..Mods::default()
+            };
+            press(&mut host, Key::Command('b'), ctrl);
+            stepped_to(
+                &mut host,
+                Step::Hidden,
+                (false, true),
+                "Show sidebar (Ctrl+B)",
+            );
+
+            click(&mut host, TOGGLE);
+            stepped_to(
+                &mut host,
+                Step::Full,
+                (true, false),
+                "Compact sidebar (Ctrl+B)",
+            );
+        },
+    );
+}
+
+/// A hidden sidebar saved from the rail (`sidebar_expanded = false`, `sidebar_compact =
+/// true`) starts hidden, and the toggle shows the full sidebar, not the rail, as GTK's step to
+/// `Expanded` saves both.
+#[test]
+fn a_sidebar_hidden_from_the_rail_starts_hidden_and_shows_full() {
+    hosted_after(
+        MODULE,
+        "a_sidebar_hidden_from_the_rail_starts_hidden_and_shows_full",
+        || {
+            let file = settings_file();
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = "mode = \"theme\"\ntheme = \"azure-glow\"\n\
+                         sidebar_expanded = false\nsidebar_compact = true\n";
+            std::fs::write(file, saved).expect("settings");
+        },
+        |mut host| {
+            stepped_to(
+                &mut host,
+                Step::Hidden,
+                (false, true),
+                "Show sidebar (Ctrl+B)",
+            );
+            click(&mut host, TOGGLE);
+            stepped_to(
+                &mut host,
+                Step::Full,
+                (true, false),
+                "Compact sidebar (Ctrl+B)",
+            );
+        },
+    );
+}

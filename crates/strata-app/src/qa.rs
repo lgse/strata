@@ -15,6 +15,7 @@ mod input_log;
 mod keyboard;
 mod keymap;
 mod keys;
+mod replaced;
 mod roles;
 mod sidebar;
 mod stage;
