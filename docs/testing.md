@@ -933,7 +933,11 @@ runner steps. `STRATA_QA_TARGET` picks one:
 
 A `rune` launch fails with the reason when `STRATA_QA_RUNE_BINARY` is unset or
 names no file. The runner still starts Xvfb for a Rune run, and the binary
-ignores it, so that run's `screenshot.png` shows an empty screen. A step or
+ignores it. So on Rune a `screenshot` step writes `<name>.txt` instead of
+`<name>.png`: a line saying the target drew nothing on the display, then its
+accessibility tree as of the step. A run's closing `screenshot.png` becomes
+`screenshot.txt`, which points at `tree.txt` (`tests/qa/screen.rs`; the owner's
+question on real Rune screenshots is in `docs/rune/parity/owner.md`, H3). A step or
 predicate the Rune backend does not answer replies "… is not supported on this
 target". `docs/rune/slice/V7-rune-qa-backend.md` lists what it answers.
 

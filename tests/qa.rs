@@ -54,6 +54,9 @@ mod process;
 #[path = "qa/run.rs"]
 mod run;
 
+#[path = "qa/screen.rs"]
+mod screen;
+
 #[path = "qa/runner_steps.rs"]
 mod runner_steps;
 
@@ -976,7 +979,7 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
             outcome.last_tree = reply["result"].as_str().map(str::to_owned);
         }
         let _ = fs::create_dir_all(&artifacts);
-        if let Err(error) = display.screenshot(&artifacts.join("screenshot.png")) {
+        if let Err(error) = screen::take_last(&display, &artifacts.join("screenshot.png")) {
             outcome.errors.push(format!("artifacts: {error}"));
         }
     }

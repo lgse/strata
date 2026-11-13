@@ -26,6 +26,7 @@ use crate::{
         a_heif_family_output_must_carry_its_iso_bmff_brand,
         a_numbered_tree_expands_like_the_python_comprehension,
         a_run_keeps_its_own_mode_steps_and_rejects_a_malformed_one,
+        a_rune_screen_is_its_tree_as_text_beside_the_image_it_cannot_take,
         a_slice_keeps_the_middle_band_or_one_name_of_a_noted_list,
         a_variable_replaces_only_its_whole_token,
         an_empty_check_counts_a_missing_directory_as_empty,
@@ -62,6 +63,7 @@ macro_rules! unit_tests {
 unit_tests! {
     every_scenario_file_is_planned_and_well_formed,
     a_numbered_tree_expands_like_the_python_comprehension,
+    a_rune_screen_is_its_tree_as_text_beside_the_image_it_cannot_take,
     a_run_keeps_its_own_mode_steps_and_rejects_a_malformed_one,
     notes_stand_in_for_what_a_run_reads_and_unknown_variables_are_rejected,
     fs_actions_make_numbered_directories_and_pin_a_populated_tree,

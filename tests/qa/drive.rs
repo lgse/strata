@@ -19,6 +19,7 @@ use crate::{
     keyboard::switch,
     peer_steps::{PeerError, Peers, Relaunch, dbus_send, peer_step},
     run::Outcome,
+    screen,
     runner_steps::{EachStep, Kept, LogStep, ProcStep},
     steps::{flag_names, increment, parent, slice, stem, substitute_notes},
     target::Target,
@@ -157,7 +158,7 @@ pub(crate) fn drive(
             let destination = context.screens.join(name.as_str().unwrap_or_default());
             let taken = fs::create_dir_all(context.screens)
                 .map_err(|error| error.to_string())
-                .and_then(|()| context.display.screenshot(&destination));
+                .and_then(|()| screen::take(application, context.display, &destination));
             if let Err(error) = taken {
                 outcome.errors.push(format!("{label}: {error}"));
                 return outcome;
