@@ -137,6 +137,12 @@ impl Pane {
         self.columns.get(self.shown?)
     }
 
+    /// Whether the folder shown has been read: a first visit waits on it, and the QA probe's
+    /// `ready` reads it.
+    pub(crate) fn load(&self) -> Option<&Load> {
+        self.listing().map(Column::load)
+    }
+
     pub(crate) fn collection(&self) -> &CollectionState {
         &self.collection
     }
@@ -471,14 +477,6 @@ impl Pane {
         };
         let _ = self.collection.selection.select_only(column, index);
         self.collection.note_selection(column);
-    }
-}
-
-/// What the offscreen host's readers ask beside the tree.
-#[cfg(any(test, feature = "qa"))]
-impl Pane {
-    pub(crate) fn load(&self) -> Option<&Load> {
-        self.listing().map(Column::load)
     }
 }
 
