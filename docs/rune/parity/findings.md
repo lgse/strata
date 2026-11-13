@@ -547,3 +547,46 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, unowned. The run stays `pending` on `rune` with this as its blocker, by the
   coordinator's ruling: the flaky allowance may not name a `required` run
   ([`owner.md`](owner.md#h1-whole-corpus-ledger), H1 item 11).
+
+### #2324: the Rune List view's rows are table rows where GTK's are list items
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2324), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** what a screen reader hears of the List view. GTK's List is a
+  `gtk::ListView` (`src/ui/browser_modes/list_pane.rs`), a `list` of `list item`s, under a box
+  of heading `button`s (`list_headings.rs`). C4 set its collection's roles to
+  `Roles::GRID_ROWS`, Rune's `grid` and `row`, which AccessKit's AT-SPI adapter reports as
+  `table` and `table row` (`accesskit_atspi_common` 0.21, `Role::Row => TableRow`), with each
+  row's cells `gridcell`s and its headings `columnheader`s in a `row`. The roles Rune exposes
+  differ, not only the QA backend's role map.
+- **Seen, by reading the scenarios:** `rename_visibility/committed-rename-stays-visible`
+  aims at `{"role":"list item","name":"b"}` in List at its line 34, and
+  `view_switching/list-column-drag-applies-on-release`, `list-column-resize-tracks-pointer`
+  and `chooser_selection/chooser-heading-escape-keeps-selection` at the headings as
+  `{"role":"button","name":"Size"}`. Each still waits on another part first.
+- **State:** fixed by [H3](packages/H3.md)'s [#2329](https://github.com/lgse/strata/pull/2329), a `contract` change to C4:
+  the collection takes `Roles::LIST` (Rune's `list` and `listitem`, AccessKit's `List` and
+  `ListItem`, which AT-SPI reports as `list` and `list item`, as GTK's; a `listbox` would be
+  heard as a `list box`), its cells take no role and its Name cell none either, so the name
+  is not heard twice, and its heading strip is a box of `button`s. The List probe's roles are
+  `("list", "list-item")`. Nothing a user does changes: the
+  collection's container is the one focus stop for both roles and routes its own keys, so
+  Rune's role-keyed focus rules (`focus.rs`) do not reach its items. Columns' columns are
+  `listbox`es already, and the Icons grid stays `grid` and `gridcell`, as GTK's `GridView`
+  is a grid.
+
+### #2331: the Rune List view's column headings are no Tab stops where GTK's are
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2331), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** GTK's List headings are plain `gtk::Button`s
+  (`src/ui/browser_modes/list_headings.rs`), with nothing keeping the keyboard off them, so
+  they are Tab stops that Return and Space press (to sort). C4's headings are no Tab stops: the
+  table is one focus stop, by an owner ruling C4's module docs record ("Headings aren't Tab
+  stops", `crates/strata-components/src/list_table/mod.rs`); assistive technology presses a
+  heading through its press action, and the keyboard cannot reach one.
+- **Reach:** by reading, no scenario Tabs onto a heading. The gap is older than
+  [#2329](https://github.com/lgse/strata/pull/2329), which made the headings `button`s for
+  assistive technology and left them unfocusable. Found in #2329's review.
+- **State:** open, [A8](packages/A8.md)'s: give C4's headings focus with Return and Space
+  pressing them, as GTK's buttons do, or have the owner confirm the ruling as a deviation.

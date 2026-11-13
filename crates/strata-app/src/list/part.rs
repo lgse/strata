@@ -88,7 +88,7 @@ impl Part for List {
         probe: Probe {
             // `view_name` in `src/ui/accessibility.rs`.
             name: "List",
-            roles: ("grid", "row"),
+            roles: ("list", "list-item"),
             listed: single::listed::<Self>,
             lists: single::lists::<Self>,
         },
