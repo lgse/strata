@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use super::{duration, icons_line};
+use strata_core::{
+    i18n::tr,
+    model::{EntryKind, Location},
+};
+use strata_fs::services::EntryType;
+
+use super::{duration, icons_line, mode_cell, modified_cell, permissions, size_cell, type_cell};
 use crate::listing::Facts;
 
 /// GTK's `format_duration`: minutes and seconds under an hour, hours on from one.
@@ -29,6 +35,7 @@ fn the_icons_line_shows_the_first_fact_known() {
         child_count: Some(3),
         duration_seconds: Some(2),
         dimensions: Some((320, 180)),
+        ..Facts::default()
     };
     let cases = [
         (
@@ -82,5 +89,56 @@ fn the_icons_line_shows_the_first_fact_known() {
     ];
     for (name, folder, facts, expected) in cases {
         assert_eq!(icons_line(folder, &facts).as_deref(), expected, "{name}");
+    }
+}
+
+/// GTK's `format_permissions`: the kind, nine bits as letters, then the octal mode.
+#[test]
+fn permissions_read_as_the_list_views_mode_column_shows_them() {
+    for (mode, expected) in [
+        (0o040_755, "drwxr-xr-x  755"),
+        (0o100_644, "-rw-r--r--  644"),
+        (0o100_600, "-rw-------  600"),
+        (0o100_777, "-rwxrwxrwx  777"),
+    ] {
+        assert_eq!(permissions(mode), expected, "{mode:o}");
+    }
+}
+
+/// GTK's `entry_size` and `entry_mode`: a folder shows its item count, a file its size, and
+/// what the browser does not know shows nothing.
+#[test]
+fn the_size_and_mode_cells_show_what_the_browser_knows() {
+    let file = Facts {
+        size: Some(1_500),
+        mode: Some(0o100_644),
+        ..Facts::default()
+    };
+    let folder = Facts {
+        child_count: Some(0),
+        ..Facts::default()
+    };
+    assert_eq!(size_cell(false, &file), strata_core::i18n::file_size(1_500));
+    assert_eq!(size_cell(true, &folder), "No items");
+    assert_eq!(size_cell(false, &Facts::default()), "");
+    assert_eq!(mode_cell(&file), "-rw-r--r--  644");
+    assert_eq!(mode_cell(&Facts::default()), "");
+    assert_eq!(modified_cell(&Facts::default()), "—");
+}
+
+/// GTK's `entry_type`: a folder and an entry of no known kind read their kind's name from the
+/// catalogs, not a MIME description.
+#[test]
+fn the_type_cell_names_a_folder_and_an_unknown_kind_from_the_catalogs() {
+    let folder = Location::local("/root");
+    for (kind, name, expected) in [
+        (EntryKind::Directory, "docs", EntryType::Folder),
+        (EntryKind::Other, "socket", EntryType::Other),
+    ] {
+        assert_eq!(
+            type_cell(&folder, kind, name),
+            tr(expected.description()),
+            "{name}"
+        );
     }
 }
