@@ -15,7 +15,7 @@ use std::rc::Rc;
 use rune::{Cx, El, Tx, col, row};
 use strata_components::contract::EntryId;
 use strata_components::header::{
-    self, Header, HeaderLabels, WindowAction, WindowButtons, WindowChrome,
+    self, Header, HeaderLabels, Shown, WindowAction, WindowButtons, WindowChrome,
 };
 use strata_components::thumbnails::{Settings, ThumbnailStore};
 use strata_core::{i18n::tr, model::Location};
@@ -435,6 +435,28 @@ const TRAILING: [Button; 4] = [
     },
 ];
 
+/// The window buttons the header shows, of those the window manager can work.
+fn window_buttons() -> WindowButtons {
+    WindowButtons::default()
+}
+
+/// The key of the header's last element, after which GTK's `child_focus(TabForward)` in the
+/// header finds nothing (`TopBarNavigation::move_focus`): the last window button shown, else
+/// the last action.
+pub(crate) fn header_last(app: &App) -> String {
+    let shown = Shown::new(window_buttons(), &app.chrome());
+    let buttons = [
+        (shown.close, "close"),
+        (shown.maximize, "maximize"),
+        (shown.minimize, "minimize"),
+    ];
+    let button = buttons
+        .into_iter()
+        .find_map(|(shown, key)| shown.then_some(key));
+    let last = button.unwrap_or(TRAILING[TRAILING.len() - 1].key);
+    format!("header-{last}")
+}
+
 /// The commands the header's buttons run, in the header's order.
 #[cfg(test)]
 pub(crate) fn header_commands() -> impl Iterator<Item = &'static str> {
@@ -473,12 +495,7 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
         .iter()
         .fold(header, |header, button| header.action(action(button)));
     header
-        .window_buttons(
-            WindowButtons::default(),
-            chrome,
-            &labels.window,
-            on_window_action,
-        )
+        .window_buttons(window_buttons(), chrome, &labels.window, on_window_action)
         .build()
 }
 
