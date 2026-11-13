@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Rows: built-in places, pins and devices, on rune-kit's `SidebarRow`, in the full sidebar
-//! and the rail. The rows are rune-kit's (their reorder drag, selection, focus and spacing);
+//! and the rail. The rows are rune-kit's (their selection, focus and spacing), with the
+//! sidebar's own drag to reorder ([`super::drag`]);
 //! the sidebar sets the look Strata's rows have over the built row: the accent tint and
 //! icon, the neutral hover, the rail's tooltip and the device actions.
 
@@ -13,9 +14,10 @@ use strata_kit::look::Look;
 use strata_kit::slots::sidebar as slot;
 
 use super::data::{Device, ItemId, LockState, PlaceKind, RowIcon};
+use super::drag::{self, Block, RowDrag};
 use super::intent::{DropSite, SidebarIntent, Via};
 use super::state::SidebarState;
-use super::{ActionFn, Emit, ReorderAccess, trash_target_key};
+use super::{ActionFn, Emit, trash_target_key};
 use crate::contract::dnd::{Dnd, DropHover};
 
 /// The accessible description of a device whose release is still running.
@@ -56,7 +58,7 @@ pub(crate) struct Ctx<'a, S> {
     pub emit: Emit<S>,
     pub dnd: &'a Dnd<S>,
     pub action: Option<&'a ActionFn<S>>,
-    pub reorder: Option<(ReorderAccess<S>, ReorderAccess<S>)>,
+    pub reorder: bool,
     pub rail: bool,
     pub new_tabs: bool,
     pub tenxer: bool,
@@ -81,7 +83,7 @@ pub(crate) struct Spec<'a> {
 
 /// Source-over of straight-alpha colours, mixed as the window blends: rune-kit's own `over`,
 /// which isn't public (U22).
-fn over(top: rune::Color, bottom: rune::Color) -> rune::Color {
+pub(crate) fn over(top: rune::Color, bottom: rune::Color) -> rune::Color {
     use rune::theme::{blends_srgb, srgb_decode, srgb_encode};
     let a = top.a + bottom.a * (1.0 - top.a);
     if a <= 0.0 {
@@ -99,25 +101,6 @@ fn over(top: rune::Color, bottom: rune::Color) -> rune::Color {
         g: mix(top.g, bottom.g),
         b: mix(top.b, bottom.b),
         a,
-    }
-}
-
-/// Reports a reorder's parked move, if any, before an activation acts (U21). True when the
-/// move came from `item`: Rune's press on the release that ended the drag, which reports the
-/// move and nothing else.
-pub(crate) fn flush_reordered<S>(
-    s: &mut S,
-    tx: &mut Tx,
-    access: fn(&mut S) -> &mut SidebarState,
-    emit: &Emit<S>,
-    item: Option<&ItemId>,
-) -> bool {
-    match access(s).reordered.take() {
-        Some((source, moved)) => {
-            emit(s, moved, tx);
-            item == Some(&source)
-        }
-        None => false,
     }
 }
 
@@ -176,10 +159,8 @@ fn activate<S: 'static>(ctx: &Ctx<'_, S>, el: El, item: ItemId, new_tab: bool) -
     let key_item = item.clone();
     let mut el = el
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-            // Rune presses a row on the release that ends its reorder drag (U21): that
-            // release reports the move, not an open. A move parked by another row is
-            // reported first, then this press acts.
-            if flush_reordered(s, tx, access, &press_emit, Some(&press_item)) {
+            // The press on the release that ended this row's drag (U21) opens nothing.
+            if access(s).dropped.take().as_ref() == Some(&press_item) {
                 return;
             }
             let item = press_item.clone();
@@ -200,7 +181,6 @@ fn activate<S: 'static>(ctx: &Ctx<'_, S>, el: El, item: ItemId, new_tab: bool) -
         })
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             let open = |s: &mut S, tx: &mut Tx| {
-                flush_reordered(s, tx, access, &key_emit, None);
                 key_emit(
                     s,
                     SidebarIntent::Open {
@@ -219,7 +199,6 @@ fn activate<S: 'static>(ctx: &Ctx<'_, S>, el: El, item: ItemId, new_tab: bool) -
             }
         })
         .on_secondary_press(move |s: &mut S, point: PointerPress, tx: &mut Tx| {
-            flush_reordered(s, tx, access, &menu_emit, None);
             menu_emit(
                 s,
                 SidebarIntent::ContextMenu {
@@ -314,48 +293,55 @@ fn dress<S>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
     el
 }
 
-/// A row's drag to reorder: the list's drag, its accessor, and the intent a move from one
-/// index to another makes.
-pub(crate) type Reordering<'a, S> = (
-    &'a rune_kit::shell::Reorder,
-    ReorderAccess<S>,
+/// A row's drag to a new place in its block: the block's drag, which of the sidebar's blocks
+/// it is, and the intent a move from one index to another makes.
+pub(crate) type Reordering<'a> = (
+    &'a RowDrag,
+    Block,
     std::rc::Rc<dyn Fn(usize, usize) -> SidebarIntent>,
 );
 
-/// A built-in place or a pin.
+/// A built-in place or a pin. Both widths drag to reorder ([`super::drag`]).
 pub(crate) fn folder_row<S: 'static>(
     ctx: &Ctx<'_, S>,
     spec: Spec<'_>,
     icon: El,
-    reorder: Option<Reordering<'_, S>>,
+    reorder: Option<Reordering<'_>>,
 ) -> El {
     let look = ctx.look;
-    if ctx.rail {
-        let mut row = rail_row(look, icon, spec.selected);
-        if let Some((index, count)) = spec.reorder {
-            row = row.position_in_set(index + 1, count);
+    let built = if ctx.rail {
+        rail_row(look, icon, spec.selected)
+    } else {
+        let mut r = SidebarRow::new(spec.label)
+            .avatar(icon)
+            .selected(spec.selected)
+            .height(slot::row_height(look));
+        if let (Some(cap), true) = (spec.keycap, ctx.state.keycaps) {
+            r = r.trailing(Keybind::new(&[cap]).build(&look.kit).a11y_hidden());
         }
-        let el = activate(ctx, row, spec.item.clone(), spec.new_tab);
-        let el = dress(ctx, el, &spec);
-        return attach(ctx, el, &spec);
-    }
-    let mut r = SidebarRow::new(spec.label)
-        .avatar(icon)
-        .selected(spec.selected)
-        .height(slot::row_height(look));
-    if let (Some(cap), true) = (spec.keycap, ctx.state.keycaps) {
-        r = r.trailing(Keybind::new(&[cap]).build(&look.kit).a11y_hidden());
-    }
-    if let (Some((index, count)), Some((state, access, intent))) = (spec.reorder, reorder) {
-        let sidebar = ctx.access;
-        // The drop runs without a `Tx`, and Rune presses the row on the same release (U21):
-        // keep the move for that press to report, instead of opening the row.
-        let source = spec.item.clone();
-        r = r.reorder(state, index, count, access, move |s: &mut S, from, to| {
-            sidebar(s).reordered = Some((source.clone(), intent(from, to)));
-        });
-    }
-    let el = activate(ctx, r.build(&look.kit), spec.item.clone(), spec.new_tab);
+        r.build(&look.kit)
+    };
+    let built = match (spec.reorder, reorder) {
+        (Some(place), Some((state, block, intent))) => {
+            let emit = ctx.emit.clone();
+            let access = ctx.access;
+            let source = spec.item.clone();
+            drag::attach(
+                built,
+                look,
+                (state, block, access),
+                place,
+                move |s: &mut S, from, to, tx| {
+                    // Rune presses the row on the release that ends its drag (U21): that press
+                    // opens nothing.
+                    access(s).dropped = Some(source.clone());
+                    emit(s, intent(from, to), tx);
+                },
+            )
+        }
+        _ => built,
+    };
+    let el = activate(ctx, built, spec.item.clone(), spec.new_tab);
     let el = dress(ctx, el, &spec);
     let el = match spec.reorder {
         Some((index, count)) => el.position_in_set(index + 1, count),
@@ -419,7 +405,6 @@ pub(crate) fn device_row<S: 'static>(ctx: &Ctx<'_, S>, d: &Device, selected: boo
 /// step rows, and the row's menu (C21) has the same actions.
 fn device_actions<S: 'static>(ctx: &Ctx<'_, S>, d: &Device) -> El {
     let look = ctx.look;
-    let access = ctx.access;
     let mut actions = row().gap(look.space.xxs).center_y();
     let button = |key: String, glyph: IconName, label: &str, intent: SidebarIntent| {
         let emit = ctx.emit.clone();
@@ -428,10 +413,7 @@ fn device_actions<S: 'static>(ctx: &Ctx<'_, S>, d: &Device) -> El {
             .control_size(ControlSize::Small)
             .label(label)
             .help(label)
-            .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                flush_reordered(s, tx, access, &emit, None);
-                emit(s, intent.clone(), tx)
-            })
+            .on_press_tx(move |s: &mut S, tx: &mut Tx| emit(s, intent.clone(), tx))
             .build(&look.kit)
             .key(key)
             .focusable(false)

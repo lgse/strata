@@ -92,12 +92,7 @@ impl Part for Sidebar {
         }))
     }
 
-    fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
-        // A reorder whose drop no press followed (C8's U21): heard here, in its turn.
-        if let Some(intent) = app.sidebar.state.take_reordered() {
-            heard(app, intent, tx);
-            return true;
-        }
+    fn poll(app: &mut App, _clock: f64, _tx: &mut Tx) -> bool {
         if app.sidebar.started {
             return false;
         }
@@ -243,10 +238,7 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
         data,
     )
     .key(KEY)
-    .reorder(
-        |app: &mut App| &mut app.sidebar.state.places_reorder,
-        |app: &mut App| &mut app.sidebar.state.pins_reorder,
-    )
+    .reorder(true)
     // Tabs are not on this interface yet.
     .open_in_new_tab(false)
     .tenxer(shell::preferences(app).tenxer_mode)

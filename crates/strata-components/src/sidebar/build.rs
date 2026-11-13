@@ -9,11 +9,12 @@ use strata_kit::look::Look;
 use strata_kit::slots::sidebar as slot;
 
 use super::data::{DeviceLine, ItemId, SidebarData, device_lines};
+use super::drag::Block;
 use super::heading::heading;
 use super::intent::{DropSite, Gap, Section, SidebarIntent};
 use super::rows::{Ctx, Spec, device_row, folder_row, row_icon, trash_full, trash_icon};
 use super::state::{SidebarState, Step};
-use super::{ActionFn, Emit, ReorderAccess, drops};
+use super::{ActionFn, Emit, drops};
 use crate::contract::dnd::{Dnd, DropAction, DropHover, DropOffer};
 
 /// The places sidebar: built-in places, then PINNED and DEVICES, in three widths.
@@ -38,7 +39,7 @@ pub struct PlacesSidebar<'a, S> {
     data: SidebarData<'a>,
     dnd: Dnd<S>,
     action: Option<ActionFn<S>>,
-    reorder: Option<(ReorderAccess<S>, ReorderAccess<S>)>,
+    reorder: bool,
     new_tabs: bool,
     tenxer: bool,
     footer: Option<Box<dyn FnOnce(Step) -> El + 'a>>,
@@ -60,7 +61,7 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             data,
             dnd: Dnd::rune(),
             action: None,
-            reorder: None,
+            reorder: false,
             new_tabs: true,
             tenxer: false,
             footer: None,
@@ -92,12 +93,11 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
         self
     }
 
-    /// Lets the places and the pins be dragged into a new order. `places` and `pins` find
-    /// [`SidebarState::places_reorder`] and [`SidebarState::pins_reorder`]: rune-kit's
-    /// `SidebarRow::reorder` takes a plain `fn`, which can't go through the sidebar's own
-    /// accessor. Without this, rows don't reorder.
-    pub fn reorder(mut self, places: ReorderAccess<S>, pins: ReorderAccess<S>) -> Self {
-        self.reorder = Some((places, pins));
+    /// Lets the places and the pins be dragged into a new order, in either width
+    /// ([`super::drag`]): a move is a [`SidebarIntent::MovePlace`] or
+    /// [`SidebarIntent::MovePin`]. Without this, rows don't reorder.
+    pub fn reorder(mut self, on: bool) -> Self {
+        self.reorder = on;
         self
     }
 
@@ -235,7 +235,7 @@ fn places<S: 'static>(
             keycap: p.keycap.as_deref(),
             description: p.description.as_deref(),
             reorder: Some((i, n)),
-            lifted: !ctx.rail && ctx.state.places_reorder.dragging() == Some(i),
+            lifted: ctx.state.places_reorder.dragging() == Some(i),
         };
         let intent: Rc<dyn Fn(usize, usize) -> SidebarIntent> =
             Rc::new(|from, to| SidebarIntent::MovePlace { from, to });
@@ -244,7 +244,7 @@ fn places<S: 'static>(
             spec,
             icon,
             ctx.reorder
-                .map(|(places, _)| (&ctx.state.places_reorder, places, intent)),
+                .then(|| (&ctx.state.places_reorder, Block::Places, intent)),
         ));
     }
     block
@@ -265,7 +265,6 @@ fn pinned<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
     let mut section = col()
         .key(format!("{}-section-pinned", ctx.key))
         .role("group")
-        .label(Section::Pinned.title())
         .w_full()
         .motion(look.kit.motion.disclosure);
     if ctx.rail {
@@ -295,7 +294,7 @@ fn pinned<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
             keycap: p.keycap.as_deref(),
             description: p.description.as_deref(),
             reorder: Some((i, n)),
-            lifted: !ctx.rail && !collapsed && ctx.state.pins_reorder.dragging() == Some(i),
+            lifted: !collapsed && ctx.state.pins_reorder.dragging() == Some(i),
         };
         let ids = ids.clone();
         let intent: Rc<dyn Fn(usize, usize) -> SidebarIntent> =
@@ -305,10 +304,8 @@ fn pinned<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
                 to,
             });
         // Collapsed, the lone open pin has nowhere to move to.
-        let reorder = ctx
-            .reorder
-            .filter(|_| !collapsed)
-            .map(|(_, pins)| (&ctx.state.pins_reorder, pins, intent));
+        let reorder =
+            (ctx.reorder && !collapsed).then(|| (&ctx.state.pins_reorder, Block::Pins, intent));
         let icon = row_icon(look, &p.icon, p.tint, selected);
         section = section.child(folder_row(ctx, spec, icon, reorder));
         section = section.child(gap(ctx, pins, i + 1, verdict));
@@ -393,7 +390,6 @@ fn devices<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
     let mut section = col()
         .key(format!("{}-section-devices", ctx.key))
         .role("group")
-        .label(Section::Devices.title())
         .w_full()
         .gap(slot::row_gap(look))
         .motion(look.kit.motion.disclosure);
