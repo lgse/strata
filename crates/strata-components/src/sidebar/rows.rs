@@ -264,6 +264,16 @@ pub(crate) fn tenxer_key<S: 'static>(
     }
 }
 
+/// A row as assistive technology hears it: a button, as Strata's rows are, with its label and
+/// the host's description.
+fn named(el: El, spec: &Spec<'_>) -> El {
+    let el = el.role("button").label(spec.label);
+    match spec.description {
+        Some(description) => el.description(description),
+        None => el,
+    }
+}
+
 /// The look over a built row: the accent tint on the current row, the neutral hover (none
 /// while a drag is over the sidebar), and in the rail its name as a tooltip. A row whose body
 /// takes the drag shows the hover fill and an accent outline.
@@ -275,14 +285,7 @@ fn dress<S>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
         ctx.state.drop_over(),
         Some((DropSite::Item(i), DropHover::Accepting)) if *i == spec.item
     );
-    // A button, as Strata's rows are, so assistive technology reads what Strata's does.
-    let mut el = el
-        .key(spec.item.key(ctx.key))
-        .role("button")
-        .label(spec.label);
-    if let Some(description) = spec.description {
-        el = el.description(description);
-    }
+    let mut el = named(el.key(spec.item.key(ctx.key)), spec);
     if spec.selected && spec.lifted {
         // Lifted, the row keeps rune-kit's opaque lift fill under the tint, so the rows it
         // passes don't show through.
