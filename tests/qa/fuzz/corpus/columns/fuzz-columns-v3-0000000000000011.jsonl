@@ -1,9 +1,9 @@
-{"scenario":"fuzz-columns-v2-0000000000000011","modes":["columns"],"prefs":{"type_to_search":false}}
+{"scenario":"fuzz-columns-v3-0000000000000011","modes":["columns"],"prefs":{"type_to_search":false}}
 {"type":"-4","when":{"field":{"name":"Rename","focused":true}}}
 {"key":"l","when":{"not":{"field":{"name":"Rename"}}}}
 {"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
 {"key":"l","when":{"not":{"field":{"name":"Rename"}}}}
-{"key":"Page_Down","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Home","when":{"field":{"name":"Rename","focused":true}}}
 {"key":"j","when":{"not":{"field":{"name":"Rename"}}}}
 {"click":{"entry":"readme.md"},"mods":["shift"],"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}
 {"key":"l","when":{"not":{"field":{"name":"Rename"}}}}
@@ -16,16 +16,16 @@
 {"key":"Menu","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
 {"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}
 {"click":{"entry":"report.md"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"report.md"}},{"not":{"field":{"name":"Rename"}}}]}}
-{"key":"Up","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Home","when":{"field":{"name":"Rename","focused":true}}}
 {"fs":{"path":"fuzz-a.txt","write":"fuzz\n"}}
 {"click":{"entry":"photo.txt"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"photo.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
 {"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
 {"key":"j","when":{"not":{"field":{"name":"Rename"}}}}
-{"key":"Delete","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Right","when":{"field":{"name":"Rename","focused":true}}}
 {"key":"shift+Down","when":{"not":{"field":{"name":"Rename"}}}}
 {"key":"Left","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}
 {"key":"shift+End","when":{"not":{"field":{"name":"Rename"}}}}
-{"key":"Delete","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"End","when":{"field":{"name":"Rename","focused":true}}}
 {"key":"j","when":{"not":{"field":{"name":"Rename"}}}}
 {"key":"Up","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
 {"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}

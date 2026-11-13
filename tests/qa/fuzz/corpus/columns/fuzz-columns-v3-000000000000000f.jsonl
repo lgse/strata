@@ -1,4 +1,4 @@
-{"scenario":"fuzz-columns-v2-000000000000000f","modes":["columns"],"prefs":{"type_to_search":false}}
+{"scenario":"fuzz-columns-v3-000000000000000f","modes":["columns"],"prefs":{"type_to_search":false}}
 {"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
 {"key":"Page_Up","when":{"not":{"field":{"name":"Rename"}}}}
 {"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}

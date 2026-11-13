@@ -10,9 +10,10 @@
 # calibration: versions 1 and 2 were its states while the driver was calibrated (before
 # the click guard, and before the hidden-files action). Three parked sequences are theirs.
 calibration v3 d06627cec8c47f93
-# columns: version 1 was the Columns pilot's first draft, never merged; its seeds name the
-# shrunk sequences of the pilot's findings, parked in tests/qa/fuzz/corpus/columns.
-columns v2 5656d3bc251e67d3
+# columns: versions 1 and 2 were the Columns pilot's drafts, never merged: version 2 left out
+# Ctrl+A and Shift selection in the rename editor, version 3 its Up, Down and page keys. Their
+# seeds name the shrunk sequences of the pilot's findings, parked in tests/qa/fuzz/corpus/columns.
+columns v3 c1c7755a9701e199
 entries v1 5222ec7bfe1641ce
 icons v1 c800a440ffbc265a
 list v3 53cac7ac7cdfa46c

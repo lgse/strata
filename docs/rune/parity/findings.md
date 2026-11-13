@@ -656,6 +656,8 @@ sequence only together with the alphabet's version, so the version is part of th
   start on both, and a typed character replaces the same text. So only GTK's report is wrong.
 - **Concerns:** seeds `0x08` and `0x0e` of `columns v1`, shrunk to 4 steps and parked in
   `tests/qa/fuzz/corpus/columns/`; any check of `field.caret` while a selection is held.
+- **On `main`:** bug [#2361](https://github.com/lgse/strata/issues/2361), GTK's QA snapshot faults
+  of #2350 and #2351 together; the coverage `columns` leaves out waits on it.
 - **State:** open, set aside. The fix is `main`'s, in `src/qa/state.rs`, placed by the
   coordinator. Meanwhile `columns v2` keeps Shift+Home, Shift+End and Shift+Left out of its
   rename editor, the reason it is narrower; they come back with the fix.
@@ -671,6 +673,8 @@ sequence only together with the alphabet's version, so the version is part of th
   screen and the next key agree on both targets.
 - **Concerns:** seeds `0x02`, `0x04`, `0x05`, `0x09` and `0x0c` of `columns v1`; `0x02`
   shrunk to 2 steps (Shift+click, Ctrl+A) and parked in `tests/qa/fuzz/corpus/columns/`.
+- **On `main`:** bug [#2361](https://github.com/lgse/strata/issues/2361), GTK's QA snapshot faults
+  of #2350 and #2351 together; the coverage `columns` leaves out waits on it.
 - **State:** open, set aside, by the coordinator's ruling (2026-11-13): no Rune change. It is
   the reason `columns v2` has no Ctrl+A; Ctrl+A comes back once GTK's report is fixed on
   `main`, or the owner rules otherwise.
@@ -685,7 +689,7 @@ sequence only together with the alphabet's version, so the version is part of th
   `src/ui/collection_interaction.rs`), so the user lands two rows lower than expected. Rune
   starts from the clicked row.
 - **Concerns:** seed `0x0d` of `columns v1` (shrunk to 5 steps) and seed `0x09` of
-  `columns v2`, parked in `tests/qa/fuzz/corpus/columns/`.
+  `columns v3`, parked in `tests/qa/fuzz/corpus/columns/`.
 - **State:** open, waiting for the owner ([`owner.md`](owner.md), F2 item 1). Meanwhile Rune
   keeps the clicked row, and the seeds stay parked.
 
@@ -712,7 +716,7 @@ sequence only together with the alphabet's version, so the version is part of th
   Rune selects `[documents]`, since the collection component's secondary press selects with
   `select_only` (`crates/strata-components/src/collection/pointer/machine.rs`).
 - **Concerns:** seeds `0x12` and `0x07` of `columns v1` (shrunk to 3 and 10 steps) and seed
-  `0x0f` of `columns v2`, parked in `tests/qa/fuzz/corpus/columns/`.
+  `0x0f` of `columns v3`, parked in `tests/qa/fuzz/corpus/columns/`.
 - **State:** open, F2's to fix in C1e (a `contract` pull request), by the coordinator's
   ruling to follow GTK, once GTK's List and Icons are checked.
 
@@ -729,26 +733,34 @@ sequence only together with the alphabet's version, so the version is part of th
   `tests/qa/fuzz/corpus/columns/`.
 - **State:** open, F2's to fix in the Columns part.
 
-### #2357: Up, Down or Page Down in the rename editor commits on GTK, not on Rune
+### #2357: Up, Down or a page key in the rename editor commits on GTK, not on Rune
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2357), filed on
   2026-11-13 as the finding's reference and closed at once: its state is kept here.
-- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). On GTK the key leaves the
-  editor: the rename is committed with what was typed and the cursor moves as the key would
-  in the column. On Rune the editor keeps the keyboard, moves its caret, and nothing is
-  renamed. The calibration survey met it too.
-- **Concerns:** seeds `0x02`, `0x0c`, `0x12` and `0x14` of `columns v2`, parked in
-  `tests/qa/fuzz/corpus/columns/`.
-- **State:** open, proposed as F2's to fix in its own pull request, for the coordinator to
-  confirm.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). On GTK nothing in the rename
+  field handles Up, Down, Page_Up or Page_Down: the entry's own key navigation moves focus out
+  of the field, and the field commits the rename on focus-out (`connect_leave`,
+  `src/ui/collection_edit.rs:235`). So a vertical key renames the file by a toolkit side effect,
+  and the cursor lands where the key took focus. On Rune the editor keeps the keyboard and
+  moves its caret, and nothing is renamed. The field that parts first is `app.field`: null on
+  GTK, the open editor on Rune. Page_Up does the same as the others on GTK (a probe: `x` typed
+  over `readme.md`, then Page_Up, renames it `x.md` and focuses `archive`).
+- **Concerns:** seeds `0x02`, `0x0c`, `0x12` and `0x14` of `columns v2`; `0x12` shrunk to
+  3 steps (F2, `x` typed, Down), confirmed 3 of 3 and the same in 24 of 24 GTK replays, and
+  parked in `tests/qa/fuzz/corpus/columns/`. The calibration survey met it too.
+- **State:** open, waiting for the owner ([`owner.md`](owner.md), F2 item 2), by the
+  coordinator's ruling. Meanwhile Rune keeps editing, and `columns v3` keeps Up, Down and the
+  page keys out of its rename editor, the reason it is narrower.
 
-### #2358: Rune's entry menu shows Open on a selection of folders and files
+### #2358: Rune's entry menu shows Open on a selection of more than one entry
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2358), filed on
   2026-11-13 as the finding's reference and closed at once: its state is kept here.
-- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). On a selection that mixes
-  folders and files, GTK's entry menu has no "Open" row and Rune's has one, between "New
-  Folder with Selection" and "Open With…". The calibration survey met it too.
-- **Concerns:** seeds `0x10` and `0x11` of `columns v2`, parked in
-  `tests/qa/fuzz/corpus/columns/`.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). With more than one entry
+  selected, GTK's entry menu has no "Open" row and Rune's has one, between "New Folder with
+  Selection" and "Open With…": seen on folders and files mixed, and on two files. The
+  calibration survey met it too.
+- **Concerns:** seed `0x10` of `columns v2`, shrunk to 2 steps (Shift+End over the root, then a
+  right-click on `documents`), confirmed 3 of 3 and the same in 24 of 24 GTK replays; seeds
+  `0x10`, `0x11` and `0x14` of `columns v3`. All parked in `tests/qa/fuzz/corpus/columns/`.
 - **State:** open, [A6](packages/A6.md)'s (menus), noted in its file.

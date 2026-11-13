@@ -33,8 +33,14 @@
 # - Shift+Home, Shift+End and Shift+Left in the rename editor, on lgse/strata#2350's account:
 #   GTK's QA snapshot reports the caret at the selection's fixed end, where the editor's caret
 #   is at the end that moved, as on Rune. They come back once that report is fixed on `main`.
+# - Up, Down, Page_Up and Page_Down in the rename editor, on lgse/strata#2357's account: on
+#   GTK nothing handles them in the field, so the entry's own key navigation moves focus out of
+#   it and the rename commits on focus-out; Rune keeps editing. Whether Rune should copy that is
+#   the owner's question (`owner.md`, F2); they come back once it is ruled.
+# - Tab in the rename editor, which on GTK commits and starts renaming the next item: for the
+#   next version, with its own triage.
 area = "columns"
-version = 2
+version = 3
 about = "Columns on the canonical fixture, type to search off: keyboard navigation with the arrows, h, j, k and l, Home, End and the page keys, selection by Shift, clicks and Ctrl and Shift clicks by name, folders opened by Return, renames by F2, by the menu and by the Menu key with the editor's own keys, hidden files, and files made and removed behind the application's back"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
@@ -131,13 +137,13 @@ steps = [
   '{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}',
 ]
 
-# The editor's own keys: the caret, deletion, and the arrows and page keys GTK's list takes
-# while a name is edited. No Shift selection: see lgse/strata#2350 at the top.
+# The editor's own keys: the caret and deletion. No Shift selection, and no Up, Down or page
+# keys: see lgse/strata#2350 and lgse/strata#2357 at the top.
 [[action]]
 name = "editor-key"
 weight = 5
 steps = ['{"key":"<key>","when":{"field":{"name":"Rename","focused":true}}}']
-choose.key = ["Left", "Right", "Home", "End", "BackSpace", "Delete", "Up", "Down", "Page_Down", "Page_Up"]
+choose.key = ["Left", "Right", "Home", "End", "BackSpace", "Delete"]
 
 [[action]]
 name = "editor-type"

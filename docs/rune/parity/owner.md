@@ -513,6 +513,14 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    clicked row. Should Rune copy GTK, or keep the clicked row? Meanwhile: Rune keeps its
    behaviour, and the fuzz seeds that meet it are parked against the finding. Source: F2's
    pilot triage, 2026-11-13, by the coordinator's ruling.
+2. **An arrow or page key in the rename editor** (finding
+   [#2357](https://github.com/lgse/strata/issues/2357)). On GTK, Up, Down, Page_Up and
+   Page_Down in an inline rename field move focus out of it by the entry's own key navigation,
+   and the field commits the rename on focus-out (`src/ui/collection_edit.rs:235`): the file is
+   renamed by a toolkit side effect, and the cursor moves. Rune keeps editing and moves the
+   caret. Should Rune copy GTK's commit-on-arrow, or keep editing? Meanwhile: Rune keeps
+   editing, and the Columns fuzz alphabet keeps those keys out of its rename editor. Source:
+   F2's pilot triage, 2026-11-13, by the coordinator's ruling.
 
 ### Packages added later
 

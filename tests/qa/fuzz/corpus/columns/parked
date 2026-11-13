@@ -2,8 +2,8 @@
 #
 #   v<version>-<seed> <code> <issue>
 #
-# Version 1 was the pilot's first draft: its lines are each finding's sequence shrunk GTK
-# against Rune. Version 2's are the smoke tier's seeds that meet a finding still open.
+# Versions 1 and 2 were the pilot's drafts: their lines are each finding's sequence shrunk GTK
+# against Rune. Version 3's are the smoke tier's seeds that meet a finding still open.
 v1-0000000000000002 oracle lgse/strata#2351
 v1-0000000000000007 divergence lgse/strata#2355
 v1-0000000000000008 oracle lgse/strata#2350
@@ -12,11 +12,10 @@ v1-000000000000000e oracle lgse/strata#2350
 v1-0000000000000010 divergence lgse/strata#2356
 v1-0000000000000012 divergence lgse/strata#2355
 v1-0000000000000014 divergence lgse/strata#2354
-v2-0000000000000002 divergence lgse/strata#2357
-v2-0000000000000009 oracle lgse/strata#2353
-v2-000000000000000c divergence lgse/strata#2357
-v2-000000000000000f divergence lgse/strata#2355
 v2-0000000000000010 divergence lgse/strata#2358
-v2-0000000000000011 divergence lgse/strata#2358
 v2-0000000000000012 divergence lgse/strata#2357
-v2-0000000000000014 divergence lgse/strata#2357
+v3-0000000000000009 oracle lgse/strata#2353
+v3-000000000000000f divergence lgse/strata#2355
+v3-0000000000000010 divergence lgse/strata#2358
+v3-0000000000000011 divergence lgse/strata#2358
+v3-0000000000000014 divergence lgse/strata#2358

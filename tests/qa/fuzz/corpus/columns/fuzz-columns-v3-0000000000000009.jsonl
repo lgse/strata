@@ -1,4 +1,4 @@
-{"scenario":"fuzz-columns-v2-0000000000000009","modes":["columns"],"prefs":{"type_to_search":false}}
+{"scenario":"fuzz-columns-v3-0000000000000009","modes":["columns"],"prefs":{"type_to_search":false}}
 {"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
 {"click":{"entry":"diagram.txt"},"button":3,"when":{"all":[{"present":{"entry":"diagram.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
 {"key":"Escape","when":{"present":{"menu_item":"Rename"}}}
@@ -44,7 +44,7 @@
 {"key":"End","when":{"not":{"field":{"name":"Rename"}}}}
 {"click":{"entry":"report.md"},"button":3,"when":{"all":[{"present":{"entry":"report.md"}},{"not":{"field":{"name":"Rename"}}}]}}
 {"key":"Escape","when":{"present":{"menu_item":"Rename"}}}
-{"key":"Page_Up","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Delete","when":{"field":{"name":"Rename","focused":true}}}
 {"click":{"entry":"diagram.txt"},"when":{"all":[{"present":{"entry":"diagram.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
 {"fs":{"path":"pictures/fuzz-c.txt","write":"fuzz\n"}}
 {"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
