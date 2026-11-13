@@ -769,3 +769,18 @@ sequence only together with the alphabet's version, so the version is part of th
   right-click on `documents`), confirmed 3 of 3 and the same in 24 of 24 GTK replays; seeds
   `0x10`, `0x11` and `0x14` of `columns v3`. All parked in `tests/qa/fuzz/corpus/columns/`.
 - **State:** open, [A6](packages/A6.md)'s (menus), noted in its file.
+
+### #2365: a location suggestion is a named list item on Rune, where GTK's row holds a label
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2365), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A5](packages/A5.md)'s path suggestions pull request. GTK's suggestion row
+  holds a `label` named after the folder (`documents/`); C6's row is a `list item` named so,
+  with its parent as the description, and the text inside is not in the tree. A screen reader
+  hears the same name, in another shape.
+- **Concerns:** `locations/path-completion-dismisses-on-window-switch/columns`, whose line 6
+  waits for the `label` (it is pending on [A21](packages/A21.md)'s second window as well); C6's
+  suggestion list (`crates/strata-components/src/location_bar/popup.rs`).
+- **State:** ruled by the coordinator (2026-11-14): C6 stays as it is, since a screen reader
+  hears the same name; the run takes an `a11y` twin once it can otherwise flip, after
+  [A21](packages/A21.md)'s second window. [A5](packages/A5.md)'s, or whoever flips the run.
