@@ -158,6 +158,7 @@ fn drawn(host: &Offscreen) -> Drawn {
             .collect(),
         labels: name_labels(&elements),
         buttons: drawn_buttons(&elements),
+        sidebar: super::sidebar::Gaps::drawn(&elements),
         lists,
     }
 }

@@ -16,6 +16,7 @@ mod keyboard;
 mod keymap;
 mod keys;
 mod roles;
+mod sidebar;
 mod stage;
 mod tree;
 

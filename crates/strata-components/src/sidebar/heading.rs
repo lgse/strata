@@ -98,7 +98,6 @@ pub(crate) fn heading<S: 'static>(
     let access = ctx.access;
     let tenxer = ctx.tenxer;
     let toggle = move |s: &mut S, tx: &mut Tx, emit: &super::Emit<S>| {
-        super::rows::flush_reordered(s, tx, access, emit, None);
         let collapsed = access(s).toggle(section);
         emit(s, SidebarIntent::SectionToggled { section, collapsed }, tx);
     };

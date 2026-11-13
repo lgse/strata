@@ -3,11 +3,12 @@
 //! The sidebar's own state, held by the app and reached by accessor: the width step, the
 //! collapsed sections, the reorder drags, the drop hover and the host's pin check.
 
-use rune_kit::shell::{PaneState, Reorder};
+use rune_kit::shell::PaneState;
 use strata_kit::look::Look;
 use strata_kit::slots::sidebar as slot;
 
 use super::data::ItemId;
+use super::drag::RowDrag;
 use super::intent::DropSite;
 use crate::contract::dnd::{DropHover, DropOffer};
 
@@ -200,9 +201,9 @@ pub struct SidebarState {
     pub pinned_collapsed: bool,
     pub devices_collapsed: bool,
     /// The drag that reorders the built-in places.
-    pub places_reorder: Reorder,
+    pub places_reorder: RowDrag,
     /// The drag that reorders the pins.
-    pub pins_reorder: Reorder,
+    pub pins_reorder: RowDrag,
     /// The host's verdicts on drags over the pin gaps.
     pub pin_check: PinCheck,
     /// The `g` chord is armed: rows with a keycap show it.
@@ -210,12 +211,10 @@ pub struct SidebarState {
     drop: Option<(DropSite, DropHover)>,
     /// The drag over the sidebar, as its offer said: from this process, and its serial.
     pub(crate) drag: Option<(bool, u64)>,
-    /// A reorder just dropped: the row dragged, and the move it made. The drop runs with no
-    /// `Tx`, and Rune presses the row on the release that ends the drag when the pointer is
-    /// still over it (U21). That press reports the move instead of opening the row; any other
-    /// activation reports it first; and the host drains one no press followed with
-    /// [`SidebarState::take_reordered`].
-    pub(crate) reordered: Option<(ItemId, super::SidebarIntent)>,
+    /// The row a reorder just dropped. Rune presses a row on the release that ends its drag
+    /// when the pointer is still over it (U21), and that press opens nothing. The next press
+    /// on any row, or the next drag, forgets it.
+    pub(crate) dropped: Option<ItemId>,
 }
 
 impl SidebarState {
@@ -223,8 +222,8 @@ impl SidebarState {
     pub fn new(look: &Look) -> SidebarState {
         SidebarState {
             width: Width::new(slot::pane_width(look)),
-            places_reorder: Reorder::new().gap(slot::row_gap(look)),
-            pins_reorder: Reorder::new().gap(slot::row_gap(look)),
+            places_reorder: RowDrag::new().gap(slot::row_gap(look)),
+            pins_reorder: RowDrag::new().gap(slot::row_gap(look)),
             ..SidebarState::default()
         }
     }
@@ -289,12 +288,5 @@ impl SidebarState {
             Some((local, serial)) => self.pin_check.verdict_for(local, serial),
             None => PinVerdict::Unchecked,
         }
-    }
-
-    /// A reorder's move that no press has reported yet: the drag was released off its row
-    /// (U21). Call it from the app's poll every frame and handle the intent it returns; a
-    /// press or key on the sidebar reports one itself, before acting.
-    pub fn take_reordered(&mut self) -> Option<super::SidebarIntent> {
-        self.reordered.take().map(|(_, intent)| intent)
     }
 }

@@ -183,12 +183,12 @@ impl Demo {
             SidebarIntent::ContextMenu { item, .. } => {
                 format!("Menu {}", item.as_ref().map_or("sidebar", |i| i.id()))
             }
-            SidebarIntent::MovePlace { from, to } => {
+            SidebarIntent::MovePlace { from, to, .. } => {
                 let p = self.places.remove(from);
                 self.places.insert(to, p);
                 format!("Move place {from} to {to}")
             }
-            SidebarIntent::MovePin { id, from, to } => {
+            SidebarIntent::MovePin { id, from, to, .. } => {
                 let p = self.pins.remove(from);
                 self.pins.insert(to, p);
                 format!("Move pin {id} to {to}")
@@ -409,10 +409,7 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         .center_y()
         .child(toggle);
     let sidebar = PlacesSidebar::new(&d.sidebar, sidebar_state, d.data())
-        .reorder(
-            |g: &mut Gallery| &mut g.c8.sidebar.places_reorder,
-            |g: &mut Gallery| &mut g.c8.sidebar.pins_reorder,
-        )
+        .reorder(true)
         .tenxer(d.tenxer)
         .on_intent(|g: &mut Gallery, i, _: &mut Tx| g.c8.apply(i))
         .build(look);
@@ -478,15 +475,8 @@ pub fn on_key(g: &mut Gallery, key: &KeyEvent, _tx: &mut Tx) -> bool {
     }
 }
 
-/// Runs at the start of every frame while this page is open, with the clock in seconds. It
-/// drains a reorder's move that no press reported (a drag released off its row), as a host
-/// must. True when state changed.
-pub fn poll(g: &mut Gallery, _t: f64, _tx: &mut Tx) -> bool {
-    match g.c8.sidebar.take_reordered() {
-        Some(moved) => {
-            g.c8.apply(moved);
-            true
-        }
-        None => false,
-    }
+/// Runs at the start of every frame while this page is open, with the clock in seconds. A
+/// reorder reports its move as it drops, so there is nothing to drain.
+pub fn poll(_g: &mut Gallery, _t: f64, _tx: &mut Tx) -> bool {
+    false
 }

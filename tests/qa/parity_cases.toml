@@ -491,6 +491,16 @@ problem = "keys.toml: renames-rune/list is a twin's run, which has no entry of i
 
 # What a reader cannot read.
 
+# A file that does not parse: an unterminated string, where both parsers name the same place.
+[[case]]
+name = "a file that does not parse"
+file = "keys"
+text = '''
+[[run]]
+scenario = "moves
+'''
+refused = "line 2, column 18"
+
 [[case]]
 name = "an unknown status"
 file = "keys"
