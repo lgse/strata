@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 //! Return on a focused button presses it, as on GTK: the pane header's Parent folder, and an
-//! unreadable folder's Retry.
+//! unreadable folder's Retry. `guard` checks that every other button takes it too.
 
-use std::os::unix::fs::PermissionsExt;
+use std::{collections::BTreeSet, os::unix::fs::PermissionsExt, sync::Mutex};
 
 use rune::{Key, KeyEvent, Mods};
 use strata_core::model::Location;
@@ -14,7 +14,19 @@ use crate::{
     test_support::{PATIENCE, fixture, send_key, view::hosted_in},
 };
 
+mod guard;
+
 const MODULE: &str = "buttons::tests";
+
+/// The keys of the buttons built through `on_return` or `taking_return` in this process.
+static TAKING_RETURN: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+
+pub(super) fn taking_return(key: &str) {
+    TAKING_RETURN
+        .lock()
+        .expect("the keys")
+        .insert(key.to_owned());
+}
 
 fn idle(host: &mut Offscreen) {
     while host.turn() {

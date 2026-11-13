@@ -134,6 +134,22 @@ are in force meanwhile. Source: the archived issue
   difference. In force as landed. Source:
   [#2171](https://github.com/lgse/strata/pull/2171)'s description.
 
+### H3: Backend reach
+
+- **A Rune run's screenshots.** The Rune target draws offscreen and puts nothing on the run's
+  display, so a capture of it is an empty screen. Rune can render its own frame, but only
+  with a GPU adapter, and the pinned test image installs none (`tests/container/Dockerfile`
+  has `vulkan-headers` and no Vulkan driver, by reading). The choice:
+  (a) on Rune a `screenshot` step writes the accessibility tree as text where the image would
+  be, saying that it drew nothing, and the closing `screenshot.png` becomes a note pointing at
+  `tree.txt`; or (b) add a software Vulkan driver (Mesa's lavapipe) to the pinned image so the
+  Rune target renders real screenshots, which changes the image's environment inputs and so
+  needs a new base image built and published, and a change to the Rune host to render. The
+  driver would land in the image the GTK runs share too. No run
+  asserts on a screenshot, and visual baselines are out of scope for Rune (the plan's
+  `toolkit` row): only failure artifacts are at stake. Meanwhile: (a), the coordinator's
+  default of 2026-11-13, in force from H3's screenshot pull request. Source: H3's plan.
+
 ### B1: Shell seams
 
 - **Who owns which file of `strata-app`**: the table "Who owns what" in the module docs of
@@ -448,6 +464,18 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    both its runs); on Rune the cell shows nothing. It is the List view's details cell, A2's
    area and the contract's `details.rs` and `fills.rs`, and A2 has closed. Meanwhile: the two
    runs stay `pending`, unplaced. Found by A7's closing survey, 2026-11-13.
+
+### A5: Location bar
+
+1. **The window's own buttons and the keyboard.** Rune draws the client-side window buttons
+   (minimise, maximise, close: C5's `window_buttons`, `crates/strata-components/src/header/bar.rs`)
+   as Tab stops that Return does not press; Space does (finding
+   [#2310](https://github.com/lgse/strata/issues/2310)). GTK's window controls most likely take
+   no focus at all. Should Rune's stop being Tab stops, as GTK's, or stay and take Return like
+   every other button? Meanwhile: they stay as they are, named on the exceptions list of
+   `crates/strata-app/src/buttons/tests.rs`, the check that every other focusable button takes
+   Return. Source: the review of A5's [#2311](https://github.com/lgse/strata/pull/2311),
+   2026-11-14.
 
 ### Packages added later
 

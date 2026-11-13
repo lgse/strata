@@ -520,4 +520,8 @@ sequence only together with the alphabet's version, so the version is part of th
   the pane header's buttons, an unreadable folder's Retry and Open as Administrator, and the
   window header's actions an `on_key` that sends Space for a plain Return. Rune packet entry
   [103](../upstream/rune/103-return-presses-a-button.md) asks for an opt-in. A button another
-  part adds takes `buttons::on_return` too.
+  part adds takes `buttons::on_return` too: `buttons::tests::guard` walks each view's window,
+  sidebar shown, and fails on a focusable button that did not come through it, unless it sits
+  in a list, listbox, menu, tree or grid, or in one of C15's dialogs, or is on its exceptions
+  list (the window's own buttons, an
+  open question in [`owner.md`](owner.md), A5).

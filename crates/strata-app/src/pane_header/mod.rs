@@ -138,10 +138,10 @@ fn navigation(app: &App, view: &str, button: &Button) -> El {
     let built = header::action(look, button.icon, &name)
         .disabled(!(button.able)(app))
         .on_press_tx(move |app: &mut App, tx: &mut Tx| pressed(app, command, tx))
-        .build(&look.kit)
-        .key(format!("{view}-{}", button.suffix));
+        .build(&look.kit);
+    let key = format!("{view}-{}", button.suffix);
     if button.suffix != "back" {
-        return buttons::on_return(built);
+        return buttons::on_return(key, built);
     }
     let described = with_keys(
         "Right-click, hold, or press %{keys} to list the back history",
@@ -150,9 +150,9 @@ fn navigation(app: &App, view: &str, button: &Button) -> El {
     );
     let built = built.description(described);
     if !app.browser.can_go_back() {
-        return buttons::on_return(built);
+        return buttons::on_return(key, built);
     }
-    built
+    buttons::taking_return(key, built)
         .on_layout_tx(|app: &mut App, rect, _: &mut Tx| app.pane_header.back = rect)
         .on_drag(held)
         .on_secondary_press_local(|app: &mut App, _: PointerEvent, _: &mut Tx| open(app))
