@@ -151,7 +151,7 @@ impl Case {
 }
 
 fn pool_cases() -> Vec<Case> {
-    use Kind::{Image, Pdf, RenderedModel};
+    use Kind::{Image, Pdf};
     let render = |kind| Some(Started::Render(kind));
     vec![
         Case {
@@ -178,6 +178,15 @@ fn pool_cases() -> Vec<Case> {
             renders: vec![Pdf],
             ..Case::idle("one worker takes a heavy kind", 1, READERS, render(Pdf))
         },
+    ]
+}
+
+/// The pool's cases past the render limits: the STL rule, the readers, the queue's bound and
+/// an abandoned render.
+fn queue_cases() -> Vec<Case> {
+    use Kind::{Image, Pdf, RenderedModel};
+    let render = |kind| Some(Started::Render(kind));
+    vec![
         Case {
             running: vec![RenderedModel],
             renders: vec![RenderedModel, Image],
@@ -230,7 +239,7 @@ fn pool_cases() -> Vec<Case> {
 /// The pool's limits, as GTK's `jobs.rs` sets them.
 #[test]
 fn the_pool_starts_what_its_limits_allow() {
-    for case in pool_cases() {
+    for case in pool_cases().into_iter().chain(queue_cases()) {
         let mut pool = Pool::default();
         for kind in &case.running {
             pool.count(*kind, true);
