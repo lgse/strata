@@ -73,6 +73,23 @@ pub(super) struct Shape {
     pub(super) entry: &'static str,
 }
 
+/// A button as drawn: its key, its name and its box. Behind an open menu Rune's tree holds
+/// only the menu, where GTK's keeps the window's buttons, and a scenario presses one with
+/// a menu open (`keyboard_navigation/back-history-dropdown` lets go of a press held on
+/// Back after its history opened). The snapshot then presents each keyed, named button the
+/// tree left out, from what is drawn, if any of it is in view and it is not inert.
+///
+/// It is presented with nothing else: it reads `sensitive` whatever it is (Rune's drawn
+/// elements say nothing of being disabled), it is not focusable and offers no click action,
+/// so a run that asserts a state of a button behind a menu needs an `a11y` twin. It hangs
+/// off the window's root: a target `within` a pane misses it, and `nth: -1` finds it first.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct DrawnButton {
+    pub(super) key: String,
+    pub(super) name: String,
+    pub(super) bounds: Rect,
+}
+
 /// What the snapshot is read from beside the accessibility tree.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Drawn {
@@ -82,6 +99,7 @@ pub(super) struct Drawn {
     pub(super) lists: Vec<String>,
     pub(super) columns: Vec<DrawnColumn>,
     pub(super) labels: Vec<NameLabel>,
+    pub(super) buttons: Vec<DrawnButton>,
 }
 
 /// How far a scroll view has scrolled, how far it can, and how much it shows: along x, then
@@ -273,7 +291,31 @@ impl Snapshot {
         for label in &drawn.labels {
             snapshot.add_label(label);
         }
+        for button in &drawn.buttons {
+            snapshot.add_hidden_button(button);
+        }
         snapshot
+    }
+
+    /// Presents a button an open menu keeps out of the tree, under the window. Not behind a
+    /// dialog, to stay cautious: GTK's dialogs are overlay layers that leave the window's
+    /// widgets in the tree, so a run aiming behind one fails on Rune rather than passing
+    /// falsely.
+    fn add_hidden_button(&mut self, button: &DrawnButton) {
+        let listed = |seen: &Seen| seen.key.as_deref() == Some(button.key.as_str());
+        let menu = |seen: &Seen| seen.role == "menu" && seen.has_state("modal");
+        let modal = self.nodes.iter().any(menu);
+        if !modal || self.nodes.iter().any(listed) {
+            return;
+        }
+        let seen = Seen {
+            role: "button".to_owned(),
+            key: Some(button.key.clone()),
+            name: button.name.clone(),
+            bounds: Some(button.bounds),
+            ..Seen::default()
+        };
+        self.push(0, &button.key, seen);
     }
 
     fn push(&mut self, parent: usize, segment: &str, seen: Seen) -> usize {
