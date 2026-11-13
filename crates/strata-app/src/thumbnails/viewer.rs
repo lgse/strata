@@ -29,7 +29,9 @@ pub(crate) type Parts = fn(&mut App) -> (&mut Viewer, &mut ThumbnailStore);
 pub(crate) type Locate = fn(&App, EntryId) -> Option<(usize, usize)>;
 
 pub(crate) struct Viewer {
-    id: Option<ViewerId>,
+    /// The view's viewers in the store: one for a single grid or list, one for each open
+    /// column in Columns ([`Viewer::fit`]). Every request they make comes back here.
+    ids: Vec<ViewerId>,
     /// The requests out, each with the switch that stops its render.
     pub(super) pending: HashMap<Ticket, Cancellation>,
     later: Later<App>,
@@ -46,7 +48,7 @@ struct Sent {
 impl Viewer {
     pub(crate) fn new(later: Later<App>, locate: Locate) -> Self {
         Self {
-            id: None,
+            ids: Vec::new(),
             pending: HashMap::new(),
             later,
             locate,
@@ -55,7 +57,27 @@ impl Viewer {
 
     /// The view's viewer in the store, once it has one: the first [`Viewer::pump`] takes it.
     pub(crate) fn id(&self) -> Option<ViewerId> {
-        self.id
+        self.ids.first().copied()
+    }
+
+    /// The store's viewer for the view's part `index` (Columns' column `index`).
+    pub(crate) fn id_at(&self, index: usize) -> Option<ViewerId> {
+        self.ids.get(index).copied()
+    }
+
+    /// Keeps `count` viewers in the store, at least one: new ones for parts that opened, and
+    /// the last ones dropped for parts that closed, so the store no longer protects or asks
+    /// for what only they showed. Their requests out come back cancelled at the next pump.
+    pub(crate) fn fit(&mut self, store: &mut ThumbnailStore, count: usize) {
+        let count = count.max(1);
+        while self.ids.len() < count {
+            self.ids.push(store.viewer());
+        }
+        while self.ids.len() > count {
+            if let Some(id) = self.ids.pop() {
+                store.drop_viewer(id);
+            }
+        }
     }
 
     /// Stops what the store no longer wants, and asks for what the pool has room for. An
@@ -80,8 +102,8 @@ impl Viewer {
     }
 
     pub(super) fn take_requests(&mut self, store: &mut ThumbnailStore, now: f64) -> Vec<Request> {
-        if self.id.is_none() {
-            self.id = Some(store.viewer());
+        if self.ids.is_empty() {
+            self.ids.push(store.viewer());
         }
         for ticket in store.take_cancelled() {
             if let Some(cancellation) = self.pending.remove(&ticket) {

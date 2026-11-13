@@ -29,10 +29,11 @@ use strata_fs::app::Browser;
 use strata_kit::look::Look;
 
 use crate::{
+    App,
     events::{Added, Change, Marks, Moved},
     handover::{self, Held, Moving},
     listing::{Column, Edit, Load, Row},
-    slots::Ids,
+    slots::{Ids, Later},
     surface::Surface,
 };
 
@@ -42,6 +43,7 @@ mod listings;
 mod mirror;
 mod part;
 mod selection;
+mod thumbs;
 mod view;
 
 pub(crate) use selection::Input;
@@ -49,6 +51,7 @@ pub(crate) use view::view;
 
 use listings::Listings;
 use mirror::Mirror;
+use thumbs::Thumbs;
 
 /// The view's key: every element key of the strip starts with it.
 pub(crate) const VIEW: &str = "columns";
@@ -78,6 +81,8 @@ pub(crate) struct Columns {
     labels: view::Labels,
     /// What a column says while it shows no entry.
     surface: Surface,
+    /// The rows' thumbnails: a store viewer for each open column.
+    thumbs: Thumbs,
 }
 
 /// With "Type to search" off a plain letter starts no search, so `h j k l` are the arrows:
@@ -94,7 +99,7 @@ fn clicks(count: u8) -> ClickCount {
 }
 
 impl Columns {
-    fn with_settings(settings: &Preferences, ids: Ids) -> Self {
+    fn with_settings(settings: &Preferences, ids: Ids, later: Later<App>) -> Self {
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
         Self {
@@ -112,6 +117,7 @@ impl Columns {
             keys: keys(typing),
             labels: view::Labels::translated(),
             surface: Surface::translated(),
+            thumbs: Thumbs::new(later),
         }
     }
 
