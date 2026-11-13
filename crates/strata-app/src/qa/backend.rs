@@ -101,6 +101,23 @@ impl Rune {
         shell::shown_view(app).is_some_and(|view| (view.probe.listed)(app))
     }
 
+    /// Whether the view shown is the one the saved `browser_mode` names, which the runner
+    /// writes for the run's mode. The shell shows the first view when none answers to it, so a
+    /// run of a view not mounted would otherwise pass on that one.
+    fn shows_saved_mode(stage: &Stage) -> Result<(), String> {
+        let app = stage.app();
+        let mode = &shell::preferences(app).browser_mode;
+        match shell::shown_view(app) {
+            Some(view) if (view.shows)(mode) => Ok(()),
+            Some(view) => Err(format!(
+                "the run starts in the {mode:?} view, and the window shows the {} view instead: \
+                 no view mounted answers to {mode:?}",
+                view.probe.name
+            )),
+            None => Err("the Strata window shows no view".to_owned()),
+        }
+    }
+
     /// Tells Rune which modifiers are down, as a keyboard does before the key they modify.
     /// The Columns adapter reads them to tell a Shift range from a move.
     fn show_modifiers(&self, stage: &mut Stage) {
@@ -158,7 +175,7 @@ impl Backend for Rune {
         loop {
             stage.settle();
             if Self::listed(stage) {
-                return Ok(());
+                return Self::shows_saved_mode(stage);
             }
             if Instant::now() >= deadline {
                 return Err("the Strata window never showed an entry list".to_owned());
