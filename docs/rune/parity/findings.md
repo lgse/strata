@@ -282,7 +282,20 @@ sequence only together with the alphabet's version, so the version is part of th
   in all of these runs, while the task starts one sway and one Xwayland for each test, as
   many at once as the machine has cores. With the scale at 3 the whole task passed once, on
   the same loaded machine and commit: 177, then the gallery's 23 and 14, then
-  `strata-rune`'s 3. That is one run, not a measure of how often it passes.
+  `strata-rune`'s 3. That is one run, not a measure of how often it passes, and scale 3 is
+  not enough: see the next point.
+- **2026-11-12, with scale 3 in force** (the task's default since
+  [#2219](https://github.com/lgse/strata/pull/2219)): [A2](packages/A2.md)'s gate for
+  [#2247](https://github.com/lgse/strata/pull/2247), at `aef813211` (`strata-next`
+  `6a55189c6`), on the same 24-core machine. The load average was not recorded during the
+  run; five minutes after it ended it was 48.7, 45.4 and 34.7 (1, 5 and 15 minutes), from
+  other packages' builds and QA runs. `strata-platform`'s session tests passed 174 of 177
+  and failed 3: `p2::x11_primary_selection_round_trip`,
+  `p5::a_snapshot_that_changes_nothing_runs_no_view` and
+  `p5::a_snapshot_with_new_values_runs_the_view`. Two of them are `p5` tests, not X11 ones.
+  Each passed when rerun alone (`mise run test-platform <name> -- --exact`). The task
+  stopped there, so the gallery's `x2` and `x3` did not run; `strata-rune`'s window tests,
+  run alone, passed 3 of 3.
 - `docs/rune/testing.md` said that CI sets the scale to 3 and runs these tests in
   `.github/workflows/platform.yml`. Neither was so: no workflow sets the variable, none runs
   the tests, and that file has never been in the repository. Both lines are corrected with
@@ -292,7 +305,7 @@ sequence only together with the alphabet's version, so the version is part of th
   host, the shell or `strata-rune`, whose window tests are the last thing that task runs.
 - **State:** open, unowned. The task now sets the scale to 3 when it is unset, by the
   orchestrating session's ruling of 2026-11-12, which gives a loaded machine more time and
-  does not remove the cause. The thing to fix is the number of sessions started at once: a
+  does not remove the cause: three tests still failed with it under load (above). The thing to fix is the number of sessions started at once: a
   limit on concurrent sway sessions in the harness, or on the test threads the task asks
   for. [`working.md`](working.md#while-building) has how to run the window tests alone.
 

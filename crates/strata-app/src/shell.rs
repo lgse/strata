@@ -126,6 +126,11 @@ impl App {
         let later = events.later();
         settings.report_to(later.clone());
         let saved = settings.preferences();
+        // The saved date format, which the dates every view shows read
+        // (`src/ui/preferences.rs` sets it as it loads); a live change must set it again.
+        strata_core::util::set_date_format(strata_core::util::DateFormat::parse(
+            &saved.date_format,
+        ));
         let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
         browser.set_operation_provider(Rc::new(LocalOperationProvider));
         let ids = Ids::default();
