@@ -20,6 +20,8 @@
 //! - **A new item.** A folder or file just created opens the editor with `Naming::NewItem`
 //!   ([`begin_new_item`], from `new_item.rs`): a file may then be named as a folder, and the
 //!   name goes to `Browser::name_new_item`, whose undo trashes the item under its new name.
+//! - **Showing the row.** A plain rename that lands shows its row wherever the new name
+//!   sorts ([`shown`], `reveal_completed_rename`).
 //!
 //! Left out, with what brings each back: the label showing the new name before the rename
 //! lands (`start_pending_rename`); the field's own menu (C21).
@@ -95,6 +97,8 @@ struct Asked {
     /// What takes the item's row when a typed path moves it: the first folder of the path,
     /// or the item itself in the folder above.
     placed: Option<Location>,
+    /// Where a plain rename puts the item, in its own folder: the row to show once it lands.
+    renamed: Option<Location>,
     /// Tab took the editor on, so the cursor is no longer this rename's to place.
     advanced: bool,
 }
@@ -103,6 +107,8 @@ pub(crate) struct Rename {
     pub(crate) state: RenameState,
     editing: Option<Editing>,
     asked: Option<Asked>,
+    /// A completed rename whose row waits to be shown ([`shown`]).
+    shown: Option<shown::Pending>,
     /// The field's accessible name, as the GTK field's (`src/ui/browser/columns/rows/widgets.rs`).
     label: String,
 }
@@ -119,6 +125,7 @@ impl Rename {
             state: RenameState::new(),
             editing: None,
             asked: None,
+            shown: None,
             label: tr("Rename"),
         }
     }
@@ -358,6 +365,14 @@ fn ask(app: &mut App, editing: Editing, typed: String) {
         app.browser.clear_group_folder();
         return;
     };
+    let renamed = match &wanted {
+        Wanted::Name(name) => editing
+            .entry
+            .location
+            .parent()
+            .and_then(|folder| folder.child(OsStr::new(name))),
+        Wanted::Path(_) => None,
+    };
     let entry = editing.entry.clone();
     let new_item = editing.naming == Naming::NewItem;
     let (request, placed) = match wanted {
@@ -372,6 +387,7 @@ fn ask(app: &mut App, editing: Editing, typed: String) {
         request,
         editing,
         placed,
+        renamed,
         advanced: false,
     });
 }
@@ -437,7 +453,7 @@ fn tick(app: &mut App, tx: &mut Tx) -> bool {
     for intent in polled.intents {
         heard(app, intent, tx);
     }
-    polled.changed
+    polled.changed | shown::tick(app, tx)
 }
 
 /// Ends an open edit as Enter would, before the window does something that takes the
@@ -456,15 +472,25 @@ fn asked_for(app: &mut App, request: Option<OperationRequestId>) -> Option<Asked
 
 /// The rename landed. A typed path moved the item out of its row: what took its place is
 /// selected (`reveal_placed_entry` in `src/ui/browser/inline_edit/pending.rs`). A plain
-/// rename keeps its row and its cursor under the new name, which the browser sees to.
-fn completed(app: &mut App, asked: &Asked) {
-    let Some(target) = asked.placed.clone().filter(|_| !asked.advanced) else {
+/// rename keeps its cursor under the new name, which the browser sees to, and its row is
+/// shown wherever the new name sorts (`reveal_completed_rename`). Neither, once Tab has
+/// taken the editor on.
+fn completed(app: &mut App, asked: &Asked, tx: &mut Tx) {
+    if asked.advanced {
         return;
-    };
-    if let Some(folder) = target.parent()
-        && app.browser.open_depth(&folder).is_some()
-    {
-        app.browser.reveal_locations(folder, vec![target]);
+    }
+    if let Some(target) = asked.placed.clone() {
+        if let Some(folder) = target.parent()
+            && app.browser.open_depth(&folder).is_some()
+        {
+            app.browser.reveal_locations(folder, vec![target]);
+        }
+        return;
+    }
+    if let Some(target) = asked.renamed.clone() {
+        let old = asked.editing.entry.location.clone();
+        app.rename.shown = Some(shown::Pending::new(asked.editing.depth, old, target));
+        shown::tick(app, tx);
     }
 }
 
@@ -492,7 +518,7 @@ fn answered(app: &mut App, answer: Answer, tx: &mut Tx) {
     match answer {
         Answer::Completed(request) => {
             if let Some(asked) = asked_for(app, Some(request)) {
-                completed(app, &asked);
+                completed(app, &asked, tx);
             }
         }
         Answer::Abandoned(request) => {
@@ -505,6 +531,8 @@ fn answered(app: &mut App, answer: Answer, tx: &mut Tx) {
         },
     }
 }
+
+mod shown;
 
 #[cfg(test)]
 mod tests;

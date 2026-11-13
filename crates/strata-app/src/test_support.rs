@@ -123,6 +123,7 @@ pub(crate) fn idle_view<S>(
             activate: |_, _| {},
             select_only: |_, _, _| {},
             select_all: |_, _| {},
+            reveal: |_, _, _| {},
         },
         editing: Editing {
             begin: |_, _, _| None,
