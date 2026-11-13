@@ -743,7 +743,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **On `main`:** the third case of bug [#2361](https://github.com/lgse/strata/issues/2361), GTK's QA snapshot faults.
 - **State:** open, set aside: no Rune change. A fix that gave Rune's column a cursor
   ([#2368](https://github.com/lgse/strata/pull/2368)) was closed unmerged: it made Rune's next
-  Down move on where GTK's selects in place ([#2367](https://github.com/lgse/strata/issues/2367)).
+  Down move on where GTK's lands on the first entry, as a list with no cursor does ([#2367](https://github.com/lgse/strata/issues/2367)).
 
 ### #2357: Up, Down or a page key in the rename editor commits on GTK, not on Rune
 
