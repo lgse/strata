@@ -1,0 +1,17 @@
+{"scenario":"rename-survives-entry-listed-above","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.8},"quality":{"impact":4,"coverage":3,"criticality":4,"diagnostic":4,"score":38,"note":"A file listed above the row being renamed while its name is typed; the edit keeps its text and Return renames. No other scenario changes the listing during an edit (lgse/strata#2277)"}}
+{"select":{"entry":"readme.md"}}
+{"select_with_keyboard":"todo.txt"}
+{"key":"F2"}
+{"wait":{"field":{"name":"Rename","focused":true}},"message":"the rename editor to take focus"}
+{"remember":{"field":true},"as":"rename"}
+{"key":"ctrl+a"}
+{"type":"kept.txt"}
+{"wait":{"field":{"of":"rename","text":"kept.txt"}},"message":"the new name to be typed"}
+{"fs":{"path":"aaa.txt","write":"listed above\n"}}
+{"wait":{"entry":"aaa.txt"},"message":"the new file to be listed above the row being renamed"}
+{"settle":{"entry":"aaa.txt","dir":"$root"}}
+{"expect":{"field":{"of":"rename","text":"kept.txt","focused":true}},"message":"the edit to keep its text and the keyboard"}
+{"key":"Return"}
+{"fs":{"path":"kept.txt","text":"todo\n"},"message":"the typed name to land"}
+{"fs":{"path":"todo.txt","exists":false},"timeout_ms":0}
+{"fs":{"path":"aaa.txt","text":"listed above\n"},"timeout_ms":0}

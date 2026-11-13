@@ -283,6 +283,14 @@ status = "required"
 host = "offscreen"
 
 [[run]]
+scenario = "rename-survives-entry-listed-above"
+run = "columns"
+package = "A7"
+gate = "G3"
+status = "required"
+host = "offscreen"
+
+[[run]]
 scenario = "tab-renames-past-open-folder"
 run = "columns-mirrored"
 package = "V9"
