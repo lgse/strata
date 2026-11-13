@@ -553,8 +553,8 @@ Rulings of the owner on the parity work, oldest first.
 - **2026-11-12: the per-folder views' policy is shared.** Asked under B2 where the policy that
   spans the settings and the per-folder views lives (`set_remember_folder_views`,
   `set_default_sort_options`, `set_folder_icons_size`, `set_default_icons_size`), the owner
-  ruled that it moves into the shared crate, for both interfaces (relayed by the coordinator,
-  2026-11-12). It is `strata_desktop::settings::folder_view_policy`, a new file beside the
+  said: "Move it, shared" (relayed by the coordinator, 2026-11-12). So it moves into the
+  shared crate, for both interfaces. It is `strata_desktop::settings::folder_view_policy`, a new file beside the
   moved store, which `src/ui/preferences/folder_view_settings.rs` calls: the gate, where a
   changed size is kept, and what a new default prunes. The sort's share of it goes there when
   [A10](packages/A10.md) needs it. The timer rule stays in each interface; the Rune side's is
