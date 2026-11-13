@@ -12,6 +12,10 @@ ledger, tests/qa/parity/<folder>.toml. They are its required runs. A twin's are 
 that stand in for its original's parallel ones, and `<scenario>-rune.patch` is the proof
 that the twin can fail, which every twin has.
 
+Named patches run alone: `qa_parity_mutation.py rune <patch>...`, each named as its scenario,
+`<scenario>.patch`, or the patch's path, proves those once, as a patch written, changed or
+refreshed is proven (docs/rune/parity/README.md, "When a mutation run is right").
+
 With `gtk` it runs the GTK application's own patches for the slice's exit check instead:
 every patch under tests/qa/mutations but the ones the parity ledger names as stale before
 the slice, in tests/qa/parity/slice.toml, which must be stale still.
@@ -42,6 +46,23 @@ def patches(directory: Path | None = None) -> list[str]:
     """The scenarios the patches are named for."""
 
     return sorted(path.stem for path in (directory or MUTATIONS).glob("*.patch"))
+
+
+def chosen(names: list[str], available: list[str]) -> tuple[list[str], list[str]]:
+    """The patches `names` select, in the order given and each once, and what is wrong with
+    the names that select none. No names select every patch."""
+
+    if not names:
+        return list(available), []
+    picked, problems = [], []
+    for name in names:
+        scenario = Path(name).name.removesuffix(".patch")
+        if scenario not in available:
+            problems.append(f"no Rune mutation patch {name!r}: the patches under "
+                            f"{MUTATIONS.relative_to(REPOSITORY)} are {', '.join(available)}")
+        elif scenario not in picked:
+            picked.append(scenario)
+    return picked, problems
 
 
 def guards(scenario: str, ledger: dict) -> list[str]:
@@ -76,12 +97,16 @@ def run_rune(scenario: str, destination: Path) -> tuple[dict[str, str], int]:
     return parse_qa_log(log.read_text(encoding="utf-8", errors="replace")), status
 
 
-def check() -> int:
+def check(names: list[str] | None = None) -> int:
     started = time.monotonic()
-    scenarios = patches()
+    available = patches()
     (OUTPUT / "summary.md").unlink(missing_ok=True)
-    if not scenarios:
+    if not available:
         print(f"No patch under {MUTATIONS.relative_to(REPOSITORY)}.", file=sys.stderr)
+        return 2
+    scenarios, problems = chosen(names or [], available)
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
         return 2
     if missing := unguarded(scenarios, qa_parity.load()):
         print(f"No run on the Rune target in the ledger for: {', '.join(missing)}. A patch is "
@@ -156,14 +181,21 @@ def main(arguments: list[str] | None = None) -> int:
     parser.add_argument("target", nargs="?", choices=("rune", "gtk"), default="rune",
                         help="rune: the patches under tests/qa/parity/mutations (the default); "
                              "gtk: the GTK application's, less the ledger's stale ones")
+    parser.add_argument("patches", nargs="*", metavar="patch",
+                        help="rune only: the patches to run alone, each named as its scenario, "
+                             "<scenario>.patch or its path; none runs every patch")
     parser.add_argument("--notes", type=Path,
                         help="a file to append each allowance used to, for the caller's summary")
     options = parser.parse_args(arguments)
     if os.environ.get("STRATA_QA_UPDATE_BASELINES") == "1":
         print("STRATA_QA_UPDATE_BASELINES must be unset for a mutated run", file=sys.stderr)
         return 2
+    if options.target == "gtk" and options.patches:
+        print("gtk runs every GTK patch; one alone is ./scripts/qa-mutation.sh <scenario>",
+              file=sys.stderr)
+        return 2
     try:
-        return check_gtk(options.notes) if options.target == "gtk" else check()
+        return check_gtk(options.notes) if options.target == "gtk" else check(options.patches)
     except qa_parity.BadLedger as error:
         return qa_parity.refuse(qa_parity.LEDGER, error)
     except KeyboardInterrupt:

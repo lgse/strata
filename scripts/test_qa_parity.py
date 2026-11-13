@@ -480,6 +480,30 @@ class MutationTests(unittest.TestCase):
         # A pending run is not run, so it cannot catch anything.
         self.assertEqual(qa_parity_mutation.unguarded(found, ledger), ["rename-with-f2"])
 
+    def test_patches_named_run_alone_in_the_order_given_and_a_name_of_no_patch_is_refused(self):
+        available = ["escape-clears-selection", "rename-with-f2", "shift-click-range"]
+        for case, names, picked in (
+            ("none named is every patch", [], available),
+            ("a scenario", ["shift-click-range"], ["shift-click-range"]),
+            ("a patch's file name and its path, in the order given and each once",
+             ["tests/qa/parity/mutations/rename-with-f2.patch", "escape-clears-selection.patch",
+              "rename-with-f2"],
+             ["rename-with-f2", "escape-clears-selection"]),
+        ):
+            with self.subTest(case):
+                self.assertEqual(qa_parity_mutation.chosen(names, available), (picked, []))
+        picked, problems = qa_parity_mutation.chosen(["shift-click-range", "rename"], available)
+        self.assertEqual(picked, ["shift-click-range"])
+        self.assertEqual(len(problems), 1)
+        self.assertTrue(problems[0].startswith("no Rune mutation patch 'rename': "), problems)
+
+    def test_a_patch_named_for_the_gtk_target_or_of_none_stops_before_anything_runs(self):
+        for arguments in (["gtk", "cut"], ["rune", "no-such-patch"]):
+            with self.subTest(arguments), unittest.mock.patch.object(
+                    qa_parity_mutation, "run_rune") as run, contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(qa_parity_mutation.main(arguments), 2)
+                run.assert_not_called()
+
 
 class RepositoryTests(unittest.TestCase):
     def test_every_committed_patch_applies_to_strata_app_and_has_a_required_run(self):

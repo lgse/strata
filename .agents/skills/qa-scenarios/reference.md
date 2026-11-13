@@ -500,7 +500,8 @@ reason.
 
 `./scripts/qa-parity.sh mutations` checks the Rune target's own mutation
 patches, `tests/qa/parity/mutations/<scenario>.patch`: each must make its
-scenario's required runs fail on Rune. They are separate from a scenario's
+scenario's required runs fail on Rune; `./scripts/qa-parity.sh mutations
+<scenario>` runs only the patches named. They are separate from a scenario's
 `mutation` header, which names a GTK patch under `tests/qa/mutations/`.
 `./scripts/qa-parity.sh gtk-mutations` runs those GTK patches for the slice's
 exit check, less the ones the ledger's `slice.toml` names under `[[stale_patch]]`,

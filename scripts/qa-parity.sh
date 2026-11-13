@@ -27,6 +27,9 @@
 #   ./scripts/qa-parity.sh mutations          each patch under tests/qa/parity/mutations must
 #                                             make the scenario it is named for fail on Rune;
 #                                             <scenario>-rune.patch is a twin's
+#   ./scripts/qa-parity.sh mutations shift-click-range
+#                                             only the patches named, by scenario,
+#                                             <scenario>.patch or path: one proven alone
 #   ./scripts/qa-parity.sh gtk-mutations      each patch under tests/qa/mutations must make its
 #                                             scenario fail on GTK, but the ones the ledger
 #                                             names as stale, which must be stale still
@@ -49,16 +52,17 @@ repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 usage='Usage: scripts/qa-parity.sh <selection> [--target gtk|rune] [--pending|--parallel] [--scenario <name>]
        scripts/qa-parity.sh <selection> --counts
        scripts/qa-parity.sh <selection> --twins
-       scripts/qa-parity.sh mutations
+       scripts/qa-parity.sh mutations [<patch>...]
        scripts/qa-parity.sh gtk-mutations
 A selection is slice, g1, g2, g3, all, a folder of tests/qa/scenarios or a package id.'
 selection="${1:-}"
-if [[ $# -eq 1 ]]; then
-  # Each patch is applied to this checkout, run and reverted: scripts/qa_parity_mutation.py.
-  case "$selection" in
-    mutations) exec python3 "$repository/scripts/qa_parity_mutation.py" rune ;;
-    gtk-mutations) exec python3 "$repository/scripts/qa_parity_mutation.py" gtk ;;
-  esac
+# Each patch is applied to this checkout, run and reverted: scripts/qa_parity_mutation.py.
+if [[ "$selection" == mutations ]]; then
+  shift
+  exec python3 "$repository/scripts/qa_parity_mutation.py" rune "$@"
+fi
+if [[ $# -eq 1 && "$selection" == gtk-mutations ]]; then
+  exec python3 "$repository/scripts/qa_parity_mutation.py" gtk
 fi
 case "$selection" in ""|-*|mutations|gtk-mutations) echo "$usage" >&2; exit 2 ;; *) shift ;; esac
 targets="gtk rune"
