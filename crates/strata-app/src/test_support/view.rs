@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rune::{Key, KeyEvent, Mods};
+use rune::{Key, KeyEvent, Mods, WheelEvent};
 use serde_json::Value;
 use strata_components::{collection::element::row_key, contract::EntryId};
 use strata_core::model::Location;
@@ -306,18 +306,33 @@ pub(crate) fn top_of_first(host: &Offscreen) -> Option<f64> {
     entries.first()?["bounds"][1].as_f64()
 }
 
-/// Turns the wheel `turns` times by `dy` points, over where the first entry is drawn now.
-pub(crate) fn wheel(host: &mut Offscreen, dy: f32, turns: usize) {
+/// Where the first entry is drawn now: its centre, to point a wheel at.
+fn first_entry_centre(host: &Offscreen) -> (f32, f32) {
     let tree = host.tree();
     let entries = all(&tree, &keyed_as_entry);
     let bounds = &entries.first().expect("an entry")["bounds"];
     let at = |index: usize| bounds[index].as_f64().expect("a bound");
     #[expect(clippy::cast_possible_truncation, reason = "window points")]
-    let (x, y) = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) / 2.0) as f32);
+    let centre = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) / 2.0) as f32);
+    centre
+}
+
+/// Turns the wheel `turns` times by `dy` points, over where the first entry is drawn now.
+pub(crate) fn wheel(host: &mut Offscreen, dy: f32, turns: usize) {
+    let (x, y) = first_entry_centre(host);
     for _ in 0..turns {
         host.runtime().wheel(x, y, dy);
         idle(host);
     }
+}
+
+/// One notch of the wheel by `dy` points with `mods` held, over where the first entry is
+/// drawn now, offered to the elements' wheel handlers as a window host offers it.
+pub(crate) fn wheel_held(host: &mut Offscreen, dy: f32, mods: Mods) {
+    let (x, y) = first_entry_centre(host);
+    host.runtime()
+        .wheel_event(WheelEvent::new(0.0, dy).at(x, y).mods(mods));
+    idle(host);
 }
 
 /// The name of the menu that is open: what it acts on (`menus.rs`).

@@ -401,6 +401,27 @@ the orchestrating session, 2026-11-12):
    (Location bar), with the header's shell, since the breadcrumbs live in the same header. The
    plan placed them with no package; B3 said so when it closed. Placed by the coordinator,
    2026-11-12. `keyboard_navigation/back-history-dropdown` waits on it.
+9. **The Icons view's thumbnail size is [A1](packages/A1.md)'s, its header button and slider
+   [A5](packages/A5.md)'s.** The coordinator's placing, 2026-11-12, for the owner to confirm. A1
+   owns the commands `thumbnails_larger`, `thumbnails_smaller` and `thumbnails_reset` with their
+   catalog bindings (read at the dispatcher's `zoom_shortcut` stage), Ctrl+Shift+wheel over the
+   grid (the steps of GTK's `WheelZoom`; GTK's wheel reaches the size from anywhere in the
+   window, which is item 10), the size each folder keeps through B2's folder-view store, and
+   the grid laying out at the size live. A5 owns the pane header's "Thumbnail size" button and
+   its slider popover (`ThumbnailSizeMenu`, `src/ui/browser_modes/icons_controls.rs`), which
+   call A1's commands. [A11](packages/A11.md) owns the 10xer map's plain +, = and − for the
+   size (`for_tenxer_key`), which call A1's commands too. Sources:
+   `src/ui/browser_modes/thumbnail_size.rs`, `src/ui/window/keyboard/wheel_zoom.rs`,
+   `src/ui/preferences/folder_view_settings.rs`.
+10. **Who owns the window-level zoom wheel, and the text size?** GTK's Ctrl+wheel steps the
+   interface's text size and Ctrl+Shift+wheel the Icons thumbnail size from anywhere in the
+   window except the PDF preview, which zooms itself (`zoom_controller` and `claims_zoom` in
+   `src/ui/window/keyboard/wheel_zoom.rs`, a capture-phase controller on the window's root).
+   Rune's Icons view takes Ctrl+Shift+wheel only over its grid (C3's `WheelSteps`), and no
+   package has the text size (Ctrl+plus, Ctrl+minus, Ctrl+0, `text_size().for_shortcut` at the
+   same `zoom_shortcut` stage). The coordinator suggests [A6](packages/A6.md) or a window
+   package take both, the wheel calling A1's thumbnail commands. Meanwhile: the wheel works
+   over the grid only, and the text size does not change on Rune.
 
 ### A2: List view
 

@@ -16,8 +16,9 @@
 # written file moves to the front only rarely. Right and l only with a tile focused: with
 # none, where Right lands is the question `owner.md` asks of the List view (A2 item 1).
 #
-# Left out, besides List's: the thumbnail size (its keys and Ctrl+wheel are not on Rune yet),
-# and grouping, which a header would hold for the whole alphabet.
+# Left out, besides List's: the thumbnail size (Ctrl+Alt+plus, minus and 0, and
+# Ctrl+Shift+wheel, which both targets take since lgse/strata#2275), for a later version to
+# add; and grouping, which a header would hold for the whole alphabet.
 area = "icons"
 version = 1
 about = "Icons on the canonical fixture, type to search off: keyboard navigation and selection with the four arrows, h, j, k and l, clicks, Ctrl and Shift clicks and background clicks by name, opening folders in place, Back and the parent, the context menu by pointer and by the Menu key, rename by F2 and by the menu, hidden files, and files made and removed behind the application's back"
