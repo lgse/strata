@@ -56,6 +56,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×900",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-200",
                               "name": "tile-0.jpg",
@@ -65,6 +75,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×180",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-201",
@@ -76,6 +96,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1600×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-202",
                               "name": "tile-2.jpg",
@@ -85,6 +115,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2240×900",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-203",
@@ -96,6 +136,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×180",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-204",
                               "name": "tile-4.jpg",
@@ -106,6 +156,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-205",
                               "name": "tile-5.jpg",
@@ -115,6 +175,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1600×900",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-206",
@@ -138,6 +208,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2240×180",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-207",
                               "name": "tile-7.jpg",
@@ -148,6 +228,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-208",
                               "name": "tile-8.jpg",
@@ -157,6 +247,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×900",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-209",

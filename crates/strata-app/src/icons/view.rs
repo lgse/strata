@@ -37,6 +37,11 @@ pub(super) fn grid() -> IconsGrid<App> {
         Some((app.window.thumbnails_mut(), id, source))
     })
     .details(details_version, details_text)
+    .on_visible(|app: &mut App, range| {
+        // Recorded only: the part asks for the fills once a poll.
+        app.icons.fills.see(range);
+        false
+    })
     .on_wheel(single::wheeled::<Icons>)
 }
 

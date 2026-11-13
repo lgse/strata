@@ -110,8 +110,9 @@
 //! The collection is a grid named by the host, of rows (the lines), of grid cells named by
 //! their file names, each with its place in the listing and its selected state; the cursor's
 //! cell is the grid's active descendant, and the status line counts a selection (C1e). The
-//! frame, name and details are hidden: a cell's description is the host's `Describe`
-//! (Strata's entry kind, as the gallery shows). No column index or count (Rune draft
+//! frame and the name are hidden: a cell's description is the host's `Describe` (Strata's
+//! entry kind, as the gallery shows). The details line is a label in its cell, as GTK's
+//! details label is (`src/ui/icons_cell.rs`). No column index or count (Rune draft
 //! R-C4-3).
 //!
 //! A line row reads "row N of <entry count>" (`line-9` in `c3-default` is position 2 of 40,

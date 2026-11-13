@@ -56,6 +56,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1 item",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Folder",
                               "key": "row-1",
                               "name": "Holidays",
@@ -66,6 +76,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "14 items",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Folder",
                               "key": "row-2",
                               "name": "Screenshots",
@@ -75,6 +95,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "21 items",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Folder",
                               "key": "row-3",
@@ -98,6 +128,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "28 items",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Folder",
                               "key": "row-4",
                               "name": "Empty album",
@@ -108,6 +148,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "No items",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Folder",
                               "key": "row-5",
                               "name": "Scans",
@@ -117,6 +167,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1 item",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Folder",
                               "key": "row-6",

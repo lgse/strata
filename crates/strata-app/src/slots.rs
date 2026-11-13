@@ -152,6 +152,9 @@
 //! | `pane.rs`: the one folder a single-pane view (Icons, List) shows, the browser's active column | The contract |
 //! | `single/`: what the single-pane views share beside their pane (intents, rename, the listener, the base collection, `Rows`) | The contract |
 //! | `surface.rs`: what a listing that shows no entry says, in every view | The contract |
+//! | `thumbnails/`: the render pool, a view's viewer in the window's store, the thumbnail kinds | The contract |
+//! | `details.rs`: the text of a row's facts, as every view shows them | The contract |
+//! | `fills.rs`: the metadata fills a view asks for the rows near its viewport | The contract |
 //! | `lib.rs` | Each package, under its own comment and nowhere else |
 //! | A part's module | The package that registered it |
 //! | `columns/` | No area package: a change to it by any package is a `contract` pull request |

@@ -884,6 +884,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "584.8 kB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023528",
                               "name": "entry-023529.dat",
@@ -893,6 +903,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-1023529",
@@ -904,6 +924,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "4.5 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023530",
                               "name": "entry-023531.dat",
@@ -913,6 +943,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "3.9 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023531",
@@ -924,6 +964,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-1023532",
                               "name": "entry-023533.dat",
@@ -933,6 +983,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.8 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023533",
@@ -944,6 +1004,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.2 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023534",
                               "name": "entry-023535.dat",
@@ -953,6 +1023,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2240×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-1023535",
@@ -976,6 +1056,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1.1 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023536",
                               "name": "entry-023537.dat",
@@ -985,6 +1075,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "506.7 kB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023537",
@@ -996,6 +1096,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1600×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-1023538",
                               "name": "entry-023539.dat",
@@ -1005,6 +1115,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "4.4 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023539",
@@ -1016,6 +1136,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "3.8 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023540",
                               "name": "entry-023541.dat",
@@ -1025,6 +1155,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-1023541",
@@ -1036,6 +1176,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.7 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023542",
                               "name": "entry-023543.dat",
@@ -1045,6 +1195,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.1 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023543",
@@ -1068,6 +1228,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-1023544",
                               "name": "entry-023545.dat",
@@ -1077,6 +1247,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "992.7 kB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023545",
@@ -1088,6 +1268,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "428.5 kB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023546",
                               "name": "entry-023547.dat",
@@ -1097,6 +1287,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2240×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-1023547",
@@ -1108,6 +1308,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "4.3 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023548",
                               "name": "entry-023549.dat",
@@ -1117,6 +1327,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "3.7 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023549",
@@ -1128,6 +1348,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "No items",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Folder",
                               "key": "row-1023550",
                               "name": "entry-023551.dat",
@@ -1137,6 +1367,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.6 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023551",
@@ -1160,6 +1400,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.0 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023552",
                               "name": "entry-023553.dat",
@@ -1169,6 +1419,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-1023553",
@@ -1180,6 +1440,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "914.6 kB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023554",
                               "name": "entry-023555.dat",
@@ -1189,6 +1459,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "350.4 kB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023555",
@@ -1200,6 +1480,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-1023556",
                               "name": "entry-023557.dat",
@@ -1209,6 +1499,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "4.2 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023557",
@@ -1220,6 +1520,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "3.7 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023558",
                               "name": "entry-023559.dat",
@@ -1229,6 +1539,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2240×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-1023559",
@@ -1252,6 +1572,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.5 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023560",
                               "name": "entry-023561.dat",
@@ -1261,6 +1591,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.0 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023561",
@@ -1272,6 +1612,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1600×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-1023562",
                               "name": "entry-023563.dat",
@@ -1281,6 +1631,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "836.4 kB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023563",
@@ -1292,6 +1652,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "272.2 kB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023564",
                               "name": "entry-023565.dat",
@@ -1301,6 +1671,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-1023565",
@@ -1312,6 +1692,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "4.1 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-1023566",
                               "name": "entry-023567.dat",
@@ -1321,6 +1711,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "3.6 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-1023567",

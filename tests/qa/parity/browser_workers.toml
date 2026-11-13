@@ -14,9 +14,8 @@ blocker = "A1: Columns rows asking the window's thumbnails for what they show, a
 scenario = "browser-workers-reuse-processes"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1: the details line under each tile (an image's dimensions), at `present` label `320×180` on line 12. The thumbnails before it render through strata-rune's sandboxed workers"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "browser-workers-reuse-processes"
