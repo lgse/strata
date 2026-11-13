@@ -42,7 +42,7 @@ use crate::{
     slots::{Frame, Part, Place, Setup},
 };
 
-mod empty_trash;
+pub(crate) mod empty_trash;
 mod history;
 mod thumbnail_size;
 

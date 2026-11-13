@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use rune::{Key, KeyEvent, Mods, Tx};
 use serde_json::Value;
+use strata_core::model::Location;
 
 use crate::{
     App,
@@ -127,5 +128,114 @@ fn over_another_folder_there_is_none() {
         open(&mut host, ICONS, folder.path());
         assert!(node(&host.tree(), "icons-up").is_some(), "the Icons header");
         assert!(node(&host.tree(), "icons-empty-trash").is_none());
+    });
+}
+
+/// Opens the Trash's root as the Columns view's first column and targets it with a key.
+fn columns_over_the_trash(host: &mut Offscreen, items: usize) {
+    let trash = trash(items);
+    host.app().open(Location::local(&trash));
+    let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+    assert!(host.run_until(PATIENCE, listed), "the Trash's listing");
+    idle(host);
+    send_key(
+        host,
+        KeyEvent {
+            key: Key::Down,
+            mods: Mods::default(),
+        },
+    );
+    idle(host);
+}
+
+fn click(host: &mut Offscreen, key: &str) {
+    let elements = host.runtime().elements();
+    let found = elements
+        .iter()
+        .find(|element| !element.exiting && element.key.as_deref() == Some(key));
+    let [x, y, w, h] = found.unwrap_or_else(|| panic!("{key} is drawn")).visible;
+    let (x, y) = (x + w / 2.0, y + h / 2.0);
+    host.runtime().pointer_move(x, y);
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    idle(host);
+}
+
+/// In Columns the button is in the targeted Trash column's header, as GTK's column header has
+/// it, and a press on it asks to empty the Trash; over an empty Trash it cannot be pressed.
+#[test]
+fn a_columns_trash_column_has_it_in_its_header() {
+    let name = "a_columns_trash_column_has_it_in_its_header";
+    hosted_in(MODULE, "columns", name, |mut host| {
+        columns_over_the_trash(&mut host, 2);
+        let shown = host.run_until(PATIENCE, |host| {
+            node(&host.tree(), "columns-empty-trash-0").is_some()
+        });
+        assert!(shown, "Empty Trash in the Trash column's header");
+        let tree = host.tree();
+        let button = node(&tree, "columns-empty-trash-0").expect("the button");
+        assert_eq!(view::text(button, "name"), "Empty Trash");
+        assert!(
+            !greyed(button),
+            "pressable over a Trash that holds something"
+        );
+
+        click(&mut host, "columns-empty-trash-0");
+        let asked = host.run_until(PATIENCE, |host| {
+            dialog(host).is_some_and(|name| name == "Empty Trash?")
+        });
+        assert!(asked, "a press on Empty Trash asks: {:?}", dialog(&host));
+    });
+}
+
+#[test]
+fn a_columns_empty_trash_column_has_it_insensitive() {
+    let name = "a_columns_empty_trash_column_has_it_insensitive";
+    hosted_in(MODULE, "columns", name, |mut host| {
+        columns_over_the_trash(&mut host, 0);
+        let shown = host.run_until(PATIENCE, |host| {
+            node(&host.tree(), "columns-empty-trash-0").is_some()
+        });
+        assert!(shown, "Empty Trash in the Trash column's header");
+        let tree = host.tree();
+        assert!(greyed(
+            node(&tree, "columns-empty-trash-0").expect("the button")
+        ));
+    });
+}
+
+/// Only the targeted column shows its header actions, as on GTK: with a folder of the Trash
+/// opened and targeted beside it, the Trash's column shows no Empty Trash.
+#[test]
+fn only_the_targeted_column_shows_it() {
+    let name = "only_the_targeted_column_shows_it";
+    hosted_in(MODULE, "columns", name, |mut host| {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("the test's home"));
+        std::fs::create_dir_all(home.join("own-trash/a-folder")).expect("a trashed folder");
+        columns_over_the_trash(&mut host, 1);
+        let shown = host.run_until(PATIENCE, |host| {
+            node(&host.tree(), "columns-empty-trash-0").is_some()
+        });
+        assert!(shown, "Empty Trash while the Trash's column is targeted");
+
+        for key in [Key::Home, Key::Right] {
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key,
+                    mods: Mods::default(),
+                },
+            );
+            idle(&mut host);
+        }
+        let opened = host.run_until(PATIENCE, |host| {
+            host.app().browser().column_entry_counts(1).is_some()
+        });
+        assert!(opened, "the trashed folder opened beside the Trash");
+        let gone = host.run_until(PATIENCE, |host| {
+            node(&host.tree(), "columns-empty-trash-0").is_none()
+        });
+        assert!(gone, "no Empty Trash on a column that is not targeted");
     });
 }
