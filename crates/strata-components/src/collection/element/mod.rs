@@ -482,8 +482,8 @@ impl<S: 'static> Collection<S> {
     }
 
     /// The icon or thumbnail part (C25). By default, the entry's catalog icon.
-    pub fn icon(mut self, slot: Slot<S>) -> Self {
-        self.cfg.icon = Some(slot);
+    pub fn icon(mut self, slot: impl Into<Slot<S>>) -> Self {
+        self.cfg.icon = Some(slot.into());
         self
     }
 

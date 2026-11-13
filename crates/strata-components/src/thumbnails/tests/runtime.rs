@@ -10,9 +10,9 @@ use rune::{Cx, El, Env, Runtime, col, text};
 use strata_kit::look::Look;
 
 use super::{image, index, source};
-use crate::collection::element::{Collection, CollectionState, Slot};
+use crate::collection::element::{Collection, CollectionState, RowMarks, Slot};
 use crate::contract::ListSource;
-use crate::thumbnails::{THUMB, ThumbnailStore, ViewerId, Viewport, icon_slot};
+use crate::thumbnails::{GLYPH, THUMB, ThumbnailStore, ViewerId, Viewport, icon_slot};
 
 const W: f32 = 400.0;
 const H: f32 = 600.0;
@@ -28,6 +28,10 @@ struct Host {
     viewer: ViewerId,
     views: Rc<Cell<usize>>,
     built: Rc<Cell<usize>>,
+    /// The slot dims file icons ([`IconSlot::dim_files`](crate::thumbnails::IconSlot::dim_files)).
+    dim: bool,
+    /// The entry ids drawn as cut.
+    cut: Vec<u64>,
 }
 
 impl Host {
@@ -42,6 +46,8 @@ impl Host {
             viewer,
             views: Rc::default(),
             built: Rc::default(),
+            dim: false,
+            cut: Vec::new(),
         }
     }
 
@@ -73,7 +79,14 @@ fn view(s: &Host, _: &mut Cx<Host>) -> El {
             |_: &Host| 1,
         )
         .row_height(|_, _| ROW)
-        .icon(icon_slot(|s: &Host| &s.store, step, PT))
+        .icon(match s.dim {
+            true => icon_slot(|s: &Host| &s.store, step, PT).dim_files(),
+            false => icon_slot(|s: &Host| &s.store, step, PT),
+        })
+        .marks(|s: &Host, id| RowMarks {
+            cut: s.cut.contains(&id.get()),
+            ..RowMarks::default()
+        })
         .label(Slot::pure(move |_: &Host, rcx| {
             built.set(built.get() + 1);
             text(rcx.entry.name.to_owned())
@@ -87,7 +100,11 @@ fn view(s: &Host, _: &mut Cx<Host>) -> El {
 }
 
 fn runtime(n: usize) -> Runtime<Host> {
-    let mut rt = Runtime::new(Host::new(n), view, (W, H), Env::new(false, 1.0));
+    runtime_of(Host::new(n))
+}
+
+fn runtime_of(host: Host) -> Runtime<Host> {
+    let mut rt = Runtime::new(host, view, (W, H), Env::new(false, 1.0));
     rt.frame(0.0);
     for _ in 0..20 {
         rt.frame(DT);
@@ -181,4 +198,67 @@ fn turning_thumbnails_off_builds_the_rows_once_as_icons_and_on_restores_them() {
     rt.frame(DT);
     assert_eq!(thumbs_drawn(&rt), drawn);
     assert_eq!(rt.state.serve(), 0, "nothing on screen decodes again");
+}
+
+/// Each drawn element keyed `key`, by the row it is in, with its opacity as drawn (its row's
+/// included).
+fn opacities(rt: &Runtime<Host>, key: &str) -> Vec<(u64, f32)> {
+    rt.elements()
+        .iter()
+        .filter(|e| !e.exiting && e.key.as_deref() == Some(key))
+        .filter_map(|e| {
+            let row = e
+                .path
+                .split('/')
+                .find_map(|part| part.strip_prefix("row-"))?;
+            Some((row.parse().ok()?, e.opacity))
+        })
+        .collect()
+}
+
+/// Where the slot dims files, a file's placeholder icon draws at `collection.file_icon.opacity`
+/// and a folder's, or a cut file's, at full opacity; a landed thumbnail is never dimmed.
+#[test]
+fn a_dimmed_slot_dims_file_icons_but_no_folder_cut_entry_or_thumbnail() {
+    let mut host = Host::new(20);
+    host.dim = true;
+    // Ids are indices + 1: entries 5 and 6 are folders, ids 6 and 7.
+    host.cut = vec![3];
+    let mut rt = runtime_of(host);
+    let look = &rt.state.look;
+    let dimmed = strata_kit::slots::collection::file_icon_opacity(look);
+    // The cut row fades as a whole; its icon adds no dimming of its own (the mark wins).
+    let cut = strata_kit::slots::collection::cut_opacity(look);
+    let glyphs = opacities(&rt, GLYPH);
+    assert!(!glyphs.is_empty());
+    for (id, opacity) in glyphs {
+        let expected = match id {
+            3 => cut,
+            6 | 7 => 1.0,
+            _ => dimmed,
+        };
+        assert_eq!(opacity, expected, "entry {id}'s icon, drawn");
+    }
+
+    rt.state.serve();
+    rt.frame(DT);
+    rt.frame(DT);
+    let thumbs = opacities(&rt, THUMB);
+    assert!(!thumbs.is_empty(), "thumbnails landed");
+    for (id, opacity) in thumbs {
+        let expected = if id == 3 { cut } else { 1.0 };
+        assert_eq!(opacity, expected, "entry {id}'s thumbnail, drawn");
+    }
+}
+
+/// A slot that does not dim draws every icon at full opacity, as Strata's List rows do.
+#[test]
+fn an_undimmed_slot_draws_every_icon_at_full_opacity() {
+    let rt = runtime(20);
+    let glyphs = opacities(&rt, GLYPH);
+    assert!(!glyphs.is_empty());
+    assert!(
+        glyphs.iter().all(|(_, opacity)| *opacity == 1.0),
+        "{glyphs:?}"
+    );
 }

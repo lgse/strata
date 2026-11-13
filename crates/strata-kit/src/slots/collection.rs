@@ -21,6 +21,7 @@ pub struct Collection {
     pub row_radius: Option<f32>,
     pub cut_opacity: Option<f32>,
     pub drag_opacity: Option<f32>,
+    pub file_icon_opacity: Option<f32>,
     pub peek_fill: Option<Color>,
 }
 
@@ -57,6 +58,16 @@ pub fn drag_opacity(look: &Look) -> f32 {
     look.slots.collection.drag_opacity.unwrap_or(0.48)
 }
 
+/// The opacity of a file's icon beside a folder's, 0 to 1: `collection.file_icon.opacity`, else
+/// Strata's 0.72 (`FILE_ICON_OPACITY` in `src/ui/browser_modes/icons_card.rs`, and the Columns
+/// rows' `set_base_opacity` in `src/ui/browser/columns/rows/bind.rs`). A view that dims file
+/// icons reads it; Strata's List rows do not dim them.
+///
+/// Used by: C25's icon slot (C2 through it), C3.
+pub fn file_icon_opacity(look: &Look) -> f32 {
+    look.slots.collection.file_icon_opacity.unwrap_or(0.72)
+}
+
 /// The fill of the row a folder peek is open from: `collection.peek.fill`, else the accent at
 /// Strata's 0.15 of its own opacity (`.peek-open .file-list .file-row.peek-anchor`,
 /// `src/style.css`). A selected row keeps the selection's fill.
@@ -82,6 +93,13 @@ pub const TOKENS: &[Token] = &[
     Token::number("collection.drag.opacity", 0.0, 1.0, drag_opacity, |l, v| {
         l.slots.collection.drag_opacity = Some(v)
     }),
+    Token::number(
+        "collection.file_icon.opacity",
+        0.0,
+        1.0,
+        file_icon_opacity,
+        |l, v| l.slots.collection.file_icon_opacity = Some(v),
+    ),
     Token::color("collection.peek.fill", peek_fill, |l, v| {
         l.slots.collection.peek_fill = Some(v)
     }),
