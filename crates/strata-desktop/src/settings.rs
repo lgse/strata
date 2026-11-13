@@ -51,7 +51,6 @@ mod text_size;
 
 pub use corner_roundness::CornerRoundness;
 pub use defaults::default_sidebar_order;
-pub use density::{DensityPresets, store_density_px, stored_density_px};
 use defaults::{
     default_browser_density, default_browser_mode, default_cross_volume_drop_strategy,
     default_date_format, default_density_custom_px, default_double_clicks, default_enabled,
@@ -60,6 +59,7 @@ use defaults::{
     default_search_time_limit, default_sort_direction, default_sort_key,
     default_video_preview_backend,
 };
+pub use density::{DensityPresets, store_density_px, stored_density_px};
 pub use folder_view_file::{
     FolderViewsSave, folder_views_path, load_folder_views, save_folder_views,
 };
