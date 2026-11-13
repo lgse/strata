@@ -22,12 +22,15 @@
 //! - **The width and the sections** start as the settings saved them; a section's heading
 //!   saves its own state, and the header's toggle steps the width and saves it ([`width`]).
 //!
-//! Drops, devices, the full Trash's icon, the `g` keycaps and the context menus are not here
-//! yet: `docs/rune/parity/packages/A3.md` lists them.
+//! - **The context menus** of the rows, by right-click and the Menu key ([`menu`]).
+//!
+//! Drops, devices, the full Trash's icon and the `g` keycaps are not here yet:
+//! `docs/rune/parity/packages/A3.md` lists them.
 
 use std::io;
 
 use rune::{El, Tx};
+use strata_components::context_menu::ContextMenuState;
 use strata_components::sidebar::{
     ItemId, PlacesSidebar, Section, SidebarData, SidebarIntent, SidebarState, Step, Via,
 };
@@ -40,15 +43,17 @@ use strata_kit::look::Look;
 
 use crate::{
     App,
-    commands::Action,
+    commands::{Action, Holds},
     shell,
     slots::{self, Frame, Later, Listener, Part, Place, Setup},
 };
 
 mod header;
 mod keys;
+mod menu;
 mod places;
 mod reorder;
+mod trash;
 mod width;
 
 pub(crate) use width::toggle_face;
@@ -73,6 +78,10 @@ pub(crate) struct Sidebar {
     watch: Option<BookmarkWatch>,
     /// The element Up left for the header's toggle, which Down from the header comes back to.
     header_entry: Option<String>,
+    /// A row's context menu ([`menu`]).
+    menu: ContextMenuState,
+    /// What the Trash holds, for its menu ([`trash`]).
+    trash: trash::Probe,
     started: bool,
 }
 
@@ -103,14 +112,23 @@ impl Part for Sidebar {
             later: setup.later.clone(),
             watch: None,
             header_entry: None,
+            menu: ContextMenuState::default(),
+            trash: trash::Probe::default(),
             started: false,
         }
+    }
+
+    fn keyboard(app: &App) -> Option<Holds> {
+        app.sidebar.menu.is_open().then_some(Holds::Menu)
     }
 
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
         Some(Box::new(|event, _, heard| {
             if changes_active_place(event) {
                 heard.then(|app: &mut App, _: &mut Tx| app.sidebar.follow(&app.browser));
+            }
+            if trash::changes_contents(event) {
+                heard.then(|app: &mut App, _: &mut Tx| trash::refresh(app));
             }
         }))
     }
@@ -168,7 +186,7 @@ fn start(app: &mut App) {
     }));
     sidebar.pins = bookmarks::current();
     relist(app);
-    app.sidebar.follow(&app.browser);
+    trash::start(app);
 }
 
 /// The store read the bookmarks file again, or could not.
@@ -182,7 +200,6 @@ fn heard_pins(later: &Later<App>, pins: Result<&Vec<(Location, String)>, &io::Er
                 }
                 app.sidebar.pins = pins;
                 relist(app);
-                app.sidebar.follow(&app.browser);
                 true
             });
         }
@@ -190,7 +207,8 @@ fn heard_pins(later: &Later<App>, pins: Result<&Vec<(Location, String)>, &io::Er
     }
 }
 
-/// Lists the rows again from the settings and the pins, and lets go of a held row.
+/// Lists the rows again from the settings and the pins, lets go of a held row, and marks the
+/// active location's row again, as GTK's `rebuild` ends with `sync_active_place`.
 fn relist(app: &mut App) {
     let listed = places::listed(
         shell::preferences(app),
@@ -201,6 +219,7 @@ fn relist(app: &mut App) {
     // A drag held across the change would carry a row that may no longer be where it was.
     app.sidebar.state.places_reorder.cancel();
     app.sidebar.state.pins_reorder.cancel();
+    app.sidebar.follow(&app.browser);
 }
 
 impl Sidebar {
@@ -243,7 +262,7 @@ impl Sidebar {
     }
 }
 
-fn build(app: &App, _frame: &mut Frame<'_, App>) -> Option<El> {
+fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let sidebar = &app.sidebar;
     if !sidebar.started {
         return None;
@@ -254,7 +273,8 @@ fn build(app: &App, _frame: &mut Frame<'_, App>) -> Option<El> {
         devices: &[],
         current: sidebar.current.as_ref(),
     };
-    Some(element(app, &app.look, data))
+    let menu = menu::element(app, frame.layer);
+    Some(element(app, &app.look, data).child(menu))
 }
 
 fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
@@ -276,6 +296,10 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
 fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
     match intent {
         SidebarIntent::Open { item, via } => open(app, &item, via, tx),
+        SidebarIntent::ContextMenu {
+            item: Some(item),
+            point,
+        } => menu::open(app, &item, point),
         SidebarIntent::LeaveToFiles => {
             if let Some(view) = shell::view_focus(app) {
                 tx.focus(view, true);
