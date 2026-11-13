@@ -108,9 +108,8 @@ scenario = "columns-return-selects-source-folder"
 run = "columns"
 package = "A5"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "A5: three rounds on both targets, now that the crumbs (lgse/strata#2286) and BackSpace (lgse/strata#2288) are both in"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "focus-usable-after-view-change"
