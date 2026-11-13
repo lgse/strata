@@ -13,6 +13,7 @@ use strata_core::model::Location;
 use strata_fs::adapters::bookmarks;
 
 use crate::{
+    App,
     host::offscreen::Offscreen,
     test_support::{
         PATIENCE, fixture, hosted, hosted_after,
@@ -386,6 +387,29 @@ fn a_drag_dropped_back_in_place_opens_nothing() {
                 order.is_empty(),
                 "a drop in place saves no order: {order:?}"
             );
+        },
+    );
+}
+
+/// Strata's sidebar rebuilds its rows when they change, which ends a press on one: a press
+/// held while the sidebar lists its rows again opens nothing on its release.
+#[test]
+fn a_press_held_across_a_relist_opens_nothing_on_its_release() {
+    hosted(
+        MODULE,
+        "a_press_held_across_a_relist_opens_nothing_on_its_release",
+        |mut host| {
+            let [x, y, w, h] = bounds(&mut host, "sidebar-place-home");
+            let (x, y) = (x + w / 2.0, y + h / 2.0);
+            host.runtime().pointer_move(x, y);
+            host.runtime().pointer_down(x, y);
+            host.turn();
+            host.runtime().update(|app: &mut App, _| super::relist(app));
+            host.turn();
+            host.runtime().pointer_up(x, y);
+            idle(&mut host);
+            host.run_until(std::time::Duration::from_millis(300), |_| false);
+            assert_eq!(host.app().browser().active_location(), None);
         },
     );
 }

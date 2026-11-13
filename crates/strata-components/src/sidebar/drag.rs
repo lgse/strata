@@ -25,9 +25,15 @@ use strata_kit::look::Look;
 use super::data::ItemId;
 use super::state::SidebarState;
 
-/// Points the pointer travels before a press on a row becomes a drag: GTK's drag threshold,
-/// 8 pixels by default (`gtk-dnd-drag-threshold`), which Strata's sidebar rows take.
+/// Points the pointer travels along either axis before a press on a row becomes a drag: GTK's
+/// drag threshold, 8 pixels by default (`gtk-dnd-drag-threshold`), which Strata's sidebar rows
+/// take, passed when either axis goes past it (`gtk_drag_check_threshold_double`).
 const SLOP: f32 = 8.0;
+
+/// Whether a press that has travelled `dx` and `dy` is a drag, by GTK's threshold.
+pub(crate) fn past_threshold(dx: f32, dy: f32) -> bool {
+    dx.abs().max(dy.abs()) > SLOP
+}
 
 /// A block's drag to reorder, held in [`super::SidebarState`]. Rows are taken to share one
 /// height.
@@ -49,6 +55,11 @@ enum Lift {
         landing: Option<Landing>,
         dy: f32,
         pitch: f32,
+    },
+    /// The block was listed again under a held row, as Strata's sidebar rebuilds its rows:
+    /// the release is a drop that lands nowhere.
+    LetGo {
+        from: usize,
     },
 }
 
@@ -143,9 +154,14 @@ impl RowDrag {
         }
     }
 
-    /// Lets go of a held row without a move: the block it was in changed under it.
+    /// Lets go of a held row without a move: the block it was in changed under it. The release
+    /// that follows moves nothing and opens nothing, as a press on a row Strata rebuilt does.
     pub fn cancel(&mut self) {
-        self.lift = None;
+        self.lift = match self.lift {
+            Some(Lift::Pressed { index }) => Some(Lift::LetGo { from: index }),
+            Some(Lift::Dragging { from, .. }) => Some(Lift::LetGo { from }),
+            held => held,
+        };
     }
 
     /// How far row `index` sits from its place: the dragged row with the pointer, and the rows
@@ -182,7 +198,8 @@ impl RowDrag {
     pub(crate) fn follow(&mut self, index: usize, count: usize, d: &Drag) {
         let (from, pitch) = match self.lift {
             Some(Lift::Dragging { from, pitch, .. }) => (from, pitch),
-            _ if d.dx.hypot(d.dy) < SLOP => return,
+            Some(Lift::LetGo { .. }) => return,
+            _ if !past_threshold(d.dx, d.dy) => return,
             Some(Lift::Pressed { index }) => (index, (d.h + self.gap).max(1.0)),
             None => (index, (d.h + self.gap).max(1.0)),
         };
@@ -206,6 +223,7 @@ impl RowDrag {
     pub(crate) fn end(&mut self, cancelled: bool) -> Option<(usize, Option<Landing>)> {
         match self.lift.take()? {
             Lift::Dragging { from, landing, .. } if !cancelled => Some((from, landing)),
+            Lift::LetGo { from } if !cancelled => Some((from, None)),
             _ => None,
         }
     }

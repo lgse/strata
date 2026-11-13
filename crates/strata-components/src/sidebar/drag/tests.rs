@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{Landing, Rows, landing};
+use super::{Landing, RowDrag, Rows, landing, past_threshold};
 
 /// Rows 24 points tall with 2 between, so a row's middle is 26 from the next one's.
 const ROWS: Rows = Rows {
@@ -122,4 +122,34 @@ fn a_drop_past_either_end_of_its_block_lands_nowhere() {
     for (from, count, along, under) in cases {
         assert_eq!(landing(from, count, along, ROWS), None, "{under}");
     }
+}
+
+/// GTK starts a drag once the pointer has gone past 8 points along either axis.
+#[test]
+fn a_press_becomes_a_drag_past_the_threshold_along_either_axis() {
+    let cases = [
+        (6.0, 6.0, false, "6 by 6 on the diagonal"),
+        (8.0, 0.0, false, "exactly 8 along one axis"),
+        (0.0, -8.0, false, "exactly 8 up"),
+        (8.5, 0.0, true, "past 8 sideways"),
+        (0.0, -9.0, true, "past 8 up"),
+    ];
+    for (dx, dy, drags, travel) in cases {
+        assert_eq!(past_threshold(dx, dy), drags, "{travel}");
+    }
+}
+
+/// A row held while its block is listed again lands nowhere on its release, which is still a
+/// drop, so the press on that release opens nothing.
+#[test]
+fn a_held_row_let_go_by_a_relist_drops_nowhere() {
+    let mut drag = RowDrag::new();
+    drag.press(1);
+    drag.cancel();
+    assert_eq!(drag.dragging(), None);
+    assert_eq!(drag.end(false), Some((1, None)));
+    assert_eq!(drag.end(false), None, "the release ends it");
+
+    drag.cancel();
+    assert_eq!(drag.end(false), None, "nothing held, nothing to drop");
 }
