@@ -530,13 +530,29 @@ fn route_pointer<S: 'static>(
     shows
 }
 
-/// `on_key` on the container. True when a controller took the key.
+/// Who took a key the collection was given.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KeyTaken {
+    /// Nobody: the key goes on.
+    No,
+    /// The host's [`Collection::before_keys`](super::Collection::before_keys), ahead of the
+    /// controllers.
+    ByHost,
+    ByController,
+}
+
+/// `on_key` on the container: the host's hook, then the controllers.
 pub(super) fn on_key<S: 'static>(
     cfg: &Rc<Config<S>>,
     s: &mut S,
     event: &KeyEvent,
     tx: &mut Tx,
-) -> bool {
+) -> KeyTaken {
+    if let Some(before) = &cfg.before_keys
+        && before(s, event, tx)
+    {
+        return KeyTaken::ByHost;
+    }
     // A copy of the key's transaction, so controllers can match layout-aware chords
     // (`KeyInput::matches`) while the element keeps the real one for its effects.
     let keys = tx.clone();
@@ -566,9 +582,9 @@ pub(super) fn on_key<S: 'static>(
     });
     if flow == Flow::Handled {
         (cfg.get_mut)(s).1.pending = None;
-        true
+        KeyTaken::ByController
     } else {
-        false
+        KeyTaken::No
     }
 }
 

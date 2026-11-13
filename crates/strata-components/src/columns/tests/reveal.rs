@@ -5,7 +5,7 @@
 //! and under Rune's reduced motion every glide lands at once anyway (`scroll_to_with` snaps), so
 //! only a host like this one shows the view choosing the instant scroll itself.
 
-use rune::{Cx, El, Env, Runtime, Tx, col};
+use rune::{Cx, El, Env, Key, KeyEvent, Mods, Runtime, Tx, col};
 use strata_kit::look::Look;
 
 use super::super::*;
@@ -40,6 +40,8 @@ struct Host {
     sources: Sources,
     columns: ColumnsState,
     look: Look,
+    /// Whether the host's hook takes each key ahead of the columns.
+    takes_keys: bool,
 }
 
 fn listing(depth: u64) -> ListSource {
@@ -70,6 +72,7 @@ fn view_of() -> ColumnsView<Host> {
             look: &s.look,
         },
     )
+    .collection(|_, _, column| column.before_keys(|s: &mut Host, _, _| s.takes_keys))
 }
 
 fn view(s: &Host, _: &mut Cx<Host>) -> El {
@@ -85,6 +88,7 @@ fn host(animations: bool) -> Runtime<Host> {
         sources: Sources(Vec::new()),
         columns: ColumnsState::new("t", Autoscroll::new()),
         look,
+        takes_keys: false,
     };
     let mut tx = Tx::default();
     for depth in 0..3 {
@@ -135,4 +139,42 @@ fn with_animations_off_the_reveal_lands_at_once() {
         on[0] > 0.0 && on[0] < 400.0,
         "the same reveal glides with them on: {on:?}"
     );
+}
+
+/// The strip's offset after Down in a clipped third column that became active without a
+/// reveal, with the host's hook taking the key or leaving it to the column.
+fn offset_after_down(host_takes: bool) -> (f32, Option<EntryId>) {
+    let mut rt = host(false);
+    rt.update(|s, tx| {
+        s.takes_keys = host_takes;
+        s.columns.set_active_quiet(2);
+        tx.focus("t", false);
+    });
+    rt.frame(DT);
+    assert_eq!(rt.state.columns.strip_offset(), 0.0);
+
+    rt.key(KeyEvent {
+        key: Key::Down,
+        mods: Mods::default(),
+    });
+    rt.frame(DT);
+    rt.frame(DT);
+
+    let cursor = rt
+        .state
+        .columns
+        .column(2)
+        .and_then(|c| c.collection.selection.cursor());
+    (rt.state.columns.strip_offset(), cursor)
+}
+
+/// Strata reveals a column when its cursor or the active column changes, not for a key
+/// (`reveal_column` in `strip_scroll.rs`), so a key the host's hook took leaves the strip.
+#[test]
+fn a_key_the_hosts_hook_took_moves_no_cursor_and_does_not_reveal_the_column() {
+    let (offset, cursor) = offset_after_down(false);
+    assert!(cursor.is_some(), "the column's own Down places the cursor");
+    assert_eq!(offset, 400.0, "and the strip shows the column");
+
+    assert_eq!(offset_after_down(true), (0.0, None));
 }

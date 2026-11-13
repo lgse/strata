@@ -35,7 +35,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 
 use crate::{
-    App, events,
+    App, commands, events,
     listing::{Column, Load, Words},
     menus::{self, Request},
     pane::{Applied, Pane},
@@ -163,13 +163,14 @@ fn source<V: SinglePane>(app: &App) -> (&dyn EntrySource, &CollectionState) {
 /// component adds its own parts.
 pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     let single = V::single(app);
-    let collection = Collection::new(
+    // The registry reads a key ahead of the view's own.
+    let collection = commands::in_view(Collection::new(
         V::KEY,
         source::<V>,
         |app: &mut App| V::single_mut(app).pane.parts_mut(),
         |app: &App| &app.look,
         |app: &App| pane::<V>(app).version(),
-    )
+    ))
     .name(title::<V>(app))
     .description(described::<V>(app))
     .settings(single.keys.clone())
