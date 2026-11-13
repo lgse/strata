@@ -28,13 +28,13 @@ use strata_components::{
         keyboard::{KeySettings, Keyboard},
         marquee::Marquee,
         pointer::{ClickCount, ClickModes, PointerIntent, PointerSettings},
-        selection::AnchorRule,
     },
     contract::{Direction, EntryId, EntrySource},
     rename::{By, Initial, Polled},
 };
 use strata_core::i18n::tr;
 
+use self::first_visit::FirstVisit;
 use crate::{
     App, commands, events,
     listing::{Column, Load, Words},
@@ -59,10 +59,8 @@ pub(crate) struct Single {
     entries: String,
     /// What the pane says while it shows no entry.
     surface: Surface,
-    /// Another folder shows and nothing has put a cursor in it yet: once its first rows are
-    /// in, the first one takes the cursor, as a GTK list view focuses its first row when it
-    /// takes the keyboard with none.
-    first_visit: bool,
+    /// Another folder shows, until its load ends or the user's input reaches the pane.
+    first_visit: FirstVisit,
 }
 
 fn clicks(count: u8) -> ClickCount {
@@ -98,7 +96,7 @@ impl Single {
             described,
             entries: tr("Files"),
             surface: Surface::translated(),
-            first_visit: false,
+            first_visit: FirstVisit::default(),
         }
     }
 }
@@ -169,14 +167,17 @@ fn source<V: SinglePane>(app: &App) -> (&dyn EntrySource, &CollectionState) {
 /// component adds its own parts.
 pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     let single = V::single(app);
-    // The registry reads a key ahead of the view's own.
-    let collection = commands::in_view(Collection::new(
-        V::KEY,
-        source::<V>,
-        |app: &mut App| V::single_mut(app).pane.parts_mut(),
-        |app: &App| &app.look,
-        |app: &App| pane::<V>(app).version(),
-    ))
+    // The registry reads a key ahead of the view's own, and a first visit hears it first.
+    let collection = commands::in_view_with(
+        Collection::new(
+            V::KEY,
+            source::<V>,
+            |app: &mut App| V::single_mut(app).pane.parts_mut(),
+            |app: &App| &app.look,
+            |app: &App| pane::<V>(app).version(),
+        ),
+        interrupted::<V>,
+    )
     .name(title::<V>(app))
     .description(described::<V>(app))
     .settings(single.keys.clone())
@@ -190,6 +191,11 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
         Some(description.to_owned())
     }))
     .empty(shown_status::<V>)
+    .on_press(|app: &mut App, _, _| interrupted::<V>(app))
+    .on_wheel(|app: &mut App, _, _| {
+        interrupted::<V>(app);
+        false
+    })
     .on_intent(heard::<V>)
     .on_cursor(|app: &mut App, _, tx| moved(app, tx))
     .on_selection(moved);
@@ -214,37 +220,22 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El) -> El {
         .child(component)
 }
 
-/// One poll of what the view says while it shows no entry: a read is announced once it
-/// outlasts GTK's grace period. True when the view has to run.
+/// One poll of what the view says while it shows no entry, a read announced once it outlasts
+/// GTK's grace period, and of a first visit whose load ended. True when the view has to run.
 pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-    let single = V::single_mut(app);
-    let placed = first_visit(single);
-    let Single { pane, surface, .. } = single;
+    let Single {
+        pane,
+        surface,
+        first_visit,
+        ..
+    } = V::single_mut(app);
+    let placed = first_visit.settle(pane);
     surface.watch(std::iter::once(pane.listing()), clock, tx) | placed
 }
 
-/// A folder another view or a pointer opened shows with no cursor, where the browser placed
-/// none: GTK's list view, taking the keyboard, focuses its first row then, with nothing
-/// selected. Once the first rows are in, the first row shown takes the cursor. A cursor the
-/// browser or the user placed first stays. True when it placed one.
-fn first_visit(single: &mut Single) -> bool {
-    if !single.first_visit {
-        return false;
-    }
-    let (source, collection) = single.pane.parts_mut();
-    if collection.selection.cursor().is_some() {
-        single.first_visit = false;
-        return false;
-    }
-    if source.is_empty() {
-        return false;
-    }
-    let _ = collection
-        .selection
-        .move_cursor(source, 0, AnchorRule::Move);
-    collection.note_selection(source);
-    single.first_visit = false;
-    true
+/// The user's input reached the view's pane: a first visit leaves the cursor to them.
+fn interrupted<V: SinglePane>(app: &mut App) {
+    V::single_mut(app).first_visit.interrupt();
 }
 
 /// What reads the view's share of each event out of the browser.
@@ -258,7 +249,7 @@ pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> 
                 let single = V::single_mut(app);
                 if single.pane.apply(change, tx) == Applied::Entered {
                     // The GTK window gives a new listing the keyboard.
-                    single.first_visit = true;
+                    single.first_visit.arm();
                     tx.focus(V::KEY, false);
                 }
                 true
@@ -398,6 +389,8 @@ pub(crate) fn lists<V: SinglePane>(app: &App) -> Vec<String> {
         None => Vec::new(),
     }
 }
+
+mod first_visit;
 
 #[cfg(test)]
 mod tests;
