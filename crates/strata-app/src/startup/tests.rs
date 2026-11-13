@@ -32,6 +32,21 @@ fn a_window_matches_and_labels_catalog_keys_without_a_toolkit() {
     );
 }
 
+#[test]
+fn a_window_reads_keys_the_code_does_not_declare_as_gdk_does() {
+    crate::test_support::hosted(
+        MODULE,
+        "a_window_reads_keys_the_code_does_not_declare_as_gdk_does",
+        |_| {
+            let play = Key::from_name("AudioPlay").expect("a vendor key's name");
+            assert_eq!(play.name().as_deref(), Some("AudioPlay"));
+            assert_eq!(Key::from_char('ψ').name().as_deref(), Some("Greek_psi"));
+            assert_eq!(Key::Cyrillic_ES.to_lower(), Key::Cyrillic_es);
+            assert_eq!(Key::from_name("guillemetleft"), None);
+        },
+    );
+}
+
 /// Some other key library, as a process that linked two interfaces would have.
 struct Foreign;
 
