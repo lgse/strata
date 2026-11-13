@@ -42,9 +42,8 @@ host = "offscreen"
 scenario = "list-column-resize-tracks-pointer"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8: a List heading's parent is the heading strip, where GTK's is the heading's cell, so the drag at its edge (line 8) misses the column's edge: C4's tree or the QA backend's locator (line 9)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "returning-to-columns-follows-selection"
