@@ -27,6 +27,7 @@ pub(crate) struct Ids(Rc<RefCell<Table>>);
 impl Ids {
     /// The id the entry at `location` has been given, if it has been: a reader that must not
     /// issue one, such as the QA backend, asks this.
+    #[cfg(feature = "qa")]
     pub(crate) fn known(&self, location: &Location) -> Option<EntryId> {
         self.0.borrow().by_location.get(location).copied()
     }

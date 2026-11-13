@@ -28,8 +28,8 @@ pub(crate) struct Kept {
 }
 
 impl Kept {
-    /// Kept as of the browser's `count`th replacement.
-    pub(super) fn as_of(self, count: u64) -> Self {
+    /// Kept after the browser's `count`th replacement.
+    pub(super) fn after(self, count: u64) -> Self {
         Self {
             since: count,
             ..self

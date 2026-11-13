@@ -347,7 +347,7 @@ impl Backend for Rune {
     }
 
     fn keep(&self, node: &Node) -> Kept {
-        self.snapshot().keep(node).as_of(self.replacements.now())
+        self.snapshot().keep(node).after(self.replacements.now())
     }
 
     /// A row its column has been replaced in since is another row, as on GTK.
