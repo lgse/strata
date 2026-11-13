@@ -19,13 +19,16 @@ use strata_core::{i18n::tr, util::DateFormat};
 use strata_desktop::settings::Preferences;
 
 use crate::{
+    App,
     fills::{Details, Fills},
     single::{Made, Single},
+    slots::Later,
 };
 
 mod columns;
 mod dates;
 mod part;
+mod thumbs;
 mod view;
 
 /// The table's key: its collection's, and the element that takes the keyboard. Every
@@ -48,6 +51,8 @@ pub(crate) struct List {
     relative_dates: bool,
     /// When the relative dates read again.
     dates: dates::Dates,
+    /// The rows' thumbnails, from the window's store.
+    thumbs: thumbs::Thumbs,
 }
 
 /// The keys of the List table. Every row is at the pane's left edge (`at_left_edge` in
@@ -64,7 +69,7 @@ fn keys(typing: bool) -> KeySettings {
 }
 
 impl List {
-    fn with_settings(settings: &Preferences) -> Self {
+    fn with_settings(settings: &Preferences, later: Later<App>) -> Self {
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
         // `explorer_file_clicks` and `explorer_folder_clicks`: the List view's.
@@ -84,6 +89,7 @@ impl List {
             fills: Fills::new(Details::Folders),
             relative_dates: DateFormat::parse(&settings.date_format) == DateFormat::Relative,
             dates: dates::Dates::default(),
+            thumbs: thumbs::Thumbs::new(later),
         }
     }
 }
