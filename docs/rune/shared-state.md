@@ -20,7 +20,7 @@ the files on disk keep their format and their place.
 
 | Store | State | Shared part | What `src/ui` keeps |
 | --- | --- | --- | --- |
-| Per-folder views | The model moved, and the file code: its path, the read at start-up and the save. The store has not: when a save is scheduled, the monitors, the notices | `strata_desktop::settings::folder_views` and `settings::folder_view_file` | `src/ui/preferences/folder_view_settings.rs`: `FolderViewStore` and the manager's methods |
+| Per-folder views | Moved: the model, the file code, and the store that holds the values and the bookkeeping of a write. When a write is scheduled, the monitors, the values of folders in the trash, the manager's methods and the notices have not | `strata_desktop::settings::folder_views`, `settings::folder_view_file` and `settings::FolderViewStore` | `src/ui/preferences/folder_view_settings.rs`: a wrapper around the store with the timer, the monitors and the trashed values, and the manager's methods |
 | Tab sessions | Moved, whole | `strata_desktop::tabs_session` | One import in `src/ui/mod.rs`. When to save and how to restore stay in `src/ui/window/composition/tabs.rs` |
 | Key catalog | Moved, behind a backend seam: the key and modifier types, the catalog, the command registry and `Keymap`, `KeyPress` and its normalizer, the alias rewrite and the labels. Reading a GDK event, GTK's own effect for an alias, capture, composition and the conflict check have not | `strata_desktop::keys` | `src/ui/keys/`: the reader and the old names (`mod.rs`), the GDK backend, and `alias.rs`, `capture.rs`, `composition.rs` and `conflicts.rs` with every test |
 | `PreferenceManager` | The save bookkeeping moved. The manager, its getters and setters, its bindings and its notices have not | The schema, from V5b, and `strata_desktop::settings::Saving` | `src/ui/preferences.rs` and the files under it, with `persistence.rs` as the wrapper around `Saving` |
@@ -85,35 +85,94 @@ after it, as text, into a new file beside the model:
 They use `strata-core` and the model, and no GTK or GLib, and nothing in the file
 schedules. They are the store's tools, not an interface's:
 
-- **Nothing but the GTK application's `FolderViewStore` calls them until the shared store
-  lands.** `save_folder_views` merges the caller's unsaved changes over the file, so two
-  writers in one process would each save without the other's.
-- **`load_folder_views` is called once in a process,** at start-up, by whoever owns the
-  store. It notes the file's stamp with the settings writer, which is how a later re-read
-  tells another process's write from this one's. A second call notes the stamp again, and a
-  change another process made before it is never adopted.
-- **A part of the Rune interface waits for the store** and does not read
-  `FolderViews::view` itself. On GTK a folder's saved view is read behind
-  `remembered_key`, which answers nothing while `remember_folder_views` is off, and behind
-  the key rules of `key_for_location`. The store carries that gate; the model does not.
+- **Nothing but the shared store calls them.** `save_folder_views` merges the caller's
+  unsaved changes over the file, so two writers in one process would each save without the
+  other's.
+- **`load_folder_views` is called once in a process,** at start-up, by the store. It notes
+  the file's stamp with the settings writer, which is how a later re-read tells another
+  process's write from this one's. A second call notes the stamp again, and a change another
+  process made before it is never adopted.
 
-What stayed in `src/ui/preferences/folder_view_settings.rs` is the store:
+Five tests in `settings/folder_view_file/tests.rs` hold the two directly, each in a process
+of its own with a state directory it can discard: loading with and without a file; a file
+that cannot be read; a save that writes the snapshot and keeps what another process saved;
+a save that never overwrites a file it cannot read; and a save that stands back for another
+process's lock, except at exit.
 
-- `FolderViewStore`: the values in memory, the save timer, the two monitors that follow
-  what another process saved, and the session's values of trashed folders;
-- the two delays, and `schedule_folder_views_write` with its timer;
-- the `PreferenceManager` methods that resolve a folder's sort, change the values, start a
-  write and take its result, adopt what a monitor found, publish the change to bindings and
-  show the notices.
+### The store: `strata_desktop::settings::FolderViewStore`
 
-Three log lines moved with the file code and are now logged under
+`settings/folder_view_store.rs` is a new file. Like `Saving`, the store is bookkeeping with
+no clock and no `RefCell`: an interface holds one for the process, changes the values, and
+decides when to write.
+
+| | |
+| --- | --- |
+| `FolderViewStore::load()` | Reads the file, once in a process, at start-up |
+| `views()`, `views_mut()` | The values, to read and to change. The model counts each change, so the store needs no telling |
+| `load_failure()` | Why saving is off for the session: the file was there and could not be read |
+| `begin_write(exit) -> Result<PendingWrite, UnreadableAtStartup>` | Starts a write of the values as they are, on the settings writer's thread. The error is the reason saving is off, for the interface to show; it borrows nothing from the store |
+| `PendingWrite::finished().await -> Written` | The interface awaits the write where it awaits things. `Busy`: another process was saving. `Failed`. `Saved { merged, write }`: written, with what another process had saved if it differs |
+| `adopt(saved) -> bool` | Merges this store's unsaved changes over another process's values, and says whether the values changed |
+| `finish_write(write)` | Counts the changes that write carried as saved. Changes made since stay unsaved |
+| `FolderViewStore::reread().await` | Reads the file again when it changed under the process: the values to adopt, or nothing |
+| `FOLDER_VIEWS_SAVE_DELAY`, `FOLDER_VIEWS_USE_SAVE_DELAY` | 500 ms after a change, 60 s after a folder was only opened |
+
+Its bodies are the GTK store's, moved as text: the snapshot and the write of
+`write_folder_views`, the three results of `folder_views_saved`, the merge of
+`adopt_folder_views`, and the re-read of `merge_folder_views_saved_elsewhere`.
+
+**The rules every interface keeps to**, because the GTK application does, are in the
+file's module docs: one store for the file in a process; one timer, on which a pending write
+keeps its time unless a shorter wait is asked for; `Busy` tried again after the save delay;
+a last write at exit, with `exit` set; and a write that reached the file settled in three
+steps, in order: note the save, adopt what came back and show it, then `finish_write`. GTK
+shows an adoption before it counts the write as saved, and the two calls keep that order
+for it and give the same order to any other interface.
+
+**When a write is scheduled stays in each interface,** by the orchestrating session's
+ruling (the owner's to confirm, in
+[`parity/owner.md`](parity/owner.md#b2-shared-state-out-of-the-gtk-package)): GTK keeps its
+GLib timer, and a Rune part arms its own from its loop, with the two delays above.
+
+**What the store does not carry is the policy around the values**, which stays in the
+manager's methods and is the Rune side's to meet when a package needs it
+([`parity/packages/A8.md`](parity/packages/A8.md), [`A10.md`](parity/packages/A10.md)):
+
+- the gate: a folder's saved view is read and written only while `remember_folder_views`
+  is on (`remembered_key`), and only for a location `key_for_location` gives a key;
+- what is stored: a sort or a size equal to the default is not stored, and a change of a
+  default prunes the values that now equal it;
+- what follows a folder that is renamed, moved, trashed, restored or found deleted.
+
+Six tests in `settings/folder_view_store/tests.rs` hold the protocol, each in a process of
+its own, with a write's result polled by hand: a change counts as saved when its write is
+finished and not before; a change made while a write is out stays unsaved; a file
+unreadable at start-up is never written over; what another process saved is adopted under
+this process's unsaved changes; a write brings back what another process saved meanwhile;
+and a write that finds another process saving is still owed.
+
+### What stayed in `src/ui/preferences/folder_view_settings.rs`
+
+- **GTK's `FolderViewStore`, now a wrapper:** the shared store in a `RefCell`, the save
+  timer, the two monitors that follow what another process saved, and the session's values
+  of trashed folders.
+- **`schedule_folder_views_write` with its timer,** line for line.
+- **Every `PreferenceManager` method:** the ones that resolve a folder's sort and change the
+  values, with the policy above, and the ones that start a write and take its result, adopt
+  what a monitor found, publish the change to bindings and show the notices. They call the
+  store where they held the values.
+
+`src/ui/preferences/trashed.rs` (`TrashedValues`) stayed too, and the wrapper holds the
+trashed folders' values, not the store. Nothing forced it to move: the store compiles
+without it, its other user is `item_customizations.rs`, which stays, and what it keeps is
+for the session only and is never written to the file. It moves with the first Rune package
+that restores a folder from the trash.
+
+Three log lines moved with the file code and are logged under
 `strata_desktop::settings::folder_view_file`: the two warnings of a file with invalid
 entries and of a file that cannot be loaded, and the debug line of a save made unlocked.
 `RUST_LOG=strata=…` still covers them; a filter on `strata::ui::preferences` does not
-([workspace.md](../workspace.md#log-targets)).
-
-`src/ui/preferences/trashed.rs` (`TrashedValues`) stayed too. Its users are
-`folder_view_settings.rs` and `item_customizations.rs`, which both stay.
+([workspace.md](../workspace.md#log-targets)). The store logs nothing.
 
 `src/ui/preferences.rs` imports `folder_views` at its old name. No other file of the
 application changed.
@@ -548,7 +607,10 @@ Where each file is:
 | --- | --- |
 | `src/ui/preferences/folder_views.rs`, `folder_views/keys.rs`, `folder_views/tests.rs` | The file of the same name under `crates/strata-desktop/src/settings/` |
 | `mod folder_views;` in `src/ui/preferences.rs` | `use strata_desktop::settings::folder_views;` in the same file |
-| `src/ui/preferences/folder_view_settings.rs` | The same file as on `main`, less the file code and with the lines the rows on `Saving` below name. Git keeps pairing it with `main`'s by its path |
+| `src/ui/preferences/folder_view_settings.rs` | The same file as on `main`, less the file code and the store's bodies, and with the lines the rows on `Saving` below name. Git keeps pairing it with `main`'s by its path. The methods read the values through the store: `store.shared.borrow().views()` and `.views_mut()` where `main` has `store.views.borrow()`, and `.load_failure()` where `main` has `store.load_failure` |
+| In that file on `main`: `SAVE_DELAY`, `USE_SAVE_DELAY`, the snapshot and `writer::run` in `write_folder_views`, the three arms of `folder_views_saved`, the merge in `adopt_folder_views`, the `writer::reread` in `merge_folder_views_saved_elsewhere` | `crates/strata-desktop/src/settings/folder_view_store.rs`. A change from `main` to one of them conflicts in `folder_view_settings.rs`, against lines that are gone or rewritten, and is applied to the store by hand; a change to what GTK does around them (a notice, a publish, the timer) stays in the wrapper |
+| New code from `main` in that file, or in `src/ui/preferences.rs`, that uses an import the moves dropped: `fs`, `io`, `PathBuf`, `file_stamp`, `lock_saves`, `read_state_file`, `FolderViewsSave`, `load_folder_views`, `save_folder_views`, `libc` | It merges clean and does not build. Code that reads or writes the file belongs in `folder_view_file.rs`, and code that keeps the values or settles a write in `folder_view_store.rs`: apply it there. Code that is GTK's own stays, with its import put back |
+| New code from `main` that reads `store.views` or `store.load_failure` | It merges clean and does not build: read through the store, as the row above says |
 | In that file on `main`: `FILE_NAME`, `EXIT_LOCK_WAIT`, `folder_views_path`, the read in `FolderViewStore::load`, `FolderViewsSave`, `save_folder_views` | `crates/strata-desktop/src/settings/folder_view_file.rs`. A change from `main` to one of them conflicts in `folder_view_settings.rs`, against lines that are gone, and is applied to the new file by hand |
 | `src/ui/preferences/trashed.rs` | The same file as on `main` |
 | `src/ui/tabs_session.rs`, `tabs_session/tests.rs` | The file of the same name under `crates/strata-desktop/src/` |

@@ -3,9 +3,8 @@
 //! `folder-views.toml` on disk: where it is, the read at start-up, and the save that merges
 //! over what another Strata process wrote. [`super::folder_views`] is what the file holds.
 //!
-//! Nothing here schedules, and these are the store's tools, not an interface's. Until the
-//! shared store lands, the one caller of each is the GTK application's `FolderViewStore`
-//! (`src/ui/preferences/folder_view_settings.rs`): it holds the unsaved changes a save merges
+//! Nothing here schedules, and these are the store's tools, not an interface's. The one
+//! caller of each is [`super::FolderViewStore`]: it holds the unsaved changes a save merges
 //! in and the file's stamp, and a second caller in the process would lose the first's.
 
 use std::{
@@ -69,8 +68,8 @@ pub enum FolderViewsSave {
 
 /// An unreadable file, or one from a newer version, must not be overwritten.
 ///
-/// For the store alone, on the settings writer's thread. Nothing but the GTK application's
-/// `FolderViewStore` calls it until the shared store lands: `snapshot` carries the unsaved
+/// For the store alone, on the settings writer's thread. Nothing but
+/// [`super::FolderViewStore`] calls it: `snapshot` carries the unsaved
 /// changes that are merged over the file, and two writers in one process would each save
 /// without the other's.
 pub fn save_folder_views(path: &Path, snapshot: FolderViews, exit: bool) -> FolderViewsSave {
@@ -110,3 +109,6 @@ pub fn save_folder_views(path: &Path, snapshot: FolderViews, exit: bool) -> Fold
         Err(error) => FolderViewsSave::Failed(error),
     }
 }
+
+#[cfg(test)]
+pub(super) mod tests;
