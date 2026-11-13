@@ -1,0 +1,5 @@
+{"scenario":"fuzz-columns-v1-0000000000000010","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"Page_Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"k","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
+{"key":"k","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
+{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"field":{"name":"Rename"}}}]}}

@@ -503,6 +503,17 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    and a sidebar-devices package is planned once H5 lands device scenarios. Source: A3's
    closing, 2026-11-13, by the coordinator's ruling.
 
+### F2: Differential mode and Columns pilot
+
+1. **The cursor after a Shift+click** (finding
+   [#2353](https://github.com/lgse/strata/issues/2353)). In Columns, after a Shift+click,
+   GTK's next Down starts from the cursor the click left in place, not from the clicked row,
+   so the user lands two rows lower than expected; GTK draws no outline after the click
+   (`pointer_selection` with Shift, `src/ui/collection_interaction.rs`). Rune starts from the
+   clicked row. Should Rune copy GTK, or keep the clicked row? Meanwhile: Rune keeps its
+   behaviour, and the fuzz seeds that meet it are parked against the finding. Source: F2's
+   pilot triage, 2026-11-13, by the coordinator's ruling.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

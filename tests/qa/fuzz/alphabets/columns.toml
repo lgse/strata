@@ -26,9 +26,16 @@
 #   same way twice (lgse/strata#2173).
 # - Space and the preview (A15's), typed search and the filter (A10's), new items, the Trash,
 #   delete and undo (`entries.toml`, A7's), the clipboard (A12's), view switches (A8's).
+# - Ctrl+A, on lgse/strata#2351's account: after it GTK draws its cursor on the last entry, as
+#   Rune does, but its focus and QA snapshot stay on the row before, so every Ctrl+A would
+#   differ in what is reported and in nothing a user sees. It comes back once GTK's reporting
+#   is fixed on `main`, or the owner rules otherwise.
+# - Shift+Home, Shift+End and Shift+Left in the rename editor, on lgse/strata#2350's account:
+#   GTK's QA snapshot reports the caret at the selection's fixed end, where the editor's caret
+#   is at the end that moved, as on Rune. They come back once that report is fixed on `main`.
 area = "columns"
-version = 1
-about = "Columns on the canonical fixture, type to search off: keyboard navigation with the arrows, h, j, k and l, Home, End and the page keys, selection by Shift, Ctrl+A, clicks and Ctrl and Shift clicks by name, folders opened by Return, renames by F2, by the menu and by the Menu key with the editor's own keys, hidden files, and files made and removed behind the application's back"
+version = 2
+about = "Columns on the canonical fixture, type to search off: keyboard navigation with the arrows, h, j, k and l, Home, End and the page keys, selection by Shift, clicks and Ctrl and Shift clicks by name, folders opened by Return, renames by F2, by the menu and by the Menu key with the editor's own keys, hidden files, and files made and removed behind the application's back"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
 [[action]]
@@ -66,11 +73,6 @@ name = "extend"
 weight = 5
 steps = ['{"key":"shift+<key>","when":{"not":{"field":{"name":"Rename"}}}}']
 choose.key = ["Down", "Up", "Home", "End"]
-
-[[action]]
-name = "select-all"
-weight = 1
-steps = ['{"key":"ctrl+a","when":{"not":{"field":{"name":"Rename"}}}}']
 
 [[action]]
 name = "escape"
@@ -129,13 +131,13 @@ steps = [
   '{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}',
 ]
 
-# The editor's own keys: the caret, a selection, and the arrows and page keys GTK's list
-# takes while a name is edited.
+# The editor's own keys: the caret, deletion, and the arrows and page keys GTK's list takes
+# while a name is edited. No Shift selection: see lgse/strata#2350 at the top.
 [[action]]
 name = "editor-key"
 weight = 5
 steps = ['{"key":"<key>","when":{"field":{"name":"Rename","focused":true}}}']
-choose.key = ["Left", "Right", "Home", "End", "shift+Home", "shift+End", "shift+Left", "BackSpace", "Delete", "Up", "Down", "Page_Down", "Page_Up"]
+choose.key = ["Left", "Right", "Home", "End", "BackSpace", "Delete", "Up", "Down", "Page_Down", "Page_Up"]
 
 [[action]]
 name = "editor-type"

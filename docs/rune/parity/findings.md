@@ -644,3 +644,111 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside. The fix, for whoever meets it: a published-count accessor on
   `Browser`, so that a rebuild copies only what has been published. GTK's fix, if taken up,
   lands on `main`.
+
+### #2350: GTK's QA snapshot reports a rename field's caret at the selection's fixed end
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2350), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). After Shift+Home or Shift+Left
+  in a rename editor, GTK's snapshot gives the caret at the selection's fixed end
+  (`Editable::position()`, `read_field` in `src/qa/state.rs`); Rune's gives the end that
+  moved. By behaviour the two editors agree: Shift+Right then shrinks the selection from its
+  start on both, and a typed character replaces the same text. So only GTK's report is wrong.
+- **Concerns:** seeds `0x08` and `0x0e` of `columns v1`, shrunk to 4 steps and parked in
+  `tests/qa/fuzz/corpus/columns/`; any check of `field.caret` while a selection is held.
+- **State:** open, set aside. The fix is `main`'s, in `src/qa/state.rs`, placed by the
+  coordinator. Meanwhile `columns v2` keeps Shift+Home, Shift+End and Shift+Left out of its
+  rename editor, the reason it is narrower; they come back with the fix.
+
+### #2351: after Ctrl+A in Columns, GTK reports the old row while its cursor is on the last
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2351), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). After Ctrl+A, GTK draws its
+  cursor on the column's last entry and the next arrow moves from there, as Rune does, but
+  GTK's focused widget and its snapshot's `focused` stay on the row that had focus
+  (`select_all` and `focus_surface`, `src/ui/browser/view_state.rs`). Checked by hand: the
+  screen and the next key agree on both targets.
+- **Concerns:** seeds `0x02`, `0x04`, `0x05`, `0x09` and `0x0c` of `columns v1`; `0x02`
+  shrunk to 2 steps (Shift+click, Ctrl+A) and parked in `tests/qa/fuzz/corpus/columns/`.
+- **State:** open, set aside, by the coordinator's ruling (2026-11-13): no Rune change. It is
+  the reason `columns v2` has no Ctrl+A; Ctrl+A comes back once GTK's report is fixed on
+  `main`, or the owner rules otherwise.
+
+### #2353: after a Shift+click in Columns, GTK's next Down starts from the old cursor
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2353), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). After a Shift+click, GTK
+  focuses the clicked row with no outline drawn, but its next Down, or Shift+Down, starts
+  from the cursor the click left in place (`pointer_selection` with Shift,
+  `src/ui/collection_interaction.rs`), so the user lands two rows lower than expected. Rune
+  starts from the clicked row.
+- **Concerns:** seed `0x0d` of `columns v1` (shrunk to 5 steps) and seed `0x09` of
+  `columns v2`, parked in `tests/qa/fuzz/corpus/columns/`.
+- **State:** open, waiting for the owner ([`owner.md`](owner.md), F2 item 1). Meanwhile Rune
+  keeps the clicked row, and the seeds stay parked.
+
+### #2354: Rune loses the Shift anchor across a refresh
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2354), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). Down, Shift+Up, F5, Shift+Down:
+  GTK selects `[documents]`, extending from the anchor the shared `Browser` keeps by
+  location; Rune selects `[archive, documents]`, because `handover::adopt`
+  (`crates/strata-app/src/handover.rs`) restores the browser's marks, which carry no
+  anchor, with the cursor as the anchor. The same path serves List and Icons.
+- **Concerns:** seed `0x14` of `columns v1`, shrunk to 4 steps and parked in
+  `tests/qa/fuzz/corpus/columns/`.
+- **State:** open, F2's to fix (a `contract` pull request on `handover.rs`).
+
+### #2355: Rune's right-click moves the Shift anchor, GTK's does not
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2355), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). Right-click `documents`,
+  Escape, Shift+click `documents`: GTK selects `[archive, documents]`, since its right-click
+  (`focus_context_entry`, `src/ui/browser/context_menu/focus.rs`) never moves the anchor;
+  Rune selects `[documents]`, since the collection component's secondary press selects with
+  `select_only` (`crates/strata-components/src/collection/pointer/machine.rs`).
+- **Concerns:** seeds `0x12` and `0x07` of `columns v1` (shrunk to 3 and 10 steps) and seed
+  `0x0f` of `columns v2`, parked in `tests/qa/fuzz/corpus/columns/`.
+- **State:** open, F2's to fix in C1e (a `contract` pull request), by the coordinator's
+  ruling to follow GTK, once GTK's List and Icons are checked.
+
+### #2356: a click on an open folder enters its first entry on GTK, only its column on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2356), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). With `pictures` selected and
+  its column open, a click on it moves GTK's focus to `diagram.txt`, in 24 GTK replays of
+  24, so not [#2180](https://github.com/lgse/strata/issues/2180)'s race; Rune focuses the
+  column with no entry, since the Columns part places a cursor only when the browser adds a
+  column.
+- **Concerns:** seed `0x10` of `columns v1`, shrunk to 4 steps and parked in
+  `tests/qa/fuzz/corpus/columns/`.
+- **State:** open, F2's to fix in the Columns part.
+
+### #2357: Up, Down or Page Down in the rename editor commits on GTK, not on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2357), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). On GTK the key leaves the
+  editor: the rename is committed with what was typed and the cursor moves as the key would
+  in the column. On Rune the editor keeps the keyboard, moves its caret, and nothing is
+  renamed. The calibration survey met it too.
+- **Concerns:** seeds `0x02`, `0x0c`, `0x12` and `0x14` of `columns v2`, parked in
+  `tests/qa/fuzz/corpus/columns/`.
+- **State:** open, proposed as F2's to fix in its own pull request, for the coordinator to
+  confirm.
+
+### #2358: Rune's entry menu shows Open on a selection of folders and files
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2358), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). On a selection that mixes
+  folders and files, GTK's entry menu has no "Open" row and Rune's has one, between "New
+  Folder with Selection" and "Open With…". The calibration survey met it too.
+- **Concerns:** seeds `0x10` and `0x11` of `columns v2`, parked in
+  `tests/qa/fuzz/corpus/columns/`.
+- **State:** open, [A6](packages/A6.md)'s (menus), noted in its file.

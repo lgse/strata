@@ -1,0 +1,4 @@
+{"scenario":"fuzz-columns-v1-0000000000000012","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"documents"},"button":3,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Escape","when":{"present":{"menu_item":"Rename"}}}
+{"click":{"entry":"documents"},"mods":["shift"],"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}
