@@ -3,6 +3,7 @@
 //! The List view as a part of the window: the third of the view slot.
 
 use rune::Tx;
+use strata_components::contract::EntrySource;
 
 use super::{List, VIEW, view};
 #[cfg(feature = "qa")]
@@ -13,6 +14,31 @@ use crate::{
     single::{self, Single, SinglePane},
     slots::{Listener, Part, Place, Setup, View},
 };
+
+/// Asks for the fills the rows near the viewport lack, once a poll, as the Icons view does.
+fn fill(app: &mut App) {
+    let list = &mut app.list;
+    let pane = &list.single.pane;
+    if let (Some(depth), Some(listing)) = (pane.depth(), pane.listing()) {
+        list.fills.request(&app.browser, depth, listing);
+    }
+}
+
+/// Has the rows drawn read their relative dates again every 30 s, as GTK's labels do. True
+/// when they do now.
+fn redate(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let list = &mut app.list;
+    let rows = list
+        .single
+        .pane
+        .listing()
+        .is_some_and(|listing| !listing.is_empty());
+    let tick = list.dates.tick(list.relative_dates && rows, clock);
+    if let Some(wake) = tick.wake {
+        tx.wake_after(wake);
+    }
+    tick.moved
+}
 
 /// Whether the saved `browser_mode` names this view: `list`, or `explorer`, which the GTK
 /// application reads as List too (`src/ui/preferences/stored.rs`).
@@ -70,6 +96,8 @@ impl Part for List {
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = single::poll::<Self>(app, clock, tx);
-        view::ticked(app).tick(app, tx) | said
+        let ticked = view::ticked(app).tick(app, tx);
+        fill(app);
+        ticked | said | redate(app, clock, tx)
     }
 }
