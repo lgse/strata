@@ -536,7 +536,9 @@ fn a_name_half_typed_survives_the_folder_being_read_again() {
             browser.refresh_operation_columns(&[0]);
             let settled = host.run_until(PATIENCE, |_| {
                 browser.column_request_id(0) != before
-                    && browser.column_snapshot(0).is_some_and(|column| !column.loading)
+                    && browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
             });
             assert!(settled, "the column to be read again");
             rest(&mut host);
