@@ -2,6 +2,8 @@
 
 //! Resolves a target to a node, its box on the screen and the point to aim at.
 
+use std::collections::VecDeque;
+
 use super::{
     fields::{field, focused_field},
     lookup::{
@@ -61,9 +63,41 @@ fn ancestors<'a, B: Backend>(backend: &'a B, node: &B::Node) -> impl Iterator<It
     std::iter::successors(backend.parent(node), |above| backend.parent(above))
 }
 
-/// The scroll pane around a pane's entry list.
+/// The scroll pane that scrolls a pane's entries. A list that holds its own (a Rune
+/// collection keeps its scroll viewport inside the node with the list's role) is scrolled by
+/// the one inside it nearest it, even inside another that scrolls sideways (Rune's List
+/// table); any other list by the nearest one around it, as GTK's is by its scrolled window. A
+/// scroll pane inside an entry is never the pane's.
 pub(crate) fn viewport<B: Backend>(backend: &B, container: &B::Node) -> Option<B::Node> {
-    ancestors(backend, container).find(|node| backend.role(node) == "scroll pane")
+    let scrolls = |node: &B::Node| backend.role(node) == "scroll pane";
+    inside_list(backend, container, scrolls)
+        .or_else(|| ancestors(backend, container).find(|node| scrolls(node)))
+}
+
+/// The node under `container` nearest it that `wanted` takes, the first in order among
+/// those as near, without looking inside an entry. The entries are the ones the backend lists
+/// for the container: a GTK row widget carries no mark of its own.
+fn inside_list<B: Backend>(
+    backend: &B,
+    container: &B::Node,
+    wanted: impl Fn(&B::Node) -> bool,
+) -> Option<B::Node> {
+    let entries: Vec<B::Node> = backend
+        .entries(container)
+        .into_iter()
+        .map(|row| row.node)
+        .collect();
+    let mut queue: VecDeque<B::Node> = backend.children(container).into();
+    while let Some(node) = queue.pop_front() {
+        if entries.contains(&node) {
+            continue;
+        }
+        if wanted(&node) {
+            return Some(node);
+        }
+        queue.extend(backend.children(&node));
+    }
+    None
 }
 
 pub fn locate<B: Backend>(

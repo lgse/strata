@@ -5,7 +5,7 @@
 use std::cell::{Cell, RefCell};
 
 use super::super::{
-    Backend, Chord, FieldState, Labels, Mark, Modifier, Orientation, Rect, Scroll, States,
+    Backend, Chord, EntryRow, FieldState, Labels, Mark, Modifier, Orientation, Rect, Scroll, States,
 };
 
 #[derive(Clone, Default)]
@@ -29,6 +29,9 @@ pub(super) struct Fake {
     /// Every input event and action, in the order the engine sent them.
     pub(super) sent: RefCell<Vec<String>>,
     pointer: Cell<(i16, i16)>,
+    /// Nodes the toolkit answers as entries though no mark is on them, as GTK's row widgets
+    /// are: the mark is on their `GtkListItem`, which is no widget.
+    pub(super) rows: Vec<usize>,
 }
 
 pub(super) const WINDOW: usize = 0;
@@ -130,6 +133,16 @@ impl Backend for Fake {
 
     fn mark(&self, node: &usize) -> Option<Mark> {
         self.nodes[*node].mark
+    }
+
+    fn entry(&self, node: &usize) -> Option<EntryRow<usize>> {
+        let row = self.nodes[*node].mark == Some(Mark::Entry) || self.rows.contains(node);
+        row.then(|| EntryRow {
+            node: *node,
+            name: self.name(node),
+            selected: self.states(node).selected,
+            focused: self.states(node).focused,
+        })
     }
 
     fn states(&self, node: &usize) -> States {
