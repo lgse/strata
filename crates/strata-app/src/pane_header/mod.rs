@@ -14,12 +14,11 @@
 //!   (`Browser::back_to`). While it is open the window's commands wait, as under GTK's
 //!   popover ([`Holds::Menu`]).
 //! - **The heading:** the folder's name, described by it, as GTK's heading label is.
-//! - **The Icons view's "Thumbnail size"** button and its popover ([`thumbnail_size`]), in the
-//!   actions row.
+//! - **The Trash's "Empty Trash"** ([`empty_trash`]) and **the Icons view's "Thumbnail size"**
+//!   button and its popover ([`thumbnail_size`]), in the actions row.
 //!
 //! The rest of GTK's header is other packages': the spinner and the truncated listing's hint,
-//! and the other actions after the heading (leftovers, Empty Trash, Refresh, the sort and the
-//! filter). They go in [`bar`]'s `actions` row, in GTK's order (`icons_controls` in
+//! and the other actions after the heading (leftovers, Refresh, the sort and the filter). They go in [`bar`]'s `actions` row, in GTK's order (`icons_controls` in
 //! `src/ui/browser_modes/icons_controls.rs`).
 
 use rune::{Drag, El, KeyEvent, Phase, PointerEvent, Tx, row, text};
@@ -43,6 +42,7 @@ use crate::{
     slots::{Frame, Part, Place, Setup},
 };
 
+pub(crate) mod empty_trash;
 mod history;
 mod thumbnail_size;
 
@@ -51,6 +51,7 @@ mod tests;
 
 /// The header's state: the back history's menu, and a press held on Back.
 pub(crate) struct PaneHeader {
+    labels: Labels,
     menu: ContextMenuState,
     heading: String,
     /// When a press on Back began, on the poll's clock, while it is held.
@@ -60,6 +61,11 @@ pub(crate) struct PaneHeader {
     /// Back's box in window points, where the history opens under it.
     back: [f32; 4],
     thumbnails: thumbnail_size::ThumbnailSize,
+}
+
+/// The header's own words.
+struct Labels {
+    empty_trash: String,
 }
 
 /// One of the three buttons: its key's end, its icon, its name, the key that names it, the
@@ -122,12 +128,14 @@ pub(crate) fn bar(app: &App, view: &str, title: &str) -> El {
         .min_w(0.0)
         .description(title.to_owned());
     // Other packages' actions follow the heading here, in GTK's order (the module docs).
-    let actions = row().key(format!("{view}-header-actions")).items_center();
-    let actions = if view == crate::icons::VIEW {
-        actions.child(thumbnail_size::button(app))
-    } else {
-        actions
-    };
+    // GTK's order: Empty Trash, then the Icons view's thumbnail size.
+    let mut actions = row().key(format!("{view}-header-actions")).items_center();
+    if let Some(button) = empty_trash::button(app, view) {
+        actions = actions.child(button);
+    }
+    if view == crate::icons::VIEW {
+        actions = actions.child(thumbnail_size::button(app));
+    }
     row()
         .key(format!("{view}-header"))
         .w_full()
@@ -256,6 +264,9 @@ impl Part for PaneHeader {
     fn new(_: &Setup<'_>) -> Self {
         Self {
             menu: ContextMenuState::default(),
+            labels: Labels {
+                empty_trash: tr("Empty Trash"),
+            },
             heading: tr("BACK TO"),
             held: None,
             swallow: false,
