@@ -49,6 +49,17 @@ impl Columns {
         Some(polled)
     }
 
+    /// Scrolls the row of entry `id` in column `depth` into view, just far enough.
+    pub(crate) fn reveal_row(&self, (depth, id): (usize, EntryId), tx: &mut Tx) {
+        let (Some(scope), Some(column)) = (self.scope(depth), self.listings.columns.get(depth))
+        else {
+            return;
+        };
+        if let (Some(index), Some(state)) = (column.index_of(id), self.state.column(depth)) {
+            state.collection.reveal(&scope, column, index, tx);
+        }
+    }
+
     /// One poll of `editor`, against the listing and the viewport of the column its edit is
     /// in. An edit whose column has closed ends, and keeps the name.
     pub(crate) fn tick_rename(&self, editor: &mut RenameState) -> Polled {

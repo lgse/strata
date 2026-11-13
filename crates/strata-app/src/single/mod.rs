@@ -366,6 +366,18 @@ pub(crate) const fn rows<V: SinglePane>() -> Rows<App> {
         // Select All in a single pane is the browser's (`select_all` in
         // `src/ui/browser/view_state.rs`): the view adopts it.
         select_all: |app, depth| app.browser.select_all(depth),
+        reveal: reveal_row::<V>,
+    }
+}
+
+/// Scrolls the row of entry `id` into view, when the pane shows column `depth`.
+fn reveal_row<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) {
+    let pane = &V::single(app).pane;
+    let Some(listing) = pane.listing().filter(|_| pane.depth() == Some(depth)) else {
+        return;
+    };
+    if let Some(index) = listing.index_of(id) {
+        pane.collection().reveal(V::KEY, listing, index, tx);
     }
 }
 
