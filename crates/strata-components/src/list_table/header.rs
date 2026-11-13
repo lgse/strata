@@ -121,8 +121,7 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
             .role("button")
             .label(column.title.clone())
             .sorted(sorted.map(|d| d == SortDir::Ascending))
-            .w(p.w)
-            .min_w(p.w)
+            .w_full()
             .h_full()
             .px(tokens::heading_pad(look))
             .center_y()
@@ -177,7 +176,20 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
                 .a11y_hidden(),
         );
     }
-    h.child(resize_handle(shared, resolved, column, p))
+    let h = h.child(resize_handle(shared, resolved, column, p));
+    // GTK's heading button sits in a box as wide as its column (`list_headings.rs`), heard as
+    // an unnamed panel around it: keyed, this one is a group, its parent in the tree.
+    row()
+        .key(heading_cell_key(id.as_str()))
+        .w(p.w)
+        .min_w(p.w)
+        .h_full()
+        .child(h)
+}
+
+/// The key of the cell around the heading of column `id`.
+fn heading_cell_key(id: &str) -> String {
+    format!("{}-cell", heading_key(id))
 }
 
 /// The heading's drag: a sort click below the threshold (its `on_press` runs it), a reorder
