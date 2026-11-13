@@ -45,6 +45,9 @@ const CLOSING: Duration = Duration::from_secs(5);
 
 pub(crate) struct Replay<'a> {
     pub(crate) loaded: &'a Loaded,
+    /// The target this replay starts, whatever `STRATA_QA_TARGET` says: the differential
+    /// mode replays one sequence on both at once.
+    pub(crate) target: Target,
     pub(crate) manifest: &'a Manifest,
     pub(crate) rest: Rest,
     /// Changes one observation of this replay: `perturb.rs`.
@@ -130,7 +133,7 @@ impl Replay<'_> {
         let name = &self.loaded.scenario.header.scenario;
         let origin = Origin::of(name).ok_or("a sequence is named fuzz-<area>-v<version>-<seed>")?;
         Ok(Header {
-            target: target_name(Target::from_environment()?).to_owned(),
+            target: target_name(self.target).to_owned(),
             sequence: name.clone(),
             alphabet: origin.area,
             version: origin.version,
@@ -308,6 +311,7 @@ pub(crate) fn replay(request: &Replay) -> Result<Replayed, String> {
     let display = Display::start(ground.scratch.path(), &ground.runtime)?;
     let input_log = ground.scratch.path().join(INPUT_LOG);
     let launch = Launch {
+        target: request.target,
         manifest,
         home: &ground.home,
         fixture,
