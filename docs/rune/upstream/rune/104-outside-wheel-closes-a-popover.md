@@ -6,7 +6,7 @@
 | Drafts | A5 of the parity plan (`docs/rune/parity/packages/A5.md`); finding [lgse/strata#2341](https://github.com/lgse/strata/issues/2341) |
 | Affects | A popover made with `El::modal` over a scrolling view: Strata's popovers that GTK closes on an outside scroll (`dismiss_on_outside_scroll` in Strata's `src/ui/scrolling/popover.rs`) |
 | Retires | Nothing: Strata's plain popover is not modal (A5's next pull request) |
-| Checked | By reading at `2a44156` (2026-11-14): `El::modal` (an inert background), `scroll_at_axis` in `runtime/input/pointer.rs` (only nodes that are not inert), and a reviewer's probe of the workaround |
+| Checked | By reading at `2a44156` (2026-11-13): `El::modal` (an inert background), `scroll_at_axis` in `runtime/input/pointer.rs` (only nodes that are not inert), and a reviewer's probe of the workaround |
 | Status | Drafted, not filed, by the coordinator's ruling. Worked around: a popover that is not modal, over a full-window scrim whose `on_wheel` closes it and returns false |
 
 Paste from here.
