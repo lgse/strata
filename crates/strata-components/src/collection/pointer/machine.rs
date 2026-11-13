@@ -423,7 +423,7 @@ fn secondary(press: &Press, entry: Option<(usize, EntryId)>, s: &mut dyn Surface
     if let Some((index, _)) = entry
         && !s.selection().is_selected_at(s.source(), index)
     {
-        apply(s, |sel, src| sel.select_only(src, index));
+        apply(s, |sel, src| sel.select_only_keeping_anchor(src, index));
     }
     s.emit(Outcome::ContextMenu {
         target: entry.map(|(_, id)| id),

@@ -98,7 +98,9 @@
 //! is this one except in recursive search results; that reveal is left to C17 and C18.
 //!
 //! A secondary press selects an unselected entry alone and keeps a selection it lands in, then
-//! asks for the menu ([`Outcome::ContextMenu`]). Where the menu goes is C21's.
+//! asks for the menu ([`Outcome::ContextMenu`]). It moves the cursor and not the Shift anchor,
+//! as Strata's menu does (`focus_context_entry`): a Shift+click after it ranges from where the
+//! anchor was. Where the menu goes is C21's.
 //!
 //! # On the element
 //!

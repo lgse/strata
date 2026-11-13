@@ -722,8 +722,13 @@ sequence only together with the alphabet's version, so the version is part of th
   `select_only` (`crates/strata-components/src/collection/pointer/machine.rs`).
 - **Concerns:** seeds `0x12` and `0x07` of `columns v1` (shrunk to 3 and 10 steps) and seed
   `0x0f` of `columns v3`, parked in `tests/qa/fuzz/corpus/columns/`.
-- **State:** open, F2's to fix in C1e (a `contract` pull request), by the coordinator's
-  ruling to follow GTK, once GTK's List and Icons are checked.
+- **State:** fixed by [F2](packages/F2.md)'s pull request in C1e: a secondary press selects an
+  unselected entry with `Selection::select_only_keeping_anchor`, so the anchor stays where it
+  was in Columns, List and Icons, as GTK's shared `focus_context_entry` leaves it in all three
+  (checked on GTK's List and Icons with the same three steps). Held by C1e's
+  secondary-press test and by a hosted test in each view, `qa::tests::right_click`; the
+  sequences `v1-0x12`, `v1-0x07` and `v3-0x0f` are no longer parked: the corpus replay holds
+  them to agreeing on both targets.
 
 ### #2356: after a click on an open folder, GTK reports a focused row it neither draws nor uses
 

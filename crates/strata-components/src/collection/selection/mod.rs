@@ -430,6 +430,22 @@ impl Selection {
         self.pick(source, index, false)
     }
 
+    /// Selects the entry at `index` alone with the cursor on it, as [`Selection::select_only`]
+    /// does, and leaves the anchor where it was: the selection a context menu opens on, which
+    /// Strata makes without moving the Shift anchor (`focus_context_entry`, finding
+    /// lgse/strata#2355).
+    pub(crate) fn select_only_keeping_anchor<S: EntrySource + ?Sized>(
+        &mut self,
+        source: &S,
+        index: usize,
+    ) -> Changed {
+        let anchor = self.anchor;
+        let mut changed = self.select_only(source, index);
+        self.anchor = anchor;
+        changed.anchor = false;
+        changed
+    }
+
     /// Selects the entry at `index` as a load's automatic pick (provisional), with the
     /// cursor and the anchor on it: the first entry of a new listing, or the folder you came
     /// from. Any explicit operation makes it a real selection or replaces it.

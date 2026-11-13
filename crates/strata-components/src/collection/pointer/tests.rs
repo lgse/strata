@@ -990,9 +990,14 @@ fn a_secondary_press_selects_an_unselected_entry_and_keeps_a_selection_it_lands_
     // browser/context-menu: Right-clicking an entry inside a multi-selection keeps the whole selection.
     let mut r = Rig::double();
     r.select(&[3, 4]);
+    let anchor = r.f.sel.anchor();
+    assert!(anchor.is_some_and(|anchor| anchor != id(6)));
     r.down_with(Button::Secondary, Some(6), Spot::Content, PLAIN);
     assert_eq!(r.selected(), [6]);
     assert_eq!(r.f.sel.cursor(), Some(id(6)));
+    // Strata's menu moves no Shift anchor (`focus_context_entry`): a Shift+click after it
+    // ranges from where the anchor was (finding lgse/strata#2355).
+    assert_eq!(r.f.sel.anchor(), anchor);
     assert!(matches!(
         r.take()[..],
         [Outcome::ContextMenu {
