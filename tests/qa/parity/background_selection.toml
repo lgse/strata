@@ -77,9 +77,8 @@ scenario = "empty-column-clears-other-columns"
 run = "columns"
 package = "A8"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "A8: a press on a column's empty space clears every column's selection and keeps the columns open, a contract change in `columns/` (line 20)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "preview-blank-click-keeps-selection"

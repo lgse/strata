@@ -1,0 +1,186 @@
+# The location bar's alphabet (A5): what a user does to the location bar and the crumbs in
+# GTK's Columns view and the Rune Columns view on the canonical fixture: the entry opened by
+# Ctrl+L, paths typed and edited in it, Tab's completion, Return, Escape and the entry's
+# Navigate and Cancel buttons, the crumbs by click and by the keyboard, history by Alt+Left
+# and Alt+Right, the parent by Alt+Up and BackSpace, and folders made, opened and removed so
+# the paths and crumbs have somewhere to go.
+#
+# What a replay can see of the location bar is the entry (`app.field`: its text, caret,
+# selection and focus), where the browser is (`app.directory`, `app.panes`), the keyboard
+# (`app.focused`, `app.focused_pane`) and the dialog a path that cannot be opened shows. The
+# crumbs themselves and the suggestions under the entry are not in the snapshot, so only what
+# they do is compared (A5's "Open").
+#
+# Columns, as the pilot: in it a typed path or a crumb opens the column path that `app.panes`
+# shows. Its pane header has no Back, Forward or Up buttons and no back history, which Icons
+# and List have and `back-history-dropdown` covers, so here history and the parent are keys.
+#
+# Type to search is off (the header's `prefs`), as in `columns.toml`.
+#
+# Left out, with why:
+# - Shift selection in the entry, on lgse/strata#2350's account: GTK's QA snapshot reports
+#   an editor's caret at the selection's fixed end.
+# - Up, Down and the page keys in the entry, and picking a suggestion: the suggestions are
+#   not in the snapshot, C6 presents their rows otherwise (lgse/strata#2365), and on GTK such
+#   keys may move focus out of an editor (lgse/strata#2357). For a later version.
+# - Paths above the fixture, `~`, `/` and `..` past the fixture's own folder, the crumbs of
+#   its ancestors and Alt+Home: each leaves the fixture, which ends a replay.
+# - Typed file paths: List opens Quick Preview for one, Columns reveals it with the preview
+#   (A15's).
+# - A middle click on a crumb (a new tab, which the snapshot does not see, or a new window,
+#   A21's), drops and spring-loading on crumbs (drag and drop), the crumbs' scroller (where it
+#   scrolls is geometry; `scrolled-away-crumbs-and-columns-stay-reachable` is pending on
+#   `rune`), and Copy path (the clipboard, A12's).
+# - The window's deactivation closing the suggestions: it needs a second window (A21's).
+# - An unreadable folder by `chmod` 000 and its Retry: the runner lists such a folder, but
+#   cannot remove the fixture after it (`remove_dir_all` is refused inside it), and a sequence
+#   takes no teardown.
+# - Space on a focused header button, and Return on any but a fixture's crumb: the header
+#   walk reaches New tab, Settings and Close window.
+# - A click while a dialog shows: behind a modal dialog Rune's tree holds the dialog only and
+#   the QA snapshot presents no button behind it, where GTK's tree keeps the window's widgets;
+#   and where an outside click leaves the keyboard differs (lgse/strata#2381, an owner's
+#   question). The dialog is closed by Escape.
+# - Shift+Tab from the files, on lgse/strata#2379's account: GTK stops on the column header's
+#   actions, which Rune keeps off the focus chain, an owner's question. Shift+Tab stays from
+#   the header and the sidebar.
+#
+# Version 1 was the draft whose smoke tier met lgse/strata#2379 and lgse/strata#2381, never
+# merged; its shrunk sequences are parked in tests/qa/fuzz/corpus/location.
+area = "location"
+version = 2
+about = "Columns on the canonical fixture, type to search off: the location entry by Ctrl+L with paths typed, edited, completed by Tab and committed or cancelled by keys and its buttons, the crumbs by click and keyboard, Alt+Left, Alt+Right, Alt+Up and BackSpace, folders opened by click, a folder made and removed behind the application, and F5"
+header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
+
+[[action]]
+name = "open"
+weight = 6
+steps = ['{"key":"ctrl+l"}']
+
+# A whole navigation: the entry opened, its text replaced by a path, and Return. `inner`
+# exists only after `mkdir`, and `missing` never: Return then shows "Unable to open
+# directory".
+[[action]]
+name = "go"
+weight = 8
+steps = [
+  '{"key":"ctrl+l"}',
+  '{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}',
+  '{"type":"<path>","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}',
+  '{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}',
+]
+choose.path = ["$fixture", "$fixture/documents", "$fixture/pictures", "$fixture/archive", "$fixture/pictures/", "$fixture/documents/inner", "$fixture/missing", "$fixture/documents/../pictures"]
+
+# A path typed and left in the entry, for the editing actions below.
+[[action]]
+name = "type-path"
+weight = 4
+steps = [
+  '{"key":"ctrl+l"}',
+  '{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}',
+  '{"type":"<path>","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}',
+]
+choose.path = ["$fixture/doc", "$fixture/p", "$fixture/documents/", "$fixture/"]
+
+[[action]]
+name = "edit-key"
+weight = 5
+steps = ['{"key":"<key>","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}']
+choose.key = ["Left", "Right", "Home", "End", "BackSpace", "Delete", "ctrl+a"]
+
+[[action]]
+name = "edit-type"
+weight = 4
+steps = ['{"type":"<text>","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}']
+choose.text = ["/", "doc", "s", "p"]
+
+# Tab completes a path in the entry (`COMPLETE`, live in both maps).
+[[action]]
+name = "complete"
+weight = 3
+steps = ['{"key":"Tab","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}']
+
+[[action]]
+name = "end"
+weight = 6
+steps = ['{"key":"<key>","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}']
+choose.key = ["Return", "Return", "Escape"]
+
+[[action]]
+name = "entry-button"
+weight = 3
+steps = ['{"click":{"role":"button","name":"<button>"},"when":{"all":[{"present":{"role":"button","name":"<button>"}},{"not":{"dialog":true}}]}}']
+choose.button = ["Navigate (Enter)", "Cancel (Escape)"]
+
+# The crumbs of the fixture's own folder and of folders in it; an ancestor's would leave.
+[[action]]
+name = "crumb"
+weight = 6
+steps = ['{"click":{"role":"button","name":"<crumb>"},"when":{"all":[{"present":{"role":"button","name":"<crumb>"}},{"not":{"dialog":true}}]}}']
+choose.crumb = ["$root", "documents", "pictures", "archive", "inner"]
+
+# History and the parent, from the files or the header but not the entry, whose keys they
+# would be. History cannot leave the fixture: it starts in the fixture's own folder.
+[[action]]
+name = "history"
+weight = 8
+steps = ['{"key":"<key>","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}']
+choose.key = ["alt+Left", "alt+Left", "alt+Right"]
+
+[[action]]
+name = "parent"
+weight = 5
+steps = ['{"key":"<key>","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}']
+choose.key = ["alt+Up", "BackSpace"]
+
+# Folders opened by click, so history and the crumbs have depth.
+[[action]]
+name = "folder"
+weight = 4
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}},{"not":{"dialog":true}}]}}']
+choose.entry = ["archive", "documents", "pictures", "inner"]
+
+# The keyboard into the header and along it, and Return on a fixture's crumb there.
+[[action]]
+name = "tab"
+weight = 2
+steps = ['{"key":"Tab","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}']
+
+[[action]]
+name = "back-tab"
+weight = 2
+steps = ['{"key":"shift+Tab","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}']
+
+[[action]]
+name = "header-walk"
+weight = 3
+steps = ['{"key":"<key>","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}']
+choose.key = ["Left", "Right"]
+
+[[action]]
+name = "crumb-return"
+weight = 2
+steps = ['{"key":"Return","when":{"any":[{"focused_widget_is":{"role":"button","name":"$root"}},{"focused_widget_is":{"role":"button","name":"documents"}},{"focused_widget_is":{"role":"button","name":"pictures"}},{"focused_widget_is":{"role":"button","name":"archive"}},{"focused_widget_is":{"role":"button","name":"inner"}}]}}']
+
+# "Unable to open directory", after a missing path: closed, so that one does not hold the
+# keyboard for the rest of a sequence.
+[[action]]
+name = "dismiss"
+weight = 2
+steps = ['{"key":"Escape","when":{"dialog":true}}']
+
+[[action]]
+name = "refresh"
+weight = 1
+steps = ['{"key":"F5","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}']
+
+[[action]]
+name = "mkdir"
+weight = 2
+steps = ['{"fs":{"path":"documents/inner","mkdir":true},"when":{"file":{"path":"$fixture/documents/inner","exists":false}}}']
+
+# Removed while it may be open: `deleting-open-root-closes-children`'s case.
+[[action]]
+name = "remove"
+weight = 1
+steps = ['{"fs":{"path":"documents/inner","remove":true},"when":{"file":{"path":"$fixture/documents/inner","exists":true}}}']

@@ -17,4 +17,8 @@ columns v3 c1c7755a9701e199
 entries v1 5222ec7bfe1641ce
 icons v1 c800a440ffbc265a
 list v3 53cac7ac7cdfa46c
+# location: version 1 was A5's draft, never merged: version 2 keeps clicks off a shown dialog and
+# Shift+Tab off the files. Its seeds name the shrunk sequences of its findings, parked in
+# tests/qa/fuzz/corpus/location.
+location v2 c074595ff2aab0b4
 sidebar v1 4acfcd20a194fff5

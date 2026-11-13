@@ -1,0 +1,6 @@
+{"scenario":"fuzz-location-v1-0000000000000007","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+l"}
+{"type":"$fixture/missing","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Escape","when":{"dialog":true}}
+{"key":"ctrl+l"}
