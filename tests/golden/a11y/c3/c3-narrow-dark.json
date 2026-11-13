@@ -51,6 +51,16 @@
                           "actions": [
                             "scroll-into-view"
                           ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "details",
+                              "name": "320×900",
+                              "role": "label"
+                            }
+                          ],
                           "description": "Image",
                           "key": "row-200",
                           "name": "tile-0.jpg",
@@ -60,6 +70,16 @@
                         {
                           "actions": [
                             "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "details",
+                              "name": "960×180",
+                              "role": "label"
+                            }
                           ],
                           "description": "Image",
                           "key": "row-201",
@@ -71,6 +91,16 @@
                           "actions": [
                             "scroll-into-view"
                           ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "details",
+                              "name": "1600×540",
+                              "role": "label"
+                            }
+                          ],
                           "description": "Image",
                           "key": "row-202",
                           "name": "tile-2.jpg",
@@ -81,6 +111,16 @@
                           "actions": [
                             "scroll-into-view"
                           ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "details",
+                              "name": "2240×900",
+                              "role": "label"
+                            }
+                          ],
                           "description": "Image",
                           "key": "row-203",
                           "name": "tile-3.jpg",
@@ -90,6 +130,16 @@
                         {
                           "actions": [
                             "scroll-into-view"
+                          ],
+                          "children": [
+                            {
+                              "actions": [
+                                "scroll-into-view"
+                              ],
+                              "key": "details",
+                              "name": "320×180",
+                              "role": "label"
+                            }
                           ],
                           "description": "Image",
                           "key": "row-204",

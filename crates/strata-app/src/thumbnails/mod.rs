@@ -34,7 +34,11 @@ use std::{
 use strata_components::{contract::ThumbKey, thumbnails::Outcome};
 use strata_core::model::FileEntry;
 use strata_fs::adapters::thumbnail_cache;
-use strata_preview::sandbox::{Cancellation, browser};
+use strata_preview::sandbox::{
+    Cancellation,
+    browser::{self, Thumbnail},
+    metadata::MediaMetadata,
+};
 
 mod kind;
 mod viewer;
@@ -74,7 +78,23 @@ pub(crate) struct Job {
     pub(crate) edge: u32,
     pub(crate) cancellation: Cancellation,
     /// Hears the result, on the interface thread.
-    pub(crate) done: Box<dyn FnOnce(Outcome)>,
+    pub(crate) done: Box<dyn FnOnce(Made)>,
+}
+
+/// A job's result: the thumbnail, and what the worker read of the file while it rendered
+/// (an image's dimensions, a video's length), which a cache hit does not have.
+pub(crate) struct Made {
+    pub(crate) outcome: Outcome,
+    pub(crate) metadata: Option<MediaMetadata>,
+}
+
+impl From<Outcome> for Made {
+    fn from(outcome: Outcome) -> Self {
+        Self {
+            outcome,
+            metadata: None,
+        }
+    }
 }
 
 /// Cache reads running at once: GTK's `MAX_CACHE_READERS`.
@@ -186,7 +206,7 @@ pub(crate) fn room() -> usize {
 /// Queues `job`, and starts what the limits allow. A file no renderer takes fails at once.
 pub(crate) fn submit(job: Job) {
     let Some(kind) = kind::of(&job.path) else {
-        (job.done)(Outcome::Failed);
+        (job.done)(Outcome::Failed.into());
         return;
     };
     let queued = Queued {
@@ -227,7 +247,7 @@ async fn read(mut queued: Queued) {
     match looked {
         Looked::Done(outcome) => {
             POOL.with_borrow_mut(|pool| pool.read(None));
-            (queued.job.done)(outcome);
+            (queued.job.done)(outcome.into());
         }
         Looked::Missed(modified) => {
             queued.modified = modified;
@@ -249,20 +269,20 @@ async fn render(queued: Queued) {
         cancellation,
         done,
     } = job;
-    let outcome = gio::spawn_blocking(move || {
+    let made = gio::spawn_blocking(move || {
         if cancellation.is_cancelled() {
-            return Outcome::Stopped;
+            return Outcome::Stopped.into();
         }
-        let rendered = kind::render(&path, kind, &cancellation).map(|rendered| rendered.png);
-        if let (Ok(png), Some(mtime)) = (&rendered, modified) {
-            thumbnail_cache::store(&path, mtime, png);
+        let rendered = kind::render(&path, kind, &cancellation);
+        if let (Ok(rendered), Some(mtime)) = (&rendered, modified) {
+            thumbnail_cache::store(&path, mtime, &rendered.png);
         }
         made(rendered, edge)
     })
     .await
-    .unwrap_or(Outcome::Failed);
+    .unwrap_or_else(|_| Outcome::Failed.into());
     POOL.with_borrow_mut(|pool| pool.count(kind, false));
-    done(outcome);
+    done(made);
     start();
 }
 
@@ -285,13 +305,17 @@ fn look_up(path: &Path, edge: u32, cancellation: &Cancellation) -> Looked {
     }
 }
 
-/// What a render gives the view: its PNG decoded, or a failure.
-fn made(rendered: Result<Vec<u8>, String>, edge: u32) -> Outcome {
+/// What a render gives the view: its PNG decoded with what the worker read of the file, or
+/// a failure.
+fn made(rendered: Result<Thumbnail, String>, edge: u32) -> Made {
     match rendered {
-        Ok(png) => decode(&png, edge),
+        Ok(rendered) => Made {
+            outcome: decode(&rendered.png, edge),
+            metadata: rendered.metadata,
+        },
         Err(error) => {
             tracing::debug!(%error, "no thumbnail");
-            Outcome::Failed
+            Outcome::Failed.into()
         }
     }
 }

@@ -283,9 +283,9 @@ pub(super) fn content_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Cont
             if m.details_line > 0.0
                 && let Some(details) = details_of(&build_shared, s, rcx).filter(|d| !d.is_empty())
             {
+                // A label assistive technology reads, as GTK's details label is.
                 let mut line = text(details)
                     .key(DETAILS)
-                    .a11y_hidden()
                     .font(m.details_font)
                     .color(look.kit.c.text_muted)
                     .align(Align::Center)
