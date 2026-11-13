@@ -20,9 +20,8 @@ host = "offscreen"
 scenario = "browser-workers-reuse-processes"
 run = "list"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A2: the List view's icon column reading the window's thumbnails, at `all_cached_in` on line 7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "icons-rename-reuses-thumbnail-details"
