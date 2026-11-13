@@ -67,12 +67,22 @@ use session::{Batch, Input, Session};
 #[cfg(test)]
 mod tests;
 
-/// The bar's key, and its field's.
+/// The start of the bar's key. Each column the filter opens in keys it anew, so a column
+/// leaving with the field in its header never holds the key of the one that shows it now.
 const KEY: &str = "filter";
-const FIELD: &str = "filter-field";
 
 /// GTK's `FILTER_DEBOUNCE_DELAY`: how long an edit waits before it asks for results.
 const DEBOUNCE: Duration = Duration::from_millis(40);
+
+/// Where the field's keyboard is after a `/` opened a folder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Refocus {
+    No,
+    /// The folder's column is on its way.
+    Waiting,
+    /// It is listed, and its listing took the keyboard: the field takes it back.
+    Arrived,
+}
 
 /// The column the filter is open in, and that column's folder.
 #[derive(Clone, Debug, PartialEq)]
@@ -92,7 +102,9 @@ pub(crate) struct Filter {
     /// The query a `/` was typed over, until its results settle and its first match opens.
     descent: Option<String>,
     /// A `/` opened a folder: the field takes the keyboard back once its column is there.
-    refocus: bool,
+    refocus: Refocus,
+    /// Counts the columns the filter opened in, for the bar's key.
+    serial: u64,
     debounce: Rc<RefCell<Option<glib::SourceId>>>,
     later: Later<App>,
     ids: Ids,
@@ -141,7 +153,8 @@ fn bar(app: &App) -> FilterBar<App> {
         .open_in
         .as_ref()
         .map_or(0, |open| app.columns.listing_len(open.depth));
-    FilterBar::new(KEY, |app: &App| &app.filter.state, |app: &mut App| {
+    let key = format!("{KEY}-{}", app.filter.serial);
+    FilterBar::new(key, |app: &App| &app.filter.state, |app: &mut App| {
         &mut app.filter.state
     })
     .labels(FilterLabels {
@@ -149,7 +162,9 @@ fn bar(app: &App) -> FilterBar<App> {
         placeholder: placeholder(items),
     })
     .results(results)
-    .focus_return(columns::VIEW)
+    // The part moves the keyboard itself: a `focus_return` would take it back to the view
+    // from a field still in the header of a column that is leaving (after a `/`).
+    .tab_to_results(false)
     .on_intent(heard)
 }
 
@@ -182,6 +197,9 @@ fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
         None => Shows::InPlace,
     };
     app.filter.state.set_shows(shows);
+    if app.filter.open_in.as_ref().is_none_or(|open| open.depth != depth || open.folder != folder) {
+        app.filter.serial += 1;
+    }
     app.filter.open_in = Some(OpenIn { depth, folder });
     app.columns.hold_header(Some(depth));
     let polled = match query {
@@ -205,7 +223,14 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
             app.filter.typed.clear();
             app.columns.drop_hits(restore.as_ref(), tx);
         }
-        FilterIntent::Closed => closed(app),
+        FilterIntent::Closed => {
+            // Escape in the field: the keyboard goes back to the view, as GTK's
+            // `dismiss_focused_filter` focuses the pane.
+            if tx.focused() == Some(bar(app).field_key().as_str()) {
+                tx.focus(columns::VIEW, false);
+            }
+            closed(app);
+        }
         FilterIntent::Open { id } => {
             if let Some(open) = app.filter.open_in.clone() {
                 shell::publish(app);
@@ -216,6 +241,7 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
         FilterIntent::FocusResults { id } => {
             if let Some(open) = app.filter.open_in.clone() {
                 app.columns.land(open.depth, id, &app.look, tx);
+                tx.focus(columns::VIEW, true);
             }
         }
         // The preview is A15's, and the field's own menu C21's.
@@ -388,6 +414,7 @@ fn stop(app: &mut App) {
 
 fn closed(app: &mut App) {
     stop(app);
+    app.filter.refocus = Refocus::No;
     app.filter.open_in = None;
     app.filter.typed.clear();
     app.columns.hold_header(None);
@@ -555,16 +582,36 @@ fn follow_columns(app: &mut App, tx: &mut Tx) -> bool {
         return false;
     };
     if app.browser.location_at(open.depth).as_ref() == Some(&open.folder) {
-        // The new listing took the keyboard, as GTK's does; after a `/` the field has it.
-        if std::mem::take(&mut app.filter.refocus) {
-            app.filter.state.focus_field();
-            tx.focus(FIELD, false);
-            return true;
-        }
         return false;
     }
     let polled = app.filter.state.close();
     route(app, polled, tx);
+    true
+}
+
+/// After a `/` opened a folder, the field takes the keyboard from its new listing, as GTK's
+/// `show_filter_with_query("")` gives it, once the field is drawn in the folder's column.
+fn refocus(app: &mut App, tx: &mut Tx) -> bool {
+    if app.filter.refocus == Refocus::No {
+        return false;
+    }
+    let Some(open) = app.filter.open_in.as_ref().filter(|_| app.filter.state.is_open()) else {
+        app.filter.refocus = Refocus::No;
+        return false;
+    };
+    let listed = app.browser.location_at(open.depth).as_ref() == Some(&open.folder)
+        && app.columns.listed(open.depth);
+    if !listed {
+        return false;
+    }
+    let field = bar(app).field_key();
+    if app.filter.refocus == Refocus::Arrived && tx.focused() == Some(field.as_str()) {
+        app.filter.refocus = Refocus::No;
+        return false;
+    }
+    app.filter.refocus = Refocus::Arrived;
+    app.filter.state.focus_field();
+    tx.focus(field, false);
     true
 }
 
@@ -624,7 +671,8 @@ impl Part for Filter {
             found: HashMap::new(),
             typed: String::new(),
             descent: None,
-            refocus: false,
+            refocus: Refocus::No,
+            serial: 0,
             debounce: Rc::default(),
             later: setup.later.clone(),
             ids: setup.ids.clone(),
@@ -649,10 +697,11 @@ impl Part for Filter {
     }
 
     fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
+        let refocused = refocus(app, tx);
         let polled = app.filter.state.tick();
         let changed = polled.changed;
         route(app, polled, tx);
-        changed
+        changed | refocused
     }
 
     // `filter_and_location_commands` and `text_input` in

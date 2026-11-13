@@ -34,6 +34,20 @@ impl Columns {
         self.listings.columns.get(depth).map_or(0, EntrySource::len)
     }
 
+    /// A folder the filter entered opens no child column for the cursor the browser places
+    /// in it: GTK's column, its field holding the keyboard, mirrors nothing there.
+    pub(crate) fn mirror_no_landing(&self) {
+        self.mirror.note_input(false);
+    }
+
+    /// Whether column `depth`'s folder has been read.
+    pub(crate) fn listed(&self, depth: usize) -> bool {
+        self.listings
+            .columns
+            .get(depth)
+            .is_some_and(|column| *column.load() == crate::listing::Load::Listed)
+    }
+
     /// Whether a filter's results show in column `depth`.
     pub(crate) fn shows_hits(&self, depth: usize) -> bool {
         self.listings.hits_at(depth)

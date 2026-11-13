@@ -61,13 +61,15 @@ pub(super) fn finish(app: &mut App, tx: &mut Tx) {
     route(app, polled, tx);
     app.filter.typed.clear();
     shell::publish(app);
+    app.filter.serial += 1;
     app.filter.open_in = Some(OpenIn {
         depth: 0,
         folder: folder.clone(),
     });
+    app.columns.mirror_no_landing();
     app.browser.navigate(folder);
     app.columns.hold_header(Some(0));
-    app.filter.refocus = true;
+    app.filter.refocus = super::Refocus::Waiting;
     app.filter.state.focus_field();
     shell::settle(app, tx);
 }
