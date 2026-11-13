@@ -4,10 +4,11 @@
 //! (`attach_place_context_menu_with` in `src/ui/window/sidebar_context_menu.rs`, and
 //! `build_trash_menu` in `src/ui/window/sidebar_trash.rs`), drawn by strata-components' C21.
 //!
-//! - **Opening.** A right-click on a row opens its menu at the pointer; the Menu key and
-//!   Shift+F10 on a focused row open it under the row, centred on it, as GTK pops the row's
-//!   popover up pointing at the row (`open_sidebar_context_menu`). Rune reports both as the
-//!   row's secondary press (`El::on_secondary_press`), the keyboard's at the row's
+//! - **Opening.** A right-click on a row opens its menu under the pointer, centred on it, as
+//!   GTK's popover points at a 1×1 rectangle at the click (`open_on_secondary_click`); the
+//!   Menu key and Shift+F10 on a focused row open it under the row, centred on it, as GTK
+//!   pops the row's popover up pointing at the row (`open_sidebar_context_menu`). Rune reports
+//!   both as the row's secondary press (`El::on_secondary_press`), the keyboard's at the row's
 //!   bottom-left, and `Tx::by_keys` tells them apart; C8 keeps each row's box.
 //! - **The rows**, in GTK's order: "Open in New Tab" and a separator, then "Connect to
 //!   server…" on Network, "Unpin", "Customize…" on a folder with a local path, and
@@ -129,12 +130,10 @@ pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, by_keys: b
     };
     let model = model(row, app.sidebar.trash.contents);
     let opens_trash = is_trash(item);
-    let at = by_keys
-        .then(|| app.sidebar.state.row_box(item))
-        .flatten()
-        .map_or(Point::new(point.x, point.y), |rect| {
-            under(rect, model.width(&app.look))
-        });
+    // GTK's popover points at the row from the keyboard, and at the click from the pointer.
+    let keyboard = by_keys.then(|| app.sidebar.state.row_box(item)).flatten();
+    let pointed = keyboard.unwrap_or([point.x, point.y, 0.0, 0.0]);
+    let at = under(pointed, model.width(&app.look));
     let target = MenuTarget::Other(Rc::new(Target {
         item: item.clone(),
         location: row.location.clone(),
@@ -146,7 +145,8 @@ pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, by_keys: b
     }
 }
 
-/// Where a menu `width` wide opens to sit under the row laid out at `rect`, centred on it.
+/// Where a menu `width` wide opens to sit under `rect`, centred on it, as a GTK popover in its
+/// bottom position sits under what it points at: a row, or the point of a click.
 fn under([x, y, w, h]: [f32; 4], width: f32) -> Point {
     Point::new(x + (w - width) / 2.0, y + h)
 }

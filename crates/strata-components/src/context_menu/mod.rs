@@ -72,7 +72,8 @@
 //! The point is the menu's top-left. A host that centres a menu under what it opened on, as
 //! GTK centres a popover on the widget it points at, reads how wide it draws from
 //! [`MenuModel::width`] and puts the point half that to the left of the centre: Strata's
-//! sidebar does for a menu the keyboard opens on a row.
+//! sidebar does, under a row for a menu the keyboard opens and under the pointer for a
+//! right-click.
 //!
 //! # Keys
 //!
