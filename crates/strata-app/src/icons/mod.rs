@@ -13,7 +13,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 use strata_desktop::settings::Preferences;
 
-use crate::{App, single::Single, slots::Later, thumbnails::Viewer};
+use crate::{App, fills::Fills, single::Single, slots::Later, thumbnails::Viewer};
 
 mod part;
 mod view;
@@ -29,6 +29,8 @@ pub(crate) struct Icons {
     size: f32,
     /// The grid's viewer in the window's thumbnails.
     thumbs: Viewer,
+    /// The metadata fills of the rows near the viewport, with the icon details the tiles show.
+    fills: Fills,
 }
 
 /// The keys of an Icons grid: Left and Right cross the ends of rows, as GTK's GridView moves.
@@ -53,7 +55,8 @@ impl Icons {
             // The saved size, which loading holds between 32 and 256 (`stored.rs` in
             // `strata_desktop::settings`). The size a folder remembers is B2's store's.
             size: f32::from(u16::try_from(settings.icons_thumbnail_size).unwrap_or(64)),
-            thumbs: Viewer::new(later),
+            thumbs: Viewer::new(later, part::locate),
+            fills: Fills::new(true),
         }
     }
 }
