@@ -299,5 +299,8 @@ fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
     let behind = (0..)
         .map_while(|index| snapshot.at(index))
         .any(|seen| seen.role() == "button");
-    assert!(!behind, "a dialog's modal hides the window, as GTK's does");
+    assert!(
+        !behind,
+        "nothing is presented behind a dialog, to stay cautious"
+    );
 }

@@ -91,6 +91,8 @@ struct Candidate<'a> {
     rect: [f32; 4],
     /// The part of `rect` its ancestors' clips leave visible.
     visible: [f32; 4],
+    /// With its ancestors': Rune leaves an element out of its tree at 0.01 and under.
+    opacity: f32,
     inert: bool,
     exiting: bool,
 }
@@ -103,16 +105,17 @@ impl<'a> Candidate<'a> {
             label: element.label.as_deref(),
             rect: element.rect,
             visible: element.visible,
+            opacity: element.opacity,
             inert: element.inert,
             exiting: element.exiting,
         }
     }
 
-    /// A button a user could press: keyed and named, not leaving, not inert, and with some
-    /// of it in view (a crumb scrolled out of its strip is not).
+    /// A button a user could press: keyed and named, not leaving, not inert, not transparent,
+    /// and with some of it in view (a crumb scrolled out of its strip is not).
     fn button(&self) -> Option<DrawnButton> {
         let [_, _, width, height] = self.visible;
-        let shown = width > 0.0 && height > 0.0;
+        let shown = width > 0.0 && height > 0.0 && self.opacity > 0.01;
         let pressable = self.role == "button" && !self.exiting && !self.inert && shown;
         if !pressable {
             return None;

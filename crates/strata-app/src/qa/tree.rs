@@ -227,8 +227,10 @@ impl Snapshot {
         snapshot
     }
 
-    /// Presents a button an open menu keeps out of the tree, under the window. A dialog's
-    /// modal does not: GTK's dialogs hide the window too.
+    /// Presents a button an open menu keeps out of the tree, under the window. Not behind a
+    /// dialog, to stay cautious: GTK's dialogs are overlay layers that leave the window's
+    /// widgets in the tree, so a run aiming behind one fails on Rune rather than passing
+    /// falsely.
     fn add_hidden_button(&mut self, button: &DrawnButton) {
         let listed = |seen: &Seen| seen.key.as_deref() == Some(button.key.as_str());
         let menu = |seen: &Seen| seen.role == "menu" && seen.has_state("modal");
