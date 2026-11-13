@@ -195,6 +195,17 @@ class SelectionTests(unittest.TestCase):
                 self.assertEqual((status, printed), (2, ""))
                 self.assertIn(repr(unknown), errors)
 
+    def test_a_ledger_file_that_does_not_parse_is_refused_with_the_parsers_reason(self):
+        # A stray `\'` in a blocker, as keyboard_navigation.toml once had (A2, #2234).
+        with edited("keyboard_navigation", 'blocker = "the menu work package"',
+                    'blocker = "the menu work package\\\' "'):
+            for arguments in (("all", "--counts"), ("A2", "--status", "pending"), ("g2",)):
+                with self.subTest(arguments):
+                    status, printed, errors = run_main(*arguments)
+                    self.assertEqual((status, printed), (2, ""))
+                    self.assertIn("keyboard_navigation.toml: Unescaped '\\' in a string", errors)
+                    self.assertNotIn("Traceback", errors)
+
     def test_the_command_prints_one_run_a_line_from_the_ledger_directory(self):
         self.assertEqual(run_main("g2", "--status", "pending"),
                          (0, "context-menu-keeps-selection/columns\n", ""))
