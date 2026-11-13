@@ -132,7 +132,10 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
 /// The opacity of an entry's placeholder icon: a file's at `collection.file_icon.opacity`
 /// where the view dims files, else full. A folder's never dims, nor a cut entry's: GTK's
 /// marked icon draws at full opacity (`update_state_opacity` in `src/ui/thumbnail/slot.rs`),
-/// and C1e fades the cut row as a whole.
+/// and C1e fades the cut row as a whole. GTK keeps a copied entry's icon at full opacity too;
+/// `RowMarks` has no copy mark yet, and the one that lands must join `cut` here. GTK draws a
+/// hidden entry's icon at 0.65 over all of this, folders included; C1e's row has no hidden
+/// flag yet.
 ///
 /// Used by: [`icon_slot`], C3's tiles.
 pub fn icon_opacity(rcx: &RowCx<'_>, dim_files: bool) -> f32 {

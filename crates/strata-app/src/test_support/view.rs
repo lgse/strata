@@ -371,3 +371,17 @@ pub(crate) fn choose(host: &mut Offscreen, name: &str) {
     runtime.pointer_up(x, y);
     idle(host);
 }
+
+/// The opacity, as drawn, of the placeholder icon in the entry named `name`: C25's glyph under
+/// the element the entry is named on.
+pub(crate) fn icon_opacity(host: &Offscreen, name: &str) -> Option<f32> {
+    let elements = host.elements();
+    let entry = elements
+        .iter()
+        .find(|e| !e.exiting && e.label.as_deref() == Some(name))?;
+    elements
+        .iter()
+        .filter(|e| !e.exiting && e.key.as_deref() == Some(strata_components::thumbnails::GLYPH))
+        .find(|e| e.path.starts_with(&entry.path))
+        .map(|e| e.opacity)
+}

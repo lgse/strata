@@ -578,3 +578,45 @@ fn back_keeps_a_scroll_left_with_no_cursor_in_list() {
     let name = "back_keeps_a_scroll_left_with_no_cursor_in_list";
     back_keeps_a_scroll_left_with_no_cursor::<crate::list::List>(&LIST, name);
 }
+
+/// A view's file icons as GTK draws them: fainter than a folder's in Columns rows and Icons
+/// tiles, at full opacity in List rows (`columns/thumbs.rs` turns C25's `dim_files` on,
+/// `list/thumbs.rs` leaves it off, C3's tiles dim always).
+fn a_file_icon_dims_as_the_view_does(mode: &'static str, shape: Shape, dims: bool, name: &str) {
+    hosted_in(MODULE, mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, shape, folder.path());
+        let file =
+            crate::test_support::view::icon_opacity(&host, "readme.md").expect("a file icon");
+        let folder =
+            crate::test_support::view::icon_opacity(&host, "archive").expect("a folder icon");
+
+        assert_eq!(folder, 1.0, "a folder's icon");
+        assert_eq!(file < 1.0, dims, "a file's icon at {file}");
+    });
+}
+
+#[test]
+fn a_file_icon_dims_in_columns() {
+    let shape = Shape {
+        described: "Columns view",
+        list: "list-box",
+        entry: "list-box-option",
+    };
+    a_file_icon_dims_as_the_view_does("columns", shape, true, "a_file_icon_dims_in_columns");
+}
+
+#[test]
+fn a_file_icon_does_not_dim_in_list() {
+    a_file_icon_dims_as_the_view_does(
+        "list",
+        LIST.shape,
+        false,
+        "a_file_icon_does_not_dim_in_list",
+    );
+}
+
+#[test]
+fn a_file_icon_dims_in_icons() {
+    a_file_icon_dims_as_the_view_does("icons", ICONS.shape, true, "a_file_icon_dims_in_icons");
+}
