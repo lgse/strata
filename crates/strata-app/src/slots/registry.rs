@@ -2,11 +2,13 @@
 
 //! The table of registered parts, and what the shell asks of it.
 
-use std::any::TypeId;
+use std::{any::TypeId, cell::Cell, rc::Rc};
 
 use rune::Tx;
 
-use super::{Listener, Part, Place, Setup, Sidebar, Slot, View};
+use strata_fs::app::{Browser, BrowserEvent};
+
+use super::{Heard, Listener, Part, Place, Setup, Sidebar, Slot, View};
 use crate::{
     App,
     commands::{Action, Holds},
@@ -22,6 +24,7 @@ pub(crate) struct Entry<S: 'static> {
     pub(crate) publish: fn(&mut S),
     pub(crate) caught_up: fn(&mut S),
     pub(crate) poll: fn(&mut S, f64, &mut Tx) -> bool,
+    pub(crate) switched: fn(&mut S, &mut Tx),
     pub(crate) commands: &'static [Action<S>],
     pub(crate) keyboard: fn(&S) -> Option<Holds>,
 }
@@ -37,6 +40,7 @@ impl Entry<App> {
             publish: P::publish,
             caught_up: P::caught_up,
             poll: P::poll,
+            switched: P::switched,
             commands: P::COMMANDS,
             keyboard: P::keyboard,
         }
@@ -195,6 +199,31 @@ impl<'a, S> Registry<'a, S> {
         self.entries.get(self.shown?)?.view()
     }
 
+    /// Shows the view that answers to `mode` in place of the one shown. False when none
+    /// answers to it, or when it is shown already.
+    pub(crate) fn show(&mut self, mode: &str) -> bool {
+        let named = self
+            .entries
+            .iter()
+            .enumerate()
+            .find(|(_, entry)| entry.view().is_some_and(|view| (view.shows)(mode)));
+        match named {
+            Some((index, _)) if self.shown != Some(index) => {
+                self.shown = Some(index);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Which view is shown, as the parts that read it later share it: the view's listener
+    /// ([`Registry::listeners`]) and a part's timer ([`ShownView::is`]).
+    pub(crate) fn shown_now(self) -> ShownView {
+        let shown = ShownView(Rc::new(Cell::new(None)));
+        shown.follow(self);
+        shown
+    }
+
     /// The sidebar, when one is registered.
     pub(crate) fn sidebar(self) -> Option<&'a Sidebar<S>> {
         self.active().find_map(|entry| match &entry.place {
@@ -211,10 +240,59 @@ impl<'a, S> Registry<'a, S> {
         })
     }
 
-    /// The active parts' listeners, in registration order.
-    pub(crate) fn listeners(self, setup: &Setup<'_>) -> Vec<Listener<S>> {
-        self.active()
-            .filter_map(|entry| (entry.listen)(setup))
+    /// Every part's listener, in registration order. A view's hears only while it is the one
+    /// [`Setup::shown`] names: a view that is not shown misses the browser's events, and is
+    /// rebuilt from the browser when it is shown.
+    pub(crate) fn listeners(self, setup: &Setup<'_>) -> Vec<Listener<S>>
+    where
+        S: 'static,
+    {
+        let entries = self.entries.iter().enumerate();
+        entries
+            .filter_map(|(index, entry)| {
+                let listener = (entry.listen)(setup)?;
+                if entry.view().is_none() {
+                    return Some(listener);
+                }
+                Some(setup.shown.gate(index, listener))
+            })
             .collect()
+    }
+}
+
+/// Which registered view is shown, for what reads it after the start: a view's listener, which
+/// hears the browser only while its view is shown, and a part's timer, which asks at the time
+/// it fires, as GTK's `child_mirror_blocked` asks for the mode. The shell keeps it with the
+/// registry and moves both together ([`ShownView::follow`]).
+#[derive(Clone)]
+pub(crate) struct ShownView(Rc<Cell<Option<(usize, TypeId)>>>);
+
+impl ShownView {
+    /// `listener`, heard only while the view registered at `index` is the one shown.
+    fn gate<S: 'static>(&self, index: usize, listener: Listener<S>) -> Listener<S> {
+        let shown = self.0.clone();
+        Box::new(
+            move |event: &BrowserEvent, browser: &Browser, heard: &mut Heard<'_, S>| {
+                if shown.get().is_some_and(|(shown, _)| shown == index) {
+                    listener(event, browser, heard);
+                }
+            },
+        )
+    }
+
+    /// Whether the view shown now is part `P`.
+    pub(crate) fn is<P: 'static>(&self) -> bool {
+        self.0
+            .get()
+            .is_some_and(|(_, kind)| kind == TypeId::of::<P>())
+    }
+
+    /// From now on the view `registry` shows is the one shown: it hears the browser, and no
+    /// other does.
+    pub(crate) fn follow<S>(&self, registry: Registry<'_, S>) {
+        let shown = registry
+            .shown
+            .and_then(|index| Some((index, (registry.entries.get(index)?.kind)())));
+        self.0.set(shown);
     }
 }

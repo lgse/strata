@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/shell.rs b/crates/strata-app/src/shell.rs
+index c867cc7b0..07110618d 100644
+--- a/crates/strata-app/src/shell.rs
++++ b/crates/strata-app/src/shell.rs
+@@ -358,7 +358,7 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
+     for change in rebuilt.changes {
+         (view.apply)(app, change, tx);
+     }
+-    let opens = view.returns.is_some_and(|mirrors| mirrors(app));
++    let opens = view.returns.is_some_and(|mirrors| !mirrors(app));
+     if let Some((depth, location)) = child.filter(|_| opens) {
+         app.browser.show_child(depth, location);
+     }

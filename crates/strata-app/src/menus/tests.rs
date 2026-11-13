@@ -359,6 +359,7 @@ fn a_plain_view_and_the_menu() -> Vec<Entry<App>> {
         publish: |_| {},
         caught_up: |_| {},
         poll: |_, _, _| false,
+        switched: |_, _| {},
         commands: &[],
         keyboard: |_| None,
     };
