@@ -75,6 +75,8 @@ ags = "ags"
 tese = "tese"
 # The `--qa` reply field for captured GLib warnings and criticals.
 criticals = "criticals"
+# A modifier word GTK's accelerator reader takes, `<Shft>` for Shift.
+shft = "shft"
 
 # Patch files (the QA mutation patches and the toolkit patches): `git diff` writes an `index`
 # line of abbreviated hashes and copies the hunk's enclosing line, cut, after each `@@` header.

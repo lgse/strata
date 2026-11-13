@@ -7,7 +7,10 @@
 //! - **The window's keys** step it: Ctrl+Alt+plus or = larger, Ctrl+Alt+minus smaller, at the
 //!   dispatcher's `zoom_shortcut` stage, the default map's chords as GTK's `for_shortcut`
 //!   reads them, and Ctrl+Alt+0 resets it. Ctrl+Shift+wheel over the grid steps it too: C3
-//!   claims the wheel (`WheelSteps`, GTK's `WheelZoom`) and hands the step to [`resized`].
+//!   claims the wheel (`WheelSteps`, the steps of GTK's `WheelZoom`) and hands the step to
+//!   [`resized`]. GTK's wheel reaches the size from anywhere in the window but the PDF
+//!   preview (`zoom_controller` in `src/ui/window/keyboard/wheel_zoom.rs`); a window-level
+//!   wheel is not this module's (`docs/rune/parity/packages/A1.md`, "Open").
 //! - **A step** moves along C3's ladder (`Look::tiles`, GTK's `STEPS`), which keeps it between
 //!   32 and 256. **A reset** goes back to the size the folder follows: the saved default, or
 //!   GTK's 64 while folders' views are not remembered.
@@ -94,15 +97,16 @@ pub(super) fn resized(app: &mut App, request: SizeRequest, _: &mut Tx) {
 /// Another folder shows at the size it follows: the saved default, while this interface keeps
 /// no folder's own. Call it from the part's poll; C3's poll then lays the grid out at it.
 pub(super) fn follow_folder(app: &mut App) {
-    let shown = app
-        .icons
+    let icons = &app.icons;
+    let shown = icons
         .single
         .pane
         .listing()
-        .map(|listing| listing.location().clone());
-    if app.icons.sized_for == shown {
+        .map(|listing| listing.location());
+    if icons.sized_for.as_ref() == shown {
         return;
     }
+    let shown = shown.cloned();
     let size = default_size(app);
     let icons = &mut app.icons;
     icons.sized_for = shown;

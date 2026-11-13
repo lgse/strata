@@ -35,7 +35,8 @@ pub(crate) struct Icons {
     grid: IconsGridState,
     /// The tile size in points, from 32 to 256 (`size.rs`).
     size: f32,
-    /// The folder the size was last set for: another one shows at its own.
+    /// The folder shown when the size was last set, so the part's poll can tell when another
+    /// folder shows and set the size that folder follows.
     sized_for: Option<Location>,
     /// The grid's viewer in the window's thumbnails.
     thumbs: Viewer,
