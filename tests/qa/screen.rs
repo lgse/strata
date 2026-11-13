@@ -13,9 +13,9 @@ use serde_json::json;
 
 use crate::{Application, COMMAND_TIMEOUT, Display, target::Target};
 
-/// What the text file says before the tree.
-pub(crate) const DREW_NOTHING: &str = "The Rune target draws offscreen and put nothing on \
-     the display, so there is no image. Its accessibility tree as of this step follows.\n\n";
+/// What the text file says first.
+pub(crate) const DREW_NOTHING: &str =
+    "The Rune target draws offscreen and put nothing on the display, so there is no image.";
 
 /// Takes the screen as `destination`, a `.png`: an image on GTK, and on Rune the tree as text
 /// in `destination` with the extension `txt`.
@@ -29,7 +29,10 @@ pub(crate) fn take(
     }
     let reply = application.send(&json!({ "query": "tree" }), COMMAND_TIMEOUT)?;
     let tree = reply["result"].as_str().unwrap_or_default();
-    write_offscreen(destination, tree)
+    write_offscreen(
+        destination,
+        &format!("{DREW_NOTHING} Its accessibility tree as of this step follows.\n\n{tree}"),
+    )
 }
 
 /// The closing screenshot, after the application has stopped answering steps: on Rune it
@@ -38,15 +41,18 @@ pub(crate) fn take_last(display: &Display, destination: &Path) -> Result<(), Str
     if !draws_offscreen() {
         return display.screenshot(destination);
     }
-    write_offscreen(destination, "See tree.txt, beside this file.\n")
+    write_offscreen(
+        destination,
+        &format!("{DREW_NOTHING} Its last accessibility tree is tree.txt, beside this file.\n"),
+    )
 }
 
 fn draws_offscreen() -> bool {
     Target::from_environment() == Ok(Target::Rune)
 }
 
-pub(crate) fn write_offscreen(destination: &Path, tree: &str) -> Result<(), String> {
-    let text = destination.with_extension("txt");
-    fs::write(&text, format!("{DREW_NOTHING}{tree}"))
-        .map_err(|error| format!("cannot write {}: {error}", text.display()))
+/// Writes `text` where the image `destination` would be, with the extension `txt`.
+pub(crate) fn write_offscreen(destination: &Path, text: &str) -> Result<(), String> {
+    let path = destination.with_extension("txt");
+    fs::write(&path, text).map_err(|error| format!("cannot write {}: {error}", path.display()))
 }
