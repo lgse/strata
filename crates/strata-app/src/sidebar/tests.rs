@@ -749,3 +749,57 @@ fn down_from_the_header_reaches_the_files_while_the_sidebar_is_hidden() {
         },
     );
 }
+
+/// Down from the header comes back to the row Up left once, as GTK's `return_to_sidebar`
+/// takes it, even an open pin a collapsed PINNED still shows; reached again without Up, Down
+/// goes to the sidebar's first element. Up leaves only from the first element, so the test
+/// plants the row it would remember.
+#[test]
+fn down_from_the_header_returns_to_the_remembered_row_once() {
+    hosted_after(
+        MODULE,
+        "down_from_the_header_returns_to_the_remembered_row_once",
+        || {
+            std::fs::create_dir_all(home().join("work")).expect("a pinned folder");
+            seed_pins(&pin(&home().join("work"), "Work"));
+            let file = settings_file();
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved =
+                "mode = \"theme\"\ntheme = \"azure-glow\"\nsidebar_pinned_collapsed = true\n";
+            std::fs::write(file, saved).expect("settings");
+        },
+        |mut host| {
+            opened(&home().join("work"), &mut host);
+            let marked = host.run_until(PATIENCE, |host| {
+                host.app().sidebar.current == Some(ItemId::Pin("0".into()))
+            });
+            assert!(marked, "the open folder's pin is marked");
+            shown(&mut host, "sidebar-pin-0");
+            assert!(host.app().sidebar.state.pinned_collapsed);
+            host.runtime().update(|app, _| {
+                app.sidebar.header_entry = Some("sidebar-pin-0".to_owned());
+            });
+            for (back, why) in [
+                (
+                    "sidebar-pin-0",
+                    "the remembered pin, shown in the collapsed section",
+                ),
+                (
+                    "sidebar-place-home",
+                    "the first element, the row being taken",
+                ),
+            ] {
+                assert!(
+                    press_until(&mut host, Key::Tab, TOGGLE, 8),
+                    "Tab reaches the toggle, not {:?}",
+                    focused(&host.tree())
+                );
+                press(&mut host, Key::Down, Mods::default());
+                let at = host.run_until(PATIENCE, |host| {
+                    focused(&host.tree()).as_deref() == Some(back)
+                });
+                assert!(at, "Down goes to {why}, not {:?}", focused(&host.tree()));
+            }
+        },
+    );
+}

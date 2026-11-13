@@ -94,21 +94,27 @@ fn tab(tx: &mut Tx, back: bool) {
 }
 
 impl super::Sidebar {
-    /// Where Down from the header lands in the sidebar: the row Up left, while it is still
-    /// shown, else the sidebar's first element. None while the sidebar is hidden.
-    fn back_from_header(&self) -> Option<String> {
+    /// Where Down from the header lands in the sidebar: the row Up left, once, while it is
+    /// still shown (`return_to_sidebar` takes it), else the sidebar's first element. None while
+    /// the sidebar is hidden.
+    fn back_from_header(&mut self) -> Option<String> {
         if self.state.width.shown() == Step::Hidden {
             return None;
         }
-        let kept = self.header_entry.clone().filter(|key| self.shows(key));
+        let kept = self.header_entry.take().filter(|key| self.shows(key));
         kept.or_else(|| self.first_key())
     }
 
-    /// Whether the sidebar shows the element keyed `key` now.
+    /// Whether the sidebar shows the element keyed `key` now: a collapsed PINNED still shows
+    /// the open place's pin.
     fn shows(&self, key: &str) -> bool {
         let row = self.listed.rows.iter().find(|row| row.item.key(KEY) == key);
         match row {
-            Some(row) => !matches!(row.item, ItemId::Pin(_)) || !self.state.pinned_collapsed,
+            Some(row) => {
+                !matches!(row.item, ItemId::Pin(_))
+                    || !self.state.pinned_collapsed
+                    || self.current.as_ref() == Some(&row.item)
+            }
             None => key == super::keys::PINNED_HEADING && !self.listed.pins.is_empty(),
         }
     }
