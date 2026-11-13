@@ -12,7 +12,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 
 use super::intents;
-use crate::{App, commands, rename, surface};
+use crate::{App, commands, pane_header, rename, surface};
 
 /// The view's words, translated once: the language changes only on restart.
 pub(super) struct Labels(ColumnsLabels);
@@ -92,5 +92,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         commands::in_view(collection)
     })
     .pointer_settings(|app: &App| PointerSettings::default().modes(app.columns.clicks))
+    // GTK's column header actions; only the Trash's Empty Trash is on Rune yet.
+    .header_actions(|app: &App, cx| pane_header::empty_trash::column_button(app, &cx))
     .on_intent(intents::heard)
 }

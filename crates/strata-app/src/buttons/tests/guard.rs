@@ -21,6 +21,10 @@ use crate::{
     test_support::{PATIENCE, fixture, hosted_over, idle_view, send_key, view},
 };
 
+/// The roles of what a press acts on: a button, and a menu item outside a menu (a popover's
+/// actions, as GTK's `DefaultActions` are), which Rune presses on Return only inside a group.
+const PRESSED: [&str; 2] = ["button", "menuitem"];
+
 /// Roles whose own keys move among and press their items, Return included.
 const ITEM_GROUPS: [&str; 5] = ["list", "listbox", "menu", "tree", "grid"];
 
@@ -69,8 +73,8 @@ fn left_to_its_group(elements: &[rune::ElementInfo], button: &rune::ElementInfo)
     false
 }
 
-/// The focusable buttons of the window that neither take Return themselves nor are left to
-/// their group, nor are named in [`EXCEPTIONS`]. The window is built again first, so the keys
+/// The focusable buttons and menu items ([`PRESSED`]) of the window that neither take Return
+/// themselves nor are left to their group, nor are named in [`EXCEPTIONS`]. The window is built again first, so the keys
 /// recorded are those of the buttons drawn now, not of an earlier build under the same key
 /// (Back without a history takes `on_return`).
 fn deaf_to_return(host: &mut Offscreen) -> Vec<String> {
@@ -81,7 +85,7 @@ fn deaf_to_return(host: &mut Offscreen) -> Vec<String> {
     let taking = TAKING_RETURN.lock().expect("the keys");
     elements
         .iter()
-        .filter(|element| element.role == "button" && element.focusable)
+        .filter(|element| PRESSED.contains(&element.role) && element.focusable)
         .filter(|element| !element.inert && !element.exiting)
         .filter(|element| !left_to_its_group(&elements, element))
         .map(|element| element.key.clone().unwrap_or_else(|| element.path.clone()))

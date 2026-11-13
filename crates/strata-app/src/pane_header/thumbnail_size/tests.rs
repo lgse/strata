@@ -165,6 +165,15 @@ fn make_default_and_reset_follow_the_remembered_folder() {
         press(&mut host, Key::Right);
         let offered = host.run_until(PATIENCE, |host| drawn(host, MAKE_DEFAULT));
         assert!(offered, "a size other than the default offers the actions");
+        let tree = host.tree();
+        for (key, name) in [
+            (MAKE_DEFAULT, "Make this the default size"),
+            (RESET, "Reset to default size"),
+        ] {
+            let action = node(&tree, key).expect("the action");
+            assert_eq!(view::text(action, "role"), "menu-item", "{name}, as GTK's");
+            assert_eq!(view::text(action, "name"), name);
+        }
         return_on(&mut host, MAKE_DEFAULT);
         wait_closed(&mut host, "Make this the default size");
         assert_eq!(default_size(&host), 80);

@@ -1,0 +1,3 @@
+{"scenario":"fuzz-columns-v2-0000000000000010","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"shift+End","when":{"not":{"field":{"name":"Rename"}}}}
+{"click":{"entry":"documents"},"button":3,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}
