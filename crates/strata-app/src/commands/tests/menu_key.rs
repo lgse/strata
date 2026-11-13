@@ -177,7 +177,9 @@ fn the_menu_key_opens_the_menu_of_a_cursor_partly_in_view(mode: &'static str, na
         let top = top_of_first(&host);
         // Less than any row's height.
         wheel(&mut host, -10.0, 1);
-        assert_ne!(top_of_first(&host), top, "the wheel moved nothing");
+        let scrolled = host.run_until(PATIENCE, |host| top_of_first(host) != top);
+        assert!(scrolled, "the wheel moved nothing");
+        while host.turn() {}
         let shown = drawn(&host);
 
         press(&mut host, Key::ContextMenu, Mods::default());
