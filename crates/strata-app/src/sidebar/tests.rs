@@ -499,3 +499,36 @@ fn the_toggle_and_its_key_step_the_width_and_save_each_step() {
         },
     );
 }
+
+/// A hidden sidebar saved from the rail (`sidebar_expanded = false`, `sidebar_compact =
+/// true`) starts hidden, and the toggle shows the full sidebar, not the rail, as GTK's step to
+/// `Expanded` saves both.
+#[test]
+fn a_sidebar_hidden_from_the_rail_starts_hidden_and_shows_full() {
+    hosted_after(
+        MODULE,
+        "a_sidebar_hidden_from_the_rail_starts_hidden_and_shows_full",
+        || {
+            let file = settings_file();
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = "mode = \"theme\"\ntheme = \"azure-glow\"\n\
+                         sidebar_expanded = false\nsidebar_compact = true\n";
+            std::fs::write(file, saved).expect("settings");
+        },
+        |mut host| {
+            stepped_to(
+                &mut host,
+                Step::Hidden,
+                (false, true),
+                "Show sidebar (Ctrl+B)",
+            );
+            click(&mut host, TOGGLE);
+            stepped_to(
+                &mut host,
+                Step::Full,
+                (true, false),
+                "Compact sidebar (Ctrl+B)",
+            );
+        },
+    );
+}
