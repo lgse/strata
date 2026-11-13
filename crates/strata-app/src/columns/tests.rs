@@ -614,7 +614,7 @@ fn a_click_selects_in_the_browser_and_opens_or_closes_columns_as_the_gtk_views_d
 /// What V0's name probe read from the GTK harness for the same fixture, two Downs in
 /// (`.v0/gtk/tree-after.txt` on the spike branch), with Rune's role names: the QA backend
 /// maps `group`, `list-box` and `list-box-option` onto AT-SPI's `grouping`, `list` and
-/// `list item` (V7).
+/// `list item` (V7). Each column's header title is a `label` too.
 #[test]
 fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
     hosted(
@@ -670,6 +670,24 @@ fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
                 ]
             );
             assert_eq!(seen.focused.as_deref(), Some("pictures"));
+            // Each column's header title is a label named for its folder and described by
+            // its path, as GTK's `column_heading` is.
+            let tree = host.tree();
+            let columns = find(&tree, &|node| node["description"] == "Columns view");
+            let titles: Vec<[String; 2]> = columns
+                .into_iter()
+                .flat_map(|column| find(column, &|node| node["role"] == "label"))
+                .map(|label| [text(label, "name"), text(label, "description")])
+                .filter(|[_, description]| description.starts_with('/'))
+                .collect();
+            let path = |folder: &std::path::Path| Location::local(folder).display_path();
+            assert_eq!(
+                titles,
+                [
+                    [root.clone(), path(folder.path())],
+                    ["pictures".to_owned(), path(&folder.path().join("pictures"))],
+                ]
+            );
         },
     );
 }

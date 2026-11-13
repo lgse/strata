@@ -44,6 +44,11 @@ impl ColumnSources for Listings {
         self.columns[depth].title()
     }
 
+    /// `column_heading` in `src/ui/browser/columns/append/header.rs`: the folder's path.
+    fn title_description(&self, depth: usize) -> Option<Cow<'_, str>> {
+        Some(Cow::Owned(self.columns[depth].location().display_path()))
+    }
+
     fn loading(&self, depth: usize) -> bool {
         self.columns[depth].is_loading()
     }
