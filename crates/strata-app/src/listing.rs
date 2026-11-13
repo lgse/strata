@@ -155,21 +155,28 @@ pub(crate) struct Row {
 }
 
 impl Row {
-    /// Keeps `previous`'s thumbnail key when this is the same entry read again and no time
-    /// or size it already knew has changed: a metadata fill that only makes them known is the
-    /// same file, and a new key would ask for its thumbnail again and cancel the request out
-    /// (GTK's key changes on the first fill too, but GTK neither cancels a running render nor
-    /// asks again for a slot already showing that path). A time or size that was known and
-    /// changed takes the new key, a new thumbnail. A file replaced before its first fill keeps
-    /// the key, and its thumbnail is still the file's as it is: a render reads the file as it
-    /// stands, its time from `stat` (`thumbnails::look_up`).
+    /// Keeps `previous`'s thumbnail key when this is the same entry read again, both rows
+    /// have a key (a file replaced by a folder of its name has none), and no time or size
+    /// known in both differs. A metadata fill that only makes them known, or a reload that
+    /// lists them unknown again, is then the same file: a new key would ask for its thumbnail
+    /// again and cancel the request out. GTK's key changes on the first fill too; GTK does not
+    /// ask again because a slot already showing a thumbnail of that path is not asked
+    /// (`displayed_thumbnail_matches`), nor a key already requested (`already_requested`).
+    ///
+    /// The window it leaves: a thumbnail rendered while the time and size were both unknown,
+    /// of a file then replaced, stays while every later row brings only newly known facts,
+    /// until a known time or size changes. GTK's window is wider: a slot showing a thumbnail
+    /// of that path is not asked again until it is bound anew.
     fn keep_key_of(&mut self, previous: &Row) {
-        let changed = |was: Option<i64>, now: Option<i64>| was.is_some() && was != now;
-        let resized = previous.facts.size.is_some() && previous.facts.size != self.facts.size;
+        let differs = |was: Option<i64>, now: Option<i64>| matches!((was, now), (Some(was), Some(now)) if was != now);
+        let resized = matches!(
+            (previous.facts.size, self.facts.size),
+            (Some(was), Some(now)) if was != now
+        );
         let same_file = self.id == previous.id
-            && !changed(previous.facts.modified, self.facts.modified)
+            && !differs(previous.facts.modified, self.facts.modified)
             && !resized;
-        if same_file && previous.thumbnail.is_some() {
+        if same_file && previous.thumbnail.is_some() && self.thumbnail.is_some() {
             self.thumbnail = previous.thumbnail;
         }
     }

@@ -283,9 +283,10 @@ fn photo(modified: Option<i64>, size: Option<u64>) -> FileEntry {
     }
 }
 
-/// A row read again keeps its thumbnail key while only facts it did not know arrive (a fill:
-/// a new key would ask again and cancel the request out), and takes a new one when a time or
-/// size it knew changes (the file changed), however the rows come back.
+/// A row read again keeps its thumbnail key while no time or size known in both differs (a
+/// fill that makes them known, a reload that forgets them: a new key would ask again and
+/// cancel the request out), and takes a new one when a known time or size changes, however
+/// the rows come back.
 #[test]
 fn a_row_keeps_its_thumbnail_key_until_a_known_time_or_size_changes() {
     let cases = [
@@ -313,6 +314,12 @@ fn a_row_keeps_its_thumbnail_key_until_a_known_time_or_size_changes() {
             photo(Some(1), Some(11)),
             false,
         ),
+        (
+            "a reload that forgets them",
+            photo(Some(1), Some(10)),
+            photo(None, None),
+            true,
+        ),
     ];
     let edits: [(&str, ReadAgain); 3] = [
         ("refill", |row| Edit::Refill(vec![(0, row)])),
@@ -331,4 +338,21 @@ fn a_row_keeps_its_thumbnail_key_until_a_known_time_or_size_changes() {
             assert_eq!(now == key, kept, "{name}, by {how}");
         }
     }
+}
+
+/// A file replaced by a folder of its name, read again, takes the folder's lack of a key: the
+/// folder's row asks for no render.
+#[test]
+fn a_row_that_has_no_key_keeps_none() {
+    let ids = Ids::default();
+    let mut column = Column::new(Location::local(FOLDER), false, None);
+    column.apply(Edit::Replace(vec![Row::of(&photo(None, None), &ids)]));
+    assert!(column.entry(0).thumbnail.is_some());
+    let folder = FileEntry {
+        kind: Kind::Directory,
+        ..photo(None, None)
+    };
+    column.apply(Edit::Refill(vec![(0, Row::of(&folder, &ids))]));
+
+    assert_eq!(column.entry(0).thumbnail, None);
 }
