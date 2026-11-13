@@ -803,3 +803,146 @@ fn down_from_the_header_returns_to_the_remembered_row_once() {
         },
     );
 }
+
+/// The rows each kind of row's menu lists, by section, in GTK's order
+/// (`attach_place_context_menu_with`, `build_trash_menu`).
+#[test]
+fn each_rows_menu_lists_gtks_rows_in_its_order() {
+    use super::{
+        menu::{self, CONNECT, CUSTOMIZE, OPEN_IN_TAB, PROPERTIES, UNPIN},
+        places::{Navigation, Row},
+    };
+    let row = |item: ItemId, location: Location| Row {
+        item,
+        location,
+        navigation: Navigation::Direct,
+    };
+    let place = |id: &str| ItemId::Place(id.into());
+    let folder = Location::local("/srv/work");
+    for (row, expected) in [
+        (
+            row(place("home"), folder.clone()),
+            vec![vec![OPEN_IN_TAB], vec![UNPIN, CUSTOMIZE, PROPERTIES]],
+        ),
+        (
+            row(ItemId::Pin("0".into()), folder),
+            vec![vec![OPEN_IN_TAB], vec![UNPIN, CUSTOMIZE, PROPERTIES]],
+        ),
+        (
+            row(place("network"), Location::uri("network:///")),
+            vec![vec![OPEN_IN_TAB], vec![CONNECT, UNPIN, PROPERTIES]],
+        ),
+        (
+            row(place("recent"), Location::uri("recent:///")),
+            vec![vec![OPEN_IN_TAB], vec![UNPIN, PROPERTIES]],
+        ),
+        (
+            row(place("trash"), Location::uri("trash:///")),
+            vec![vec![UNPIN, PROPERTIES]],
+        ),
+    ] {
+        assert_eq!(menu::rows(&row), expected, "{:?}", row.item);
+    }
+}
+
+/// The open sidebar menu's rows, as assistive technology hears them: their names and keys.
+fn menu_rows(host: &Offscreen) -> Vec<(String, String)> {
+    let tree = host.tree();
+    let rows = all(&tree, &|node| {
+        text(node, "role").starts_with("menu-item") && text(node, "key").starts_with("sidebar-menu")
+    });
+    rows.iter()
+        .map(|row| (text(row, "name"), text(row, "key")))
+        .collect()
+}
+
+/// Waits for the sidebar's menu to list `names`, and gives the key of its row `choose`.
+fn menu_lists(host: &mut Offscreen, names: &[&str], choose: &str) -> String {
+    let reached = host.run_until(PATIENCE, |host| {
+        let shown: Vec<String> = menu_rows(host).into_iter().map(|(name, _)| name).collect();
+        shown == names
+    });
+    assert!(
+        reached,
+        "the menu lists {names:?}, not {:?}",
+        menu_rows(host)
+    );
+    let row = menu_rows(host).into_iter().find(|(name, _)| name == choose);
+    row.expect("the row to choose").1
+}
+
+/// A right-click on a built-in place opens its menu, and Unpin hides the place and saves it
+/// (`set_sidebar_show_home(false)`).
+#[test]
+fn unpin_in_a_places_menu_hides_the_place_and_saves_it() {
+    hosted(
+        MODULE,
+        "unpin_in_a_places_menu_hides_the_place_and_saves_it",
+        |mut host| {
+            let [x, y, w, h] = bounds(&mut host, "sidebar-place-home");
+            let (x, y) = (x + w / 2.0, y + h / 2.0);
+            host.runtime().pointer_move(x, y);
+            host.runtime().secondary_down(x, y);
+            host.turn();
+            host.runtime().secondary_up(x, y);
+            idle(&mut host);
+            let unpin = menu_lists(
+                &mut host,
+                &["Open in New Tab", "Unpin", "Customize…", "Properties"],
+                "Unpin",
+            );
+            click(&mut host, &unpin);
+            let saved = host.run_until(PATIENCE, |host| {
+                let file = std::fs::read_to_string(settings_file()).unwrap_or_default();
+                file.contains("sidebar_show_home = false")
+                    && keyed(&host.tree(), "sidebar-place-home").is_none()
+            });
+            assert!(
+                saved,
+                "Unpin hides Home and saves it: {:?}",
+                named_buttons(&host)
+            );
+        },
+    );
+}
+
+/// The Menu key on a focused pin opens its menu, and Unpin takes the pin out of the
+/// bookmarks file (`unpin_location`).
+#[test]
+fn the_menu_key_on_a_pin_opens_its_menu_and_unpin_takes_it_out_of_the_bookmarks() {
+    hosted_after(
+        MODULE,
+        "the_menu_key_on_a_pin_opens_its_menu_and_unpin_takes_it_out_of_the_bookmarks",
+        || {
+            std::fs::create_dir_all(home().join("work")).expect("a pinned folder");
+            std::fs::create_dir_all(home().join("notes")).expect("another pinned folder");
+            seed_pins(&format!(
+                "{}{}",
+                pin(&home().join("work"), "Work"),
+                pin(&home().join("notes"), "Notes")
+            ));
+        },
+        |mut host| {
+            opened(&home().join("work"), &mut host);
+            shown(&mut host, "sidebar-pin-0");
+            press(&mut host, Key::Down, Mods::default());
+            press(&mut host, Key::Left, Mods::default());
+            focus_reaches(&mut host, "sidebar-pin-0", &Key::Left);
+            press(&mut host, Key::ContextMenu, Mods::default());
+            let unpin = menu_lists(
+                &mut host,
+                &["Open in New Tab", "Unpin", "Customize…", "Properties"],
+                "Unpin",
+            );
+            click(&mut host, &unpin);
+            let unpinned = host.run_until(PATIENCE, |_| {
+                let file = std::fs::read_to_string(bookmarks_file()).unwrap_or_default();
+                !file.contains("/work ") && file.contains("/notes ")
+            });
+            assert!(
+                unpinned,
+                "Unpin takes Work out of the bookmarks and keeps Notes"
+            );
+        },
+    );
+}

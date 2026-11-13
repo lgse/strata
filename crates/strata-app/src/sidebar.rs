@@ -22,12 +22,15 @@
 //! - **The width and the sections** start as the settings saved them; a section's heading
 //!   saves its own state, and the header's toggle steps the width and saves it ([`width`]).
 //!
-//! Drops, devices, the full Trash's icon, the `g` keycaps and the context menus are not here
-//! yet: `docs/rune/parity/packages/A3.md` lists them.
+//! - **The context menus** of the rows, by right-click and the Menu key ([`menu`]).
+//!
+//! Drops, devices, the full Trash's icon and the `g` keycaps are not here yet:
+//! `docs/rune/parity/packages/A3.md` lists them.
 
 use std::io;
 
 use rune::{El, Tx};
+use strata_components::context_menu::ContextMenuState;
 use strata_components::sidebar::{
     ItemId, PlacesSidebar, Section, SidebarData, SidebarIntent, SidebarState, Step, Via,
 };
@@ -40,13 +43,14 @@ use strata_kit::look::Look;
 
 use crate::{
     App,
-    commands::Action,
+    commands::{Action, Holds},
     shell,
     slots::{self, Frame, Later, Listener, Part, Place, Setup},
 };
 
 mod header;
 mod keys;
+mod menu;
 mod places;
 mod reorder;
 mod width;
@@ -73,6 +77,8 @@ pub(crate) struct Sidebar {
     watch: Option<BookmarkWatch>,
     /// The element Up left for the header's toggle, which Down from the header comes back to.
     header_entry: Option<String>,
+    /// A row's context menu ([`menu`]).
+    menu: ContextMenuState,
     started: bool,
 }
 
@@ -103,8 +109,13 @@ impl Part for Sidebar {
             later: setup.later.clone(),
             watch: None,
             header_entry: None,
+            menu: ContextMenuState::default(),
             started: false,
         }
+    }
+
+    fn keyboard(app: &App) -> Option<Holds> {
+        app.sidebar.menu.is_open().then_some(Holds::Menu)
     }
 
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
@@ -243,7 +254,7 @@ impl Sidebar {
     }
 }
 
-fn build(app: &App, _frame: &mut Frame<'_, App>) -> Option<El> {
+fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let sidebar = &app.sidebar;
     if !sidebar.started {
         return None;
@@ -254,7 +265,8 @@ fn build(app: &App, _frame: &mut Frame<'_, App>) -> Option<El> {
         devices: &[],
         current: sidebar.current.as_ref(),
     };
-    Some(element(app, &app.look, data))
+    let menu = menu::element(app, frame.layer);
+    Some(element(app, &app.look, data).child(menu))
 }
 
 fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
@@ -276,6 +288,10 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
 fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
     match intent {
         SidebarIntent::Open { item, via } => open(app, &item, via, tx),
+        SidebarIntent::ContextMenu {
+            item: Some(item),
+            point,
+        } => menu::open(app, &item, point),
         SidebarIntent::LeaveToFiles => {
             if let Some(view) = shell::view_focus(app) {
                 tx.focus(view, true);
