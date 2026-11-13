@@ -95,6 +95,54 @@ pub(super) fn resized(app: &mut App, request: SizeRequest, tx: &mut Tx) {
     app.icons.size = size;
 }
 
+/// The shown size, for the pane header's slider (`pane_header::thumbnail_size`).
+pub(crate) fn shown(app: &App) -> i32 {
+    stored(app.icons.size)
+}
+
+/// A size the pane header's slider set, kept as a step's is and shown at once
+/// (`ThumbnailSizeChange::apply`, which calls `set_folder_icons_size` on every move).
+pub(crate) fn set(app: &mut App, size: i32, tx: &mut Tx) {
+    let shown = shown_folder(app).cloned();
+    keep(app, shown.as_ref(), size, tx);
+    app.icons.size = tile_size(size);
+}
+
+/// "Make this the default size": the default becomes `size`, and while folders' views are
+/// remembered, every folder that kept that size as its own forgets it
+/// (`set_default_icons_size`).
+pub(crate) fn make_default(app: &mut App, size: i32, tx: &mut Tx) {
+    let mut prune = None;
+    shell::saved(app).change(|settings| prune = policy::set_default_icons_size(settings, size));
+    if let Some(prune) = prune {
+        folder_views::change(app, |views| prune.apply(views), tx);
+    }
+}
+
+/// "Reset to default size": the shown folder, if it is remembered, forgets its own size and
+/// follows the default (`reset_folder_icons_size`).
+pub(crate) fn reset_folder(app: &mut App, tx: &mut Tx) {
+    let Some(key) = remembered_shown(app) else {
+        return;
+    };
+    folder_views::change(
+        app,
+        |views| views.update(&key, |view| view.icons_size = None),
+        tx,
+    );
+}
+
+/// Whether the shown folder is remembered at a size other than the default, when the
+/// header offers to make it the default or to reset it (`SizeActions::differs`).
+pub(crate) fn differs_from_default(app: &App) -> bool {
+    remembered_shown(app).is_some() && shown(app) != shell::preferences(app).icons_thumbnail_size
+}
+
+fn remembered_shown(app: &App) -> Option<strata_desktop::settings::folder_views::FolderKey> {
+    let shown = shown_folder(app)?;
+    policy::remembered_key(shell::preferences(app), shown)
+}
+
 /// Keeps a changed size where the shared policy says: the default, or the folder's own
 /// (`set_folder_icons_size`, which GTK's slider calls on every move).
 fn keep(app: &mut App, location: Option<&Location>, size: i32, tx: &mut Tx) {
