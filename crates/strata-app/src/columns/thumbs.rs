@@ -18,6 +18,7 @@ use strata_components::{
     contract::EntryId,
     thumbnails::{Step, ThumbnailStore, Viewport, icon_slot},
 };
+use strata_core::model::Location;
 use strata_kit::look::Look;
 
 use crate::{App, shell, slots::Later, thumbnails::Viewer};
@@ -30,8 +31,39 @@ const ROW_THUMBNAIL: f32 = 17.0;
 struct Synced {
     /// The range its view reported since the last poll, not yet synced.
     range: Option<Range<usize>>,
-    /// The listing's version the store last saw.
+    /// The folder and the listing's version the store last saw: a sibling opened at the same
+    /// depth is another folder, whose listing's version may equal the last one's.
+    location: Option<Location>,
     version: Option<u64>,
+}
+
+/// What a poll tells the store of one column.
+#[derive(Debug, PartialEq)]
+enum Sync {
+    /// The rows the view shows now.
+    View(Range<usize>),
+    /// The step changed: the last rows at the new step.
+    Step,
+    /// The listing changed, or another folder took the column: the last rows of it.
+    Again,
+    Nothing,
+}
+
+impl Synced {
+    /// What to tell the store of the column now showing `location` at `version`, and the
+    /// column recorded as told.
+    fn next(&mut self, location: &Location, version: u64, restep: bool) -> Sync {
+        let moved = self.location.as_ref() != Some(location);
+        let changed = moved || self.version != Some(version);
+        self.location = Some(location.clone());
+        self.version = Some(version);
+        match self.range.take() {
+            Some(range) => Sync::View(range),
+            None if restep => Sync::Step,
+            None if changed => Sync::Again,
+            None => Sync::Nothing,
+        }
+    }
 }
 
 pub(super) struct Thumbs {
@@ -114,14 +146,18 @@ pub(super) fn poll(app: &mut App, clock: f64) -> bool {
             continue;
         };
         let version = listing.version();
-        pruned |= match column.range.take() {
-            Some(range) => store.sync(id, listing, Viewport::new(range, step).listing(version)),
-            None if restep => store.set_step(id, listing, step),
-            None if column.version != Some(version) => store.resync(id, listing, version),
-            None => false,
+        pruned |= match column.next(listing.location(), version, restep) {
+            Sync::View(range) => {
+                store.sync(id, listing, Viewport::new(range, step).listing(version))
+            }
+            Sync::Step => store.set_step(id, listing, step),
+            Sync::Again => store.resync(id, listing, version),
+            Sync::Nothing => false,
         };
-        column.version = Some(version);
     }
     Viewer::pump(app, parts, clock);
     pruned
 }
+
+#[cfg(test)]
+mod tests;
