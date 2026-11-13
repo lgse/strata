@@ -774,3 +774,16 @@ sequence only together with the alphabet's version, so the version is part of th
   right-click on `documents`), confirmed 3 of 3 and the same in 24 of 24 GTK replays; seeds
   `0x10`, `0x11` and `0x14` of `columns v3`. All parked in `tests/qa/fuzz/corpus/columns/`.
 - **State:** open, [A6](packages/A6.md)'s (menus), noted in its file.
+
+### #2367: Down from a cursor with nothing selected selects in place on GTK, moves on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2367), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F2](packages/F2.md), on a probe of #2356's fix replayed on both targets. In
+  Columns, with a column's cursor on an entry and nothing selected (as a click that reopens a
+  folder's column now leaves it), GTK's first Down selects that entry in place
+  (`resume_native_selection`, `src/ui/browser_modes/selection.rs`); Rune moves the cursor to
+  the next entry and selects it.
+- **Concerns:** the probe End, Up, Up, a click on `pictures`, Down. Not yet met by a seed of
+  `columns`, shrunk or replayed 24 times on GTK.
+- **State:** open, for the coordinator to place: the fix would be C1c's keyboard machine.
