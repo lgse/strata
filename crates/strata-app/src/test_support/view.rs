@@ -290,6 +290,28 @@ fn right_click_at(host: &mut Offscreen, (x, y): (f32, f32)) -> Option<String> {
     open_menu(host)
 }
 
+/// The names of the entries drawn now, in every list, in the tree's order: a list builds the
+/// rows in and near its viewport.
+pub(crate) fn drawn(host: &Offscreen) -> Vec<String> {
+    let tree = host.tree();
+    let entries = all(&tree, &keyed_as_entry);
+    entries.iter().map(|entry| text(entry, "name")).collect()
+}
+
+/// Turns the wheel `turns` times by `dy` points, over where the first entry is drawn now.
+pub(crate) fn wheel(host: &mut Offscreen, dy: f32, turns: usize) {
+    let tree = host.tree();
+    let entries = all(&tree, &keyed_as_entry);
+    let bounds = &entries.first().expect("an entry")["bounds"];
+    let at = |index: usize| bounds[index].as_f64().expect("a bound");
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let (x, y) = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) / 2.0) as f32);
+    for _ in 0..turns {
+        host.runtime().wheel(x, y, dy);
+        idle(host);
+    }
+}
+
 /// The name of the menu that is open: what it acts on (`menus.rs`).
 pub(crate) fn open_menu(host: &Offscreen) -> Option<String> {
     let tree = host.tree();

@@ -9,6 +9,11 @@
 //! - **Where.** An entry's menu opens at the entry, vertically centred: at its right edge in
 //!   Columns and Icons and at its centre in List (`item_menu_target`). The folder's opens at
 //!   the middle of the listing (`folder_menu_target`). C21's `keyboard_anchor` holds both.
+//! - **A cursor scrolled out of view opens nothing.** GTK opens an entry's menu at the row it
+//!   has drawn (`shown_row_at` in `src/ui/browser/columns.rs`, `item_widget` in the mode
+//!   views) and finds none for a row out of view. C21 can scroll the row in and open there;
+//!   this host does not ask it to. Which is right is the owner's
+//!   (`docs/rune/parity/owner.md`, B3).
 //! - **Why a controller.** Where the menu opens is the collection's geometry, which only a
 //!   controller is handed. So the key is read after every stage of the chain ahead of the
 //!   view's own keys, where GTK's `context_menu_command` sits in the middle of it.
@@ -39,7 +44,17 @@ pub(crate) fn view_keys(collection: &mut CollectionState, edge: AnchorEdge) {
     *keyboard = Some(Box::new(ViewKeys { inner, edge }));
 }
 
+/// Where the menu of the cursor's row opens when `keyboard_anchor` would scroll the row in
+/// first: at the row where it is drawn now, or nowhere when none of it shows.
+fn where_drawn(cx: &Ctx<'_>, index: usize, revealed: Point, window: Point) -> Option<Point> {
+    let row = cx.geometry.rect_of(index);
+    let shows = row.bottom() > cx.visible.y && row.y < cx.visible.bottom();
+    let middle = row.center().y.clamp(cx.visible.y, cx.visible.bottom());
+    shows.then(|| Point::new(revealed.x, window.y + middle - cx.visible.y))
+}
+
 /// Sends what a secondary press sends, for the entry and the point `keyboard_anchor` gives.
+/// Nothing is scrolled, and nothing opens for a cursor's row that is out of view.
 fn open(cx: &mut Ctx<'_>, edge: AnchorEdge) {
     let window = cx.content_to_window(cx.visible);
     let window = Point::new(window.x, window.y);
@@ -51,13 +66,16 @@ fn open(cx: &mut Ctx<'_>, edge: AnchorEdge) {
         window,
         edge,
     );
-    if let Some(index) = anchor.reveal {
-        cx.emit(Effect::Reveal(index));
+    let at = match anchor.reveal {
+        Some(index) => where_drawn(cx, index, anchor.at, window),
+        None => Some(anchor.at),
+    };
+    if let Some(at) = at {
+        cx.emit(Effect::Intent(Intent::ContextMenu {
+            target: anchor.target,
+            anchor: Rect::new(at.x, at.y, 0.0, 0.0),
+        }));
     }
-    cx.emit(Effect::Intent(Intent::ContextMenu {
-        target: anchor.target,
-        anchor: Rect::new(anchor.at.x, anchor.at.y, 0.0, 0.0),
-    }));
 }
 
 impl KeyController for ViewKeys {

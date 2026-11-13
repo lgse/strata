@@ -34,7 +34,7 @@ macro_rules! in_each_view {
 
         #[test]
         fn every_registered_view_has_this_test() {
-            super::assert_each_view_answers_to_one_of(&[$($mode,)*]);
+            crate::commands::tests::assert_each_view_answers_to_one_of(&[$($mode,)*]);
         }
     };
 }
