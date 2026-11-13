@@ -12,12 +12,16 @@
 
 use strata_components::{
     collection::keyboard::{KeySettings, Letters},
+    context_menu::AnchorEdge,
     list_table::{ColumnLayout, ColumnWidths, ListTableState},
 };
 use strata_core::i18n::tr;
 use strata_desktop::settings::Preferences;
 
-use crate::{fills::Fills, single::Single};
+use crate::{
+    fills::Fills,
+    single::{Made, Single},
+};
 
 mod columns;
 mod part;
@@ -60,7 +64,13 @@ impl List {
         // `explorer_file_clicks` and `explorer_folder_clicks`: the List view's.
         let clicks = (settings.list_file_clicks, settings.list_folder_clicks);
         Self {
-            single: Single::new(VIEW, clicks, keys(typing), tr("List view")),
+            single: Single::new(Made {
+                key: VIEW,
+                clicks,
+                keys: keys(typing),
+                described: tr("List view"),
+                menu_at: AnchorEdge::Center,
+            }),
             table: ListTableState::new(),
             layout: columns::layout(settings),
             widths: columns::widths(settings),

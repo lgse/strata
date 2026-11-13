@@ -21,6 +21,7 @@ use strata_components::{
         selection::Listing,
     },
     columns::{ColumnsState, Focus, Opening},
+    context_menu::AnchorEdge,
     contract::{EntryId, EntrySource},
     scroll::Autoscroll,
 };
@@ -29,7 +30,7 @@ use strata_fs::app::Browser;
 use strata_kit::look::Look;
 
 use crate::{
-    App,
+    App, commands,
     events::{Added, Change, Marks, Moved},
     handover::{self, Held, Moving},
     listing::{Column, Edit, Load, Row},
@@ -247,7 +248,16 @@ impl Columns {
             self.state
                 .swap_from(depth, opening, focus, hands.look, hands.tx);
         }
+        self.read_menu_keys(depth);
         self.held.push(self.held_now(depth));
+    }
+
+    /// Puts the context menu's keys ahead of a new column's own. GTK opens a Columns entry's
+    /// menu at its right edge (`ColumnView::context_menu_target`).
+    fn read_menu_keys(&mut self, depth: usize) {
+        if let Some(column) = self.state.column_mut(depth) {
+            commands::view_keys(&mut column.collection, AnchorEdge::Right);
+        }
     }
 
     /// Folders that moved keep their columns, under their new names and with every row read

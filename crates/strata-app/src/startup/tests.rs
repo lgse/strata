@@ -71,14 +71,10 @@ impl Backend for Foreign {
 
 #[test]
 fn the_ui_thread_is_not_claimed_over_another_key_library() {
-    strata_test_support::isolated_test(
-        "startup::tests::the_ui_thread_is_not_claimed_over_another_key_library",
-        std::iter::empty::<(&str, &str)>(),
-        || true,
-        || {
-            assert!(keys::install(&Foreign, every_binding_fires));
-            let refused = UiThread::claim().err().expect("the claim is refused");
-            assert!(refused.contains("key library"), "{refused}");
-        },
-    );
+    let test = "startup::tests::the_ui_thread_is_not_claimed_over_another_key_library";
+    crate::test_support::in_own_process(test, &[], || {
+        assert!(keys::install(&Foreign, every_binding_fires));
+        let refused = UiThread::claim().err().expect("the claim is refused");
+        assert!(refused.contains("key library"), "{refused}");
+    });
 }

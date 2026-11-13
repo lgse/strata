@@ -52,7 +52,10 @@ impl Span {
 /// `asked_early` says a collection's hook has asked the early stages for this very press.
 ///
 /// - A collection with the hook is given the key: the hook asks the stages ahead of the
-///   view's own keys, and the root element the rest once the view has left the key.
+///   view's own keys, every time, and the root element the rest once the view has left the
+///   key. The hook does not stand back for a press it seems to have asked for: the root
+///   forgets a press only when it hears it, so after a key the view or a command took, the
+///   same key again in the same frame looks the same, and it is a press of its own.
 /// - No hook asked, whatever has the keyboard, a view without one included: the root element
 ///   asks every stage.
 /// - A part holds the keyboard ([`super::Holds`]): Rune calls no element's handler from a
@@ -65,7 +68,7 @@ impl Span {
 pub(super) fn span(at: &Situation, heard: Heard, asked_early: bool) -> Option<Span> {
     let free = at.holds().is_none();
     match heard {
-        Heard::BeforeView => (free && !asked_early).then_some(Span::BeforeView),
+        Heard::BeforeView => free.then_some(Span::BeforeView),
         Heard::Element if !free => None,
         Heard::Element if asked_early => Some(Span::AfterView),
         Heard::Element => Some(Span::Whole),
@@ -74,10 +77,13 @@ pub(super) fn span(at: &Situation, heard: Heard, asked_early: bool) -> Option<Sp
 }
 
 /// One press, as the places that hear it can tell it from the next: Rune hands each of them
-/// the same event at the same clock, with the keyboard where it was.
+/// the same event at the same clock, with the keyboard where it was. A window's host gives
+/// each event its own time of arrival too; a headless one gives none, so two presses of one
+/// key in one frame look the same there, which is why the hook asks every time.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Stamp {
     clock: u64,
+    arrived: Option<rune::time::Instant>,
     physical: Option<PhysicalKeyCode>,
     repeat: bool,
     event: KeyEvent,
@@ -88,6 +94,7 @@ impl Stamp {
     pub(super) fn of(event: &KeyEvent, at: &Situation, tx: &Tx) -> Self {
         Self {
             clock: tx.clock().to_bits(),
+            arrived: tx.input_time(),
             physical: tx.physical_key(),
             repeat: tx.key_repeat(),
             event: event.clone(),
