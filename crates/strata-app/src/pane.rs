@@ -458,7 +458,11 @@ impl Pane {
         // A remembered position that came back with the listing is the pane's, as GTK's
         // restore sets the browser's selection to it: the browser's marks don't replace it.
         let restored = restoring && !self.collection.restore_pending();
-        if !restored && !handover::placed(before, &self.collection) {
+        if restored {
+            if let Some(column) = self.shown.and_then(|depth| self.columns.get(depth)) {
+                restore::fall_back(column, &mut self.collection);
+            }
+        } else if !handover::placed(before, &self.collection) {
             self.adopt(marks);
         }
     }

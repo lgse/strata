@@ -3,7 +3,10 @@
 //! Which folder a pane shows as the browser's columns change: the active one, as GTK's Icons
 //! and List views rebuild their pane. The handover itself is the Columns view's tests'.
 
-use strata_components::{collection::element::CollectionState, contract::EntrySource};
+use strata_components::{
+    collection::{element::CollectionState, selection::Position},
+    contract::EntrySource,
+};
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue, ViewPreferences};
 
 use super::{Applied, Pane};
@@ -347,4 +350,62 @@ fn a_reveal_wins_over_the_remembered_position() {
         fixture.visit(&folder, &["a.txt", "b.txt"]),
         Applied::Returned
     );
+}
+
+/// A folder whose read failed is not remembered, as GTK's `loaded_location` skips it: when it
+/// later opens and lists, it is a first visit.
+#[test]
+fn a_folder_that_failed_to_read_is_not_remembered() {
+    let mut fixture = Fixture::new();
+    let folder = location(0);
+    fixture.apply(Change::Added(Added {
+        depth: 0,
+        location: folder.clone(),
+        show_hidden: false,
+        active: true,
+        grouping: None,
+        reveal: false,
+    }));
+    fixture.apply(Change::Loaded {
+        depth: 0,
+        load: Load::Failed("unreadable".to_owned()),
+        marks: Marks::default(),
+        grouping: None,
+    });
+    fixture.visit(&Location::local("/elsewhere"), &["x.txt"]);
+
+    assert_eq!(fixture.visit(&folder, &["a.txt"]), Applied::Entered);
+}
+
+/// A cursor whose entry went while the folder was left falls back to the first restored
+/// selected entry, and the anchor stays, as GTK's `restore_selection` places them.
+#[test]
+fn a_restored_cursor_whose_entry_went_falls_back_to_the_selection() {
+    let mut fixture = Fixture::new();
+    let folder = location(0);
+    fixture.visit(&folder, &["a.txt", "b.txt", "c.txt"]);
+    let id = |fixture: &Fixture, name: &str| {
+        fixture
+            .ids
+            .of(&folder.child(std::ffi::OsStr::new(name)).expect("a child"))
+    };
+    let (b, c) = (id(&fixture, "b.txt"), id(&fixture, "c.txt"));
+    let (source, collection) = fixture.pane.parts_mut();
+    let _ = collection.selection.restore(&Position {
+        cursor: Some(c),
+        anchor: Some(b),
+        selected: vec![b, c],
+        ..Position::default()
+    });
+    collection.note_selection(source);
+    fixture.visit(&Location::local("/elsewhere"), &["x.txt"]);
+
+    assert_eq!(
+        fixture.visit(&folder, &["a.txt", "b.txt"]),
+        Applied::Returned
+    );
+    let selection = &fixture.pane.collection().selection;
+    assert_eq!(selection.cursor(), Some(b), "the first selected entry left");
+    assert_eq!(selection.selected_ids(fixture.pane.source()), [b]);
+    assert_eq!(selection.anchor(), Some(b));
 }

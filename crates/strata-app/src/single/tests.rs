@@ -15,8 +15,8 @@ use crate::{
     test_support::{
         PATIENCE, fixture,
         view::{
-            Shape, assert_browser_agrees, browser_holds, choose, double_click, field, hosted_in,
-            idle, open, press, right_click, right_click_blank, seen, shift, wait,
+            Shape, assert_browser_agrees, browser_holds, choose, double_click, drawn, field,
+            hosted_in, idle, open, press, right_click, right_click_blank, seen, shift, wait, wheel,
         },
     },
 };
@@ -485,20 +485,13 @@ fn listed<V: SinglePane>(host: &mut Offscreen, name: &str) {
     idle(host);
 }
 
-/// The pane's scroll offset and cursor.
-fn stands<V: SinglePane>(host: &Offscreen) -> (f32, Option<EntryId>) {
-    let collection = V::single(host.app()).pane.collection();
-    (collection.scroll_offset(), collection.selection.cursor())
+/// The pane's cursor.
+fn cursor<V: SinglePane>(host: &Offscreen) -> Option<EntryId> {
+    V::single(host.app()).pane.collection().selection.cursor()
 }
 
-/// Scrolls the pane down by the wheel, and takes its cursor away as the browser's too.
+/// Takes the pane's cursor away, as the browser's too, and scrolls the pane down by the wheel.
 fn scroll_with_no_cursor<V: SinglePane>(host: &mut Offscreen) {
-    let viewport = V::single(host.app()).pane.collection().viewport();
-    let (x, y) = (viewport.x + viewport.w / 2.0, viewport.y + viewport.h / 2.0);
-    for _ in 0..6 {
-        host.runtime().wheel(x, y, -40.0);
-        idle(host);
-    }
     host.runtime().update(|app, _| {
         let (source, collection) = V::single_mut(app).pane.parts_mut();
         let _ = collection.selection.restore(&Position::default());
@@ -506,6 +499,7 @@ fn scroll_with_no_cursor<V: SinglePane>(host: &mut Offscreen) {
         crate::shell::publish(app);
     });
     idle(host);
+    wheel(host, -40.0, 120);
 }
 
 /// Back to a folder left scrolled and with no cursor, as GTK's saved visit with no cursor:
@@ -517,9 +511,13 @@ fn back_keeps_a_scroll_left_with_no_cursor<V: SinglePane>(case: &Case, name: &st
         host.app().open(Location::local(folder.path()));
         listed::<V>(&mut host, &root);
         scroll_with_no_cursor::<V>(&mut host);
-        let left = stands::<V>(&host);
-        assert!(left.0 > 0.0, "scrolled: {left:?}");
-        assert_eq!(left.1, None, "no cursor");
+        let left = drawn(&host);
+        assert_ne!(
+            left.first().map(String::as_str),
+            Some("folder-000"),
+            "scrolled"
+        );
+        assert_eq!(cursor::<V>(&host), None, "no cursor");
 
         // Opened by its location, as the location bar opens a folder: nothing focuses a row.
         host.app()
@@ -532,12 +530,8 @@ fn back_keeps_a_scroll_left_with_no_cursor<V: SinglePane>(case: &Case, name: &st
         press(&mut host, Key::Left, alt);
         listed::<V>(&mut host, &root);
 
-        let back = stands::<V>(&host);
-        assert!(
-            (back.0 - left.0).abs() < 2.0,
-            "the scroll: left {left:?}, back {back:?}"
-        );
-        assert_eq!(back.1, None, "no first row's cursor");
+        assert_eq!(drawn(&host), left, "the entries drawn when it was left");
+        assert_eq!(cursor::<V>(&host), None, "no first row's cursor");
     });
 }
 

@@ -18,14 +18,19 @@
 //! - **By id.** A view index holds only against the order the listing has now (a grouped
 //!   folder shows in its groups' order); C1e's [`Position`] keeps ids, so the restore finds
 //!   the same entries whatever order they show in.
+//! - **A cursor falls back** to the first restored selected entry when its own entry is gone,
+//!   or none was remembered, and the anchor to the cursor ([`fall_back`]).
 
-use strata_components::collection::{
-    element::CollectionState,
-    selection::{Position, RestoreMemory},
+use strata_components::{
+    collection::{
+        element::CollectionState,
+        selection::{AnchorRule, Position, RestoreMemory},
+    },
+    contract::EntrySource,
 };
 use strata_core::model::Location;
 
-use crate::listing::Column;
+use crate::listing::{Column, Load};
 
 #[derive(Default)]
 pub(super) struct Restore {
@@ -37,12 +42,13 @@ pub(super) struct Restore {
 }
 
 impl Restore {
-    /// A change that may show another folder starts: the folder shown now, if it finished
-    /// loading, is where `collection` stands.
+    /// A change that may show another folder starts: the folder shown now, if it was listed,
+    /// is where `collection` stands. A folder still loading or whose read failed is not
+    /// remembered, as GTK's `loaded_location` skips one with an error.
     pub(super) fn leave(&mut self, shown: Option<&Column>, collection: &CollectionState) {
         self.returned = false;
         self.leaving = shown
-            .filter(|column| !column.is_loading())
+            .filter(|column| listed(column))
             .map(|column| (column.location().clone(), collection.position(column)));
     }
 
@@ -64,4 +70,33 @@ impl Restore {
     pub(super) fn returned(&self) -> bool {
         self.returned
     }
+}
+
+/// Whether `column` finished reading its folder: listed, not loading, not failed.
+fn listed(column: &Column) -> bool {
+    !column.is_loading() && *column.load() == Load::Listed
+}
+
+/// After a restore landed: a cursor whose entry is gone, or none remembered, falls back to
+/// the first restored selected entry in the browser's order, and the anchor to the cursor
+/// where it has none, as GTK's `restore_selection` does (`focused.or_else(|| positions.first())`).
+pub(super) fn fall_back(column: &Column, collection: &mut CollectionState) {
+    let selection = &collection.selection;
+    if selection.cursor().is_some() {
+        return;
+    }
+    let first = selection
+        .selected_ids(column)
+        .into_iter()
+        .filter_map(|id| Some((column.position_of(id)?, id)))
+        .min();
+    let Some(index) = first.and_then(|(_, id)| column.index_of(id)) else {
+        return;
+    };
+    let anchor = match selection.anchor() {
+        Some(_) => AnchorRule::Keep,
+        None => AnchorRule::Move,
+    };
+    let _ = collection.selection.move_cursor(column, index, anchor);
+    collection.note_selection(column);
 }
