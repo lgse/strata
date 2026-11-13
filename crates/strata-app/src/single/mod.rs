@@ -235,7 +235,7 @@ fn first_visit(single: &mut Single) -> bool {
         single.first_visit = false;
         return false;
     }
-    if source.len() == 0 {
+    if source.is_empty() {
         return false;
     }
     let _ = collection
