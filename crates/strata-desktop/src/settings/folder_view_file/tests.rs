@@ -5,36 +5,15 @@ use std::{fs, io, time::Duration};
 use super::*;
 use crate::settings::lock_saves;
 
-/// Where a test run in a process of its own says that it ran.
-const RAN: &str = "STRATA_TEST_RAN";
-
 /// Runs `run` as the test `name` in a process of its own, with `file` as `folder-views.toml`
-/// if there is one, and fails when no test ran there.
-///
-/// The child is this executable started for the one test whose path is `name` exactly. A
-/// path that is no test's starts nothing, and the child still exits well, so without the
-/// marker a test moved or renamed passes without running (finding lgse/strata#2193).
+/// if there is one.
 pub(in crate::settings) fn isolated(name: &str, file: Option<&str>, run: impl FnOnce()) {
-    let own = tempfile::tempdir().expect("a folder for the marker");
-    // The parent picks the place, and the child is told it.
-    let marker = std::env::var_os(RAN).map_or_else(|| own.path().join("ran"), PathBuf::from);
-    strata_test_support::isolated_test(
-        name,
-        [(RAN, marker.as_os_str())],
-        || true,
-        || {
-            fs::write(&marker, name).expect("the marker");
-            if let Some(contents) = file {
-                write_file(contents);
-            }
-            run();
-        },
-    );
-    assert!(
-        marker.exists(),
-        "`{name}` ran nowhere: no test of this executable has that path, so the child ran none \
-         and exited well. Give the test's whole path, with every module it is in."
-    );
+    crate::test_support::in_own_process(name, || {
+        if let Some(contents) = file {
+            write_file(contents);
+        }
+        run();
+    });
 }
 
 pub(in crate::settings) fn write_file(contents: &str) {

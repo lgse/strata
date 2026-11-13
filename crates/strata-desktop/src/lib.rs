@@ -21,3 +21,5 @@ pub mod portal_setup;
 pub mod services;
 pub mod settings;
 pub mod tabs_session;
+#[cfg(test)]
+mod test_support;
