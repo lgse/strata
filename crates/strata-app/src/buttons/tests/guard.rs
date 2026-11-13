@@ -215,6 +215,7 @@ fn made_parts() -> Vec<Entry<App>> {
         publish: |_| {},
         caught_up: |_| {},
         poll: |_, _, _| false,
+        switched: |_, _| {},
         commands: &[],
         keyboard: |_| None,
     };

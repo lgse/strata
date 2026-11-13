@@ -36,10 +36,10 @@ use strata_platform::csd::{self, Csd};
 use crate::{
     App, Built, PARTS, buttons,
     commands::{self, Live, On},
-    folder_views,
+    events, folder_views,
     location::labels::with_keys,
     settings::Saved,
-    slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, Slot, View},
+    slots::{Entry, Frame, Heard, Hearing, Ids, Inbox, Registry, Setup, Slot, View},
     startup::UiThread,
 };
 
@@ -69,6 +69,8 @@ pub(crate) struct Window {
     events: Inbox<App>,
     /// The registered parts, with the view that is shown.
     parts: Registry<'static, App>,
+    /// Which view's listener hears the browser: the shown one's.
+    hearing: Hearing,
     /// The table that names an entry for the components: every part holds the same one.
     ids: Ids,
     /// The browser's active location as of the last `poll`: what the title names.
@@ -143,12 +145,14 @@ impl App {
         debug_assert_eq!(Registry::check(parts, commands::own()), Ok(()));
         let parts = Registry::new(parts, &saved.browser_mode);
         // Before the first load, so that its cursor lands on the first row a grouped view
-        // shows (`rebuild.rs` in `src/ui/browser_modes`). The one place a view is mounted.
+        // shows (`rebuild.rs` in `src/ui/browser_modes`). A view shown later is mounted by
+        // `show_view`, which does the same.
         let groups = parts
             .shown()
             .is_some_and(|view| view.supports_type_grouping);
         browser.set_type_grouping(saved.group_by_type && groups);
-        let mut listeners = parts.listeners(&setup);
+        let hearing = parts.hearing();
+        let mut listeners = parts.listeners(&setup, &hearing);
         listeners.push(Box::new(hear));
         events.observe(&browser, listeners);
         let queue = setup.later.clone();
@@ -167,6 +171,7 @@ impl App {
             settings,
             events,
             parts,
+            hearing,
             ids,
             location: None,
             title: title_for(None),
@@ -310,6 +315,57 @@ pub(crate) fn thumbnails(app: &App) -> &ThumbnailStore {
 /// menu, the QA backend.
 pub(crate) fn shown_view(app: &App) -> Option<&'static View<App>> {
     app.window.parts.shown()
+}
+
+/// Shows the view that answers to `mode` in place of the one shown, while the window is open,
+/// as GTK's `set_view_mode` switches (`src/ui/browser/view_modes.rs`). False when that view
+/// is shown already, or none answers to it.
+///
+/// - What the view that leaves changed goes to the browser, and a visual range ends
+///   (`leave_visual`).
+/// - A view whose child column follows the selection ([`View::returns`]) is shown again as
+///   GTK's `rebuild_columns_view` does: a child the selection no longer holds closes, before
+///   the rebuild, and the lone selected folder opens as the child after it, while the view
+///   mirrors.
+/// - The browser groups by file type for the view now shown, as at start.
+/// - The view is rebuilt from the browser ([`events::replay`]) through its own
+///   [`View::apply`], and hears the browser from then on. The rebuild gives it the keyboard,
+///   as a listing it is given does.
+/// - Every active part follows the view now shown ([`Part::switched`](crate::slots::Part)):
+///   the location bar names the folder it shows.
+///
+/// The caller saves the mode and ends what is open across the switch, the rename editor.
+pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
+    let mut parts = app.window.parts;
+    if !parts.show(mode) {
+        return false;
+    }
+    let Some(view) = parts.shown() else {
+        return false;
+    };
+    publish(app);
+    app.browser.leave_visual();
+    // Heard by the view that leaves: the view that comes reads what it left.
+    let child = view
+        .returns
+        .and_then(|_| app.browser.follow_selection_on_return());
+    app.window.parts = parts;
+    app.window.hearing.follow(parts);
+    let grouping = preferences(app).group_by_type && view.supports_type_grouping;
+    app.browser.set_type_grouping(grouping);
+    let rebuilt = events::replay(&app.browser, &app.window.ids);
+    for change in rebuilt.changes {
+        (view.apply)(app, change, tx);
+    }
+    let opens = view.returns.is_some_and(|mirrors| mirrors(app));
+    if let Some((depth, location)) = child.filter(|_| opens) {
+        app.browser.show_child(depth, location);
+    }
+    settle(app, tx);
+    for part in parts.active() {
+        (part.switched)(app, tx);
+    }
+    true
 }
 
 /// The id the components know the entry at `location` by.

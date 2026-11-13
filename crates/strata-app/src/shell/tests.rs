@@ -13,10 +13,11 @@ use strata_fs::app::BrowserEvent;
 use crate::{
     App,
     commands::Holds,
+    events::Change,
     host::offscreen::Offscreen,
     shell,
-    slots::{Entry, Frame, Listener, Place, Setup, Sidebar},
-    test_support::{idle_view, send_key},
+    slots::{Entry, Frame, Listener, Place, Setup, Sidebar, View},
+    test_support::{PATIENCE, fixture, idle_view, send_key},
 };
 
 const MODULE: &str = "shell::tests";
@@ -65,6 +66,7 @@ made! {
     Hints = "hints",
     Menu = "menu",
     Dialog = "dialog",
+    Other = "other",
 }
 
 /// The element a made-up part leaves in the tree, keyed with its name. It has a size, so it
@@ -117,6 +119,7 @@ fn part<P: Made>(place: Place<App>) -> Entry<App> {
             }
             false
         },
+        switched: |_, _| note(format!("{} follows the view shown", P::NAME)),
         commands: &[],
         keyboard: |_| TYPING.get().then_some(Holds::Edit),
     }
@@ -148,6 +151,35 @@ fn every_slot() -> Vec<Entry<App>> {
         part::<Location>(Place::Location(placed::<Location>)),
         part::<Tabs>(Place::Tabs(placed::<Tabs>)),
     ]
+}
+
+/// Two views and a menu: `files` shown at start, and `other`, answering to the mode
+/// `other`, which says what it is rebuilt with.
+fn two_views() -> Vec<Entry<App>> {
+    let other = View {
+        apply: |_, change, _| {
+            note(format!("other applies {}", change_name(&change)));
+            true
+        },
+        ..idle_view("made-other", placed::<Other>, |mode| mode == "other")
+    };
+    let files = idle_view("made-files", placed::<Files>, |mode| mode != "other");
+    vec![
+        part::<Menu>(Place::Overlays(placed::<Menu>)),
+        part::<Files>(Place::View(files)),
+        part::<Other>(Place::View(other)),
+    ]
+}
+
+fn change_name(change: &Change) -> &'static str {
+    match change {
+        Change::Reset => "a reset",
+        Change::Added(_) => "a column",
+        Change::Rows { .. } => "its rows",
+        Change::Loaded { .. } => "its load",
+        Change::Selection { .. } => "the selection",
+        _ => "something else",
+    }
 }
 
 fn two_parts() -> Vec<Entry<App>> {
@@ -415,4 +447,75 @@ fn only_the_first_window_logs_the_saved_keymap() {
         );
         assert_eq!(super::first_window_reports(), None);
     });
+}
+
+/// Another view shown while the window is open is rebuilt from what the browser holds, column
+/// by column, takes the slot and the browser's events from the view it replaces, and every
+/// part is told. The view shown already, or a mode no view answers to, changes nothing.
+#[test]
+fn a_view_shown_later_is_rebuilt_from_the_browser_and_hears_it_from_then_on() {
+    hosted(
+        "a_view_shown_later_is_rebuilt_from_the_browser_and_hears_it_from_then_on",
+        two_views,
+        |mut host| {
+            let folder = fixture();
+            host.app()
+                .open(strata_core::model::Location::local(folder.path()));
+            let browser = host.app().browser().clone();
+            let listed = host.run_until(PATIENCE, |_| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            assert!(listed, "the folder to be listed");
+            while host.turn() {}
+            noted();
+
+            let unchanged = act(&mut host, |app, tx| {
+                [
+                    shell::show_view(app, "files", tx),
+                    shell::show_view(app, "list", tx),
+                ]
+            });
+            assert_eq!(unchanged, [false, false]);
+            assert!(act(&mut host, |app, tx| shell::show_view(app, "other", tx)));
+            let log = noted();
+            let rebuilt: Vec<&str> = log
+                .iter()
+                .map(String::as_str)
+                .filter(|line| line.starts_with("other applies") || line.ends_with("view shown"))
+                .collect();
+            assert_eq!(
+                rebuilt,
+                [
+                    "other applies a reset",
+                    "other applies a column",
+                    "other applies its rows",
+                    "other applies its load",
+                    "other applies the selection",
+                    "menu follows the view shown",
+                    "other follows the view shown",
+                ]
+            );
+            let tree = host.tree();
+            let mut found = Vec::new();
+            made(&tree, &[], &mut found);
+            assert!(
+                found.iter().any(|key| key.ends_with("made-other")),
+                "{found:?}"
+            );
+            assert!(
+                !found.iter().any(|key| key.ends_with("made-files")),
+                "{found:?}"
+            );
+
+            host.app().browser().toggle_hidden();
+            while host.turn() {}
+            let heard: Vec<String> = noted()
+                .into_iter()
+                .filter(|line| line.ends_with(" applies"))
+                .collect();
+            assert_eq!(heard, ["menu applies", "other applies"]);
+        },
+    );
 }

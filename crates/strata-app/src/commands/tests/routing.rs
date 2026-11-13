@@ -83,6 +83,7 @@ pub(super) fn part<P: 'static>(
         publish: |_| {},
         caught_up: |_| {},
         poll: |_, _, _| false,
+        switched: |_, _| {},
         commands,
         keyboard,
     }

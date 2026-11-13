@@ -12,7 +12,7 @@ use std::ops::Range;
 
 use strata_components::contract::EntryId;
 use strata_core::model::{FileEntry, Location, ViewPreferences};
-use strata_fs::app::{Browser, BrowserEvent};
+use strata_fs::app::{Browser, BrowserColumnSnapshot, BrowserEvent};
 
 use crate::{
     listing::{Edit, Load, Row},
@@ -141,6 +141,35 @@ pub(crate) fn read(event: &BrowserEvent, browser: &Browser, ids: &Ids) -> Read {
     }
 }
 
+/// What the browser shows now, as the changes that bring a view that heard none of its events
+/// to it: every column the browser holds, with its rows, its load, its cursor and selection,
+/// and the active column's cursor shown. The view that becomes shown is rebuilt from it, as
+/// GTK rebuilds a view it switches to from the browser's snapshots (`rebuild_columns_from` and
+/// `prepare_pane` in `src/ui`). Each column says the browser reveals an entry in it, so a
+/// single pane's remembered position does not come back over the browser's cursor. GTK
+/// restores one for a folder still loading at the switch; this does not.
+pub(crate) fn replay(browser: &Browser, ids: &Ids) -> Read {
+    let mut reader = Reader {
+        browser,
+        ids,
+        copied: 0,
+        changes: vec![Change::Reset],
+    };
+    for depth in 0.. {
+        let Some(snapshot) = browser.column_snapshot(depth) else {
+            break;
+        };
+        reader.replay_column(depth, snapshot);
+    }
+    if let Some(active) = browser.active_depth() {
+        reader.selection(active, true, None);
+    }
+    Read {
+        changes: reader.changes,
+        copied: reader.copied,
+    }
+}
+
 /// Reads out of the browser what one event changed.
 struct Reader<'a> {
     browser: &'a Browser,
@@ -241,6 +270,26 @@ impl Reader<'_> {
             reveal,
             landed,
         });
+    }
+
+    /// Column `depth` as the browser holds it: opened, listed as far as it has been, and
+    /// finished or failed if its load is.
+    fn replay_column(&mut self, depth: usize, snapshot: BrowserColumnSnapshot) {
+        self.changes.push(Change::Added(Added {
+            depth,
+            location: snapshot.location,
+            show_hidden: self.show_hidden(depth),
+            active: self.browser.active_depth() == Some(depth),
+            grouping: self.grouping(depth),
+            reveal: true,
+        }));
+        let rows = self.column(depth);
+        self.edited(depth, Edit::Replace(rows));
+        match snapshot.error {
+            Some(message) => self.loaded(depth, Load::Failed(message)),
+            None if !snapshot.loading => self.loaded(depth, Load::Listed),
+            None => {}
+        }
     }
 
     fn relocated(&mut self, from_depth: usize) {

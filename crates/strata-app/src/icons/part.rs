@@ -72,6 +72,8 @@ impl Part for Icons {
         shows,
         focus: VIEW,
         supports_type_grouping: false,
+        apply: single::apply::<Self>,
+        returns: None,
         pointer_at: None,
         rows: single::rows::<Self>(),
         editing: single::editing::<Self>(),

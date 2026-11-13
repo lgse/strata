@@ -52,6 +52,11 @@ pub(crate) struct Mirror {
 }
 
 impl Mirror {
+    /// Whether the saved choice mirrors the selection at all.
+    pub(crate) fn enabled(&self) -> bool {
+        self.gate.enabled
+    }
+
     pub(crate) fn new(enabled: bool) -> Self {
         Self {
             gate: Gate {

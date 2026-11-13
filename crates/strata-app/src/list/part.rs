@@ -81,6 +81,8 @@ impl Part for List {
         focus: VIEW,
         // `BrowserMode::supports_type_grouping`: the List view groups by file type.
         supports_type_grouping: true,
+        apply: single::apply::<Self>,
+        returns: None,
         pointer_at: None,
         rows: single::rows::<Self>(),
         editing: single::editing::<Self>(),

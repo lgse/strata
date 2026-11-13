@@ -127,6 +127,11 @@ impl Columns {
         }
     }
 
+    /// Whether the selection's folder opens as the child column: the saved choice.
+    pub(crate) fn mirrors(&self) -> bool {
+        self.mirror.enabled()
+    }
+
     /// How many columns both the listings and the view hold.
     fn open(&self) -> usize {
         self.state.len().min(self.listings.columns.len())
