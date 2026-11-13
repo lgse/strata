@@ -114,6 +114,15 @@ pub(crate) struct Facts {
 }
 
 impl Facts {
+    /// These facts, with a time or a size still unknown here taken from `now`.
+    fn learning(&self, now: &Facts) -> Facts {
+        Facts {
+            modified: self.modified.or(now.modified),
+            size: self.size.or(now.size),
+            ..*self
+        }
+    }
+
     /// Whether a time or a size known in both differs: the file changed.
     fn contradict(&self, other: &Facts) -> bool {
         fn differ<T: PartialEq>(a: Option<T>, b: Option<T>) -> bool {
@@ -160,6 +169,10 @@ pub(crate) struct Row {
     /// ([`Column::group`]), as a MIME lookup for every row would cost every view.
     group: Option<TypeGroup>,
     facts: Facts,
+    /// The time and size the thumbnail key was made under, with any learnt since while it was
+    /// kept: what a later row is compared against, so a change across a reload that listed
+    /// them unknown is still seen.
+    keyed: Facts,
 }
 
 impl Row {
@@ -178,15 +191,17 @@ impl Row {
     fn keep_key_of(&mut self, previous: &Row) {
         if self.same_file_as(previous) {
             self.thumbnail = previous.thumbnail;
+            self.keyed = previous.keyed.learning(&self.facts);
         }
     }
 
     /// Whether this row is `previous`'s file read again, as far as its facts tell: the same
-    /// entry, both with a thumbnail key, and no known time or size differing.
+    /// entry, both with a thumbnail key, and no time or size known now differing from the last
+    /// known under `previous`'s key.
     fn same_file_as(&self, previous: &Row) -> bool {
         let keyed = previous.thumbnail.is_some() && self.thumbnail.is_some();
         let same_entry = self.id == previous.id;
-        keyed && same_entry && !self.facts.contradict(&previous.facts)
+        keyed && same_entry && !self.facts.contradict(&previous.keyed)
     }
 
     pub(crate) fn of(entry: &FileEntry, ids: &Ids) -> Self {
@@ -201,6 +216,7 @@ impl Row {
             entry_kind: entry.kind,
             group: None,
             facts: Facts::of(entry),
+            keyed: Facts::of(entry),
         }
     }
 

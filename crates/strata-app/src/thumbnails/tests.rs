@@ -227,7 +227,7 @@ fn queue_cases() -> Vec<Case> {
             renders: vec![Pdf, Image],
             cancelled: 1,
             ..Case::idle(
-                "an abandoned render never reaches a worker",
+                "a cancelled waiting render never reaches a worker",
                 2,
                 READERS,
                 render(Image),

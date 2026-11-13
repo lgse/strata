@@ -289,36 +289,37 @@ fn photo(modified: Option<i64>, size: Option<u64>) -> FileEntry {
 /// the rows come back.
 #[test]
 fn a_row_keeps_its_thumbnail_key_until_a_known_time_or_size_changes() {
+    let (t1, t2) = (Some(1), Some(2));
     let cases = [
         (
             "the first fill",
-            photo(None, None),
-            photo(Some(1), Some(10)),
+            vec![photo(None, None), photo(t1, Some(10))],
             true,
         ),
         (
             "the time filled later",
-            photo(None, Some(10)),
-            photo(Some(1), Some(10)),
+            vec![photo(None, Some(10)), photo(t1, Some(10))],
             true,
         ),
         (
             "a known time changed",
-            photo(Some(1), Some(10)),
-            photo(Some(2), Some(10)),
+            vec![photo(t1, Some(10)), photo(t2, Some(10))],
             false,
         ),
         (
             "a known size changed",
-            photo(Some(1), Some(10)),
-            photo(Some(1), Some(11)),
+            vec![photo(t1, Some(10)), photo(t1, Some(11))],
             false,
         ),
         (
             "a reload that forgets them",
-            photo(Some(1), Some(10)),
-            photo(None, None),
+            vec![photo(t1, Some(10)), photo(None, None)],
             true,
+        ),
+        (
+            "a change across a reload",
+            vec![photo(t1, Some(10)), photo(None, None), photo(t2, Some(10))],
+            false,
         ),
     ];
     let edits: [(&str, ReadAgain); 3] = [
@@ -326,13 +327,16 @@ fn a_row_keeps_its_thumbnail_key_until_a_known_time_or_size_changes() {
         ("replace", |row| Edit::Replace(vec![row])),
         ("splice", |row| Edit::Splice(vec![(0, 1, vec![row])])),
     ];
-    for (name, before, after, kept) in cases {
+    for (name, rows, kept) in cases {
         for (how, edit) in edits {
             let ids = Ids::default();
             let mut column = Column::new(Location::local(FOLDER), false, None);
-            column.apply(Edit::Replace(vec![Row::of(&before, &ids)]));
+            let (first, later) = rows.split_first().expect("a first row");
+            column.apply(Edit::Replace(vec![Row::of(first, &ids)]));
             let key = column.entry(0).thumbnail.expect("a key");
-            column.apply(edit(Row::of(&after, &ids)));
+            for row in later {
+                column.apply(edit(Row::of(row, &ids)));
+            }
 
             let now = column.entry(0).thumbnail.expect("a key");
             assert_eq!(now == key, kept, "{name}, by {how}");
