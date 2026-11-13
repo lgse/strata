@@ -6,6 +6,5 @@
 scenario = "created-entry-completion-keeps-focus"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
