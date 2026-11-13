@@ -13,6 +13,7 @@ use strata_core::model::Location;
 use strata_fs::adapters::bookmarks;
 
 use crate::{
+    App,
     host::offscreen::Offscreen,
     test_support::{
         PATIENCE, fixture, hosted, hosted_after,
@@ -292,6 +293,123 @@ fn the_saved_sections_and_step_start_the_sidebar_and_a_heading_saves_its_state()
             });
             assert!(reached, "the heading saves PINNED as expanded");
             assert!(!host.app().sidebar.state.pinned_collapsed);
+        },
+    );
+}
+
+/// The box of the row keyed `key`, as drawn.
+fn bounds(host: &mut Offscreen, key: &str) -> [f32; 4] {
+    shown(host, key);
+    let elements = host.runtime().elements();
+    let row = elements
+        .iter()
+        .find(|element| !element.exiting && element.key.as_deref() == Some(key));
+    row.expect("the row is mounted").visible
+}
+
+/// A pointer drag from the middle of `from` to `to`, in steps, as a scenario's `drag` makes.
+fn drag(host: &mut Offscreen, from: (f32, f32), to: (f32, f32)) {
+    host.runtime().pointer_move(from.0, from.1);
+    host.runtime().pointer_down(from.0, from.1);
+    host.turn();
+    for step in 1..=12 {
+        let k = step as f32 / 12.0;
+        let (x, y) = (from.0 + (to.0 - from.0) * k, from.1 + (to.1 - from.1) * k);
+        host.runtime().pointer_move(x, y);
+        host.turn();
+    }
+    host.runtime().pointer_up(to.0, to.1);
+    idle(host);
+}
+
+fn saved_order() -> Vec<String> {
+    let saved = std::fs::read_to_string(settings_file()).unwrap_or_default();
+    let saved: toml::Table = toml::from_str(&saved).unwrap_or_default();
+    let order = saved.get("sidebar_order").and_then(toml::Value::as_array);
+    let names = order.into_iter().flatten().filter_map(toml::Value::as_str);
+    names.map(str::to_owned).collect()
+}
+
+/// `builtin-places-reorder-survive-restart/columns-gap-after`: a place dropped in the gap below
+/// another lands right after it, as Strata's sidebar drops it, though the pointer is past half
+/// a row from where the drag began.
+#[test]
+fn a_place_dropped_in_the_gap_below_a_row_lands_after_it_and_is_saved() {
+    hosted(
+        MODULE,
+        "a_place_dropped_in_the_gap_below_a_row_lands_after_it_and_is_saved",
+        |mut host| {
+            shown(&mut host, "sidebar-place-network");
+            let [x, y, w, h] = bounds(&mut host, "sidebar-place-home");
+            let [_, trash_y, _, trash_h] = bounds(&mut host, "sidebar-place-trash");
+            drag(
+                &mut host,
+                (x + w / 2.0, y + h / 2.0),
+                (x + w / 2.0, trash_y + trash_h + 1.0),
+            );
+            let reached = host.run_until(PATIENCE, |_| saved_order().len() > 2);
+            assert!(reached, "the new order is saved");
+            assert_eq!(saved_order()[..3], ["trash", "home", "network"]);
+            let shown: Vec<&str> = host
+                .app()
+                .sidebar
+                .listed
+                .places
+                .iter()
+                .map(|place| place.id.as_str())
+                .collect();
+            assert_eq!(shown[..3], ["trash", "home", "network"]);
+            assert_eq!(
+                host.app().browser().active_location(),
+                None,
+                "the drop opens nothing"
+            );
+        },
+    );
+}
+
+/// A drag that ends where it began opens nothing, as Strata's drag source claims the gesture:
+/// the press Rune sends on that release is the drag's.
+#[test]
+fn a_drag_dropped_back_in_place_opens_nothing() {
+    hosted(
+        MODULE,
+        "a_drag_dropped_back_in_place_opens_nothing",
+        |mut host| {
+            let [x, y, w, h] = bounds(&mut host, "sidebar-place-home");
+            let middle = (x + w / 2.0, y + h / 2.0);
+            drag(&mut host, middle, (middle.0, middle.1 + 10.0));
+            host.run_until(std::time::Duration::from_millis(300), |_| false);
+            assert_eq!(host.app().browser().active_location(), None);
+            assert_eq!(host.app().sidebar.current, None);
+            let order = saved_order();
+            assert!(
+                order.is_empty(),
+                "a drop in place saves no order: {order:?}"
+            );
+        },
+    );
+}
+
+/// Strata's sidebar rebuilds its rows when they change, which ends a press on one: a press
+/// held while the sidebar lists its rows again opens nothing on its release.
+#[test]
+fn a_press_held_across_a_relist_opens_nothing_on_its_release() {
+    hosted(
+        MODULE,
+        "a_press_held_across_a_relist_opens_nothing_on_its_release",
+        |mut host| {
+            let [x, y, w, h] = bounds(&mut host, "sidebar-place-home");
+            let (x, y) = (x + w / 2.0, y + h / 2.0);
+            host.runtime().pointer_move(x, y);
+            host.runtime().pointer_down(x, y);
+            host.turn();
+            host.runtime().update(|app: &mut App, _| super::relist(app));
+            host.turn();
+            host.runtime().pointer_up(x, y);
+            idle(&mut host);
+            host.run_until(std::time::Duration::from_millis(300), |_| false);
+            assert_eq!(host.app().browser().active_location(), None);
         },
     );
 }

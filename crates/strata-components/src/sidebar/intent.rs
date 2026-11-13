@@ -6,6 +6,7 @@
 use rune::PointerPress;
 
 use super::data::ItemId;
+use super::drag::Landing;
 use super::state::Step;
 use crate::contract::dnd::{DropHover, Dropped};
 
@@ -79,10 +80,24 @@ pub enum SidebarIntent {
         item: Option<ItemId>,
         point: PointerPress,
     },
-    /// A built-in place was dragged from `from` to `to` in the places block.
-    MovePlace { from: usize, to: usize },
-    /// The pin `id` was dragged from `from` to `to` in the full pin list.
-    MovePin { id: String, from: usize, to: usize },
+    /// A built-in place was dragged from `from` in the places block and dropped at `landing`,
+    /// which puts it at `to` among the rows shown. Strata moves it by `landing`: in its saved
+    /// order, beside the row the drop names, which can differ from `to` where that order holds
+    /// places the sidebar does not show.
+    MovePlace {
+        from: usize,
+        to: usize,
+        landing: Landing,
+    },
+    /// The pin `id` was dragged from `from` in the pin list and dropped at `landing`, which
+    /// puts it at `to` among the pins shown. Strata moves it by `landing`: beside the pin the
+    /// drop names, or into a gap before the pin after it.
+    MovePin {
+        id: String,
+        from: usize,
+        to: usize,
+        landing: Landing,
+    },
     /// A drag reached a pin gap: the host checks its items are folders, keys the result by
     /// `serial` and writes it to [`super::SidebarState::pin_check`]. `uris` is `None` when the
     /// binder reads them only at the drop (Rune's).
