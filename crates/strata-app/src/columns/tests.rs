@@ -537,8 +537,14 @@ fn a_folder_that_cannot_be_read_says_why() {
             unreachable!("the load failed");
         };
         let tree = host.tree();
-        let shown = find(&tree, &|node| node["name"] == message.as_str());
-        assert_eq!(shown.len(), 1, "{message}");
+        // GTK's status page: the reason under "Unable to read this directory", and Retry.
+        let said = format!("Unable to read this directory\n{message}");
+        let shown = find(&tree, &|node| node["name"] == said.as_str());
+        assert_eq!(shown.len(), 1, "{said}");
+        let retry = find(&tree, &|node| {
+            node["role"] == "button" && node["name"] == "Retry"
+        });
+        assert_eq!(retry.len(), 1, "Retry under {said}");
     });
 }
 

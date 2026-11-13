@@ -16,8 +16,11 @@
 //!   **A crumb** opens its folder selecting the one the user came from.
 //! - **The names** are GTK's, with the keys as they are bound now ([`labels`]).
 //!
-//! Not on this interface yet: path suggestions (an empty list answers each request), the
-//! "Unable to open location" dialog and mounting a typed location that needs it, Copy path,
+//! A typed location that cannot be opened is reported on the window's error dialog
+//! ([`crate::open_failed`]).
+//!
+//! Not on this interface yet: path suggestions (an empty list answers each request),
+//! mounting a typed location that needs it, Copy path,
 //! a crumb's middle click (tabs and windows), drops on crumbs, and following the window's
 //! activation. `docs/rune/parity/packages/A5.md`, "Open", says who brings each.
 
