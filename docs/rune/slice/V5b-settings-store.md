@@ -53,7 +53,7 @@ Of the 22 files in the folder, with `src/ui/preferences.rs` itself:
 | `stored.rs` | `ui::browser_modes` | Split. The mode and density conversions stay |
 | `persistence.rs` | GLib, for the save queue | Split. Reading, salvage and the merge moved; the save queue stays |
 | `text_size.rs` | `ui::keys` | Split. The type moved; the shortcut mapping stays as a trait |
-| `keymap.rs` | `ui::keys` | Split. The saved overrides moved; resolving them against the catalog stays |
+| `keymap.rs` | `ui::keys` | Split. The saved overrides moved; resolving them against the catalog stayed, and moved later to `settings/keymap_resolve.rs` ([shared-state.md](../shared-state.md#the-keymap-methods)) |
 | `folder_view_settings.rs` | GLib timers | Stays. Its save lock, `lock_saves`, moved |
 | `appearance_settings.rs`, `file_settings.rs`, `input_settings.rs`, `item_customizations.rs` | GTK | Stay: manager methods |
 | `layout_settings.rs`, `preview_settings.rs`, `sidebar_settings.rs` | Nothing | Stay: manager methods |
@@ -98,7 +98,7 @@ and the video backend. `deny.toml` allows it.
   `src/ui/browser_modes`, a GTK module. The Rune interface has one view and reads
   `browser_mode` as text until it has more.
 - **Resolving keymap overrides.** That needs the key catalog, which is still under
-  `src/ui`.
+  `src/ui`. Both moved after the slice: [shared-state.md](../shared-state.md#the-keymap-methods).
 
 ## How the application reaches it
 
@@ -145,7 +145,7 @@ Apply it to the moved file by hand:
 | `defaults.rs`, `list_columns.rs`, `corner_roundness.rs` | The file of the same name under `settings/` |
 | A normalizer or `normalize_loaded` in `stored.rs` | `settings/stored.rs` |
 | Reading, salvage or the merge in `persistence.rs` | `settings/persistence.rs` |
-| The `TextSize` type, the `KeymapOverrides` struct | `settings/text_size.rs`, `settings/keymap.rs` |
+| The `TextSize` type, the `KeymapOverrides` struct | `settings/text_size.rs`, `settings/keymap.rs`. Resolving the overrides moved after the slice: [shared-state.md](../shared-state.md#merging-from-main) has its row |
 | A setter or getter on `PreferenceManager` | The same file as on `main`. A new name it uses from the moved code joins the import list at the top of `src/ui/preferences.rs` |
 
 A new setting on `main` therefore needs a hand merge of its field and its default. Its
@@ -199,7 +199,8 @@ changed.
   in the slice seeds that file. The model moved after the slice; the store has not
   ([shared-state.md](../shared-state.md#per-folder-views)).
 - **The key catalog.** `KeymapOverrides` is read and kept, and nothing on the Rune side
-  resolves it.
+  resolves it. Since [#2279](https://github.com/lgse/strata/pull/2279) the Rune side does
+  ([shared-state.md](../shared-state.md#the-keymap-methods)).
 - **The date format and reduced motion.** `PreferenceManager::load` applies both
   process-wide. `strata-app` applies only the language, the one V5 needs.
 - **Tests of the moved code in its own crate.** They run in the application's test binary

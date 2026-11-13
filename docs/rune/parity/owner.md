@@ -545,15 +545,18 @@ Rulings of the owner on the parity work, oldest first.
   bullets on a gallery scene, an accessibility golden and a script per component are
   suspended until the cleanup too is the coordinator's reading. `strata-components`' and `strata-app`'s own tests still run. Which test targets
   count as "the basic unit tests" (`--lib --bins --examples`) is the coordinator's reading.
-- **2026-11-12: B2's `PreferenceManager` shape is accepted.** The owner accepted the
-  bookkeeping-only shape: moving `PreferenceManager`'s save bookkeeping and leaving its
-  getters and setters in `src/ui` meets the ruling of 2026-11-11, and a setter's body moves
-  when a Rune package first needs it (relayed by the orchestrating session, 2026-11-12). The
-  edits to a saved keymap and the policy around the per-folder values move the same way.
-  Built in [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178) and [#2265](https://github.com/lgse/strata/pull/2265).
-- **2026-11-12: B2 closes with the folder-view timer rule left in each interface.** The
-  owner said B2 can close with it left in each (relayed by the orchestrating session,
-  2026-11-12). Built in [#2262](https://github.com/lgse/strata/pull/2262).
+- **2026-11-12: B2's `PreferenceManager` shape is accepted.** Asked "Does the
+  bookkeeping-only `PreferenceManager` shape meet your ruling?", the owner said: "Accept it"
+  (to the orchestrating session's question, 2026-11-12). So moving `PreferenceManager`'s save
+  bookkeeping and leaving its getters and setters in `src/ui` meets the ruling of
+  2026-11-11, and a setter's body moves when a Rune package first needs it. The
+  coordinator's reading: the three edits to a saved keymap (`set_bindings`,
+  `reset_binding`, `reset_map`) move the same way, with A18's keyboard settings. Built in
+  [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178) and [#2265](https://github.com/lgse/strata/pull/2265).
+- **2026-11-12: B2 closes with the folder-view timer rule left in each interface.** Asked
+  "Can B2 close with the folder-view timer rule left in each interface?", the owner said:
+  "Close with it" (to the orchestrating session's question, 2026-11-12). Built in
+  [#2262](https://github.com/lgse/strata/pull/2262).
 
 ## Housekeeping
 
