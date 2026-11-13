@@ -154,9 +154,12 @@ fn unreadable(message: &str) -> String {
 /// page stacks them.
 pub(crate) fn drawn(app: &App, surface: &Surface, said: &str, failed: Option<usize>) -> El {
     let look = &app.look;
-    let message = text(said.to_owned())
-        .font(look.kit.ty.ui)
-        .color(look.kit.c.text_muted);
+    // GTK draws an error's message in the accent (`.status-message.error`).
+    let colour = match failed {
+        Some(_) => look.kit.c.text_accent,
+        None => look.kit.c.text_muted,
+    };
+    let message = text(said.to_owned()).font(look.kit.ty.ui).color(colour);
     let page = col()
         .w_full()
         .px(look.space.lg)

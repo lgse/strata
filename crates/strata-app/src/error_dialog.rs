@@ -64,6 +64,8 @@ pub(crate) struct Error {
     title: String,
     message: String,
     offer: Option<Offer>,
+    /// Where the keyboard goes when the dialog closes, when not where it was as it opened.
+    returns_to: Option<&'static str>,
 }
 
 impl Error {
@@ -72,12 +74,20 @@ impl Error {
             title: title.into(),
             message: message.into(),
             offer: None,
+            returns_to: None,
         }
     }
 
     /// The same error, offering `offer` beside Close.
     pub(crate) fn offering(mut self, offer: Offer) -> Self {
         self.offer = Some(offer);
+        self
+    }
+
+    /// The same error, giving the keyboard to the element keyed `key` when it closes: for an
+    /// error raised as the keyboard moves there, which the dialog would not see it reach.
+    pub(crate) fn returning_to(mut self, key: Option<&'static str>) -> Self {
+        self.returns_to = key;
         self
     }
 }
@@ -143,6 +153,10 @@ fn dialog(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {
         .initial_focus(Focus::Primary)
         .close_label(labels.close_dialog.clone())
         .width(MESSAGE_WIDTH);
+    let built = match error.returns_to {
+        Some(key) => built.return_focus(key),
+        None => built,
+    };
     let built = match &error.offer {
         Some(offer) => built
             .icon(offer.icon)
@@ -184,3 +198,6 @@ impl Part for ErrorDialog {
             .then_some(Holds::Modal { field: false })
     }
 }
+
+#[cfg(test)]
+mod tests;

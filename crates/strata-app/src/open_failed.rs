@@ -15,7 +15,8 @@
 //! opens it in its place (`show_open_failure`). Not reported, as on GTK: a refusal the user
 //! answered already (`NotAuthorized`, a dismissed password prompt). A location that has to be
 //! mounted first is GTK's to mount; this interface does not mount yet, so it is reported as
-//! the refusal it is.
+//! the refusal it is. A refused location also drops a reveal that waited for it, as GTK's
+//! `abandon_deferred_reveal` does.
 
 use strata_core::{i18n::tr, model::Location};
 use strata_fs::{
@@ -27,6 +28,7 @@ use strata_kit::icons::IconName;
 use crate::{
     App,
     error_dialog::{self, Error, Offer},
+    shell,
     slots::{Frame, Listener, Part, Place, Setup},
 };
 
@@ -79,7 +81,11 @@ fn report(app: &mut App, opened: Opened, error: &LocationValidationError, admin:
 /// A typed location refused before it was opened (empty, not absolute, a bad URI): "Unable
 /// to open location", with no offer, as GTK's `submit_location` reports it.
 pub(crate) fn typed_refused(app: &mut App, error: &LocationValidationError) {
-    report(app, Opened::ByPath, error, None);
+    let title = app.open_failed.by_path.clone();
+    // The bar has just given the keyboard back to the view, which the dialog's own record of
+    // the focus does not see yet: it returns there on close, as GTK's does.
+    let view = shell::view_focus(app);
+    error_dialog::show(app, Error::new(title, error.message()).returning_to(view));
 }
 
 /// Nothing is drawn: the report is the error dialog's.
@@ -109,12 +115,18 @@ impl Part for OpenFailed {
                 }
                 _ => return,
             };
-            let Some(admin) = reported(browser, location, error) else {
-                return;
-            };
+            let reported = reported(browser, location, error);
             let error = error.clone();
             heard.then(move |app: &mut App, _| {
-                report(app, opened, &error, admin);
+                // A reveal that waited for this location is dropped with it
+                // (`abandon_deferred_reveal`): this interface does not mount, so it would fire
+                // on a later visit instead.
+                if matches!(opened, Opened::ByPath) {
+                    app.browser.cancel_deferred_reveal();
+                }
+                if let Some(admin) = reported {
+                    report(app, opened, &error, admin);
+                }
                 true
             });
         }))

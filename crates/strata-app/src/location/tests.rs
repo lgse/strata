@@ -119,6 +119,19 @@ fn a_typed_location_refused_at_once_is_reported() {
             assert!(reported, "no dialog");
             let name = dialog_name(&host.tree());
             assert_eq!(name.as_deref(), Some("Unable to open location"));
+            // The dialog holds the keyboard; it goes back where it was, the view, once closed.
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            let closed = host.run_until(PATIENCE, |host| dialog_name(&host.tree()).is_none());
+            assert!(closed, "the dialog stayed");
+            idle(&mut host);
+            let view = shell::view_focus(host.app()).map(str::to_owned);
+            assert_eq!(focused(&mut host), view, "the keyboard back on the view");
         },
     );
 }
