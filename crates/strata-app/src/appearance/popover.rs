@@ -251,14 +251,23 @@ fn option(look: &Look, row_of: Row<'_>) -> El {
 fn view_rows(app: &App) -> Vec<El> {
     let labels = &app.appearance.popover.labels;
     let shown = |mode| shell::shown_view(app).is_some_and(|view| (view.shows)(mode));
-    let rows: [(
-        &'static str,
-        IconName,
-        &str,
-        &'static str,
-        fn(&mut App, &mut Tx),
-    ); 3] = [
-        (
+    let row = |key, icon, name, mode, press| {
+        let checked = shown(mode);
+        let role = "menuitemradio";
+        let row = Row {
+            key,
+            role,
+            icon,
+            name,
+            shown_keys: None,
+            checked,
+            sensitive: true,
+            press,
+        };
+        option(&app.look, row)
+    };
+    vec![
+        row(
             SHOW_COLUMNS,
             IconName::ViewColumns,
             &labels.columns,
@@ -267,7 +276,7 @@ fn view_rows(app: &App) -> Vec<El> {
                 chosen_view(app, COLUMNS, tx);
             },
         ),
-        (
+        row(
             SHOW_ICONS,
             IconName::ViewIcons,
             &labels.icons,
@@ -276,7 +285,7 @@ fn view_rows(app: &App) -> Vec<El> {
                 chosen_view(app, ICONS, tx);
             },
         ),
-        (
+        row(
             SHOW_LIST,
             IconName::ViewList,
             &labels.list,
@@ -285,24 +294,7 @@ fn view_rows(app: &App) -> Vec<El> {
                 chosen_view(app, LIST, tx);
             },
         ),
-    ];
-    rows.into_iter()
-        .map(|(key, icon, name, mode, press)| {
-            option(
-                &app.look,
-                Row {
-                    key,
-                    role: "menuitemradio",
-                    icon,
-                    name,
-                    shown_keys: None,
-                    checked: shown(mode),
-                    sensitive: true,
-                    press,
-                },
-            )
-        })
-        .collect()
+    ]
 }
 
 /// A view row: the view shows as the keys show it, the popover closes, and the view has the
