@@ -916,3 +916,46 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** no scenario yet drags from a column's background with entries selected in
   another column.
 - **State:** open, [A8](packages/A8.md)'s.
+
+### #2392: rows and buttons under an open plain popover still show hover
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2392), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here. The
+  issue's text, written before GTK was driven, says nothing outside GTK's popover hovers; this
+  entry is the corrected record.
+- **Seen:** by the owner, in List with the Appearance popover open: a List row beside and under
+  the popover lit up as the pointer moved over the popover's rows. A hosted probe in
+  `strata-app` reproduced it: with the pointer over the popover's "Hidden files" row, both that
+  row and the List row under it show hover 1.0, and 60 pt beside the popover, over the scrim,
+  the List row does. GTK, driven
+  (`./scripts/qa-drive.sh`, XTest motion on Xvfb, the List view, 2026-11-14): with the pointer
+  over the popover's rows, nothing under the popover hovers; outside it, the sidebar's Home and
+  the header's Settings button hover; a List row beside it hovered in one of three sessions
+  (one where the pointer had been over the listing before the popover opened) and not in the
+  other two. So GTK's gap with Rune is under the surface for certain, and beside it at most
+  in the listing.
+- **Why:** Rune paints hover on every element whose rect holds the pointer (`hover_flip` in
+  `runtime/input/hover.rs` at `2a44156`); only what is not `allowed` (inert, or outside a modal)
+  and the ancestors of a `hover_alone` element are spared, and nothing above an element can stop
+  it. The plain popover is not modal on purpose (#2341), so everything under its scrim hovers:
+  the listing's rows, and by the same code the sidebar's and the header's.
+- **Concerns:** `crates/strata-app/src/popover.rs` and its three users: the Appearance popover,
+  the Icons header's "Thumbnail size", and "Customize columns…". Rune packet entry
+  [105](../upstream/rune/105-hover-paints-through-a-cover.md).
+- **Workarounds weighed** (2026-11-14), none built:
+  1. The window's content `.inert()` while a plain popover is open: one change in `Plain`, and
+     hover, cursor and tooltips stop beneath, as GTK's grab does. It costs the driven "a wheel
+     over the listing closes it and scrolls the listing": `scroll_at_axis` skips what is not
+     `allowed`, and `Tx` has no relative scroll request, so the first wheel would only close
+     it (`popover::tests` covers that wheel).
+  2. The same, with the scrim scrolling the listing itself by `Tx::scroll_to_y(listing, offset
+     + dy)`: exact, but each view would have to give its listing's live offset through a new
+     `slots::View` accessor, Columns one per column: a `contract` change to the slots and three
+     views.
+  3. The window's content built with its hover tokens transparent while a popover is open, the
+     popover on the real look: hover is baked into each element when it is built, so it works,
+     but it rests on every kit hover token being swapped, and rune-kit's controls pick their
+     own.
+- **State:** left as it is, by the owner's ruling of 2026-11-14 (to the coordinator), until
+  Rune can block hover under a cover (packet 105) or let a modal background route a wheel
+  (packet 104). [A8](packages/A8.md)'s, noted in `popover.rs`'s module docs.

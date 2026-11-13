@@ -24,6 +24,12 @@
 //! - **Focus leaving it closes it** (GTK's autohide): [`focus_left`], which the part asks in
 //!   its poll.
 //!
+//! **Known difference:** what lies under the surface still shows hover as the pointer moves
+//! over the surface, and the listing beside it does too, where GTK's popover, a surface of its
+//! own, stops the first (driven; GTK's sidebar and header hover beside it as Rune's do). Left
+//! so by the owner until Rune can block hover under a cover (finding lgse/strata#2392, Rune
+//! packet entry 105).
+//!
 //! Rune's `El::modal` would make everything outside inert, so a wheel there could neither
 //! close it nor scroll (finding lgse/strata#2341, Rune packet entry 104). So the surface is not
 //! modal: it lies over a full-window scrim that is hidden from assistive technology, takes a
