@@ -177,7 +177,8 @@
 //!   frames, with animations on and text laid out ahead of it in the tree, hears its rows
 //!   reported and then reported as none in one frame, and nothing after, though they show.
 //!   Here: at each layout, a list whose last report is empty and whose own viewport shows
-//!   lines takes the range from that layout and tells the host (`route::catch_up_visible`).
+//!   entries hears the lines of that layout as Rune's report is heard
+//!   (`route::catch_up_visible`).
 //!   Rune packet entry 101, `docs/rune/upstream/rune/101-stale-visible-rows.md`; no
 //!   Rune-only repro yet.
 //!

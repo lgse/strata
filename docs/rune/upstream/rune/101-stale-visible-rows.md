@@ -9,6 +9,22 @@
 | Checked | At `2a44156` (2026-11-13), in `strata-app`'s hosted tests only: `columns::tests::fills` fail every time without the workaround once the sidebar (A3) or the location bar (A5) is mounted, and pass with it. Not cut down to a Rune-only repro: a window of the same shape built from Rune's `virtual_rows` and strata-components' `PlacesSidebar` reports correctly |
 | Status | Drafted, not filed. Cut a Rune-only repro before filing: the conditions below are what the hosted tests show, and the cause is not found. Workaround in force: the collection's catch-up at layout |
 
+Leads for a Rune-only repro, from the review of lgse/strata#2291 (by reading, at `2a44156`):
+
+- A virtual list's viewport height is set only when a commit measures: `measure_virtuals`
+  (`runtime/commit/measure.rs:126`), the window pass (`measure.rs:271`, which a retry pass
+  skips) and `remount_virtuals` (`runtime/commit/remount.rs:187`). A frame that does not
+  commit keeps the last height, so a list measured at no height reports no rows.
+- `report_visible_rows` reports only a range that differs from `reported_visible`
+  (`runtime/virtual/window.rs:26`): once it has sent `0..0`, nothing is sent again until the
+  computed range changes, whatever the list now draws.
+- The shapes seen differed from run to run and part to part: `0..5` then `0..0` in one frame
+  with the sidebar; a first column fixed and a second column, opened later, still `0..0`
+  with the crumbs.
+- The workaround leans on a later `on_layout` of the list's viewport, and Rune stops layout
+  reports after four layout-only commits, so a list whose layout settles before its stale
+  report can still miss it. A repro should check the report after the layouts stop.
+
 Paste from here.
 
 ---

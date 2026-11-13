@@ -718,12 +718,14 @@ pub(super) fn on_layout<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, r: [f32; 4],
     }
 }
 
-/// A list laid out with lines in view while the range Rune last reported is empty: the range
-/// from the list's own layout, for the host's `on_visible` (Rune packet entry 101, U-C1f-7).
-/// Rune can report a newly mounted list's rows as none before the list's first layout, and
-/// then not again until the rows in view change. True when the host asked to build the view.
+/// A list laid out with lines in view while the range Rune last reported is empty: the lines
+/// from the list's own layout, heard as Rune's report is ([`on_visible`]), so the host, the
+/// rest view, the top line and a waiting restore all take them (Rune packet entry 101,
+/// U-C1f-7). Rune can report a newly mounted list's rows as none before the list's first
+/// layout, and then not again until the rows in view change. Lines that hold no entry (a
+/// header alone) are not heard again at every layout. True when the view has to be built.
 fn catch_up_visible<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S) -> bool {
-    let (src, st) = (cfg.get_mut)(s);
+    let (src, st) = (cfg.get)(s);
     let len = src.len();
     if !st.visible.is_empty() || len == 0 {
         return false;
@@ -732,9 +734,11 @@ fn catch_up_visible<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S) -> bool {
     let Some(lines) = st.lines_in_view(map.count(len)) else {
         return false;
     };
-    let range = map.entries_in(lines, len);
-    st.visible = range.clone();
-    cfg.on_visible.as_ref().is_some_and(|f| f(s, range))
+    if map.entries_in(lines.clone(), len).is_empty() {
+        return false;
+    }
+    let shown = st.stuck_shown.get();
+    on_visible(cfg, s, lines, &map, shown)
 }
 
 /// `on_visible_rows` on the rows stack, with lines turned into entries by `map`, the map of
