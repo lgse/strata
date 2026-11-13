@@ -84,7 +84,7 @@ run = "list"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "B3: the header's Back button, at `drag` on it on line 13"
+blocker = "A5: the pane header's Back button, at `drag` on line 13 (placed with A5 by the coordinator, 2026-11-12)"
 
 [[run]]
 scenario = "back-then-file-keys-target-focused-folder"
