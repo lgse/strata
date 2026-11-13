@@ -614,7 +614,7 @@ fn a_click_selects_in_the_browser_and_opens_or_closes_columns_as_the_gtk_views_d
 /// What V0's name probe read from the GTK harness for the same fixture, two Downs in
 /// (`.v0/gtk/tree-after.txt` on the spike branch), with Rune's role names: the QA backend
 /// maps `group`, `list-box` and `list-box-option` onto AT-SPI's `grouping`, `list` and
-/// `list item` (V7).
+/// `list item` (V7). Each column's header title is a `label` too.
 #[test]
 fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
     hosted(
@@ -670,6 +670,24 @@ fn panes_lists_and_rows_carry_the_names_the_gtk_views_give_them() {
                 ]
             );
             assert_eq!(seen.focused.as_deref(), Some("pictures"));
+            // Each column's header title is a label named for its folder and described by
+            // its path, as GTK's `column_heading` is.
+            let tree = host.tree();
+            let columns = find(&tree, &|node| node["description"] == "Columns view");
+            let titles: Vec<[String; 2]> = columns
+                .into_iter()
+                .flat_map(|column| find(column, &|node| node["role"] == "label"))
+                .map(|label| [text(label, "name"), text(label, "description")])
+                .filter(|[_, description]| description.starts_with('/'))
+                .collect();
+            let path = |folder: &std::path::Path| Location::local(folder).display_path();
+            assert_eq!(
+                titles,
+                [
+                    [root.clone(), path(folder.path())],
+                    ["pictures".to_owned(), path(&folder.path().join("pictures"))],
+                ]
+            );
         },
     );
 }
@@ -695,4 +713,65 @@ fn an_empty_column_says_so() {
         let tree = host.tree().to_string();
         assert!(tree.matches(empty).count() >= 2, "drawn and heard: {tree}");
     });
+}
+
+/// Clicks the empty space at the foot of the pane named `pane`, as a scenario's press on a
+/// pane's background does.
+fn click_empty(host: &mut Offscreen, pane: &str) {
+    let tree = host.tree();
+    let is_pane = |node: &Value| node["description"] == "Columns view" && node["name"] == pane;
+    let group = find(&tree, &is_pane);
+    let bounds = &group.first().expect("the pane")["bounds"];
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let at = |index: usize| bounds[index].as_f64().expect("a bound") as f32;
+    let (x, y) = (at(0) + at(2) / 2.0, at(1) + at(3) - 20.0);
+    host.runtime().pointer_move(x, y);
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    idle(host);
+}
+
+/// `background_selection/empty-column-clears-other-columns`: with Ctrl+clicks adding to the
+/// root's selection while the empty `archive` column is open, a press on that column's empty
+/// space clears every column's selection, as GTK's `clear_marquee_selection` does, and the
+/// columns stay open.
+#[test]
+fn a_press_on_a_columns_empty_space_clears_every_columns_selection() {
+    hosted(
+        "a_press_on_a_columns_empty_space_clears_every_columns_selection",
+        |mut host| {
+            let folder = fixture();
+            let root = folder_name(folder.path());
+            open(&mut host, folder.path());
+            click(&mut host, &root, "archive");
+            wait(&mut host, "the archive column", |seen| {
+                seen.pane("archive").is_some()
+            });
+            let ctrl = Mods {
+                ctrl: true,
+                cmd: true,
+                ..Mods::default()
+            };
+            for name in ["readme.md", "todo.txt"] {
+                host.runtime()
+                    .physical_input(rune::PhysicalInput::Modifiers(ctrl));
+                click(&mut host, &root, name);
+                host.runtime()
+                    .physical_input(rune::PhysicalInput::Modifiers(Mods::default()));
+            }
+            idle(&mut host);
+            let selected = seen(&host).panes[0].selected().len();
+            assert_eq!(
+                selected, 3,
+                "the Ctrl+clicks to add to the root's selection"
+            );
+
+            click_empty(&mut host, "archive");
+            let cleared = wait(&mut host, "every selection to clear", |seen| {
+                seen.panes.iter().all(|pane| pane.selected().is_empty())
+            });
+            assert_eq!(cleared.panes.len(), 2, "the columns stay open");
+        },
+    );
 }

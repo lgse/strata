@@ -476,6 +476,19 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    `crates/strata-app/src/buttons/tests.rs`, the check that every other focusable button takes
    Return. Source: the review of A5's [#2311](https://github.com/lgse/strata/pull/2311),
    2026-11-14.
+2. **A column header's actions and Tab** (finding
+   [#2379](https://github.com/lgse/strata/issues/2379)). GTK's column header actions are Tab
+   stops: Shift+Tab from a column's entries focuses the targeted column's last one, the filter
+   toggle. C2's header slot keeps them off the focus chain, as its Close button, so Rune's
+   Shift+Tab goes on to the sidebar. Should they become Tab stops, as the List headings'
+   question (A8 item 1) asks for those? Meanwhile: they stay off it, and the `location`
+   alphabet keeps Shift+Tab off the files. Source: A5's fuzz alphabet, 2026-11-14.
+3. **Where the keyboard goes after an outside click closes the error dialog** (finding
+   [#2381](https://github.com/lgse/strata/issues/2381)). GTK's dialog closes and keyboard
+   focus falls to the header's first crumb, since the location entry that held it is hidden;
+   Rune's clicked column takes it. Closed by Escape, both return it to the files. Should Rune
+   copy GTK's? Meanwhile: Rune's, and the `location` alphabet makes no click while a dialog
+   shows. Source: A5's fuzz alphabet, 2026-11-14.
 
 ### A8: View switching and appearance
 

@@ -1,0 +1,63 @@
+{"scenario":"fuzz-location-v2-000000000000000a","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}},{"not":{"dialog":true}}]}}
+{"key":"Escape","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/p","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"alt+Right","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/documents/","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"alt+Left","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/documents/../pictures","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Left","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"key":"BackSpace","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"p","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"alt+Left","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"key":"alt+Left","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"key":"alt+Left","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"type":"s","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Escape","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Right","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"key":"alt+Up","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"shift+Tab","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"fs":{"path":"documents/inner","remove":true},"when":{"file":{"path":"$fixture/documents/inner","exists":true}}}
+{"key":"Tab","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/documents/inner","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"click":{"role":"button","name":"archive"},"when":{"all":[{"present":{"role":"button","name":"archive"}},{"not":{"dialog":true}}]}}
+{"key":"alt+Left","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"key":"alt+Left","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"key":"F5","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"key":"shift+Tab","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"click":{"role":"button","name":"inner"},"when":{"all":[{"present":{"role":"button","name":"inner"}},{"not":{"dialog":true}}]}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"click":{"role":"button","name":"documents"},"when":{"all":[{"present":{"role":"button","name":"documents"}},{"not":{"dialog":true}}]}}
+{"key":"Left","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/missing","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"fs":{"path":"documents/inner","remove":true},"when":{"file":{"path":"$fixture/documents/inner","exists":true}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/pictures","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Left","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}

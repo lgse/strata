@@ -1,0 +1,58 @@
+{"scenario":"fuzz-location-v2-000000000000000d","modes":["columns"],"prefs":{"type_to_search":false}}
+{"type":"doc","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Right","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Tab","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"key":"BackSpace","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"alt+Right","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"click":{"role":"button","name":"Navigate (Enter)"},"when":{"all":[{"present":{"role":"button","name":"Navigate (Enter)"}},{"not":{"dialog":true}}]}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"alt+Left","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"BackSpace","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/documents/../pictures","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"fs":{"path":"documents/inner","remove":true},"when":{"file":{"path":"$fixture/documents/inner","exists":true}}}
+{"key":"Right","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"click":{"role":"button","name":"inner"},"when":{"all":[{"present":{"role":"button","name":"inner"}},{"not":{"dialog":true}}]}}
+{"key":"Return","when":{"any":[{"focused_widget_is":{"role":"button","name":"$root"}},{"focused_widget_is":{"role":"button","name":"documents"}},{"focused_widget_is":{"role":"button","name":"pictures"}},{"focused_widget_is":{"role":"button","name":"archive"}},{"focused_widget_is":{"role":"button","name":"inner"}}]}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/doc","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"End","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/documents/inner","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"any":[{"focused_widget_is":{"role":"button","name":"$root"}},{"focused_widget_is":{"role":"button","name":"documents"}},{"focused_widget_is":{"role":"button","name":"pictures"}},{"focused_widget_is":{"role":"button","name":"archive"}},{"focused_widget_is":{"role":"button","name":"inner"}}]}}
+{"key":"ctrl+l"}
+{"key":"BackSpace","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"click":{"role":"button","name":"archive"},"when":{"all":[{"present":{"role":"button","name":"archive"}},{"not":{"dialog":true}}]}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/p","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"Left","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"click":{"role":"button","name":"$root"},"when":{"all":[{"present":{"role":"button","name":"$root"}},{"not":{"dialog":true}}]}}
+{"key":"shift+Tab","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"key":"Escape","when":{"dialog":true}}
+{"key":"Delete","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/pictures/","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"click":{"role":"button","name":"documents"},"when":{"all":[{"present":{"role":"button","name":"documents"}},{"not":{"dialog":true}}]}}
+{"key":"shift+Tab","when":{"all":[{"not":{"focused_pane":true}},{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}]}}
+{"type":"/","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"key":"ctrl+l"}
+{"key":"ctrl+a","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"type":"$fixture/p","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
+{"click":{"role":"button","name":"documents"},"when":{"all":[{"present":{"role":"button","name":"documents"}},{"not":{"dialog":true}}]}}
+{"click":{"role":"button","name":"Cancel (Escape)"},"when":{"all":[{"present":{"role":"button","name":"Cancel (Escape)"}},{"not":{"dialog":true}}]}}

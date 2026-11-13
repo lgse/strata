@@ -722,8 +722,18 @@ sequence only together with the alphabet's version, so the version is part of th
   `select_only` (`crates/strata-components/src/collection/pointer/machine.rs`).
 - **Concerns:** seeds `0x12` and `0x07` of `columns v1` (shrunk to 3 and 10 steps) and seed
   `0x0f` of `columns v3`, parked in `tests/qa/fuzz/corpus/columns/`.
-- **State:** open, F2's to fix in C1e (a `contract` pull request), by the coordinator's
-  ruling to follow GTK, once GTK's List and Icons are checked.
+- **State:** fixed by [F2](packages/F2.md)'s [#2371](https://github.com/lgse/strata/pull/2371) in C1e: a secondary press
+  selects an unselected entry with `Selection::select_only_keeping_anchor`, so an anchor there
+  is stays where it was in Columns, List and Icons, as GTK's shared `focus_context_entry`
+  leaves it in all three (checked on GTK's List and Icons with the same three steps). With
+  no anchor, as in a column just opened, the anchor goes to the right-clicked entry, as
+  `strata-fs`'s `set_selection` takes the cursor for an anchor it lacks: click `pictures`,
+  right-click `photo.txt`, Escape, Shift+click `diagram.txt` selects both on both targets.
+  Held by C1e's secondary-press test (both cases) and by `qa::tests::right_click` (each view,
+  and the no-anchor case in Columns); the sequences `v1-0x12`, `v1-0x07` and `v3-0x0f` are no
+  longer parked: the corpus replay holds them to agreeing on both targets. The filter results
+  (C18) take no anchor from GTK's right-click even when they have none: finding
+  [#2375](https://github.com/lgse/strata/issues/2375), A10's.
 
 ### #2356: after a click on an open folder, GTK reports a focused row it neither draws nor uses
 
@@ -741,6 +751,12 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** seed `0x10` of `columns v1`, shrunk to 4 steps and parked in
   `tests/qa/fuzz/corpus/columns/`.
 - **On `main`:** the third case of bug [#2361](https://github.com/lgse/strata/issues/2361), GTK's QA snapshot faults.
+- **Also by the location bar** ([A5](packages/A5.md)'s `location` alphabet, 2026-11-14): with
+  `pictures` selected and its column open, Ctrl+L and Return on the path as it stands, or a
+  typed path to the folder shown, end the same way. GTK reports `diagram.txt` focused while its
+  screenshot draws no cursor and its next Down lands on `diagram.txt`; Rune focuses the column
+  with no entry. Shrunk to 3 steps, confirmed 3 of 3, the same in 24 of 24 GTK replays, and
+  parked in `tests/qa/fuzz/corpus/location/` as `v1-000000000000000e`.
 - **State:** open, set aside: no Rune change. A fix that gave Rune's column a cursor
   ([#2368](https://github.com/lgse/strata/pull/2368)) was closed unmerged: it made Rune's next
   Down move on where GTK's lands on the first entry, as a list with no cursor does ([#2367](https://github.com/lgse/strata/issues/2367)).
@@ -802,3 +818,68 @@ sequence only together with the alphabet's version, so the version is part of th
   lands on the first entry, as Rune without #2368 does. With a cursor and nothing selected by
   Escape, Down moves on in Columns, List and Icons on both targets.
 - **State:** withdrawn: #2368 was closed unmerged, and there is nothing left to fix.
+
+### #2375: a right-click in filter results with no anchor anchors there on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2375), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen, by reading** (in the review of [#2371](https://github.com/lgse/strata/pull/2371)): GTK's
+  search and filter results keep an anchor of their own (`interactions.anchor`,
+  `src/ui/inline_search/collection.rs`), which a right-click (`focus_search_result`, then
+  `focus_result`) never sets; with none, the next Shift+click selects the clicked result alone.
+  C1e's secondary press, since #2371, anchors the right-clicked entry when there is no anchor,
+  as the browser's views do; C18's results are a C1e collection, so a Shift+click after it
+  would range from the right-clicked result.
+- **Concerns:** C18's results, once hosted on Rune. Not yet run: no package hosts them.
+- **State:** open, [A10](packages/A10.md)'s (search, filter and sort), noted in its file. When
+  A10 takes it, it also checks a filtered Columns column: GTK's `focus_search_result` has a
+  Columns branch (`column.selection.select_item`), and whether that reaches the browser's
+  no-anchor rule (`set_selection` in `strata-fs`) has not been traced.
+
+### #2379: Shift+Tab from a Columns column stops on its header's actions on GTK, on the sidebar on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2379), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A5](packages/A5.md)'s `location` alphabet, where 8 of `location v1`'s 20 smoke
+  seeds first parted at it. GTK's column header actions are Tab stops, so Shift+Tab from the
+  entries focuses the targeted column's last one, the "Filter this pane (Ctrl+F)" toggle
+  (A10's); its QA snapshot then names the column `focused_pane` with no entry. C2's slot keeps
+  the header's actions off the focus chain (`focusable(false)`, as its Close), so Rune's
+  Shift+Tab goes on to the sidebar's Home.
+- **Concerns:** `location v1`'s seed `0x2`, shrunk to 1 step, confirmed 3 of 3, the same in
+  24 of 24 GTK replays, and parked in `tests/qa/fuzz/corpus/location/`; `location v2` keeps
+  Shift+Tab off the files. C2's header slot (`crates/strata-components/src/columns/column.rs`)
+  and `pane_header::actions` in `strata-app`.
+- **State:** open, waiting for the owner ([`owner.md`](owner.md#a5-location-bar), A5 item 2),
+  as [#2331](https://github.com/lgse/strata/issues/2331) is for the List headings: whether a
+  column header's actions become Tab stops on Rune. Meanwhile they stay off the focus chain.
+
+### #2380: after a typed path fails to open, GTK's next Ctrl+L shows that path, Rune's the location
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2380), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A5](packages/A5.md)'s `location` alphabet. GTK's `submit_location`
+  (`src/ui/browser/location.rs`) restores the entry's text only when a path fails validation;
+  a path that validates and then cannot be opened ("Unable to open location") stays in the
+  entry, and `begin_location_edit` reopens on it, all selected, as GTK's screenshot shows.
+  Rune's `begin` (`crates/strata-app/src/location/mod.rs`) opens on the trail's text, the shown
+  location's path.
+- **Concerns:** `location v1`'s seed `0x7`, shrunk to 5 steps, confirmed 3 of 3, the same in
+  24 of 24 GTK replays, and parked in `tests/qa/fuzz/corpus/location/`.
+- **State:** open, [A5](packages/A5.md)'s to fix in `crates/strata-app/src/location/`.
+
+### #2381: after an outside click closes "Unable to open location", GTK's keyboard is on the first crumb
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2381), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A5](packages/A5.md)'s `location` alphabet. A click outside GTK's error dialog
+  only closes it, and keyboard focus falls to the header's first crumb, "/", since the
+  location entry that held it is hidden; the next Down moves along the header. Rune's dialog
+  closes and the clicked column takes the keyboard; the next Down lands on its first entry.
+  Closed by Escape, both return the keyboard to the files.
+- **Concerns:** `location v1`'s seed `0x13`, shrunk to 5 steps, confirmed 3 of 3, the same in
+  24 of 24 GTK replays, and parked in `tests/qa/fuzz/corpus/location/`; `location v2` makes
+  no click while a dialog shows.
+- **State:** open, waiting for the owner ([`owner.md`](owner.md#a5-location-bar), A5 item 3):
+  GTK's keyboard lands where nothing put it, and whether Rune copies that is not the
+  alphabet's to decide.

@@ -1,0 +1,2 @@
+{"scenario":"fuzz-location-v1-0000000000000002","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"shift+Tab","when":{"not":{"field":{"name":"Location (Ctrl+L)","focused":true}}}}

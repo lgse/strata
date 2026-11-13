@@ -25,6 +25,7 @@ mod icon;
 mod ready;
 mod rename;
 mod replaced;
+mod right_click;
 mod scroll;
 
 const INPUT_LOG: &str = "STRATA_INPUT_LOG";
