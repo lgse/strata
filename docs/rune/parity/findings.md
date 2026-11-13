@@ -430,3 +430,26 @@ sequence only together with the alphabet's version, so the version is part of th
   collection catches its range up from its own layout when the last report is empty
   (`catch_up_visible`, U-C1f-7). Rune packet entry
   [101](../upstream/rune/101-stale-visible-rows.md) is drafted.
+
+### #2296: `browser-workers-reuse-processes/list` started one sandbox too many once
+
+- **Code:** none of the plan's: a flaky required Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2296), filed on 2026-11-13 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in a full `./scripts/qa-parity.sh all --target rune` for
+  [#2294](https://github.com/lgse/strata/pull/2294)'s gate, the run failed at line 49: the
+  log counted 4 "browser sandbox started" where the step wants `$initial` + 1, 3. Alone, it
+  passed 3 of 3. Not touched by #2294, by its review: that change routes the collection's
+  caught-up visible range through `route::on_visible` and skips lines that hold no entry,
+  and neither reaches when the render pool starts or discards a worker.
+- **Concerns:** `browser_workers/browser-workers-reuse-processes/list`, `required` since
+  [#2263](https://github.com/lgse/strata/pull/2263); the render pool in
+  `crates/strata-app/src/thumbnails/`.
+- **What it suggests:** a candidate, not verified. After the scenario kills the worker (lines
+  41 to 48), a cancel of a render a worker is already running still discards that worker
+  (`Lease::execute`), and the next job starts another. [#2260](https://github.com/lgse/strata/pull/2260)
+  fixed the cancel-on-refill A2 traced for this run; this would be the same shape on a later
+  path.
+- **State:** open, unowned: [A1](packages/A1.md) is closed, and the coordinator places it.
+  The flaky allowance may not name a `required` run ([`owner.md`](owner.md#h1-whole-corpus-ledger), H1 item 11), so a
+  failure of it in a gate is read against this entry.
