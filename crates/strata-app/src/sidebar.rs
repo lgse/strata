@@ -93,6 +93,7 @@ impl Part for Sidebar {
     const PLACE: Place<App> = Place::Sidebar(slots::Sidebar {
         build,
         focus: |app| app.sidebar.focus_key(),
+        held_back: |app| app.sidebar.held_back(&app.look),
     });
 
     const COMMANDS: &'static [Action<App>] = &[
@@ -239,6 +240,16 @@ impl Sidebar {
             .as_ref()
             .map_or_else(|| LIST.to_owned(), |item| item.key(KEY));
         Some(key)
+    }
+
+    /// Its full width less its rail's while it is railed, else nothing (`full_sidebar_width`
+    /// in `src/ui/preview/layout/sidebar.rs`, which GTK's column cap subtracts).
+    fn held_back(&self, look: &Look) -> f32 {
+        if self.state.width.shown() != Step::Rail {
+            return 0.0;
+        }
+        let rail = strata_kit::slots::sidebar::rail_width(look);
+        (self.state.width.full_width() - rail).max(0.0)
     }
 
     fn location_of(&self, item: &ItemId) -> Option<&places::Row> {

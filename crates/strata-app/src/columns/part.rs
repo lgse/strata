@@ -7,7 +7,7 @@ use rune::Tx;
 
 #[cfg(feature = "qa")]
 use super::Load;
-use super::{Columns, Hands, VIEW, fills, intents, thumbs, view};
+use super::{Columns, Hands, VIEW, fills, intents, thumbs, view, width};
 #[cfg(feature = "qa")]
 use crate::slots::Probe;
 use crate::{
@@ -34,7 +34,8 @@ impl Part for Columns {
     const PLACE: Place<App> = Place::View(View {
         build: |app, frame| {
             app.columns.thumbs.set_scale(frame.cx.env().scale);
-            Some(view(app).build(app))
+            let built = view(app).build(app);
+            Some(built.on_layout(|app: &mut App, rect| width::fit_area(app, rect)))
         },
         shows: |mode| mode == MODE,
         focus: VIEW,

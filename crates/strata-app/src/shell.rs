@@ -396,6 +396,16 @@ pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
     true
 }
 
+/// How much of the files' area the sidebar holds back beyond what it draws: its full width
+/// less its rail's while it is railed ([`crate::slots::Sidebar::held_back`]), and nothing with
+/// no sidebar.
+pub(crate) fn sidebar_held_back(app: &App) -> f32 {
+    app.window
+        .parts
+        .sidebar()
+        .map_or(0.0, |sidebar| (sidebar.held_back)(app))
+}
+
 /// The key of the shown view's element that takes the keyboard: where a field or a menu
 /// gives it back.
 pub(crate) fn view_focus(app: &App) -> Option<&'static str> {

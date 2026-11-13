@@ -134,6 +134,7 @@ fn sidebar() -> Entry<App> {
     part::<Rail>(Place::Sidebar(Sidebar {
         build: placed::<Rail>,
         focus: |_| Some("made-sidebar".to_owned()),
+        held_back: |_| 0.0,
     }))
 }
 
