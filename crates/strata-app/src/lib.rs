@@ -62,6 +62,7 @@ mod list;
 // A6 Menus, dialogs and keymap
 // A7 Entry management and undo
 mod new_item;
+mod rename_failed;
 mod undo;
 // A8 View switching and appearance
 // A9 Pointer and click modes
@@ -97,6 +98,7 @@ slots::parts! {
     // A7 Entry management and undo
     undo: undo::Undo,
     new_item: new_item::NewItem,
+    rename_failed: rename_failed::RenameFailed,
     // A8 View switching and appearance
     // A9 Pointer and click modes
     // A10 Search, filter and sort

@@ -582,6 +582,11 @@ toggle_sidebar = ["<Control>n", "F9"]
   verbatim in the file, and left out of the tables, so that command keeps its
   shipped keys and a newer version's entries survive an older version's save.
   A map that is not a table is dropped without touching the other map.
+- These warnings, and the uppercase-letter one, come from the resolver both
+  interfaces share, `strata_desktop::settings::resolve_keymap`, so on
+  `strata-next` they are logged under the target
+  `strata_desktop::settings::keymap_resolve`, not `strata::ui::preferences::keymap`.
+  The conflict findings below stay the GTK application's.
 - Keys an entry adds beyond its shipped ones are checked against the rest of
   their table when the tables are first built (see
   [Checking keymap entries](keyboard-shortcuts.md#checking-keymap-entries)),

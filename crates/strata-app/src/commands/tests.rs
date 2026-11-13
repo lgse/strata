@@ -6,7 +6,10 @@
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_components::contract::Rect;
 use strata_core::model::Location;
-use strata_desktop::keys::{Map, Modifiers, SHORTCUT_MODIFIERS};
+use strata_desktop::{
+    keys::{Map, Modifiers, SHORTCUT_MODIFIERS},
+    settings::KeymapOverrides,
+};
 
 use super::{On, Outcome, Reads, Stage, bound, has, run};
 use crate::{
@@ -126,6 +129,44 @@ fn the_catalogs_map_follows_the_saved_10xer_mode() {
             press(&mut host, Key::Function(9), Mods::default());
 
             assert_eq!(Map::active(), Map::Default);
+        },
+    );
+}
+
+/// A saved keymap's entry replaces a command's keys from the start, and a saved change to
+/// the keymap applies from the next press, as on GTK (`PreferenceManager::keymap` and
+/// `edit_keymap`).
+#[test]
+fn a_saved_keymap_rebinds_a_command_and_a_change_to_it_applies() {
+    hosted_after(
+        MODULE,
+        "a_saved_keymap_rebinds_a_command_and_a_change_to_it_applies",
+        || {
+            let file = strata_core::storage::config_directory().join("settings.toml");
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = "[keymap.default]\ntoggle_hidden_files = [\"<Control>j\"]\n";
+            std::fs::write(file, saved).expect("settings");
+        },
+        |mut host| {
+            let _folder = listed(&mut host);
+            let ctrl = Mods {
+                ctrl: true,
+                ..Mods::default()
+            };
+            let hidden_shown = |host: &Offscreen| host.app().browser().preferences().show_hidden;
+
+            press(&mut host, Key::Command('h'), ctrl);
+            assert!(!hidden_shown(&host), "the shipped key still answers");
+            press(&mut host, Key::Command('j'), ctrl);
+            assert!(hidden_shown(&host), "the saved key does not answer");
+
+            act(&mut host, |app, _| {
+                shell::saved(app).change(|settings| settings.keymap = KeymapOverrides::default());
+            });
+            press(&mut host, Key::Command('j'), ctrl);
+            assert!(hidden_shown(&host), "the removed key still answers");
+            press(&mut host, Key::Command('h'), ctrl);
+            assert!(!hidden_shown(&host), "the shipped key is not back");
         },
     );
 }

@@ -2,13 +2,16 @@
 
 //! The saved keymap overrides (`strata_desktop::settings::KeymapOverrides`)
 //! resolved against the key catalog, and the edits Settings makes to them.
-//! See the Keymap section of `docs/preferences.md`.
+//! See the Keymap section of `docs/preferences.md`. Resolving them is shared
+//! with the Rune interface (`strata_desktop::settings::resolve_keymap`).
 
 use std::{collections::BTreeMap, path::Path, rc::Rc};
 
+use strata_desktop::settings::resolve_keymap;
+
 use super::{KeymapOverrides, PreferenceManager, settings_path};
 use crate::ui::keys::{
-    Binding, Command, Keymap, Map, Rejected,
+    Binding, Command, Keymap, Map,
     conflicts::{self, Policy, Severity},
 };
 
@@ -16,75 +19,6 @@ fn entries_mut(overrides: &mut KeymapOverrides, map: Map) -> &mut BTreeMap<Strin
     match map {
         Map::Default => &mut overrides.default,
         Map::Tenxer => &mut overrides.tenxer,
-    }
-}
-
-/// The shipped tables with every entry of `overrides` that applies. With `file`,
-/// the entries that cannot apply are logged against it.
-fn resolve(overrides: &KeymapOverrides, file: Option<&Path>) -> Keymap {
-    let report = |map: Map| {
-        move |rejected: Rejected<'_>| {
-            let Some(file) = file else {
-                return;
-            };
-            let file = file.display();
-            match rejected {
-                Rejected::UnknownCommand(id) => tracing::warn!(
-                    %file, ?map, id,
-                    "keymap entry names no command; keeping it unused"
-                ),
-                Rejected::Table(id) => tracing::warn!(
-                    %file, ?map, id,
-                    "keymap entry is a table; quote ids that contain a dot, such as \"go.home\"; keeping it unused"
-                ),
-                Rejected::NotAList(id) => tracing::warn!(
-                    %file, ?map, id,
-                    "keymap entry is not a list of accelerators; keeping it unused"
-                ),
-                Rejected::Accelerator(id, accelerator) => tracing::warn!(
-                    %file, ?map, id, %accelerator,
-                    "keymap entry has an accelerator Strata cannot read; keeping it unused"
-                ),
-            }
-        }
-    };
-    if let Some(file) = file {
-        for (map, entries) in [
-            (Map::Default, &overrides.default),
-            (Map::Tenxer, &overrides.tenxer),
-        ] {
-            report_capital_letters(file, map, entries);
-        }
-    }
-    Keymap::defaults()
-        .overridden(
-            Map::Default,
-            entries(&overrides.default),
-            report(Map::Default),
-        )
-        .overridden(Map::Tenxer, entries(&overrides.tenxer), report(Map::Tenxer))
-}
-
-fn entries(entries: &BTreeMap<String, toml::Value>) -> impl Iterator<Item = (&str, &toml::Value)> {
-    entries.iter().map(|(id, value)| (id.as_str(), value))
-}
-
-/// GTK reads `G` as plain **g**, while labels show Shift+g as **G**, so an
-/// uppercase letter without `<Shift>` likely means a key the user did not get.
-fn report_capital_letters(file: &Path, map: Map, entries: &BTreeMap<String, toml::Value>) {
-    let file = file.display();
-    for (id, value) in entries {
-        let accelerators = value.as_array().into_iter().flatten();
-        for accelerator in accelerators.filter_map(toml::Value::as_str) {
-            let key = accelerator.rsplit('>').next().unwrap_or(accelerator);
-            let capital = key.len() == 1 && key.chars().all(|letter| letter.is_ascii_uppercase());
-            if capital && !accelerator.to_ascii_lowercase().contains("<shift>") {
-                tracing::warn!(
-                    %file, ?map, id, accelerator,
-                    "keymap accelerator names an uppercase letter without <Shift>, which means the plain letter; write <Shift> with it for the shifted key"
-                );
-            }
-        }
     }
 }
 
@@ -120,7 +54,10 @@ impl PreferenceManager {
             return keymap.clone();
         }
         let file = settings_path();
-        let keymap = Rc::new(resolve(&self.preferences.borrow().keymap, Some(&file)));
+        let keymap = Rc::new(resolve_keymap(
+            &self.preferences.borrow().keymap,
+            Some(&file),
+        ));
         report_findings(
             &keymap,
             &file,
@@ -193,7 +130,7 @@ impl PreferenceManager {
             let mut preferences = self.preferences.borrow_mut();
             let previous = preferences.keymap.clone();
             edit(&mut preferences.keymap);
-            (preferences.keymap != previous).then(|| resolve(&preferences.keymap, None))
+            (preferences.keymap != previous).then(|| resolve_keymap(&preferences.keymap, None))
         };
         if let Some(keymap) = rebuilt {
             self.keymap.replace(Some(Rc::new(keymap)));

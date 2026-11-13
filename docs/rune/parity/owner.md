@@ -160,13 +160,6 @@ are in force meanwhile. Source: the archived issue
 Sources: the archived issue [#2125](https://github.com/lgse/strata/issues/2125), its
 comments of 2026-11-12, unless another is named.
 
-- **Whether the bookkeeping-only shape meets the ruling.** B2 moves `PreferenceManager`'s
-  save bookkeeping and wires the Rune side to it, and leaves every getter and setter in
-  `src/ui`; a setter's body moves when a Rune package first needs it. That is narrower than
-  the plan's "moved out of the GTK package". In force, as built in [#2172](https://github.com/lgse/strata/pull/2172) and [#2178](https://github.com/lgse/strata/pull/2178).
-  The three edits Settings makes to a saved keymap, with the helper that resolves one, and
-  the policy around the per-folder values are further instances of the same question
-  ([#2265](https://github.com/lgse/strata/pull/2265)).
 - **Several pull requests per store**, against the plan's "one pull request per store": two
   so far for `PreferenceManager` ([#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178)) and for the per-folder views ([#2168](https://github.com/lgse/strata/pull/2168), [#2188](https://github.com/lgse/strata/pull/2188)),
   each with more to come, and the key catalog in three parts. In force, taken as within the
@@ -192,8 +185,6 @@ comments of 2026-11-12, unless another is named.
 - **The `grid` and `explorer` aliases of the view mode**, which need `browser_modes` and are
   outside the ruling. Meanwhile: each Rune view's `shows` answers to both its name and its
   alias. Also on the archived issue [#2124](https://github.com/lgse/strata/issues/2124).
-- **Whether B2 can close with the folder-view timer rule left in each interface.**
-  Meanwhile: it is left in each.
 - **`src/ui/keys.rs` becoming `src/ui/keys/mod.rs`** when the catalog moves without its event
   reader, the shape that keeps merges from `main` landing in the shared file. Meanwhile:
   that shape.
@@ -550,14 +541,27 @@ Rulings of the owner on the parity work, oldest first.
   bullets on a gallery scene, an accessibility golden and a script per component are
   suspended until the cleanup too is the coordinator's reading. `strata-components`' and `strata-app`'s own tests still run. Which test targets
   count as "the basic unit tests" (`--lib --bins --examples`) is the coordinator's reading.
+- **2026-11-12: B2's `PreferenceManager` shape is accepted.** Asked "Does the
+  bookkeeping-only `PreferenceManager` shape meet your ruling?", the owner said: "Accept it"
+  (to the orchestrating session's question, 2026-11-12). So moving `PreferenceManager`'s save
+  bookkeeping and leaving its getters and setters in `src/ui` meets the ruling of
+  2026-11-11, and a setter's body moves when a Rune package first needs it. The
+  coordinator's reading: the three edits to a saved keymap (`set_bindings`,
+  `reset_binding`, `reset_map`) move the same way, with A18's keyboard settings. Built in
+  [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178) and [#2265](https://github.com/lgse/strata/pull/2265).
+- **2026-11-12: B2 closes with the folder-view timer rule left in each interface.** Asked
+  "Can B2 close with the folder-view timer rule left in each interface?", the owner said:
+  "Close with it" (to the orchestrating session's question, 2026-11-12). Built in
+  [#2262](https://github.com/lgse/strata/pull/2262).
 - **2026-11-12: the per-folder views' policy is shared.** Asked under B2 where the policy that
   spans the settings and the per-folder views lives (`set_remember_folder_views`,
   `set_default_sort_options`, `set_folder_icons_size`, `set_default_icons_size`), the owner
   said: "Move it, shared" (relayed by the coordinator, 2026-11-12). So it moves into the
-  shared crate, for both interfaces. It is `strata_desktop::settings::folder_view_policy`, a new file beside the
-  moved store, which `src/ui/preferences/folder_view_settings.rs` calls: the gate, where a
-  changed size is kept, and what a new default prunes. The sort's share of it goes there when
-  [A10](packages/A10.md) needs it. The timer rule stays in each interface; the Rune side's is
+  shared crate, for both interfaces. It is `strata_desktop::settings::folder_view_policy`, a
+  new file beside the moved store, which `src/ui/preferences/folder_view_settings.rs` calls:
+  the gate, where a changed size is kept, and what a new default prunes. That the sort's share
+  goes there when [A10](packages/A10.md) needs it is the package's reading, not the owner's
+  words. The timer rule stays in each interface, by the ruling above; the Rune side's is
   `crates/strata-app/src/folder_views.rs`. Moved by [A1](packages/A1.md)'s pull request
   [#2281](https://github.com/lgse/strata/pull/2281).
 

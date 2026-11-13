@@ -21,13 +21,17 @@
 //! `docs/rune/parity/packages/B3.md`, "Design", has the oracle's stages line by line, and
 //! "What Rune gives" has Rune's order for a key and what each place can and cannot hear.
 
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    path::Path,
+    rc::Rc,
+};
 
 use rune::{KeyEvent, Tx};
 use strata_components::collection::element::Collection;
 use strata_desktop::{
     keys::{self, Active, Command, Context, Digits, KeyPress, Keymap, Matcher},
-    settings::Preferences,
+    settings::{KeymapOverrides, Preferences, resolve_keymap},
 };
 
 use crate::{App, shell, slots::At};
@@ -227,27 +231,30 @@ impl<S> Action<S> {
     }
 }
 
-/// The settings the catalog reads at each press and each label: which map is in use, and
-/// whether plain keys type into a search. The catalog asks whoever an interface registered
-/// for its thread (`keys::set_active`), and holds it weakly, so the window keeps this.
-///
-/// The keymap is the shipped one: a saved keymap cannot be read on this interface until the
-/// shared crate reads accelerator strings without GDK.
+/// The settings the catalog reads at each press and each label: which map is in use, whether
+/// plain keys type into a search, and the keymap with the saved overrides. The catalog asks
+/// whoever an interface registered for its thread (`keys::set_active`), and holds it weakly,
+/// so the window keeps this.
 pub(crate) struct Live {
     tenxer: Cell<bool>,
     typing: Cell<bool>,
-    keymap: Rc<Keymap>,
+    keymap: RefCell<Rc<Keymap>>,
+    /// The saved overrides `keymap` was resolved from.
+    resolved: RefCell<KeymapOverrides>,
     /// The press a view's collection last asked the early stages for ([`heard`]).
     asked: Asked,
 }
 
 impl Live {
-    /// The window's source, registered for this thread and holding `settings`' values.
-    pub(crate) fn registered(settings: &Preferences) -> Rc<Self> {
+    /// The window's source, registered for this thread and holding `settings`' values. With
+    /// `report_to`, the saved keymap's entries that cannot apply are logged against that
+    /// file, as GTK logs them once for its process (`PreferenceManager::keymap`).
+    pub(crate) fn registered(settings: &Preferences, report_to: Option<&Path>) -> Rc<Self> {
         let live = Rc::new(Self {
             tenxer: Cell::new(false),
             typing: Cell::new(false),
-            keymap: Rc::new(Keymap::defaults()),
+            keymap: RefCell::new(Rc::new(resolve_keymap(&settings.keymap, report_to))),
+            resolved: RefCell::new(settings.keymap.clone()),
             asked: Asked::default(),
         });
         live.follow(settings);
@@ -264,6 +271,12 @@ impl Live {
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         self.typing
             .set(settings.type_to_search && !settings.tenxer_mode);
+        // As GTK's `edit_keymap` rebuilds the tables after a change, without logging again.
+        if *self.resolved.borrow() != settings.keymap {
+            self.keymap
+                .replace(Rc::new(resolve_keymap(&settings.keymap, None)));
+            self.resolved.replace(settings.keymap.clone());
+        }
     }
 }
 
@@ -277,7 +290,7 @@ impl Active for Live {
     }
 
     fn keymap(&self) -> Rc<Keymap> {
-        self.keymap.clone()
+        self.keymap.borrow().clone()
     }
 }
 

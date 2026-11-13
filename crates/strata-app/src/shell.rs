@@ -162,7 +162,7 @@ impl App {
             });
         });
         let built = Built::new(&setup);
-        let keys = Live::registered(saved);
+        let keys = Live::registered(saved, first_window_reports().as_deref());
         let thumbnails = thumbnail_store(saved);
         let folder_views = folder_views::Kept::load(later.clone());
         let window = Window {
@@ -596,6 +596,15 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
 /// part's commands and its hold on the keyboard from.
 pub(crate) fn parts(app: &App) -> Registry<'static, App> {
     app.window.parts
+}
+
+/// The settings file to log a saved keymap's unusable entries against, for the process's
+/// first window only: GTK logs them once, when its preference manager first builds the
+/// tables.
+fn first_window_reports() -> Option<std::path::PathBuf> {
+    static REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let first = !REPORTED.swap(true, std::sync::atomic::Ordering::Relaxed);
+    first.then(strata_desktop::settings::settings_path)
 }
 
 /// What the key catalog reads of the settings, brought up to the saved values as they are

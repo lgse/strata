@@ -192,9 +192,8 @@ scenario = "new-item-named-with-path"
 run = "columns-refused"
 package = "A7"
 gate = "G3"
-status = "pending"
-reason = "scope"
-blocker = "A7: GTK's \"Unable to rename item\" dialog (slice decision 25), at line 24. Every step before it passes: New File makes the item, and the refused path is typed and committed"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "rename-and-undo-restores"
