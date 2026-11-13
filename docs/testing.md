@@ -965,6 +965,7 @@ scenario folder, a work package, a gate of the slice, or `all`:
 ./scripts/qa-parity.sh A7 --parallel      # a survey: the selection's parallel runs from the shared file, on Rune
 ./scripts/qa-parity.sh g2 --scenario shift-click-range   # only that scenario's runs of the selection
 ./scripts/qa-parity.sh mutations          # the Rune target's mutation patches
+./scripts/qa-parity.sh mutations shift-click-range   # only the patches named: one proven alone
 ./scripts/qa-parity.sh gtk-mutations      # the GTK application's, less the ledger's stale ones
 ```
 
@@ -1047,7 +1048,10 @@ one whose every run is parallel, whose patch is its twin's. The scenario may be
 in any folder. Add a patch when an area gains its first required runs and with
 every twin, and prove it once, alone, when it is written or changed, when it
 stops applying, or when its runs are suspected of passing for the wrong
-reason (`docs/rune/parity/README.md`, "When a mutation run is right").
+reason (`docs/rune/parity/README.md`, "When a mutation run is right"):
+`./scripts/qa-parity.sh mutations <patch>` runs only the patches it names, each
+by its scenario, `<scenario>.patch` or its path, and refuses a name that is no
+patch before anything runs. With no name it runs every patch.
 
 #### The ledger
 

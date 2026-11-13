@@ -205,6 +205,7 @@ gaps"), by number. The owner ranks each at the filing pass.
 | 99 | [A key handler cannot learn what a key types in the other configured layouts](99-configured-layouts.md) | New issue | `strata-app`'s press builder (B3) | The US position standing in for the user's other Latin layout, a deviation recorded in `docs/rune/parity/owner.md` | Drafted, checked by source only; to run in a window before filing |
 | 100 | [A chord's handler gets the US key in place of the character typed, and the character is gone](100-chord-typed-character.md) | New issue | `strata-app`'s press builder (B3) | The builder's guess from `key_base` at whether the character was replaced, and the US key it reads where it cannot tell | Drafted, checked by source only; to run in a window before filing |
 | 101 | [A virtual list's `on_visible_rows` reports no rows, and never again, though rows show](101-stale-visible-rows.md) | New issue | strata-components' collections (C1e): every view's fills, thumbnails and rename scroll check | The collection's catch-up from its own layout (`catch_up_visible`, U-C1f-7) | Drafted from `strata-app`'s hosted tests; no Rune-only repro yet |
+| 102 | [rune-kit's `Reorder` rounds where a dragged row lands, and keeps its drag offset private](102-reorder-rounds-its-target.md) | New issue, or a comment on U21 | strata-components' places sidebar (C8): reordering places and pins | C8's own row drag (`RowDrag`, `landing`) | Drafted, checked by source and the parity runs |
 
 ## Owner decisions (2026-11-10)
 

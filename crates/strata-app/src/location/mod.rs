@@ -38,7 +38,7 @@ use crate::{
 };
 
 mod intents;
-mod labels;
+pub(crate) mod labels;
 mod trail;
 
 #[cfg(test)]

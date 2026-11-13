@@ -22,8 +22,8 @@
 //!
 //! # Built on rune-kit
 //!
-//! Full-width rows are rune-kit's `SidebarRow`s, with their reorder drag, selection and
-//! focus. The sidebar replaces rune-kit's `Sidebar`, `SidebarSection` and `SidebarHeader`:
+//! Full-width rows are rune-kit's `SidebarRow`s, with their selection and focus; the drag to
+//! reorder is the sidebar's own ([`RowDrag`]), in both widths. The sidebar replaces rune-kit's `Sidebar`, `SidebarSection` and `SidebarHeader`:
 //! their list presses each row the arrow keys reach (`focus_follows`), which would open a
 //! place on every arrow press; their headings take no keyboard focus; and a collapsed section
 //! drops every row, where Strata keeps the open pin. Over each built row the sidebar sets
@@ -32,7 +32,7 @@
 //!
 //! In the rail each row is the sidebar's own icon-only list item, with its icon where the full
 //! row has it, so a step moves no icon and the keyboard order stays. Its name stays its
-//! accessible name and becomes its tooltip. Rail rows don't drag to reorder (U18).
+//! accessible name and becomes its tooltip. Rail rows drag to reorder as full rows do.
 //! Device buttons and the headings' titles, rules and counts are left out; a heading keeps
 //! its row with only its chevron, and a separator line stands above each section.
 //!
@@ -69,12 +69,16 @@
 //! # Deliberate changes
 //!
 //! - **Reorders step rows aside.** Strata draws an accent line in the gap where a dragged
-//!   row will land. rune-kit's reorder lifts the row and springs its neighbours aside instead,
-//!   which shows the same place. Dropping a row on either gap next to it is still a no-op.
-//! - **A built-in place dragged past its block lands at the block's end.** Strata drops a
-//!   built-in place on a pin as a no-op. Places and pins are two separate reorder lists, so a
-//!   place never lands among the pins, but rune-kit clamps a drag past the end of its list to
-//!   the end (U21).
+//!   row will land. The sidebar's drag lifts the row and springs its neighbours aside instead,
+//!   as rune-kit's reorder draws it, which shows the same place. It lands where Strata's would
+//!   ([`landing`], [`Landing`]): on the row under the pointer, before or after it by which half
+//!   the pointer is in, or in a gap, and the host moves it as Strata does. A drop always ends
+//!   the drag without opening the row, as Strata's drag claims its gesture. The drag starts
+//!   past GTK's 8 point threshold.
+//! - **A drop where Strata takes none moves nothing.** Past the gap before a block's first row
+//!   or after its last, over the other block (a place on the pins, a pin on the places) or off
+//!   the sidebar's side, a dragged row lands nowhere and goes back, as Strata's sidebar refuses
+//!   such a drop. rune-kit's `Reorder` clamped it to the list's end.
 //! - **The open-gap animation.** Strata draws a 2 px line in the gap. Here a gap taking a drag
 //!   opens to `sidebar.gap.open` (half a row) on the kit's disclosure spring, and draws the
 //!   line inside; with animations off it opens at once.
@@ -82,12 +86,15 @@
 //!   named by its label, with the host's description where it gives one
 //!   ([`Place::description`], [`Pin::description`]), as Strata's rows are, so assistive
 //!   technology hears what it hears in Strata although the rows sit in a list.
+//! - **A section's name is its heading's.** PINNED and DEVICES are each an unnamed group,
+//!   with the heading's button named by the section, as Strata's sections are: no second
+//!   node carries the name.
 //! - **Gaps are hidden from assistive technology.** Strata's gaps are each an empty group
 //!   named "PINNED" (a known gap of `browser/sidebar/pins/drag-to-pin`); here they are drop
 //!   targets only, out of the tree.
 //! - **No keyboard pin reorder.** The work package's Tests line asks for "pin reorder by
-//!   keyboard", but no feature-map bullet covers one, and rune-kit's `Reorder` has no keyboard
-//!   move (U21). Left out; pins reorder by drag.
+//!   keyboard", but no feature-map bullet covers one, and Strata has none. Left out; pins
+//!   reorder by drag.
 //! - **The list is one Tab stop**, as rune-kit's lists are: Tab enters it on the current row,
 //!   and the arrows (10xer `j` and `k`) step through rows and headings. Strata's rows are each
 //!   a Tab stop (`browser/sidebar`: "In the icon rail, 10xer `j`/`k` and Tab also stop on the
@@ -112,8 +119,8 @@
 //! - **U18** rune-kit: `SidebarRow` has no icon-only (rail) form and no tooltip: with an empty
 //!   label it still keeps the label slot and its gap, which don't fit a rail and draw an
 //!   ellipsis. And `SplitView`'s sidebar knows only open and closed, with no compact step.
-//!   Here: the rail builds its own icon-only row (without the reorder drag, which only
-//!   `SidebarRow` can drive), `.help` names it, and the sidebar sizes its own column and draws
+//!   Here: the rail builds its own icon-only row, which drags to reorder with the sidebar's
+//!   own drag ([`RowDrag`]), `.help` names it, and the sidebar sizes its own column and draws
 //!   its own grip on `PaneState`.
 //! - **U19** rune-kit: `Sidebar`'s list always presses the row focus reaches
 //!   (`focus_follows`), and `SidebarHeader` takes no focus (`focusable(false)`). A file
@@ -126,14 +133,13 @@
 //!   end, with no way to cancel a drop outside the list; with `pointer_buttons([Middle])` a
 //!   middle-button drag reorders too; `Reorder::follow` is private, so an app can't drive it
 //!   from its own row; `SidebarRow::reorder` takes a plain `fn` accessor (no capture); and its
-//!   drop runs with no `Tx`. Rune then presses the row on the same release, but only when the
-//!   pointer is still over it (`runtime/input/pointer.rs`, `release`), so a drag released off
-//!   the row ends with no press at all. Here: [`PlacesSidebar::reorder`] takes the host's
-//!   accessors, and the drop parks its move in the state with the row it came from. That row's
-//!   press reports the move instead of opening the row; any other press or key activation
-//!   reports it first and then acts; and the host drains a move no press followed with
-//!   [`SidebarState::take_reordered`] from its poll, so no move is lost or reported late. A drag
-//!   that lands in place moves nothing and still presses.
+//!   drop runs with no `Tx`. And it rounds where a row lands (`from + round(dy / pitch)`), so a
+//!   drop past half a row lands a row further on than Strata's, with its drag's offset private
+//!   (Rune packet entry 102). Here: the sidebar's own drag ([`RowDrag`], `drag.rs`) on every
+//!   reorderable row in both widths, which lands as Strata's does and reports the move with the
+//!   release's `Tx`. Rune then presses the row on the same release when the pointer is still
+//!   over it (`runtime/input/pointer.rs`, `release`), and the state keeps the dropped row so that
+//!   press opens nothing; the next press or drag forgets it.
 //! - **U22** rune-kit: `SidebarRow`'s icon box is fixed at 16 points
 //!   ([`strata_kit::slots::sidebar::ICON_BOX`]), and its row inset is a private 8
 //!   ([`strata_kit::slots::sidebar::ROW_INSET`]); its selected fill is fixed to `c.pressed`;
@@ -153,6 +159,7 @@
 
 mod build;
 mod data;
+mod drag;
 mod drops;
 mod heading;
 mod intent;
@@ -173,6 +180,7 @@ pub use build::PlacesSidebar;
 pub use data::{
     Device, DeviceGroup, ItemId, LockState, Pin, Place, PlaceKind, Release, RowIcon, SidebarData,
 };
+pub use drag::{Landing, RowDrag, Rows, landing};
 pub use drops::pin_action;
 pub use heading::count_words;
 pub use intent::{DropSite, Gap, Section, SidebarIntent, Via};
@@ -196,6 +204,3 @@ pub(crate) type Emit<S> = Rc<dyn Fn(&mut S, SidebarIntent, &mut Tx)>;
 
 /// The host's drop action for a row.
 pub(crate) type ActionFn<S> = Rc<dyn Fn(&S, &ItemId, &DropOffer, Mods) -> Option<DropAction>>;
-
-/// Finds a list's reorder drag in the app's state.
-pub type ReorderAccess<S> = fn(&mut S) -> &mut rune_kit::shell::Reorder;

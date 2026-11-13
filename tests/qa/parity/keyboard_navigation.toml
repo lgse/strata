@@ -74,17 +74,15 @@ blocker = "C1c: 10xer mode (`tenxer_mode`), from the first `j`. Then rune: a pla
 scenario = "back-history-dropdown"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A5: the pane header's Back button, at `drag` on line 13 (placed with A5 by the coordinator, 2026-11-12)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "back-history-dropdown"
 run = "list"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A5: the pane header's Back button, at `drag` on line 13 (placed with A5 by the coordinator, 2026-11-12)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "back-then-file-keys-target-focused-folder"
@@ -141,9 +139,8 @@ blocker = "A5: the location bar, at Ctrl+L on line 12, whose chord is B3's; ever
 scenario = "return-restores-nested-scroll"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "harness"
-blocker = "H3: lgse/strata#2254, the `middle_visible` note looks for a scroll pane around the pane's entry list (`viewport` in `crates/strata-qa/src/engine/locate.rs`), and every C1e collection holds its scroll viewport inside it, so the note reads nothing, at line 4"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "return-restores-nested-scroll"

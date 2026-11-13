@@ -1,0 +1,10 @@
+diff --git a/crates/strata-app/src/sidebar/reorder.rs b/crates/strata-app/src/sidebar/reorder.rs
+--- a/crates/strata-app/src/sidebar/reorder.rs
++++ b/crates/strata-app/src/sidebar/reorder.rs
+@@ -74,5 +74,5 @@ pub(super) fn reorder_pinned_places(
+ pub(super) fn place_target(landing: Landing) -> (usize, bool) {
+     match landing {
+-        Landing::Row { index, after } => (index, after),
++        Landing::Row { index, after } => (index, !after),
+         Landing::Gap(0) => (0, false),
+         Landing::Gap(index) => (index - 1, true),

@@ -7,7 +7,7 @@ use std::{collections::HashMap, fmt::Write as _, rc::Rc};
 
 use serde_json::Value;
 use strata_components::{collection::element::row_key, contract::EntryId};
-use strata_qa::{Mark, Rect};
+use strata_qa::{Mark, Orientation, Rect, Scroll};
 
 use super::roles;
 
@@ -100,6 +100,47 @@ pub(super) struct Drawn {
     pub(super) columns: Vec<DrawnColumn>,
     pub(super) labels: Vec<NameLabel>,
     pub(super) buttons: Vec<DrawnButton>,
+    pub(super) sidebar: super::sidebar::Gaps,
+}
+
+/// How far a scroll view has scrolled, whether it can, and how much it shows: along x, then
+/// y, in points.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct Scrolled {
+    pub(super) offset: [f64; 2],
+    pub(super) scrolls: [bool; 2],
+    pub(super) page: [f64; 2],
+}
+
+/// Less than this far to go is nowhere: Rune's tree rounds to a tenth of a point.
+const SCROLLS_AT_LEAST: f64 = 0.5;
+
+impl Scrolled {
+    fn axis(along: Orientation) -> usize {
+        match along {
+            Orientation::Horizontal => 0,
+            Orientation::Vertical => 1,
+        }
+    }
+
+    pub(super) fn along(&self, along: Orientation) -> Scroll {
+        let axis = Self::axis(along);
+        Scroll {
+            value: self.offset[axis],
+            page: self.page[axis],
+            scrollable: self.scrolls[axis],
+        }
+    }
+
+    /// Where the scroll bar GTK would show stands: a scrolled window shows the vertical one
+    /// when its content is taller than it, else the horizontal one when it is wider, else
+    /// none.
+    pub(super) fn bar(&self) -> Option<f64> {
+        [1, 0]
+            .into_iter()
+            .find(|axis| self.scrolls[*axis])
+            .map(|axis| self.offset[axis])
+    }
 }
 
 /// One node as Rune reports it.
@@ -123,6 +164,8 @@ pub(super) struct Seen {
     /// A text field's selection as Rune reports it: the line and the place in it of the end
     /// that stays, then of the end that moves, which is the caret.
     pub(super) selection: Option<[u64; 4]>,
+    /// A scroll view's offsets and limits.
+    pub(super) scroll: Option<Scrolled>,
     pub(super) mark: Option<Mark>,
 }
 
@@ -193,6 +236,25 @@ fn bounds(node: &Value) -> Option<Rect> {
     })
 }
 
+/// What a scroll view reports. Rune's tree gives its offsets and how far it scrolls down
+/// (`"scroll": [x, y, y_max]`), and no horizontal limit. It offers `scroll-left` exactly when
+/// it can scroll sideways and input may reach it (`a11y/node.rs` at the pinned rev), which is
+/// whether it scrolls sideways for a user.
+fn scrolled(node: &Value) -> Option<Scrolled> {
+    let [x, y, down] = node["scroll"].as_array()?.as_slice() else {
+        return None;
+    };
+    let own = bounds(node)?;
+    let sideways = texts(node, "actions")
+        .iter()
+        .any(|action| action == "scroll-left");
+    Some(Scrolled {
+        offset: [x.as_f64()?, y.as_f64()?],
+        scrolls: [sideways, down.as_f64()? >= SCROLLS_AT_LEAST],
+        page: [own.width, own.height],
+    })
+}
+
 /// Whether `key` is the collection's key for an entry's row ([`row_key`]). A list holds
 /// other nodes of an entry's role: the List table's headings are a `row` of its grid too.
 fn is_entry_key(key: &str) -> bool {
@@ -224,7 +286,15 @@ impl Snapshot {
         for button in &drawn.buttons {
             snapshot.add_hidden_button(button);
         }
+        drawn.sidebar.present(&mut snapshot);
         snapshot
+    }
+
+    /// Presents `seen` under the window: a node a part draws and the tree leaves out.
+    pub(super) fn push_under_window(&mut self, segment: &str, seen: Seen) {
+        if !self.nodes.is_empty() {
+            self.push(0, segment, seen);
+        }
     }
 
     /// Presents a button an open menu keeps out of the tree, under the window. Not behind a
@@ -345,6 +415,7 @@ impl Snapshot {
             bounds: bounds(value),
             active_descendant: value["activeDescendant"].as_str().map(str::to_owned),
             selection: selection(value),
+            scroll: scrolled(value),
             mark: None,
         });
         let children = value["children"].as_array().map_or(&[][..], Vec::as_slice);
