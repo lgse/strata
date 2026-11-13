@@ -121,7 +121,8 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
         ColumnsIntent::LeftOfRoot => {
             shell::leave_view_at_start(app, tx);
         }
-        // `Width` and `Dropped` are saved widths and drag and drop: out of the slice.
+        ColumnsIntent::Width(width) => super::width::keep(app, width),
+        // `Dropped` is drag and drop's.
         _ => {}
     }
     shell::settle(app, tx);

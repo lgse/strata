@@ -47,6 +47,7 @@ mod part;
 mod selection;
 pub(crate) mod thumbs;
 mod view;
+mod width;
 
 pub(crate) use selection::Input;
 pub(crate) use view::view;
@@ -114,7 +115,11 @@ impl Columns {
         let typing = settings.type_to_search && !settings.tenxer_mode;
         Self {
             listings: Listings::translated(),
-            state: ColumnsState::new(VIEW, Autoscroll::new()),
+            state: {
+                let mut state = ColumnsState::new(VIEW, Autoscroll::new());
+                state.set_default_width(width::saved(settings));
+                state
+            },
             ids,
             held: Vec::new(),
             followed: None,

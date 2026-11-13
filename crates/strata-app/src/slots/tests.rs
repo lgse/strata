@@ -96,6 +96,7 @@ fn rail() -> Sidebar<Log> {
     Sidebar {
         build: nothing,
         focus: |_| Some("rail".to_owned()),
+        held_back: |_| 0.0,
     }
 }
 
