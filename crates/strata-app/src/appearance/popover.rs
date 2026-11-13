@@ -16,6 +16,9 @@
 //! - **Group by file type,** a `check menu item` checked while the setting is on and
 //!   sensitive only where the view shown groups (List); it saves the setting, regroups the
 //!   view shown and closes the popover.
+//! - **Customize columns…,** a `menu item` shown in List alone: it closes the popover and opens
+//!   the List table's columns menu under its headings (`customize_columns_option`, then
+//!   `open_list_columns_popover`), the menu the List header's Columns button opens.
 //! - **Hidden files,** a `check menu item` checked while they show, described with its key; it
 //!   toggles them in the browser and closes the popover.
 //!
@@ -23,8 +26,8 @@
 //! keys, Escape, a press or a wheel outside, and the keyboard leaving it are the plain
 //! popover's.
 //!
-//! Left out until their pull requests: the DENSITY sliders, "Customize columns…" (List) and
-//! "Show sizes in Columns view" (Columns), and the header button's icon following the view.
+//! Left out until their pull requests: the DENSITY sliders, "Show sizes in Columns view"
+//! (Columns), and the header button's icon following the view.
 
 use rune::{El, Tx, col, icon, row, text};
 use rune_kit::{Button, ButtonVariant, IconButton, IconButtonVariant};
@@ -57,6 +60,7 @@ const SMALLER: &str = "appearance-text-smaller";
 const RESET: &str = "appearance-text-reset";
 const LARGER: &str = "appearance-text-larger";
 const GROUP: &str = "appearance-group";
+const CUSTOMIZE: &str = "appearance-customize-columns";
 const HIDDEN: &str = "appearance-hidden";
 
 /// The popover's state: whether it is open, and its words.
@@ -77,6 +81,7 @@ struct Labels {
     text_size: String,
     group: String,
     group_description: String,
+    customize: String,
     hidden: String,
 }
 
@@ -94,6 +99,7 @@ impl State {
                 text_size: tr("TEXT SIZE"),
                 group: tr("Group by file type"),
                 group_description: tr("Group List entries under file-type headings"),
+                customize: tr("Customize columns…"),
                 hidden: tr("Hidden files"),
             },
         }
@@ -140,6 +146,11 @@ pub(super) fn follow(app: &mut App, tx: &Tx) -> bool {
     true
 }
 
+/// Whether the List view is shown: "Customize columns…" is there only.
+fn lists(app: &App) -> bool {
+    shell::shown_view(app).is_some_and(|view| (view.shows)(LIST))
+}
+
 /// Whether the view shown groups by file type: the Group row is sensitive only there.
 fn groups(app: &App) -> bool {
     shell::shown_view(app).is_some_and(|view| view.supports_type_grouping)
@@ -158,6 +169,9 @@ fn stops(app: &App) -> Vec<&'static str> {
     ];
     if groups(app) {
         stops.push(GROUP);
+    }
+    if lists(app) {
+        stops.push(CUSTOMIZE);
     }
     stops.push(HIDDEN);
     stops
@@ -180,6 +194,7 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
         .child(heading(look, &state.labels.text_size))
         .child(stepper(app))
         .child(group_row(app))
+        .children(lists(app).then(|| customize_row(app)))
         .child(hidden_row(app));
     let plain = Plain {
         key: SURFACE,
@@ -407,6 +422,26 @@ fn group_row(app: &App) -> El {
         },
     );
     row.description(labels.group_description.clone())
+}
+
+fn customize_row(app: &App) -> El {
+    let labels = &app.appearance.popover.labels;
+    option(
+        &app.look,
+        Row {
+            key: CUSTOMIZE,
+            role: "menuitem",
+            icon: IconName::ViewColumns,
+            name: &labels.customize,
+            shown_keys: None,
+            checked: false,
+            sensitive: true,
+            press: |app, _| {
+                close(app);
+                crate::list::customize_columns(app);
+            },
+        },
+    )
 }
 
 fn hidden_row(app: &App) -> El {
