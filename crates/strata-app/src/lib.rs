@@ -60,6 +60,7 @@ mod list;
 // A4 Tabs
 // A5 Location bar
 mod error_dialog;
+mod location;
 mod open_failed;
 // A6 Menus, dialogs and keymap
 // A7 Entry management and undo
@@ -97,6 +98,7 @@ slots::parts! {
     // A3 Sidebar
     // A4 Tabs
     // A5 Location bar
+    location: location::Bar,
     error_dialog: error_dialog::ErrorDialog,
     open_failed: open_failed::OpenFailed,
     // A6 Menus, dialogs and keymap

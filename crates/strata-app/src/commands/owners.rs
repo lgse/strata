@@ -28,10 +28,6 @@ pub(crate) enum Holds {
     Filter,
     /// The location bar: after `text_input` every key is the bar's
     /// (`src/ui/window/keyboard/commands.rs:177`).
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no part is the location bar yet")
-    )]
     Location,
     /// An inline edit: after `inline_editing` every key is the field's (`commands.rs:85`).
     Edit,
