@@ -486,5 +486,20 @@ sequence only together with the alphabet's version, so the version is part of th
   store through one `Sync::tell`. `a_report_of_no_rows_in_a_listed_folder_cancels_no_render`
   (`thumbnails/tests.rs`) fails without it. The Icons grid syncs only on Rune's report and
   never asked early, so it did not race.
+- **Related:** [#2290](#2290-a-lists-visible-rows-reported-as-none-and-never-again) is the
+  same Rune report, an empty range for a collection that lists entries; #2290 is the variant
+  where no second report comes (Rune packet entry
+  [101](../upstream/rune/101-stale-visible-rows.md)), and here the second report does come.
+  `Synced::next` now passes over both for List and Columns.
+- **Not covered:**
+  - **Icons** syncs every report, empty ones included (`on_visible` and `sync_thumbs` in
+    `crates/strata-components/src/icons_grid/mod.rs`), so an empty report there after its
+    requests are out would still cancel running renders. Not seen: the grid asks only on
+    Rune's reports, so no request is out before the first one.
+  - **The `Sync::Again` guess** uses the last viewport, the parent folder's, for a folder just
+    opened. When the first real report differs, as with Back into a folder whose scroll
+    position `Pane` restores, the store still cancels the guessed requests, running ones
+    included, which GTK never asks for.
+  - Both are left for a rule in the store if they show up.
 - **State:** fixed by [#2313](https://github.com/lgse/strata/pull/2313). A failure of the
   run in a gate after it is a new sighting, not this one.

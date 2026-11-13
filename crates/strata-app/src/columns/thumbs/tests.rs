@@ -44,7 +44,13 @@ fn a_poll_tells_the_store_what_changed_in_a_column() {
     );
     column.range = Some(0..0);
     assert_eq!(
-        column.next(&b, 3, 0, false),
+        column.next(&b, 4, 9, false),
+        Sync::Again,
+        "no rows of a listed folder whose listing changed"
+    );
+    column.range = Some(0..0);
+    assert_eq!(
+        column.next(&b, 5, 0, false),
         Sync::View(0..0),
         "no rows of an empty folder"
     );

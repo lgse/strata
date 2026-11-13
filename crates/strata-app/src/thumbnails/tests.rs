@@ -434,5 +434,5 @@ fn a_report_of_no_rows_in_a_listed_folder_cancels_no_render() {
     poll(&mut synced, &mut store, 0..0);
 
     assert!(viewer.take_requests(&mut store, 0.1).is_empty());
-    assert_eq!(viewer.pending.len(), 3, "a request cancelled");
+    assert_eq!(viewer.pending.len(), 3, "every request still out");
 }
