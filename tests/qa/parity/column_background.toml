@@ -13,9 +13,8 @@ host = "offscreen"
 scenario = "column-background-click-focuses-parent"
 run = "columns-header"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8: a Columns column header's title as GTK's `label`, named for its folder and described by its path, a contract change in `columns/` (line 16)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -23,7 +22,7 @@ run = "columns-root-item"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29); then A8: while the menu is modal the QA snapshot puts a drawn button under the window root, not under its column (`qa/tree.rs`, `add_hidden_button`), so `panes_with` finds no pane holding it"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -31,7 +30,7 @@ run = "columns-root-background"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29); then A8: while the menu is modal the QA snapshot puts a drawn button under the window root, not under its column (`qa/tree.rs`, `add_hidden_button`), so `panes_with` finds no pane holding it"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -39,7 +38,7 @@ run = "columns-nested-item"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29); then A8: while the menu is modal the QA snapshot puts a drawn button under the window root, not under its column (`qa/tree.rs`, `add_hidden_button`), so `panes_with` finds no pane holding it"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -47,7 +46,7 @@ run = "columns-nested-background"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29); then A8: while the menu is modal the QA snapshot puts a drawn button under the window root, not under its column (`qa/tree.rs`, `add_hidden_button`), so `panes_with` finds no pane holding it"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -55,7 +54,7 @@ run = "columns-root-header"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8: a Columns column header's title as GTK's `label`, named for its folder and described by its path, a contract change in `columns/` (line 27)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29); then A8: while the menu is modal the QA snapshot puts a drawn button under the window root, not under its column (`qa/tree.rs`, `add_hidden_button`), so `panes_with` finds no pane holding it"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -63,4 +62,4 @@ run = "columns-nested-header"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8: a Columns column header's title as GTK's `label`, named for its folder and described by its path, a contract change in `columns/` (line 27)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29); then A8: while the menu is modal the QA snapshot puts a drawn button under the window root, not under its column (`qa/tree.rs`, `add_hidden_button`), so `panes_with` finds no pane holding it"

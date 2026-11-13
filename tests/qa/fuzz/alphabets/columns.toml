@@ -17,6 +17,11 @@
 # and after the walk's own writes; a rename that moves another entry to the front leaves a
 # gap, which a differential run reports where it is met.
 #
+# Known gaps in that guard, for the next version or F4:
+# - Shift+Up (`extend`) is not guarded. On the root's first entry it opens `archive`'s column on
+#   Rune and not on GTK (seed 0x41e, step 7, `app.matches`): a lead in F4's file, not yet
+#   triaged.
+#
 # Left out, with why:
 # - Left and h from the fixture's own column: its parent is /tmp, outside the fixture.
 # - Return on a file: it asks for the file's default application, which the QA image has

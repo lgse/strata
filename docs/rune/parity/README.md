@@ -222,7 +222,7 @@ digest, and `Browser`'s cursor and selection equal the view's.
 
 | Fuzz tier | When | Budget |
 | --- | --- | --- |
-| Smoke | Before a package's pull request merges | The area's alphabet, short sequences. Set by F2's pilot |
+| Smoke | Before a package's pull request merges | The area's alphabet, short sequences, on both targets. Set by F2's pilot: 20 seeds of 40 actions, about 1 to 3 minutes (`docs/testing.md`, "Tiers and budgets") |
 | Long run | An agent the owner delegates it to, as often as the owner chooses | Every merged alphabet, long sequences |
 | Soak | The exit wave | A fixed number of hours with no new divergence. Owner sets it |
 
