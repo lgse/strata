@@ -12,10 +12,10 @@
 
 use std::collections::HashMap;
 
-use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget};
+use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget, ThumbKey};
 use strata_core::{
     i18n::tr,
-    model::{EntryKind as Kind, FileEntry, Location, ViewPreferences},
+    model::{EntryKind as Kind, FileEntry, Location, MetadataValue, ViewPreferences},
 };
 use strata_fs::app::compare_type_groups;
 
@@ -94,6 +94,40 @@ impl Words {
     }
 }
 
+/// What the browser knows of an entry beyond its name, as the views show it: the details line
+/// under an Icons tile, the List view's size column. Each is `None` until the browser knows it
+/// (a metadata fill) and for an entry that has none. [`crate::details`] makes the text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) struct Facts {
+    /// A file's size in bytes.
+    pub(crate) size: Option<u64>,
+    /// How many entries a folder holds.
+    pub(crate) child_count: Option<u64>,
+    /// A video's or a sound's length, in whole seconds.
+    pub(crate) duration_seconds: Option<u64>,
+    /// An image's width and height, in pixels.
+    pub(crate) dimensions: Option<(u32, u32)>,
+}
+
+impl Facts {
+    fn of(entry: &FileEntry) -> Self {
+        Self {
+            size: known(&entry.size),
+            child_count: known(&entry.child_count),
+            duration_seconds: known(&entry.duration_seconds),
+            dimensions: known(&entry.image_dimensions),
+        }
+    }
+}
+
+/// The value, when the browser knows it.
+pub(crate) fn known<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
+    match value {
+        MetadataValue::Known(value) => Some(*value),
+        MetadataValue::Unknown | MetadataValue::Unavailable => None,
+    }
+}
+
 /// What one row shows, copied from the browser's entry.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Row {
@@ -102,11 +136,16 @@ pub(crate) struct Row {
     kind: EntryKind,
     described: Described,
     hidden: bool,
+    /// The key of the entry's thumbnail, for a file that gets one ([`crate::thumbnails`]): a
+    /// hash, so a row holds eight bytes for it and no path. A view finds the file again
+    /// through the browser.
+    thumbnail: Option<ThumbKey>,
     /// The browser's kind of entry: what its file type is read from with its name.
     entry_kind: Kind,
     /// Its file type, as the List view groups by it: read only while its folder is grouped
     /// ([`Column::group`]), as a MIME lookup for every row would cost every view.
     group: Option<TypeGroup>,
+    facts: Facts,
 }
 
 impl Row {
@@ -118,13 +157,19 @@ impl Row {
             kind,
             described,
             hidden: entry.is_hidden,
+            thumbnail: crate::thumbnails::key_of(entry),
             entry_kind: entry.kind,
             group: None,
+            facts: Facts::of(entry),
         }
     }
 
     pub(crate) fn is_folder(&self) -> bool {
         self.kind.is_folder_like()
+    }
+
+    pub(crate) fn facts(&self) -> &Facts {
+        &self.facts
     }
 }
 
@@ -353,10 +398,18 @@ impl Column {
             .enumerate()
             .map(|(place, kind)| (types[kind], place))
             .collect();
-        let rows = &self.rows;
-        // A stable sort: each group keeps the browser's order.
-        self.shown
-            .sort_by_key(|position| rows[*position].group.and_then(|group| rank.get(&group)));
+        // One pass into a bucket for each group, in the browser's order: linear in the rows,
+        // so a folder that arrives in many batches costs one pass a batch, not a sort.
+        let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); types.len()];
+        for position in &self.shown {
+            let group = self.rows[*position].group;
+            let place = group
+                .and_then(|group| rank.get(&group))
+                .copied()
+                .unwrap_or(0);
+            buckets[place].push(*position);
+        }
+        self.shown = buckets.concat();
         self.back = vec![usize::MAX; self.rows.len()];
         for (index, position) in self.shown.iter().enumerate() {
             self.back[*position] = index;
@@ -429,7 +482,11 @@ impl EntrySource for Column {
     fn entry(&self, index: usize) -> Entry<'_> {
         let row = &self.rows[self.shown[index]];
         // No icon name: the view falls back to its folder and file icons.
-        Entry::new(row.id, &row.name, row.kind, "")
+        let entry = Entry::new(row.id, &row.name, row.kind, "");
+        match row.thumbnail {
+            Some(key) => entry.thumbnail(key),
+            None => entry,
+        }
     }
 }
 

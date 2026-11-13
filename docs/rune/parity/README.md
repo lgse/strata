@@ -599,14 +599,21 @@ check skipped is named with its reason. This list is the orchestrating session's
 | A Rune-side crate changed | The Rune lane's `cargo fmt --all --check`, and `cargo clippy $(python3 scripts/lanes.py rune) --all-targets --all-features --locked -- -D warnings` |
 | `src/` or a shared crate changed | `./scripts/quality.sh test`. With CI off it is the only run of the GTK unit tests, so it is required there |
 | `src/` or a shared crate changed | The build without UnRAR: the GTK lane checked with `--no-default-features --features test-support`, and four tests under it, below |
-| A manifest, `Cargo.lock` or `deny.toml` changed | `cargo deny check`, and the two `cargo tree` guards of `ci.yml`'s "Quality build and lint", below |
+| A manifest, `Cargo.lock` or `deny.toml` changed | `cargo deny check`, the two `cargo tree` guards of `ci.yml`'s "Quality build and lint", and the same UnRAR guard for `strata-rune`, below |
 
-The two guards, from the repository root; each holds when it prints nothing:
+The two guards, from the repository root, and the third for the Rune binary; each holds when
+it prints nothing:
 
 ```bash
 cargo tree --locked --no-default-features -e normal,build --prefix none | grep -E "^unrar(_sys)? v"
 { cargo tree --locked --no-default-features -e normal,build --prefix none; cargo tree --locked -e normal,build --prefix none; } | grep -E "^(x11rb|wayland-client|wayland-protocols-(misc|wlr)|xkbcommon) v"
+cargo tree --locked -p strata-rune --no-default-features -e normal,build --prefix none | grep -E "^unrar(_sys)? v"
 ```
+
+CI's guards read the root package only. Since `strata-rune` builds with UnRAR by default (a
+`rar` feature, [A1](packages/A1.md)), the third is the only check that `strata-rune` without
+default features carries no UnRAR. At the cutover `ci.yml`'s "Quality build and lint" needs
+the same guard for `strata-rune`.
 
 The build without UnRAR, from `ci.yml`'s step "Check and exercise the build without UnRAR".
 CI runs it inside the pinned image, by a `docker run` of the quality image, and no script

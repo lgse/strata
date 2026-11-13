@@ -76,20 +76,9 @@ fn the_menu_keys_open_the_cursors_menu_or_the_folders(mode: &'static str, name: 
     });
 }
 
-#[test]
-fn the_menu_keys_open_the_cursors_menu_or_the_folders_in_columns() {
-    let name = "the_menu_keys_open_the_cursors_menu_or_the_folders_in_columns";
-    the_menu_keys_open_the_cursors_menu_or_the_folders("columns", name);
-}
-
-#[test]
-fn the_menu_keys_open_the_cursors_menu_or_the_folders_in_icons() {
-    let name = "the_menu_keys_open_the_cursors_menu_or_the_folders_in_icons";
-    the_menu_keys_open_the_cursors_menu_or_the_folders("icons", name);
-}
-
-#[test]
-fn the_menu_keys_open_the_cursors_menu_or_the_folders_in_list() {
-    let name = "the_menu_keys_open_the_cursors_menu_or_the_folders_in_list";
-    the_menu_keys_open_the_cursors_menu_or_the_folders("list", name);
+in_each_view! {
+    the_menu_keys_open_the_cursors_menu_or_the_folders:
+    "columns" => the_menu_keys_open_the_cursors_menu_or_the_folders_in_columns,
+    "icons" => the_menu_keys_open_the_cursors_menu_or_the_folders_in_icons,
+    "list" => the_menu_keys_open_the_cursors_menu_or_the_folders_in_list,
 }

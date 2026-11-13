@@ -14,14 +14,46 @@ use crate::{
     host::offscreen::Offscreen,
     menus::{self, Request},
     shell,
+    slots::{Entry, View},
     test_support::{PATIENCE, fixture, hosted, hosted_after, send_key},
 };
 
 const MODULE: &str = "commands::tests";
 
+/// Declares a test of `$run` in each view from one list, and a test that the list has every
+/// registered view: a view registered without a line fails
+/// `every_registered_view_has_this_test` in the module that calls it.
+macro_rules! in_each_view {
+    ($run:ident: $($mode:literal => $test:ident,)*) => {
+        $(
+            #[test]
+            fn $test() {
+                $run($mode, stringify!($test));
+            }
+        )*
+
+        #[test]
+        fn every_registered_view_has_this_test() {
+            super::assert_each_view_answers_to_one_of(&[$($mode,)*]);
+        }
+    };
+}
+
 mod menu_key;
 mod routing;
 mod views;
+
+/// Each registered view answers to exactly one of `modes`, the saved `browser_mode`s a set
+/// of tests runs in, and each of those is a view.
+fn assert_each_view_answers_to_one_of(modes: &[&str]) {
+    let views: Vec<_> = crate::PARTS.iter().filter_map(Entry::view).collect();
+    let tests_of = |view: &&View<App>| modes.iter().filter(|mode| (view.shows)(mode)).count();
+    assert_eq!(
+        views.iter().map(tests_of).collect::<Vec<_>>(),
+        vec![1; modes.len()],
+        "each registered view answers to one of {modes:?}, and each of those is a view"
+    );
+}
 
 /// Opens the fixture and waits for the browser to list it.
 fn listed(host: &mut Offscreen) -> tempfile::TempDir {

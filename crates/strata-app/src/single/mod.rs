@@ -24,7 +24,7 @@
 use rune::{El, Tx, col, text};
 use strata_components::{
     collection::{
-        element::{Activation, Collection, CollectionState, Describe, Intent, KeyController},
+        element::{Activation, Collection, CollectionState, Describe, Intent},
         keyboard::{KeySettings, Keyboard},
         marquee::Marquee,
         pointer::{ClickCount, ClickModes, PointerIntent, PointerSettings},
@@ -68,13 +68,11 @@ fn clicks(count: u8) -> ClickCount {
     }
 }
 
-/// The collection's controllers: the pointer's clicks, the keyboard and the marquee. The
-/// keyboard's has the context menu's keys ahead of it, opening at `menu_at`.
-fn controlled(menu_at: AnchorEdge) -> CollectionState {
+/// The collection's controllers: the pointer's clicks, the keyboard and the marquee.
+fn controlled() -> CollectionState {
     let mut collection = CollectionState::new();
     collection.controllers.pointer = Some(Box::new(PointerIntent::new()));
-    let keyboard: Box<dyn KeyController> = Box::new(Keyboard::default());
-    collection.controllers.keyboard = Some(commands::view_keys(Some(keyboard), menu_at));
+    collection.controllers.keyboard = Some(Box::new(Keyboard::default()));
     collection.controllers.marquee = Some(Box::new(Marquee::new()));
     collection
 }
@@ -102,8 +100,10 @@ impl Single {
             described,
             menu_at,
         } = made;
+        let mut collection = controlled();
+        commands::view_keys(&mut collection, menu_at);
         Self {
-            pane: Pane::new(key, controlled(menu_at)),
+            pane: Pane::new(key, collection),
             clicks: ClickModes::new(clicks(file), clicks(folder)),
             keys,
             words: Words::translated(),
@@ -241,12 +241,7 @@ pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> 
         heard.copied(read.copied);
         for change in read.changes {
             heard.then(move |app: &mut App, tx: &mut Tx| {
-                let browser = app.browser.clone();
-                let grouping = |depth: usize| {
-                    let grouped = browser.shows_type_groups(depth);
-                    grouped.then(|| browser.column_preferences(depth)).flatten()
-                };
-                if V::single_mut(app).pane.apply(change, &grouping, tx) == Applied::Entered {
+                if V::single_mut(app).pane.apply(change, tx) == Applied::Entered {
                     // The GTK window gives a new listing the keyboard.
                     tx.focus(V::KEY, false);
                 }

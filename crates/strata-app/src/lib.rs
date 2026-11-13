@@ -12,6 +12,8 @@ rust_i18n::i18n!(
     backend = strata_core::i18n::Catalogs::compiled()
 );
 
+// The text of a row's facts, as the Icons details line and the List size column show it.
+mod details;
 mod events;
 // The cursor and selection handover every view shares.
 mod handover;
@@ -30,8 +32,10 @@ mod shell;
 mod single;
 mod slots;
 mod startup;
+// Thumbnails for the views: the render pool, one per process, and a view's viewer.
 #[cfg(test)]
 mod test_support;
+mod thumbnails;
 
 // The parts of the interface (`slots` says what one is). A part is two lines here: its
 // module in this list, and its registration in the list below. Each package of the parity

@@ -254,3 +254,34 @@ sequence only together with the alphabet's version, so the version is part of th
   `./scripts/qa-fuzz.sh replay tests/qa/fuzz/corpus/calibration/fuzz-calibration-v3-00000000000001de.jsonl --repeats 24 --jobs 1`.
 - **State:** open, set aside, parked. Parked in `tests/qa/fuzz/corpus/calibration/parked`
   in [#2181](https://github.com/lgse/strata/pull/2181), with the seed's first 32 steps kept beside it.
+
+### #2218: `mise run test-platform` fails under load on a developer machine
+
+- **Code:** none of the plan's: a follow-up to the compositor tests' task, labelled
+  `testing`. [Issue](https://github.com/lgse/strata/issues/2218), filed on 2026-11-12 as the finding's reference; its state is
+  kept here.
+- On a 24-core machine with a load average of 30 to 39 from other builds, the whole task
+  failed in `strata-platform`'s own session tests and so never reached the gallery's or
+  `strata-rune`'s window tests: 34 of 177 with [B3](packages/B3.md)'s registry branch, and 22
+  of 177 on plain `strata-next` (20 of them `x11_*` tests). Each failure is a wait that
+  timed out (`waiting for attach`, `waiting for ready`, `waiting for the window`), and the
+  set differs from run to run. The sets that failed pass alone on the same machine
+  (`p0::` 26 of 26, `p2::x11` 22 of 22).
+- It is neither the machine's compositor nor a change on a branch. Every wait is 10 s times
+  `STRATA_TEST_TIMEOUT_SCALE` (`crates/strata-platform/tests/support/mod.rs`), which was 1
+  in all of these runs, while the task starts one sway and one Xwayland for each test, as
+  many at once as the machine has cores. With the scale at 3 the whole task passed once, on
+  the same loaded machine and commit: 177, then the gallery's 23 and 14, then
+  `strata-rune`'s 3. That is one run, not a measure of how often it passes.
+- `docs/rune/testing.md` said that CI sets the scale to 3 and runs these tests in
+  `.github/workflows/platform.yml`. Neither was so: no workflow sets the variable, none runs
+  the tests, and that file has never been in the repository. Both lines are corrected with
+  this entry. The comment on `timeout` in `crates/strata-platform/tests/support/mod.rs`
+  says "CI sets 3" too, and is left for whoever takes the harness.
+- **Concerns:** `mise run test-platform` (`mise.toml`), and every package that changes a
+  host, the shell or `strata-rune`, whose window tests are the last thing that task runs.
+- **State:** open, unowned. The task now sets the scale to 3 when it is unset, by the
+  orchestrating session's ruling of 2026-11-12, which gives a loaded machine more time and
+  does not remove the cause. The thing to fix is the number of sessions started at once: a
+  limit on concurrent sway sessions in the harness, or on the test threads the task asks
+  for. [`working.md`](working.md#while-building) has how to run the window tests alone.

@@ -14,7 +14,9 @@
 //!   view's own keys, where GTK's `context_menu_command` sits in the middle of it.
 
 use strata_components::{
-    collection::element::{Ctx, Effect, Flow, Intent, KeyController, KeyInput, PointerInput},
+    collection::element::{
+        CollectionState, Ctx, Effect, Flow, Intent, KeyController, KeyInput, PointerInput,
+    },
     context_menu::{AnchorEdge, keyboard_anchor, menu_chord},
     contract::{Point, Rect},
 };
@@ -27,15 +29,14 @@ struct ViewKeys {
     edge: AnchorEdge,
 }
 
-/// A view's keyboard controller with the context menu's keys ahead of it. A view wraps the
-/// controller of each collection that takes its keys, once: the menu opens through the
-/// `Intent::ContextMenu` a secondary press sends, so the view's handler for that is the one
-/// way a menu opens. `edge` is where on the cursor's entry it opens.
-pub(crate) fn view_keys(
-    inner: Option<Box<dyn KeyController>>,
-    edge: AnchorEdge,
-) -> Box<dyn KeyController> {
-    Box::new(ViewKeys { inner, edge })
+/// Puts the context menu's keys ahead of `collection`'s keyboard controller. A view calls it
+/// once on each collection that takes its keys, after it has set the controllers: the menu
+/// opens through the `Intent::ContextMenu` a secondary press sends, so the view's handler
+/// for that is the one way a menu opens. `edge` is where on the cursor's entry it opens.
+pub(crate) fn view_keys(collection: &mut CollectionState, edge: AnchorEdge) {
+    let keyboard = &mut collection.controllers.keyboard;
+    let inner = keyboard.take();
+    *keyboard = Some(Box::new(ViewKeys { inner, edge }));
 }
 
 /// Sends what a secondary press sends, for the entry and the point `keyboard_anchor` gives.

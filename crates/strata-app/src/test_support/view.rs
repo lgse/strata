@@ -17,16 +17,29 @@ fn settings_file() -> PathBuf {
     strata_core::storage::config_directory().join("settings.toml")
 }
 
-fn save_mode(mode: &str) {
+/// Saves `mode` as the view to show, and `more` after it: lines of `settings.toml`.
+fn save_mode(mode: &str, more: &str) {
     let file = settings_file();
     std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
-    let saved = format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n");
+    let saved =
+        format!("mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"{mode}\"\n{more}");
     std::fs::write(file, saved).expect("settings");
 }
 
 /// Runs the test `name` of `module` in a window whose saved `browser_mode` is `mode`.
 pub(crate) fn hosted_in(module: &str, mode: &'static str, name: &str, run: impl FnOnce(Offscreen)) {
-    hosted_after(module, name, move || save_mode(mode), run);
+    hosted_with(module, mode, String::new(), name, run);
+}
+
+/// [`hosted_in`], with `more` saved too: lines of `settings.toml`.
+pub(crate) fn hosted_with(
+    module: &str,
+    mode: &'static str,
+    more: String,
+    name: &str,
+    run: impl FnOnce(Offscreen),
+) {
+    hosted_after(module, name, move || save_mode(mode, &more), run);
 }
 
 /// A test on a window made of the table `parts`, with `mode` saved as the view to show.
@@ -37,7 +50,7 @@ pub(crate) fn hosted_over_in(
     run: impl FnOnce(Offscreen),
 ) {
     let host = |ui, settings| Offscreen::with_parts(parts().leak(), ui, settings);
-    hosted_on((module, name), move || save_mode(mode), host, run);
+    hosted_on((module, name), move || save_mode(mode, ""), host, run);
 }
 
 /// How a view looks to assistive technology: what its pane is described as, its list's role,
@@ -180,14 +193,26 @@ pub(crate) fn wait(
     seen
 }
 
-/// Opens `folder` and waits for its entries.
+/// How many entries `folder` lists with hidden files hidden: what a view shows once it has
+/// it all.
+fn shown_in(folder: &Path) -> usize {
+    let entries = std::fs::read_dir(folder).expect("a folder to read");
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
+        .count()
+}
+
+/// Opens `folder` and waits for all its entries: a listing can arrive over several turns,
+/// so a first look may show only part of it.
 pub(crate) fn open(host: &mut Offscreen, shape: Shape, folder: &Path) -> Seen {
     host.app().open(Location::local(folder));
-    let listed = wait(host, shape, "the folder's listing", |seen| {
-        !seen.entries.is_empty()
+    let count = shown_in(folder);
+    wait(host, shape, "the folder's whole listing", |seen| {
+        seen.entries.len() == count
     });
     idle(host);
-    listed
+    seen(host, shape)
 }
 
 /// Feeds the host a key with its modifiers held, as a keyboard sends one.

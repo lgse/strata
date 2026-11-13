@@ -319,9 +319,9 @@ fn an_owner_every_stage_and_a_button() -> Vec<Entry<App>> {
 }
 
 /// Rune hears a key at the root element when an element has the keyboard and at the window
-/// when none has or a part holds it; a view's own keys stand ahead of the chain's last stage,
-/// so from a view the root asks only what follows them. Wherever it lands, each stage hears
-/// the press once.
+/// when none has or a part holds it. Wherever it lands, each stage hears the press once: a
+/// view that did not put the registry ahead of its keys (`commands::in_view`) loses no
+/// stage, since the root then asks them all.
 #[test]
 fn a_press_is_offered_once_from_wherever_the_keyboard_is() {
     const WHOLE: [&str; 9] = [
@@ -335,13 +335,12 @@ fn a_press_is_offered_once_from_wherever_the_keyboard_is() {
         "after yield",
         "unclaimed",
     ];
-    let after_the_view = &WHOLE[6..];
     // A field's part holds the keyboard: the window asks, with what a field leaves.
     let under_a_field = [&WHOLE[..5], &WHOLE[6..]].concat();
     let cases: [(Option<&str>, Option<Holds>, &[&str]); 4] = [
         (None, None, &WHOLE),
         (Some("made-button"), None, &WHOLE),
-        (Some("made-view"), None, after_the_view),
+        (Some("made-view"), None, &WHOLE),
         (Some("made-button"), Some(Holds::Field), &under_a_field),
     ];
     hosted_over(

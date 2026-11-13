@@ -153,8 +153,12 @@ impl Columns {
     /// The changes inside a column: its rows, its load, its cursor and selection.
     fn apply_within(&mut self, change: Change, hands: &mut Hands<'_>) {
         match change {
-            Change::Rows { depth, edit, marks } => self.edit(depth, edit, marks, hands),
-            Change::Loaded { depth, load, marks } => self.loaded(depth, load, &marks, hands),
+            Change::Rows {
+                depth, edit, marks, ..
+            } => self.edit(depth, edit, marks, hands),
+            Change::Loaded {
+                depth, load, marks, ..
+            } => self.loaded(depth, load, &marks, hands),
             Change::Busy { depth, busy } => {
                 if let Some(column) = self.listings.columns.get_mut(depth) {
                     column.set_busy(busy);
@@ -213,6 +217,7 @@ impl Columns {
             location,
             show_hidden,
             active,
+            ..
         } = added;
         self.listings.columns.truncate(depth);
         self.held.truncate(depth);
@@ -246,8 +251,7 @@ impl Columns {
     /// menu at its right edge (`ColumnView::context_menu_target`).
     fn read_menu_keys(&mut self, depth: usize) {
         if let Some(column) = self.state.column_mut(depth) {
-            let keyboard = &mut column.collection.controllers.keyboard;
-            *keyboard = Some(commands::view_keys(keyboard.take(), AnchorEdge::Right));
+            commands::view_keys(&mut column.collection, AnchorEdge::Right);
         }
     }
 

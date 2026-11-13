@@ -304,6 +304,21 @@ issue [#2128](https://github.com/lgse/strata/issues/2128).
    content in GTK (`src/ui/window/keyboard/items.rs:152, 180`). Neither Rune view honours
    it. Meanwhile: not honoured; it goes with items 2 and 3.
 
+The orchestrating session's rulings for A1, in force until the owner reverses them (source:
+the orchestrating session, 2026-11-12):
+
+6. **`strata-rune` is built with UnRAR by default,** as the GTK application's default build
+   is (the root package's `rar` feature). `strata-app` and `strata-rune` have a default `rar`
+   feature forwarding `strata-core`, `strata-fs` and `strata-preview`'s, so `strata-rune`'s
+   thumbnail worker decodes a CBR cover as GTK's default worker does. A build without UnRAR is
+   `--no-default-features`, as for GTK.
+7. **The thumbnail store is one per window, the render pool one per process.** The pool and
+   its limits are process-wide state of `crates/strata-app/src/thumbnails/`, as GTK's are in
+   `src/ui/thumbnail/jobs.rs`. C25's `ThumbnailStore` is in the shell (`Window`), one per
+   window, so every view of a window reads it. GTK's decoded-image cache is one per process
+   (`THUMBNAIL_CACHE`), so with several windows an image is decoded and held once per window:
+   [A21](packages/A21.md)'s to settle with multi-window. Nothing a user sees differs.
+
 ### A2: List view
 
 Found by the package's agent, 2026-11-12, against A1's five items above.
@@ -401,7 +416,7 @@ Rulings of the owner on the parity work, oldest first.
   `strata-rune`'s tree already, by two paths that have nothing to do with thumbnails in the
   Rune interface: `strata-app` depends on `strata-fs`, and `crates/strata-fs/Cargo.toml`
   depends on `strata-preview` (line 29) and on `gdk-pixbuf` directly (line 35), neither
-  optional (`cargo tree -p strata-rune -i gdk-pixbuf`). So the ruling adds a direct edge
+  optional (`cargo tree -p strata-rune -i gdk-pixbuf`). The coordinator's reading: so the ruling adds a direct edge
   from `strata-app` to `strata-preview`, not a new library, and criterion 6 was not met
   before it either. E4 owns removing `gdk-pixbuf` from the whole tree: `strata-fs`'s own
   use of it, its use of `strata-preview`, and the thumbnail worker's direct use.
