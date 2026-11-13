@@ -32,9 +32,13 @@ use std::io;
 use rune::{El, Tx};
 use strata_components::context_menu::ContextMenuState;
 use strata_components::sidebar::{
-    ItemId, PlacesSidebar, Section, SidebarData, SidebarIntent, SidebarState, Step, Via,
+    ItemId, PlacesSidebar, Section, SidebarData, SidebarIntent, SidebarLabels, SidebarState, Step,
+    Via,
 };
-use strata_core::model::Location;
+use strata_core::{
+    i18n::{count, tr},
+    model::Location,
+};
 use strata_fs::{
     adapters::bookmarks::{self, BookmarkWatch},
     app::{Browser, BrowserEvent},
@@ -267,11 +271,19 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     if !sidebar.started {
         return None;
     }
+    // GTK's headings and their count (`append_section_header`, `set_item_count` in
+    // `src/ui/window/sidebar_sections.rs`).
+    let (pinned, devices) = (tr("PINNED"), tr("DEVICES"));
     let data = SidebarData {
         places: &sidebar.listed.places,
         pins: &sidebar.listed.pins,
         devices: &[],
         current: sidebar.current.as_ref(),
+        labels: SidebarLabels {
+            pinned: &pinned,
+            devices: &devices,
+            rows: |rows| count("items", rows),
+        },
     };
     let menu = menu::element(app, frame.layer);
     Some(element(app, &app.look, data).child(menu))

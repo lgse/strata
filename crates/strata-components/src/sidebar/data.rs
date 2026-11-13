@@ -7,6 +7,8 @@
 use rune::Color;
 use strata_kit::icons::IconName;
 
+use super::intent::Section;
+
 /// A row's identity, stable across rebuilds. Ids are part of element keys
 /// (`<key>-place-<id>`, `<key>-pin-<id>`, `<key>-device-<id>`), so they hold only
 /// characters a key may: letters, digits, `-` and `_`.
@@ -369,6 +371,38 @@ pub struct SidebarData<'a> {
     /// The open location's row, which shows the accent tint. `None` when the open location
     /// has no row.
     pub current: Option<&'a ItemId>,
+    /// What the sidebar says, in the host's language.
+    pub labels: SidebarLabels<'a>,
+}
+
+/// What the sidebar says, which the host gives in the user's language: each section's
+/// heading, which is also its accessible name and its rail tooltip, and the heading's
+/// accessible description of how many rows the section holds ("3 items").
+#[derive(Clone, Copy, Debug)]
+pub struct SidebarLabels<'a> {
+    pub pinned: &'a str,
+    pub devices: &'a str,
+    pub rows: fn(usize) -> String,
+}
+
+/// No words: a host that leaves them out gets unnamed headings, never English.
+impl Default for SidebarLabels<'_> {
+    fn default() -> Self {
+        Self {
+            pinned: "",
+            devices: "",
+            rows: |_| String::new(),
+        }
+    }
+}
+
+impl SidebarLabels<'_> {
+    pub(crate) fn heading(&self, section: Section) -> &str {
+        match section {
+            Section::Pinned => self.pinned,
+            Section::Devices => self.devices,
+        }
+    }
 }
 
 impl SidebarData<'_> {
