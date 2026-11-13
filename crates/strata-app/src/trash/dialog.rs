@@ -15,8 +15,14 @@
 //!   outside and the close button cancel. Left and Right move between the buttons (C15).
 //! - **Cancel** puts the cursor back on the items asked about if something moved it while the
 //!   dialog was open (`return_cursor_on_cancel`).
-//! - **The size task** runs on GLib's context and answers through `Setup::later`. A dialog
-//!   that has closed, or another that has opened, takes no answer.
+//! - **The size task** runs on GLib's context and answers through `Setup::later`. It stops
+//!   when the dialog closes, and a dialog that has closed, or another that has opened, takes
+//!   no answer.
+//! - **Return** presses the focused button only (`activate_focused_button`): the delete is no
+//!   default button. The keyboard returns to the listing on close
+//!   (`remember_modal_focus_for_listing`).
+//! - **One at a time.** A confirmation asked while one is open waits for it to close, under a
+//!   key of its own, so it takes its own first focus; GTK stacks it over the first.
 //!
 //! Left out: the dissolve of the deleted rows (`prepare_delete_dissolve`), and 10xer's key
 //! that confirms a trash (`TENXER_DELETE_CONFIRM`, A11's). A file link's size shows when the
@@ -34,7 +40,7 @@ use super::sizes::{
     Reach, entry_kind_summary, item_count_label, metadata_text, reach_description,
     trash_unavailable_reason,
 };
-use crate::{App, slots::Frame};
+use crate::{App, shell, slots::Frame};
 
 /// `DELETE_CONFIRMATION_MAX_ROWS`: more collapse into one line.
 const MAX_ROWS: usize = 50;
@@ -161,22 +167,32 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         Kind::Permanent => Focus::Primary,
     };
     let loading = confirm.sizing.then(|| tr("Calculating total size…"));
-    let mut dialog = StrataDialog::new("delete-confirm", title, super::cancelled)
+    // A key of its own for each, so a confirmation that opens as another closes takes its own
+    // first focus.
+    let key = format!("delete-confirm-{}", confirm.generation);
+    let mut dialog = StrataDialog::new(key.clone(), title, super::cancelled)
         .open(trash.open)
         .subtitle(confirm.subtitle.clone())
         .icon(IconName::Trash)
         .tone(Tone::Danger)
         .loading(loading)
-        .child(item_list(app, confirm));
+        .child(item_list(app, confirm).key(format!("{key}-items")));
     for paragraph in confirm.paragraphs() {
         dialog = dialog.message(paragraph);
     }
-    dialog
+    dialog = dialog
         .secondary(tr("Cancel"), super::cancelled)
         .primary(confirm_label, super::confirmed)
         .initial_focus(focus)
+        // GTK's Return presses the focused button only (`activate_focused_button`): with
+        // nothing focused it deletes nothing.
+        .default_button(false)
         .close_label(tr("Close dialog"))
-        .width(MESSAGE_WIDTH)
-        .build(&app.look, frame.layer);
+        .width(MESSAGE_WIDTH);
+    // The keyboard goes back to the listing (`remember_modal_focus_for_listing`).
+    if let Some(view) = shell::view_focus(app) {
+        dialog = dialog.return_focus(view);
+    }
+    dialog.build(&app.look, frame.layer);
     None
 }

@@ -58,10 +58,17 @@ const DELETE_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
     .union(Modifiers::ALT_MASK)
     .union(Modifiers::SUPER_MASK);
 
-/// What a dialog button asked, for the part's next `poll`.
+/// What a dialog button asked, for the part's next `poll`, with what it was asked about: a
+/// confirmation that opens meanwhile changes nothing of it.
 enum Queued {
-    Delete,
-    Cancel,
+    Delete {
+        entries: Vec<FileEntry>,
+        remote: bool,
+    },
+    Cancel {
+        cursor: Option<(usize, Location)>,
+        entries: Vec<FileEntry>,
+    },
 }
 
 pub(crate) struct Trash {
@@ -69,7 +76,12 @@ pub(crate) struct Trash {
     /// The confirmation, kept after it closes for its closing motion.
     confirm: Option<Confirm>,
     open: bool,
-    queued: Option<Queued>,
+    queued: Vec<Queued>,
+    /// A confirmation asked for while another is open: it opens once that one closes, so an
+    /// open one is never replaced under the keyboard (GTK stacks a second dialog).
+    waiting: Option<(Vec<FileEntry>, Kind)>,
+    /// The open confirmation's size task, which stops when it closes (GTK aborts it).
+    sizing: Option<glib::JoinHandle<()>>,
     /// Counts the confirmations, so a size task's answer finds its own.
     opened: u64,
     /// What the last Move to Trash asked for (`pending_delete_entries`): what a partial
@@ -91,7 +103,9 @@ impl Part for Trash {
             later: setup.later.clone(),
             confirm: None,
             open: false,
-            queued: None,
+            queued: Vec::new(),
+            waiting: None,
+            sizing: None,
             opened: 0,
             trashing: Vec::new(),
         }
@@ -115,12 +129,19 @@ impl Part for Trash {
     }
 
     fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
-        let Some(queued) = app.trash.queued.take() else {
+        let queued = std::mem::take(&mut app.trash.queued);
+        let waiting = app.trash.waiting.take_if(|_| !app.trash.open);
+        if queued.is_empty() && waiting.is_none() {
             return false;
-        };
-        match queued {
-            Queued::Delete => delete_confirmed(app),
-            Queued::Cancel => return_cursor(app),
+        }
+        for queued in queued {
+            match queued {
+                Queued::Delete { entries, remote } => delete_confirmed(app, entries, remote),
+                Queued::Cancel { cursor, entries } => return_cursor(app, cursor, &entries),
+            }
+        }
+        if let Some((entries, kind)) = waiting {
+            show(app, entries, kind);
         }
         shell::settle(app, tx);
         true
@@ -296,7 +317,12 @@ fn deleted(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
 }
 
 /// `show_delete_dialog`: the confirmation opens over the window, and its size task starts.
+/// While one is open, the new one waits for it to close.
 fn show(app: &mut App, entries: Vec<FileEntry>, kind: Kind) {
+    if app.trash.open {
+        app.trash.waiting = Some((entries, kind));
+        return;
+    }
     let reach = deletion_reach(&entries);
     let trash = &mut app.trash;
     trash.opened += 1;
@@ -309,13 +335,20 @@ fn show(app: &mut App, entries: Vec<FileEntry>, kind: Kind) {
     let generation = confirm.generation;
     trash.confirm = Some(confirm);
     trash.open = true;
-    trash.queued = None;
-    size_in_background(&trash.later, entries, reach, generation);
+    let task = size_in_background(&trash.later, entries, reach, generation);
+    if let Some(earlier) = trash.sizing.replace(task) {
+        earlier.abort();
+    }
 }
 
 /// `spawn_delete_size_task`: the total, and each listed file link's size, off the interface
 /// thread's turn.
-fn size_in_background(later: &Later<App>, entries: Vec<FileEntry>, reach: Reach, generation: u64) {
+fn size_in_background(
+    later: &Later<App>,
+    entries: Vec<FileEntry>,
+    reach: Reach,
+    generation: u64,
+) -> glib::JoinHandle<()> {
     let later = later.clone();
     glib::MainContext::default().spawn_local(async move {
         let mut links = Vec::new();
@@ -342,32 +375,49 @@ fn size_in_background(later: &Later<App>, entries: Vec<FileEntry>, reach: Reach,
             }
             true
         });
-    });
+    })
 }
 
-/// The delete button: the dialog closes and the items go for good
+/// Closes the open confirmation, and stops its size task: what the buttons and dismissal
+/// share. `None` when none was open.
+fn close(app: &mut App) -> Option<&Confirm> {
+    let trash = &mut app.trash;
+    if !trash.open {
+        return None;
+    }
+    trash.open = false;
+    if let Some(task) = trash.sizing.take() {
+        task.abort();
+    }
+    trash.confirm.as_ref()
+}
+
+/// The delete button: the dialog closes and the items it asked about go for good
 /// (`delete_confirmed_permanently`).
 fn confirmed(app: &mut App) {
-    if app.trash.open {
-        app.trash.open = false;
-        app.trash.queued = Some(Queued::Delete);
-    }
+    let Some(confirm) = close(app) else {
+        return;
+    };
+    let queued = Queued::Delete {
+        entries: confirm.entries.clone(),
+        remote: confirm.reach == Reach::Remote,
+    };
+    app.trash.queued.push(queued);
 }
 
 /// Cancel, Escape, the close button and a click outside.
 fn cancelled(app: &mut App) {
-    if app.trash.open {
-        app.trash.open = false;
-        app.trash.queued = Some(Queued::Cancel);
-    }
-}
-
-fn delete_confirmed(app: &mut App) {
-    let Some(confirm) = app.trash.confirm.as_ref() else {
+    let Some(confirm) = close(app) else {
         return;
     };
-    let entries = confirm.entries.clone();
-    let remote = confirm.reach == Reach::Remote;
+    let queued = Queued::Cancel {
+        cursor: confirm.cursor.clone(),
+        entries: confirm.entries.clone(),
+    };
+    app.trash.queued.push(queued);
+}
+
+fn delete_confirmed(app: &mut App, entries: Vec<FileEntry>, remote: bool) {
     leave_folder_being_deleted(app, &entries);
     app.browser.delete_permanently(entries, remote);
     app.browser.focus_active();
@@ -375,11 +425,8 @@ fn delete_confirmed(app: &mut App) {
 
 /// `return_cursor_on_cancel`: a cursor something moved while the dialog was open goes back
 /// to the items it asked about.
-fn return_cursor(app: &mut App) {
-    let Some(confirm) = app.trash.confirm.as_ref() else {
-        return;
-    };
-    let Some((depth, cursor)) = confirm.cursor.clone() else {
+fn return_cursor(app: &mut App, cursor: Option<(usize, Location)>, entries: &[FileEntry]) {
+    let Some((depth, cursor)) = cursor else {
         return;
     };
     let stayed = app
@@ -388,7 +435,7 @@ fn return_cursor(app: &mut App) {
         .is_some_and(|(now, _, entry)| now == depth && entry.location == cursor);
     if !stayed {
         let locations: Vec<Location> = std::iter::once(cursor)
-            .chain(confirm.entries.iter().map(|entry| entry.location.clone()))
+            .chain(entries.iter().map(|entry| entry.location.clone()))
             .collect();
         app.browser
             .select_shown_entries_by_location_at(depth, &locations);

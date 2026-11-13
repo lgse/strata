@@ -217,12 +217,7 @@ fn shift_delete_asks_and_deletes_for_good_only_when_confirmed() {
             let folder = listed(&mut host);
             let todo = folder.path().join("todo.txt");
             select(&mut host, &Location::local(&todo));
-            let shift = Mods {
-                shift: true,
-                ..Mods::default()
-            };
-
-            key(&mut host, Key::Delete, shift);
+            key(&mut host, Key::Delete, shift());
             let (name, focused) = wait_for_dialog(&mut host);
             assert_eq!(name, "Permanently delete 1 item?");
             assert_eq!(focused.as_deref(), Some("Permanently delete 1 item"));
@@ -231,7 +226,7 @@ fn shift_delete_asks_and_deletes_for_good_only_when_confirmed() {
             host.run_until(std::time::Duration::from_millis(300), |_| false);
             assert!(todo.exists(), "Escape deleted it");
 
-            key(&mut host, Key::Delete, shift);
+            key(&mut host, Key::Delete, shift());
             wait_for_dialog(&mut host);
             key(&mut host, Key::Enter, Mods::default());
             assert!(host.run_until(PATIENCE, |_| !todo.exists()), "not deleted");
@@ -273,6 +268,212 @@ fn a_trash_the_location_refused_asks_to_delete_for_good() {
             key(&mut host, Key::Enter, Mods::default());
             wait_for_no_dialog(&mut host);
             assert!(folder.path().join("todo.txt").exists(), "Cancel deleted it");
+        },
+    );
+}
+
+/// The key of the element that has the keyboard.
+fn focused_key(host: &mut Offscreen) -> Option<String> {
+    host.runtime()
+        .elements()
+        .into_iter()
+        .find(|element| element.focused && !element.exiting)
+        .and_then(|element| element.key)
+}
+
+fn view_key(host: &Offscreen) -> String {
+    crate::shell::view_focus(host.app())
+        .expect("a view")
+        .to_owned()
+}
+
+fn shift() -> Mods {
+    Mods {
+        shift: true,
+        ..Mods::default()
+    }
+}
+
+/// `activate_focused_button`: Return presses the focused button only, so the delete is no
+/// default button that Return would press with the keyboard elsewhere. (Rune's modal gives
+/// the keyboard back to the dialog's first focus when it is dropped, so "nothing focused"
+/// cannot be reached to press Return in; the role is what tells.)
+#[test]
+fn the_delete_is_no_default_button() {
+    hosted(MODULE, "the_delete_is_no_default_button", |mut host| {
+        let folder = listed(&mut host);
+        select(&mut host, &Location::local(folder.path().join("todo.txt")));
+        key(&mut host, Key::Delete, shift());
+        wait_for_dialog(&mut host);
+
+        let tree = host.tree();
+        let mut defaults = Vec::new();
+        nodes(&tree, "default-button", &mut defaults);
+        let names: Vec<&str> = defaults
+            .iter()
+            .filter_map(|node| node["name"].as_str())
+            .collect();
+        assert_eq!(
+            names,
+            Vec::<&str>::new(),
+            "a default button in the confirmation"
+        );
+    });
+}
+
+/// A confirmation asked while another is open waits for it, with its own first focus: a
+/// partial failure's retry, which focuses Cancel, never takes the open dialog's place under
+/// its focused delete. A confirm that races the event still deletes what it asked about.
+#[test]
+fn a_confirmation_asked_while_one_is_open_waits_for_it() {
+    hosted(
+        MODULE,
+        "a_confirmation_asked_while_one_is_open_waits_for_it",
+        |mut host| {
+            let folder = listed(&mut host);
+            let (todo, readme) = (
+                folder.path().join("todo.txt"),
+                folder.path().join("readme.md"),
+            );
+            select(&mut host, &Location::local(&todo));
+            key(&mut host, Key::Delete, shift());
+            wait_for_dialog(&mut host);
+
+            let retry = Location::local(&readme);
+            let refused = move |app: &mut App| {
+                let names = std::collections::HashSet::from(["readme.md".to_owned()]);
+                app.trash.trashing = app.browser.entries_named(&names);
+                super::completed_with_errors(
+                    app,
+                    super::Failed {
+                        retryable: vec![retry.clone()],
+                        others_failed: false,
+                    },
+                );
+            };
+            let first = refused.clone();
+            host.runtime().update(move |app: &mut App, _| first(app));
+            while host.turn() {}
+            let (name, focused) = dialog(&host).expect("the first dialog");
+            assert_eq!(name, "Permanently delete 1 item?");
+            assert_eq!(focused.as_deref(), Some("Permanently delete 1 item"));
+
+            // The confirm, and the event racing it before the part's poll.
+            host.runtime().update(move |app: &mut App, _| {
+                super::confirmed(app);
+                refused(app);
+            });
+            while host.turn() {}
+            assert!(
+                host.run_until(PATIENCE, |_| !todo.exists()),
+                "the confirm was dropped"
+            );
+            let reopened = host.run_until(PATIENCE, |host| {
+                dialog(host).is_some_and(|(_, focused)| focused.as_deref() == Some("Cancel"))
+            });
+            assert!(
+                reopened,
+                "the retry opened with Cancel: {:?}",
+                dialog(&host)
+            );
+            key(&mut host, Key::Enter, Mods::default());
+            wait_for_no_dialog(&mut host);
+            assert!(readme.exists(), "Return deleted the retry set");
+        },
+    );
+}
+
+/// `remember_modal_focus_for_listing`: the keyboard goes back to the listing when the
+/// confirmation closes, by Cancel and by the delete.
+#[test]
+fn closing_the_confirmation_gives_the_keyboard_back_to_the_listing() {
+    hosted(
+        MODULE,
+        "closing_the_confirmation_gives_the_keyboard_back_to_the_listing",
+        |mut host| {
+            let folder = listed(&mut host);
+            let todo = folder.path().join("todo.txt");
+            select(&mut host, &Location::local(&todo));
+            let view = view_key(&host);
+
+            key(&mut host, Key::Delete, shift());
+            wait_for_dialog(&mut host);
+            key(&mut host, Key::Escape, Mods::default());
+            wait_for_no_dialog(&mut host);
+            while host.turn() {}
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some(view.as_str()),
+                "after Cancel"
+            );
+
+            key(&mut host, Key::Delete, shift());
+            wait_for_dialog(&mut host);
+            key(&mut host, Key::Enter, Mods::default());
+            assert!(host.run_until(PATIENCE, |_| !todo.exists()), "the delete");
+            wait_for_no_dialog(&mut host);
+            while host.turn() {}
+            assert_eq!(
+                focused_key(&mut host).as_deref(),
+                Some(view.as_str()),
+                "after the delete"
+            );
+        },
+    );
+}
+
+/// Clicks the open menu's row named `name`, as a person does.
+fn click_menu_row(host: &mut Offscreen, name: &str) {
+    let tree = host.tree();
+    let mut rows = Vec::new();
+    nodes(&tree, "menu-item", &mut rows);
+    let row = rows
+        .iter()
+        .find(|row| row["name"] == name)
+        .unwrap_or_else(|| panic!("no menu row {name}"));
+    let key = row["key"].as_str().expect("a keyed row").to_owned();
+    let elements = host.runtime().elements();
+    let shown = elements
+        .iter()
+        .find(|element| !element.exiting && element.key.as_deref() == Some(key.as_str()))
+        .expect("the row is drawn");
+    let [x, y, w, h] = shown.visible;
+    let (x, y) = (x + w / 2.0, y + h / 2.0);
+    host.runtime().pointer_move(x, y);
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    while host.turn() {}
+}
+
+/// Opened from the entry menu, whose row is gone by the time the confirmation closes, the
+/// keyboard still goes back to the listing (`remember_modal_focus_for_listing`).
+#[test]
+fn a_confirmation_from_the_menu_gives_the_keyboard_back_to_the_listing() {
+    hosted(
+        MODULE,
+        "a_confirmation_from_the_menu_gives_the_keyboard_back_to_the_listing",
+        |mut host| {
+            let folder = listed(&mut host);
+            let todo = Location::local(folder.path().join("todo.txt"));
+            select(&mut host, &todo);
+            let view = view_key(&host);
+            host.runtime().update(|app: &mut App, tx| {
+                let request = crate::menus::Request {
+                    depth: 0,
+                    entry: Some(crate::shell::id_of(app, &todo)),
+                    anchor: strata_components::contract::Rect::new(60.0, 60.0, 0.0, 0.0),
+                };
+                crate::menus::open(app, request, tx);
+            });
+            while host.turn() {}
+            click_menu_row(&mut host, "Permanently delete");
+            wait_for_dialog(&mut host);
+
+            key(&mut host, Key::Escape, Mods::default());
+            wait_for_no_dialog(&mut host);
+            while host.turn() {}
+            assert_eq!(focused_key(&mut host).as_deref(), Some(view.as_str()));
         },
     );
 }
