@@ -218,7 +218,7 @@ comments of 2026-11-12, unless another is named.
   and the comparison with GDK is exact only for the test image's pair of GTK and
   `xkbcommon`. Where a user's library names a key the image's does not, or the reverse, a
   rebinding of that key can be lost at restart or be unreadable by a 1.x release.
-  Measured with the backend (B_PR): libxkbcommon 1.13 reads 359 names that GDK refuses, and
+  Measured with the backend ([#2255](https://github.com/lgse/strata/pull/2255)): libxkbcommon 1.13 reads 359 names that GDK refuses, and
   names 321 keys that GDK writes as a number. The backend refuses and numbers all of them:
   328 names and 306 keys by two rules (GDK names no vendor's keys but XFree86's, and none of
   XFree86's keys named after the Linux kernel's key codes), and 31 names and 15 keys one by
