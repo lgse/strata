@@ -6,9 +6,6 @@
 # named for the smoke seed that met it. Version 2's are the smoke tier's seeds that meet a
 # finding still open.
 v1-0000000000000002 divergence lgse/strata#2379
-v1-0000000000000007 divergence lgse/strata#2380
 v1-000000000000000e oracle lgse/strata#2356
 v1-0000000000000013 divergence lgse/strata#2381
-v2-0000000000000007 divergence lgse/strata#2380
 v2-000000000000000a oracle lgse/strata#2356
-v2-000000000000000d divergence lgse/strata#2380

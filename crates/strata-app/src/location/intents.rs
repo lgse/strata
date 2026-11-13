@@ -14,7 +14,10 @@ pub(super) fn heard(app: &mut App, intent: LocationIntent, tx: &mut Tx) {
     match intent {
         LocationIntent::Open { id, via } => open(app, &id, via, tx),
         LocationIntent::Submit { text } => submit(app, &text, tx),
-        LocationIntent::Cancelled => give_back(app, tx),
+        LocationIntent::Cancelled => {
+            app.location.typed = None;
+            give_back(app, tx);
+        }
         LocationIntent::Complete(query) => {
             let later = app.location.later.clone();
             super::completion::complete(app, query, &later, tx);
@@ -40,7 +43,7 @@ pub(super) fn route(app: &mut App, polled: Polled, tx: &mut Tx) {
 pub(super) fn route_ticked(app: &mut App, polled: Polled, tx: &mut Tx) {
     for intent in polled.intents {
         match intent {
-            LocationIntent::Cancelled if tx.focused().is_some() => {}
+            LocationIntent::Cancelled if tx.focused().is_some() => app.location.typed = None,
             intent => heard(app, intent, tx),
         }
     }
@@ -73,13 +76,18 @@ fn open(app: &mut App, id: &str, via: Via, tx: &mut Tx) {
 /// A location refused at once, or once the browser has looked (`LocationNavigationRejected`,
 /// which [`crate::open_failed`] hears), is reported as "Unable to open location". GTK mounts a
 /// location that needs it first; this interface does not mount yet.
+///
+/// The text opened stays for the next Ctrl+L until the columns change (`Bar::typed`); one
+/// refused at once does not.
 fn submit(app: &mut App, text: &str, tx: &mut Tx) {
-    // What was typed, a password in a URI among it, is not kept in the closed entry or its
-    // undo history.
+    // What was typed is not kept in the closed entry or its undo history; the text kept for the
+    // next Ctrl+L is without a password a URI carried.
     app.location.state.edit = TextEdit::new("");
     shell::publish(app);
     let browser = app.browser.clone();
-    let opened = typed(text).and_then(|input| browser.navigate_input_located(&input, None));
+    let opened =
+        typed(text).and_then(|input| browser.navigate_input_located(&input, None).map(|_| input));
+    app.location.typed = opened.as_ref().ok().cloned();
     shell::settle(app, tx);
     give_back(app, tx);
     if let Err(error) = opened {

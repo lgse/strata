@@ -865,8 +865,14 @@ sequence only together with the alphabet's version, so the version is part of th
   Rune's `begin` (`crates/strata-app/src/location/mod.rs`) opens on the trail's text, the shown
   location's path.
 - **Concerns:** `location v1`'s seed `0x7`, shrunk to 5 steps, confirmed 3 of 3, the same in
-  24 of 24 GTK replays, and parked in `tests/qa/fuzz/corpus/location/`.
-- **State:** open, [A5](packages/A5.md)'s to fix in `crates/strata-app/src/location/`.
+  24 of 24 GTK replays; with `location v2`'s seeds `0x7` and `0xd`, in
+  `tests/qa/fuzz/corpus/location/`.
+- **State:** fixed by [A5](packages/A5.md)'s [#2383](https://github.com/lgse/strata/pull/2383): the bar keeps the text Enter opened
+  (`Bar::typed`, `crates/strata-app/src/location/`) for the next Ctrl+L, and forgets it as
+  GTK's entry does: when the columns are truncated, added to or relocated, when the view
+  switches, and when an edit is cancelled; a location refused at once is not kept. A hosted
+  test, `location::tests::a_location_that_could_not_be_opened_is_the_next_edits_text`, holds
+  each. The three sequences are unparked and replay as kept sequences.
 
 ### #2381: after an outside click closes "Unable to open location", GTK's keyboard is on the first crumb
 
