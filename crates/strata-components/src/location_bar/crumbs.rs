@@ -37,8 +37,7 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
         .role("group")
         .label(cx.labels.crumbs.clone())
         .h(cx.row())
-        .items_center()
-        .gap(look.space.xxs);
+        .items_center();
     for (i, crumb) in crumbs.iter().enumerate() {
         content = content.child(if i + 1 == n {
             current(cx, crumb, n)
@@ -46,14 +45,18 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
             ancestor(cx, i, crumb)
         });
         if i + 1 < n && !crumb.joins_next {
-            content = content.child(
-                text("/")
+            content = content.child(gap(cx, format!("sep-gap-{i}"))).child(
+                row()
                     .key(format!("{}-sep-{i}", cx.key))
-                    .font(look.kit.ty.ui)
-                    .color(look.kit.c.text_weak)
+                    .h(cx.row())
+                    .items_center()
                     .a11y_hidden()
-                    .on_press_tx(opens_the_entry(cx)),
+                    .on_press_tx(opens_the_entry(cx))
+                    .child(text("/").font(look.kit.ty.ui).color(look.kit.c.text_weak)),
             );
+        }
+        if i + 1 < n {
+            content = content.child(gap(cx, format!("gap-{i}")));
         }
     }
     // The empty space after the last crumb: a press there opens the entry, as on a separator.
@@ -129,9 +132,19 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
     cx.state.bar.area(column)
 }
 
-/// A press that opens the entry: on a separator, the current crumb or the empty space. Each
-/// takes its own, as the viewport is a scroll pane and Rune presents a box that takes presses as
-/// a button.
+/// The space between two of the strip's children, in place of a row gap, so that a press there
+/// opens the entry, as a press anywhere on GTK's strip but a crumb does.
+fn gap<S: 'static>(cx: &Ctx<'_, S>, name: String) -> El {
+    el().key(format!("{}-{name}", cx.key))
+        .w(cx.look.space.xxs)
+        .h(cx.row())
+        .a11y_hidden()
+        .on_press_tx(opens_the_entry(cx))
+}
+
+/// A press that opens the entry: on a separator, a gap, the current crumb or the empty space.
+/// Each takes its own, as the viewport is a scroll pane and Rune presents a box that takes
+/// presses as a button.
 fn opens_the_entry<S: 'static>(cx: &Ctx<'_, S>) -> impl Fn(&mut S, &mut Tx) + 'static {
     let (access, emit, text) = (cx.access, cx.emit.clone(), cx.trail.text.clone());
     move |s: &mut S, tx: &mut Tx| {
@@ -275,7 +288,6 @@ fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
     let mut name = row()
         .key(format!("{}-current", cx.key))
         .role("none")
-        .on_press_tx(opens_the_entry(cx))
         .h(cx.row())
         .px(look.space.xs)
         .gap(look.space.xxs)
@@ -297,7 +309,9 @@ fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
     row()
         .key(format!("{}-item-{}", cx.key, n - 1))
         .role("none")
+        .h(cx.row())
         .items_center()
+        .on_press_tx(opens_the_entry(cx))
         .child(name)
         .child(copy)
 }
