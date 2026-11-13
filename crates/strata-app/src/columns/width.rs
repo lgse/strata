@@ -7,10 +7,13 @@
 //! - **A resize or an autofit saves its width** in base points, rounded, at least one standard
 //!   column (`remember_column_width`), and new columns open at it. The component spreads a
 //!   dragged width over the open columns and fits one column alone, as GTK does.
-//! - **No column is wider than the browser's area:** the view's own width, which the
-//!   component takes as its cap (`column_width_limit`). GTK takes the split's width less the
-//!   sidebar at its full width; beside a sidebar drawn narrower than that, Rune's area is the
-//!   wider by the difference.
+//! - **No column is wider than the browser's area:** the view's own width, less what a
+//!   railed sidebar holds back ([`shell::sidebar_held_back`]), which the component takes as
+//!   its cap (`column_width_limit`). GTK counts a railed sidebar at its full width, "so
+//!   columns still fit once it expands" (`publish_column_width_limit` in
+//!   `src/ui/preview/layout.rs`). GTK's area also takes in the preview's slot, which yields to
+//!   the columns; this interface has no preview beside the view yet, and once it has, the
+//!   view's own width will cap narrower than GTK's area.
 
 use strata_components::columns::width::STANDARD;
 use strata_desktop::settings::Preferences;
@@ -32,7 +35,9 @@ pub(super) fn keep(app: &mut App, width: f32) {
     shell::saved(app).change(|settings| settings.browser_column_width = Some(kept));
 }
 
-/// The view was laid out `rect` wide: its columns stay within it.
+/// The view was laid out `rect` wide: its columns stay within it, less what a railed sidebar
+/// holds back. Read again at each layout, which a rail or an expanded sidebar changes.
 pub(super) fn fit_area(app: &mut App, rect: [f32; 4]) {
-    app.columns.state.set_width_cap(Some(rect[2]));
+    let area = rect[2] - shell::sidebar_held_back(app);
+    app.columns.state.set_width_cap(Some(area));
 }

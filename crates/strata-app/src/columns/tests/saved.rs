@@ -179,3 +179,67 @@ fn a_resized_columns_width_is_saved_whole_and_never_below_a_standard_column() {
         },
     );
 }
+
+/// The bounds of the root column's group, as assistive technology has them.
+fn root_column(host: &crate::host::offscreen::Offscreen, root: &str) -> [f32; 4] {
+    let tree = host.tree();
+    let is_root =
+        |node: &serde_json::Value| node["description"] == "Columns view" && node["name"] == root;
+    let group = super::find(&tree, &is_root);
+    let bounds = &group.first().expect("the root column")["bounds"];
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let at = |index: usize| bounds[index].as_f64().expect("a bound") as f32;
+    [at(0), at(1), at(2), at(3)]
+}
+
+/// `view_switching/column-autofit-stays-inside`, beside a railed sidebar: an autofit stops at
+/// the area GTK gives the columns, which counts the sidebar at its full width, so the width
+/// saved still fits once the sidebar expands (`publish_column_width_limit`).
+#[test]
+fn an_autofit_beside_a_railed_sidebar_stops_where_the_full_sidebar_would_leave_room() {
+    hosted_after(
+        MODULE,
+        "saved::an_autofit_beside_a_railed_sidebar_stops_where_the_full_sidebar_would_leave_room",
+        || {
+            save_settings(
+                "mode = \"theme\"\ntheme = \"azure-glow\"\nsidebar_expanded = true\nsidebar_compact = true\n",
+            );
+        },
+        |mut host| {
+            let folder = fixture();
+            std::fs::write(folder.path().join("x".repeat(200)), "").expect("a long name");
+            let root = super::folder_name(folder.path());
+            open(&mut host, folder.path());
+            let held_back = crate::shell::sidebar_held_back(host.app());
+            assert!(
+                held_back > 0.0,
+                "the railed sidebar holds back its full width"
+            );
+            let view = host
+                .runtime()
+                .elements()
+                .into_iter()
+                .find(|element| element.key.as_deref() == Some(crate::columns::VIEW))
+                .expect("the Columns view")
+                .visible;
+            let area = view[2] - held_back;
+
+            let [x, y, w, h] = root_column(&host, &root);
+            let edge = (x + w - 3.0, y + h / 2.0);
+            for _ in 0..2 {
+                host.runtime().pointer_move(edge.0, edge.1);
+                host.runtime().pointer_down(edge.0, edge.1);
+                host.turn();
+                host.runtime().pointer_up(edge.0, edge.1);
+                host.turn();
+            }
+
+            let saved = host.run_until(PATIENCE, |_| saved_column_width().is_some());
+            assert!(saved, "the autofit to save a width");
+            let width = saved_column_width().expect("a width");
+            #[expect(clippy::cast_possible_truncation, reason = "whole points")]
+            let gtk_area = area.round() as i64;
+            assert_eq!(width, gtk_area, "the view is {} wide", view[2]);
+        },
+    );
+}
