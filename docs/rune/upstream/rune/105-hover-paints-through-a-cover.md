@@ -5,8 +5,8 @@
 | Kind | New issue |
 | Drafts | A8 of the parity plan (`docs/rune/parity/packages/A8.md`); finding [lgse/strata#2392](https://github.com/lgse/strata/issues/2392) |
 | Affects | Strata's plain popovers (`crates/strata-app/src/popover.rs`): the Appearance popover, the Icons header's "Thumbnail size", and "Customize columns…" opened from the first. Any overlay that is not modal |
-| Retires | Nothing yet: the owner left the difference in place until Rune can block hover (2026-11-14) |
-| Checked | By reading at `2a44156` (2026-11-14): `hover_flip` in `runtime/input/hover.rs` (lines 286-308), `allowed` in `runtime/input/focus.rs` (line 100) and `scroll_at_axis` in `runtime/input/pointer.rs` (lines 415-422); and by a hosted probe in `strata-app` (the List view under the open Appearance popover) |
+| Retires | Nothing yet: the owner left the difference in place until Rune can block hover (2026-11-13) |
+| Checked | By reading at `2a44156` (2026-11-13): `hover_flip` in `runtime/input/hover.rs` (lines 286-308), `allowed` in `runtime/input/focus.rs` (line 100) and `scroll_at_axis` in `runtime/input/pointer.rs` (lines 415-422); and by a hosted probe in `strata-app` (the List view under the open Appearance popover) |
 | Status | Drafted, not filed: to file at the owner's filing pass. It is not [104](104-outside-wheel-closes-a-popover.md), which asks for a modal that lets an outside wheel through; either would let Strata's popover stop the hover beneath it |
 
 Paste from here.
