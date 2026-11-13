@@ -395,3 +395,44 @@ fn a_fill_landing_after_the_first_poll_asks_nothing_again() {
         assert_eq!(viewer.pending.len(), 3, "{how}: a request cancelled");
     }
 }
+
+/// A folder's rows are asked for, and then Rune reports the list as showing none, as it does
+/// before the list has laid them out: the poll that hears it, List's and Columns'
+/// (`Synced`), cancels no request, since a render running then would lose its worker, and
+/// GTK's rows keep theirs while they stay bound. Seen as sandboxes started too many in
+/// `browser-workers-reuse-processes/list` (lgse/strata#2296).
+#[test]
+fn a_report_of_no_rows_in_a_listed_folder_cancels_no_render() {
+    use crate::{
+        columns::thumbs::Synced,
+        listing::{Column, Edit},
+    };
+    use strata_components::contract::EntrySource;
+    use strata_core::model::Location;
+    let ids = crate::slots::Ids::default();
+    let mut column = Column::new(Location::local("/photos"), false, None);
+    column.apply(Edit::Replace(photos(true, &ids)));
+    let inbox = Inbox::new();
+    let mut viewer = Viewer::new(inbox.later(), |_, _| None);
+    let mut store = ThumbnailStore::new(Settings::default());
+    let _ = viewer.take_requests(&mut store, 0.0);
+    let id = viewer.id().expect("a viewer");
+    let mut synced = Synced::default();
+    let poll = |synced: &mut Synced, store: &mut ThumbnailStore, range| {
+        synced.range = Some(range);
+        let sync = synced.next(column.location(), column.version(), column.len(), false);
+        let _ = sync.tell(store, id, &column, Step::new(64));
+    };
+    poll(&mut synced, &mut store, 0..3);
+    for request in viewer.take_requests(&mut store, 0.0) {
+        viewer
+            .pending
+            .insert(request.ticket, Cancellation::default());
+    }
+    assert_eq!(viewer.pending.len(), 3, "one request a photo");
+
+    poll(&mut synced, &mut store, 0..0);
+
+    assert!(viewer.take_requests(&mut store, 0.1).is_empty());
+    assert_eq!(viewer.pending.len(), 3, "every request still out");
+}
