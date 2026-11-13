@@ -177,9 +177,8 @@ scenario = "sidebar-navigation-range-anchor"
 run = "columns"
 package = "A3"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "C8: the sidebar, at `click` on `sidebar` Home"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sidebar-navigation-range-anchor"

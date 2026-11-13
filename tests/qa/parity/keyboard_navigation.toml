@@ -93,7 +93,7 @@ package = "A3"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "C8: the sidebar, at `click` on `sidebar` Home. Then Delete to the trash"
+blocker = "A7: the Delete key moving the focused entry to the Trash, at `key` Delete on line 28: no part of this interface registers it yet (the sidebar it reaches first is mounted)"
 
 [[run]]
 scenario = "columns-home-end-mirror"
