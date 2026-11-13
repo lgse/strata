@@ -63,8 +63,8 @@ pub(crate) fn placed(before: Option<EntryId>, collection: &CollectionState) -> b
 }
 
 /// Writes the browser's cursor and selection, `marks`, to the collection of `column`, unless
-/// it shows them already: a write ends a Shift range the user is extending. Returns the
-/// revision the browser then holds.
+/// it shows them already, with the browser's Shift anchor, so a range the user is extending
+/// goes on from where it started. Returns the revision the browser then holds.
 pub(crate) fn adopt(column: &Column, collection: &mut CollectionState, marks: &Marks) -> Held {
     // A folder still loading may not list an entry the browser already holds.
     let loading = *column.load() == Load::Loading;
@@ -73,6 +73,9 @@ pub(crate) fn adopt(column: &Column, collection: &mut CollectionState, marks: &M
     let selected: Vec<EntryId> = marks.selected.iter().copied().filter(listed).collect();
     let provisional = marks.provisional && cursor.is_some_and(|id| selected == [id]);
     let selection = &mut collection.selection;
+    // The browser's anchor, as GTK extends a Shift range from it after a reload; the cursor
+    // when it has none.
+    let anchor = marks.anchor.filter(listed).or(cursor);
     let shown = selection.cursor() == cursor
         && selection.is_provisional() == provisional
         && selection.len() == selected.len()
@@ -81,7 +84,7 @@ pub(crate) fn adopt(column: &Column, collection: &mut CollectionState, marks: &M
         let _ = selection.restore(&Position {
             cursor,
             cursor_index: cursor.and_then(|id| column.index_of(id)),
-            anchor: cursor,
+            anchor,
             selected,
             provisional,
             scroll: None,

@@ -872,7 +872,9 @@ impl Selection {
         self.cursor = position.cursor;
         self.cursor_hint = position.cursor.and(position.cursor_index);
         self.removal_hint = None;
-        changed.anchor = self.set_anchor(position.anchor.and(position.cursor));
+        // The remembered anchor, which a range's is not its cursor; none without a cursor.
+        let anchor = position.anchor.filter(|_| position.cursor.is_some());
+        changed.anchor = self.set_anchor(anchor);
         self.finish(changed)
     }
 

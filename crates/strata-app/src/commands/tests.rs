@@ -44,6 +44,7 @@ macro_rules! in_each_view {
 
 mod menu_key;
 mod navigate_up;
+mod refresh_anchor;
 mod routing;
 mod views;
 

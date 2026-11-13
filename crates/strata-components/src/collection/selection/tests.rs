@@ -729,6 +729,15 @@ fn position_round_trips_cursor_anchor_and_selection() {
     assert_eq!(selected(&back, &s), [2, 3, 4, 6]);
     assert_eq!((cursor(&back), anchor(&back)), (Some(6), Some(6)));
     assert_eq!(back.cursor_index(&s), Some(6));
+
+    // A range's anchor is not its cursor, and comes back as itself.
+    let mut range = Selection::new();
+    range.select_only(&s, 2);
+    range.extend_to(&s, 4, Extend::Replace);
+    let mut back = Selection::new();
+    back.restore(&range.position(&s));
+    back.sync(&s, SyncRule::default());
+    assert_eq!((cursor(&back), anchor(&back)), (Some(4), Some(2)));
 }
 
 #[test]

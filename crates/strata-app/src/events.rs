@@ -19,11 +19,14 @@ use crate::{
     slots::Ids,
 };
 
-/// The browser's cursor and selection in one column.
+/// The browser's cursor, selection and Shift anchor in one column.
 #[derive(Debug, Default)]
 pub(crate) struct Marks {
     pub(crate) cursor: Option<EntryId>,
     pub(crate) selected: Vec<EntryId>,
+    /// Where a Shift range starts. The browser keeps it by location, so it outlives a reload
+    /// as GTK's does (finding lgse/strata#2354).
+    pub(crate) anchor: Option<EntryId>,
     /// The selection is the cursor a load placed, which the user has not chosen.
     pub(crate) provisional: bool,
 }
@@ -218,11 +221,25 @@ impl Reader<'_> {
                 .cursor_entry(depth)
                 .map(|entry| self.ids.of(&entry.location)),
             selected,
+            anchor: browser
+                .selection_anchor_position(depth)
+                .and_then(|position| self.id_at(depth, position)),
             // The browser says so of its active column only, and only a column it made
             // active loads with a cursor.
             provisional: browser.active_depth() == Some(depth)
                 && browser.selection_is_load_cursor(),
         }
+    }
+
+    /// The id of the entry at `position` in column `depth`.
+    fn id_at(&self, depth: usize, position: usize) -> Option<EntryId> {
+        self.browser
+            .with_column_entries(depth, |entries| {
+                entries
+                    .get(position)
+                    .map(|entry| self.ids.of(&entry.location))
+            })
+            .flatten()
     }
 
     fn show_hidden(&self, depth: usize) -> bool {

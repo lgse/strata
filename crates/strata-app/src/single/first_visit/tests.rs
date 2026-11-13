@@ -117,7 +117,7 @@ impl Visit {
         Marks {
             cursor,
             selected: cursor.into_iter().collect(),
-            provisional: false,
+            ..Marks::default()
         }
     }
 
@@ -187,7 +187,7 @@ impl Visit {
                         marks: Marks {
                             cursor,
                             selected: cursor.into_iter().collect(),
-                            provisional: false,
+                            ..Marks::default()
                         },
                         grouping: None,
                     },
