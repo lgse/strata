@@ -298,14 +298,12 @@ pub(crate) fn drawn(host: &Offscreen) -> Vec<String> {
     entries.iter().map(|entry| text(entry, "name")).collect()
 }
 
-/// Half the height the first entry is drawn at: a wheel's turn that leaves it partly shown.
-pub(crate) fn half_an_entry(host: &Offscreen) -> f32 {
+/// Where the first entry drawn has its top: for telling that a scroll happened, never for
+/// saying where anything should be.
+pub(crate) fn top_of_first(host: &Offscreen) -> Option<f64> {
     let tree = host.tree();
     let entries = all(&tree, &keyed_as_entry);
-    let height = entries.first().expect("an entry")["bounds"][3].as_f64();
-    #[expect(clippy::cast_possible_truncation, reason = "window points")]
-    let half = (height.expect("a bound") / 2.0) as f32;
-    half
+    entries.first()?["bounds"][1].as_f64()
 }
 
 /// Turns the wheel `turns` times by `dy` points, over where the first entry is drawn now.

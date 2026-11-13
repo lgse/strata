@@ -458,7 +458,8 @@ fn hear(app: &mut App, event: &KeyEvent, heard: Heard, tx: &mut Tx) -> bool {
 ///
 /// A view that does not call it loses no command: the root element then asks every stage,
 /// but after the view's own keys, so a command cannot take a key that view's controller
-/// takes.
+/// takes. A collection inside another that has the hook does not get one of its own: each
+/// hook asks the early stages of every key it is given.
 pub(crate) fn in_view(collection: Collection<App>) -> Collection<App> {
     collection.before_keys(|app: &mut App, event, tx| hear(app, event, Heard::BeforeView, tx))
 }

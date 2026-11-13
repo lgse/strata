@@ -5,7 +5,7 @@
 
 use std::cell::Cell;
 
-use rune::{Key as Logical, Mods, Tx};
+use rune::{Key as Logical, KeyEvent, Mods, Tx};
 use strata_desktop::keys::{Binding, Key, KeyPress};
 
 use super::super::{Action, Call, Outcome, Span, Stage};
@@ -18,7 +18,7 @@ use crate::{
     host::offscreen::Offscreen,
     slots::Entry,
     test_support::{
-        PATIENCE, folder_of,
+        PATIENCE, folder_of, send_key,
         view::{browser_holds, field, hosted_over_in},
     },
 };
@@ -132,6 +132,21 @@ fn a_command_reads_a_key_before_the_view_and_the_view_keeps_what_none_takes(
             ["ahead of the view", "after the view", "unclaimed"],
             "each stage hears a key the view leaves once"
         );
+
+        // Two presses of one key in one frame are two presses: each is asked once, whether a
+        // command took the first or the view did.
+        for takes in [true, false] {
+            TAKES_END.set(takes);
+            for _ in 0..2 {
+                let end = KeyEvent {
+                    key: Logical::End,
+                    mods: Mods::default(),
+                };
+                send_key(&mut host, end);
+            }
+            while host.turn() {}
+            assert_eq!(noted(), ["End, ahead of the view"; 2], "takes: {takes}");
+        }
 
         // `browser_commands` in `src/ui/window/keyboard/commands.rs`: F5 from the view.
         let copied = host.app().rows_copied();
