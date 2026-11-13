@@ -23,7 +23,7 @@ use crate::slots::Ids;
 
 mod type_group;
 
-pub(crate) use type_group::TypeGroup;
+pub(crate) use type_group::{TypeGroup, entry_type_of};
 
 /// What a row is, as assistive technology hears it: `entry_kind_name` in
 /// `src/ui/accessibility.rs`.
@@ -107,6 +107,10 @@ pub(crate) struct Facts {
     pub(crate) duration_seconds: Option<u64>,
     /// An image's width and height, in pixels.
     pub(crate) dimensions: Option<(u32, u32)>,
+    /// When it was last modified, in seconds since the epoch: the List view's Modified column.
+    pub(crate) modified: Option<i64>,
+    /// Its permission bits: the List view's Mode column.
+    pub(crate) mode: Option<u32>,
 }
 
 impl Facts {
@@ -116,6 +120,8 @@ impl Facts {
             child_count: known(&entry.child_count),
             duration_seconds: known(&entry.duration_seconds),
             dimensions: known(&entry.image_dimensions),
+            modified: known(&entry.modified_unix_seconds),
+            mode: known(&entry.mode),
         }
     }
 }
@@ -170,6 +176,23 @@ impl Row {
 
     pub(crate) fn facts(&self) -> &Facts {
         &self.facts
+    }
+
+    #[expect(
+        dead_code,
+        reason = "the List view's columns read it, in the pull request after this one"
+    )]
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The browser's kind of entry, which with the name says its file type.
+    #[expect(
+        dead_code,
+        reason = "the List view's columns read it, in the pull request after this one"
+    )]
+    pub(crate) fn entry_kind(&self) -> Kind {
+        self.entry_kind
     }
 }
 
