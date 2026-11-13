@@ -328,3 +328,33 @@ fn the_keyboard_leaving_it_closes_it() {
         },
     );
 }
+
+/// A press on the popover's own blank padding leaves the keyboard on its control, as GTK's
+/// does, so Escape still closes it.
+#[test]
+fn a_press_on_its_blank_parts_keeps_the_keyboard() {
+    let name = "a_press_on_its_blank_parts_keeps_the_keyboard";
+    hosted_in(MODULE, "icons", name, |mut host| {
+        let _folder = many(&mut host);
+        open_popover(&mut host);
+
+        let elements = host.runtime().elements();
+        let surface = elements
+            .iter()
+            .find(|element| element.key.as_deref() == Some("icons-thumbnail-popover"))
+            .expect("the surface");
+        let [x, y, _, _] = surface.visible;
+        click_at(&mut host, (x + 4.0, y + 4.0));
+        assert!(drawn(&host, SLIDER), "the popover stays open");
+        assert_eq!(
+            focused(&mut host).as_deref(),
+            Some(SLIDER),
+            "the keyboard stays"
+        );
+
+        press(&mut host, Key::Escape, Mods::default());
+        assert_closed_to_the_button(&mut host, "Escape after a blank press");
+    });
+}
+
+mod nested;

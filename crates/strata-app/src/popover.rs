@@ -19,6 +19,8 @@
 //! - **A wheel outside closes it**, and scrolls the listing when it is over the listing (GTK's
 //!   `listing_ancestor` in `src/ui/scrolling/popover.rs`); over the sidebar or other chrome it
 //!   scrolls nothing. The keyboard goes back to the button.
+//! - **A press on its own blank parts** leaves the keyboard where it was: on the slider,
+//!   Escape then closed it.
 //! - **Focus leaving it closes it** (GTK's autohide): [`focus_left`], which the part asks in
 //!   its poll.
 //!
@@ -32,8 +34,11 @@
 //!
 //! **Nesting.** A plain popover opened from another, as A8's "Customize columns…" from its
 //! Appearance popover, has its scrim over the parent's, so an outside press or wheel reaches
-//! only the child's. GTK closes both then: [`Plain::parent`] closes the parent too. Each keeps
-//! its own [`Plain::stops`] by hand, with only its own controls.
+//! only the child's. GTK closes both then: [`Plain::parent`] closes the parent too. A press on
+//! the parent's surface while the child is open lands on the child's scrim too, and so closes
+//! both (not driven on GTK, which has no such pair yet). Each keeps its own [`Plain::stops`] by
+//! hand, with only its own controls, and the parent's part passes its open child's to
+//! [`focus_left`], so the keyboard going into the child does not close the parent.
 
 use rune::{El, Key, KeyEvent, PointerPress, Tx, WheelEvent, el};
 use rune_kit::{Placement, popover};
@@ -86,7 +91,9 @@ impl Plain {
             .on_key(move |app: &mut App, event: &KeyEvent, tx: &mut Tx| {
                 keyed(app, event, tx, (close, &stops, own_arrows))
             })
-            // A press or a wheel on the surface's own blank parts stays with it.
+            // A press or a wheel on the surface's own blank parts stays with it, and leaves
+            // the keyboard where it was, as GTK's does.
+            .preserve_focus_on_press(true)
             .on_press(|_: &mut App| {})
             .on_wheel(|_: &mut App, _: WheelEvent, _: &mut Tx| true);
         let surface = popover::raised(kit, body, kit.radius.md);
@@ -143,10 +150,12 @@ fn inside([x, y, w, h]: [f32; 4], px: f32, py: f32) -> bool {
 
 /// Whether the keyboard has left the popover whose controls are `stops`, opened by `anchor`:
 /// it is on something else, GTK's autohide. Nowhere, or on the button, as while it opens, is
-/// not leaving.
-pub(crate) fn focus_left(tx: &Tx, anchor: &str, stops: &[&str]) -> bool {
-    tx.focused()
-        .is_some_and(|focused| focused != anchor && !stops.contains(&focused))
+/// not leaving, and neither is the keyboard in a child popover it opened, whose controls are
+/// `child` (empty while none is open).
+pub(crate) fn focus_left(tx: &Tx, anchor: &str, stops: &[&str], child: &[&str]) -> bool {
+    tx.focused().is_some_and(|focused| {
+        focused != anchor && !stops.contains(&focused) && !child.contains(&focused)
+    })
 }
 
 /// Escape closes the popover; Tab and Shift+Tab move through its stops and wrap; Up and Down

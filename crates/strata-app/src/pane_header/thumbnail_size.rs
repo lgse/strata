@@ -117,7 +117,7 @@ pub(crate) fn follow(app: &mut App, tx: &Tx) -> bool {
         return false;
     }
     // GTK's popover hides when the keyboard leaves it.
-    if crate::popover::focus_left(tx, BUTTON, &stops(app)) {
+    if crate::popover::focus_left(tx, BUTTON, &stops(app), &[]) {
         close(app);
         return true;
     }
