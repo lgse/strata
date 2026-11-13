@@ -21,6 +21,7 @@ use crate::{
     test_support::{fixture, in_own_process},
 };
 
+mod icon;
 mod ready;
 mod rename;
 mod replaced;
