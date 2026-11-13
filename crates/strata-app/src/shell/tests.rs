@@ -130,7 +130,7 @@ fn files() -> Entry<App> {
 fn sidebar() -> Entry<App> {
     part::<Rail>(Place::Sidebar(Sidebar {
         build: placed::<Rail>,
-        focus: "made-sidebar",
+        focus: |_| "made-sidebar".to_owned(),
     }))
 }
 

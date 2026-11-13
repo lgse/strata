@@ -6,9 +6,8 @@
 scenario = "recent-absent-from-sidebar"
 run = "columns"
 package = "A3"
-status = "pending"
-reason = "scope"
-blocker = "A3"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "recent-preference-adds-no-place"
@@ -16,7 +15,7 @@ run = "columns"
 package = "A3"
 status = "pending"
 reason = "scope"
-blocker = "A3"
+blocker = "A18: the Settings window, at `activate` on the Settings button on line 2, and its Show Recent in sidebar toggle"
 
 [[run]]
 scenario = "recent-uri-spellings-refused"
@@ -24,4 +23,4 @@ run = "columns"
 package = "A3"
 status = "pending"
 reason = "scope"
-blocker = "A3"
+blocker = "A5: the location editor, at Ctrl+L and `field` on lines 3 and 4, and its \"Unable to open location\" report"

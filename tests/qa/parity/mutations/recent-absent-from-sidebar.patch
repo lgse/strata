@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/sidebar/places.rs b/crates/strata-app/src/sidebar/places.rs
+--- a/crates/strata-app/src/sidebar/places.rs
++++ b/crates/strata-app/src/sidebar/places.rs
+@@ -187,7 +187,7 @@ fn place(
+                 .description(location.display_path());
+             (place, location, Navigation::Validate)
+         }),
+-        "recent" => (settings.sidebar_show_recent && environment.recent).then(|| {
++        "recent" => settings.sidebar_show_recent.then(|| {
+             let place = Place::other(id, tr("Recent"), IconName::Recent).description("recent:///");
+             (place, Location::uri("recent:///"), Navigation::Direct)
+         }),

@@ -325,7 +325,7 @@ pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
     let Some(sidebar) = app.window.parts.sidebar() else {
         return false;
     };
-    tx.focus(sidebar.focus, true);
+    tx.focus((sidebar.focus)(app), true);
     true
 }
 
@@ -487,13 +487,24 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
             }
             tx.live_only();
         });
-    match sidebar {
-        Some(sidebar) => {
-            let beside = row().w_full().grow(1.0).min_h(0.0).child(sidebar);
-            body.child(beside.children(files))
-        }
-        None => body.children(files),
-    }
+    // The same keyed wrappers with a sidebar or without one, so the view keeps its place in
+    // the tree when the sidebar comes or goes: a view whose path changed would be mounted
+    // anew, and lose its scroll and focus. Beside the sidebar the files take what it leaves.
+    let files = col()
+        .key("body-files")
+        .grow(1.0)
+        .h_full()
+        .min_w(0.0)
+        .min_h(0.0)
+        .children(files);
+    let beside = row()
+        .key("body-beside")
+        .w_full()
+        .grow(1.0)
+        .min_h(0.0)
+        .children(sidebar)
+        .child(files);
+    body.child(beside)
 }
 
 pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {

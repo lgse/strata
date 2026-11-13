@@ -91,9 +91,8 @@ scenario = "back-then-file-keys-target-focused-folder"
 run = "columns"
 package = "A3"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "C8: the sidebar, at `click` on `sidebar` Home. Then Delete to the trash"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "columns-home-end-mirror"

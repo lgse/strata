@@ -10,7 +10,7 @@
 //! | --- | --- | --- | --- |
 //! | `Tabs` | Across the window, above the header | One | Its element ([`Build`]) |
 //! | `Location` | The header's flexible middle (`Header::center`) | One | Its element |
-//! | `Sidebar` | Under the header, before the view | One | A [`Sidebar`]: its element, and the key that takes the keyboard when it leaves the view at its start |
+//! | `Sidebar` | Under the header, before the view | One | A [`Sidebar`]: its element, and the key that takes the keyboard when it leaves the view at its start, as the sidebar is now |
 //! | `View` | Under the header: the files | Any, and one is shown | A [`View`]: its element, the saved mode it answers to, the key that takes the keyboard back, what it does with the pointer, and what the parts that work in a view ask of the one that is shown ([`Rows`], [`Editing`], [`Probe`]) |
 //! | `Drawer` | Around the view | One | A [`Wrap`]: it is handed the view's element and returns the split |
 //! | `Footer` | Across the window, under the view | Any, top to bottom | Its element |
@@ -326,8 +326,9 @@ pub(crate) struct Probe<S: 'static> {
 pub(crate) struct Sidebar<S: 'static> {
     pub(crate) build: Build<S>,
     /// The key of the element that takes the keyboard when it leaves the view at its start,
-    /// as Left in the first column asks.
-    pub(crate) focus: &'static str,
+    /// as Left in the first column asks, as the sidebar is now: GTK's sidebar takes it on the
+    /// open place's row (`focus_active_place`).
+    pub(crate) focus: fn(&S) -> String,
 }
 
 /// Tells a view the pointer moved over the body, to this place in window points.
@@ -345,10 +346,6 @@ pub(crate) enum Place<S: 'static> {
     )]
     Tabs(Build<S>),
     Location(Build<S>),
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no part fills the sidebar slot yet")
-    )]
     Sidebar(Sidebar<S>),
     View(View<S>),
     #[cfg_attr(

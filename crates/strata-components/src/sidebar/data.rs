@@ -75,6 +75,8 @@ pub struct Place {
     pub accepts_drops: bool,
     /// The `g` chord's keycap, shown while [`super::SidebarState::keycaps`] is on.
     pub keycap: Option<String>,
+    /// The row's accessible description: Strata gives its location.
+    pub description: Option<String>,
 }
 
 impl Place {
@@ -88,6 +90,7 @@ impl Place {
             kind: PlaceKind::Folder,
             accepts_drops: true,
             keycap: None,
+            description: None,
         }
     }
 
@@ -128,6 +131,11 @@ impl Place {
         self
     }
 
+    pub fn description(mut self, description: impl Into<String>) -> Place {
+        self.description = Some(description.into());
+        self
+    }
+
     pub fn item(&self) -> ItemId {
         ItemId::Place(self.id.clone())
     }
@@ -145,6 +153,8 @@ pub struct Pin {
     /// gaps but their rows take no drops.
     pub accepts_drops: bool,
     pub keycap: Option<String>,
+    /// The row's accessible description: Strata gives its location.
+    pub description: Option<String>,
 }
 
 impl Pin {
@@ -157,6 +167,7 @@ impl Pin {
             tint: None,
             accepts_drops: true,
             keycap: None,
+            description: None,
         }
     }
 
@@ -181,6 +192,16 @@ impl Pin {
 
     pub fn keycap(mut self, keycap: impl Into<String>) -> Pin {
         self.keycap = Some(keycap.into());
+        self
+    }
+
+    pub fn accepts_drops(mut self, accepts: bool) -> Pin {
+        self.accepts_drops = accepts;
+        self
+    }
+
+    pub fn description(mut self, description: impl Into<String>) -> Pin {
+        self.description = Some(description.into());
         self
     }
 

@@ -57,6 +57,7 @@ mod icons;
 // A2 List view
 mod list;
 // A3 Sidebar
+mod sidebar;
 // A4 Tabs
 // A5 Location bar
 mod location;
@@ -94,6 +95,7 @@ slots::parts! {
     // A2 List view
     list: list::List,
     // A3 Sidebar
+    sidebar: sidebar::Sidebar,
     // A4 Tabs
     // A5 Location bar
     location: location::Bar,

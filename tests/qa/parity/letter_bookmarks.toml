@@ -8,7 +8,7 @@ run = "list"
 package = "A3"
 status = "pending"
 reason = "scope"
-blocker = "A3"
+blocker = "A11: 10xer mode's letter-bookmark chords, `m` to save and `'` to jump, with their chord labels (`m-`, `'-`) and the `'` menu that lists each saved folder, at `'` on line 6"
 
 [[run]]
 scenario = "letter-bookmarks-read-latin-letters-on-russian-layout"
@@ -16,7 +16,7 @@ run = "columns"
 package = "A3"
 status = "pending"
 reason = "scope"
-blocker = "A3"
+blocker = "A11: 10xer mode's letter-bookmark chords, `m` to save and `'` to jump, with their chord labels (`m-`, `'-`) and the `'` menu that lists each saved folder, at `m` on line 5; then the Latin letter of a key on a Russian layout, which the QA target's presses do not carry (Rune packet entry 97)"
 
 [[run]]
 scenario = "letter-bookmarks-save-replace-and-survive-restart"
@@ -24,4 +24,4 @@ run = "columns"
 package = "A3"
 status = "pending"
 reason = "scope"
-blocker = "A3"
+blocker = "A11: 10xer mode's letter-bookmark chords, `m` to save and `'` to jump, with their chord labels (`m-`, `'-`) and the `'` menu that lists each saved folder, at `m` on line 4"
