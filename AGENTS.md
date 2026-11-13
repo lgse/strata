@@ -252,6 +252,13 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
   golden, and a headless script for each feature-map Behavior bullet it implements.
 - Goldens under `tests/golden/` change only on purpose: run `mise run bless <page>`, then
   review every golden diff, each PNG included, before committing it.
+- On `strata-next`, by the owner's instruction of 2026-11-12, the gallery's golden, script
+  and session tests are not run as part of a change's validation; only its unit tests are
+  (`mise run test-rune`), and the parity runs against GTK are the assurance for now. By the
+  coordinator's reading of that instruction, the two bullets above on a gallery scene, an
+  accessibility golden and a headless script per component, and on reviewing every golden
+  diff, are suspended until the owner cleans up that crate; they are not deleted. `strata-components`' and `strata-app`'s own tests still
+  run.
 - PNG goldens and screenshots cover the look. Do not assert layout geometry, spacing or
   pixel placement.
 
@@ -281,6 +288,8 @@ package under `docs/rune/work/` before changing one; `docs/rune/work/STATUS.md` 
   in place of CI (`docs/rune/parity/README.md`, "Checks in place of CI"), and "Required
   GitHub checks must still pass" still holds for the pull request policy checks. The rules
   for `main` are unchanged.
+- On `strata-next`, by the owner's instruction of 2026-11-12, the gallery's golden, script
+  and session tests are not part of a change's validation, as "Tests and goldens" says.
 - Work package documents are the exception to keeping task records out of the tree: the
   plans, their status, the parity plan's findings and the owner's decisions under
   `docs/rune/` stay in the repository as Markdown.

@@ -303,6 +303,17 @@ sequence only together with the alphabet's version, so the version is part of th
   says "CI sets 3" too, and is left for whoever takes the harness.
 - **Concerns:** `mise run test-platform` (`mise.toml`), and every package that changes a
   host, the shell or `strata-rune`, whose window tests are the last thing that task runs.
+- **A likely cause, measured on 2026-11-12:** the same machine's load came largely from the
+  gallery's PNG goldens and scripts, which each start a `strata-gallery` process that opens
+  a Vulkan device on the real GPU (no lavapipe is installed), where the opens serialise in the
+  driver. One render alone took 0.63 s; throughput peaked at 8 at once (6.1 a second) and
+  fell beyond it (5.4 at 24, 4.5 at 48); at 72 at once, 70 to 72 threads sat in
+  uninterruptible sleep. A Rune-lane run started about 1,400 of them (514 PNG goldens and
+  897 scripts), 24 at a time, while
+  three package agents ran lanes at once, and the load average passed 40. The compositor
+  tests themselves were not measured under that load, so this is the likely cause, not a
+  shown one. Those gallery tests are no longer run as validation, by the owner's instruction
+  of 2026-11-12 ([`owner.md`](owner.md#ruled)).
 - **State:** open, unowned. The task now sets the scale to 3 when it is unset, by the
   orchestrating session's ruling of 2026-11-12, which gives a loaded machine more time and
   does not remove the cause: three tests still failed with it under load (above). The thing to fix is the number of sessions started at once: a
