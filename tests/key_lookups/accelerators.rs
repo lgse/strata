@@ -135,8 +135,10 @@ const WORDS: [&str; 10] = [
     "shift", "shft", "control", "ctrl", "ctl", "primary", "alt", "meta", "super", "hyper",
 ];
 
-fn modifiers_of(subset: usize) -> Modifiers {
-    SIX.iter()
+/// The modifiers of `flags` whose bit is set in `subset`.
+fn modifiers_of(subset: usize, flags: &[Modifiers]) -> Modifiers {
+    flags
+        .iter()
         .enumerate()
         .filter(|(bit, _)| subset >> bit & 1 == 1)
         .fold(Modifiers::empty(), |all, (_, modifier)| all | *modifier)
@@ -195,14 +197,17 @@ fn cases_of(name: &str) -> [String; 4] {
 /// reads it in: it reads a million of them, and the odd inputs keep a few.
 fn is_a_code_point(name: &str) -> bool {
     let plain = name.trim_start_matches("XF86").trim_start_matches('_');
-    plain
-        .strip_prefix('U')
-        .is_some_and(|digits| digits.len() >= 4 && digits.bytes().all(|digit| digit.is_ascii_hexdigit()))
+    plain.strip_prefix('U').is_some_and(|digits| {
+        digits.len() >= 4 && digits.bytes().all(|digit| digit.is_ascii_hexdigit())
+    })
 }
 
 /// The names of the first test that are words.
 fn word_names() -> Vec<String> {
-    names().into_iter().filter(|name| !is_a_code_point(name)).collect()
+    names()
+        .into_iter()
+        .filter(|name| !is_a_code_point(name))
+        .collect()
 }
 
 /// The declared keys' names in four cases and every 20th of all names, under every prefix.
@@ -217,8 +222,12 @@ fn modifier_sets(all_names: &[String]) -> impl Iterator<Item = String> {
     keys.sort();
     keys.dedup();
     let prefixes = prefixes();
-    keys.into_iter()
-        .flat_map(move |key| prefixes.iter().map(move |prefix| format!("{prefix}{key}")).collect::<Vec<_>>())
+    keys.into_iter().flat_map(move |key| {
+        prefixes
+            .iter()
+            .map(move |prefix| format!("{prefix}{key}"))
+            .collect::<Vec<_>>()
+    })
 }
 
 /// Every name in four cases, bare, with Control, and with three modifiers.
@@ -265,7 +274,13 @@ fn modifier_words() -> Vec<String> {
         words.extend((0..1_u32 << word.len()).map(|flips| {
             word.chars()
                 .enumerate()
-                .map(|(at, letter)| if flips >> at & 1 == 1 { letter.to_ascii_uppercase() } else { letter })
+                .map(|(at, letter)| {
+                    if flips >> at & 1 == 1 {
+                        letter.to_ascii_uppercase()
+                    } else {
+                        letter
+                    }
+                })
                 .collect()
         }));
         for inserted in INSERTED.iter().chain(&['s', 'l', 'L', '1']) {
@@ -288,7 +303,11 @@ fn long() -> [String; 3] {
 
 fn odd() -> Vec<String> {
     let mut odd: Vec<String> = ODD.iter().map(|odd| (*odd).to_owned()).collect();
-    odd.extend(MUTATED.iter().flat_map(|accelerator| mutations(accelerator)));
+    odd.extend(
+        MUTATED
+            .iter()
+            .flat_map(|accelerator| mutations(accelerator)),
+    );
     odd.extend(modifier_words());
     odd.extend(long());
     odd
@@ -313,7 +332,9 @@ fn gdk_parse(accelerator: &String) -> Parsed {
 fn key_part_differs(accelerator: &str) -> bool {
     let text = accelerator.split('\0').next().unwrap_or_default();
     let part = text.rsplit('>').next().unwrap_or(text);
-    let xkb = Xkb.key_from_name(part).map(|key| Xkb.key_to_lower(key).keysym());
+    let xkb = Xkb
+        .key_from_name(part)
+        .map(|key| Xkb.key_to_lower(key).keysym());
     let gdk = gdk::Key::from_name(part).map(|key| key.to_lower().into_glib());
     xkb != gdk
 }
@@ -347,17 +368,14 @@ fn round_trip_explained(input: &Written, _: &Parsed, _: &Parsed) -> bool {
     name_part_differs(input.0) || key_part_differs(&gdk_name(input))
 }
 
-fn written(keysym: &u32, modifiers: Modifiers) -> Written {
-    (*keysym, modifiers)
-}
-
 /// Every keysym with all seven modifiers, and every declared key with every set of the
-/// seven: the low four bits are Shift, Lock, Control and Alt, the high three Super, Hyper
-/// and Meta.
+/// seven.
 fn writer_domain() -> impl Iterator<Item = Written> {
+    let seven: Vec<Modifiers> = SIX.into_iter().chain([Modifiers::LOCK_MASK]).collect();
     let all = keysyms().map(|keysym| (keysym, Modifiers::all()));
-    let declared = DECLARED.iter().flat_map(|keysym| {
-        (0..1_u32 << 7).map(|bits| written(keysym, Modifiers::from_bits_truncate(bits & 0xf | bits >> 4 << 26)))
+    let declared = DECLARED.iter().flat_map(move |keysym| {
+        let seven = seven.clone();
+        (0..1 << seven.len()).map(move |subset| (*keysym, modifiers_of(subset, &seven)))
     });
     all.chain(declared)
 }
@@ -367,7 +385,7 @@ fn round_trip_domain() -> impl Iterator<Item = Written> {
     let all = keysyms().map(|keysym| (keysym, Modifiers::SHIFT_MASK | Modifiers::CONTROL_MASK));
     let declared = DECLARED
         .iter()
-        .flat_map(|keysym| (0..1 << SIX.len()).map(|subset| written(keysym, modifiers_of(subset))));
+        .flat_map(|keysym| (0..1 << SIX.len()).map(|subset| (*keysym, modifiers_of(subset, &SIX))));
     all.chain(declared)
 }
 
@@ -390,7 +408,10 @@ fn parse(name: &'static str) -> Lookup<String, Parsed> {
 pub(super) fn compared() -> [Compared; 5] {
     let all_names = word_names();
     [
-        compare(parse("accelerator_parse_modifiers"), modifier_sets(&all_names)),
+        compare(
+            parse("accelerator_parse_modifiers"),
+            modifier_sets(&all_names),
+        ),
         compare(parse("accelerator_parse_names"), every_name(&all_names)),
         compare(parse("accelerator_parse_odd"), odd().into_iter()),
         compare(

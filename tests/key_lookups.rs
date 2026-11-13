@@ -247,7 +247,8 @@ fn names() -> Vec<String> {
 static GDK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn gdk_alone() -> std::sync::MutexGuard<'static, ()> {
-    GDK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    GDK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[test]

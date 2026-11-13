@@ -133,7 +133,11 @@ fn the_writer_orders_and_spells_modifiers_as_gtk_and_names_the_lower_case() {
         (Key::a, CONTROL | SHIFT, "<Shift><Control>a"),
         (Key::a, SUPER | META, "<Meta><Super>a"),
         (Key::a, HYPER | META, "<Meta><Hyper>a"),
-        (Key::a, Modifiers::all(), "<Shift><Control><Alt><Meta><Super><Hyper>a"),
+        (
+            Key::a,
+            Modifiers::all(),
+            "<Shift><Control><Alt><Meta><Super><Hyper>a",
+        ),
         (Key::a, Modifiers::LOCK_MASK | ALT, "<Alt>a"),
         (Key::Cyrillic_ES, CONTROL, "<Control>Cyrillic_es"),
         (key(0xc9), CONTROL, "<Control>eacute"),
@@ -177,8 +181,8 @@ fn what_the_writer_writes_for_a_declared_key_reads_back_as_its_lower_case() {
                 .filter(|(bit, _)| subset >> bit & 1 == 1)
                 .fold(Modifiers::empty(), |all, (_, modifier)| all | *modifier);
             let written = name(key(*keysym), modifiers);
-            let expected = (!is_a_number(&written))
-                .then(|| (Xkb.key_to_lower(key(*keysym)), modifiers));
+            let expected =
+                (!is_a_number(&written)).then(|| (Xkb.key_to_lower(key(*keysym)), modifiers));
             assert_eq!(parse(&written), expected, "{written:?}");
             read_back += usize::from(expected.is_some());
         }
