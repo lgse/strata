@@ -3,7 +3,7 @@
 use serde_json::json;
 use strata_qa::{Mark, Rect};
 
-use super::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
+use super::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Shape, Snapshot};
 
 /// The Columns view's shape, as its probe states it.
 const COLUMNS: Shape = Shape {
@@ -469,6 +469,49 @@ fn an_entry_has_a_panel_with_its_own_box_and_nothing_else_does() {
         .expect("the row");
     assert_eq!(
         (entry.mark, entry.name.as_str()),
+        (Some(Mark::Entry), "archive")
+    );
+}
+
+#[test]
+fn a_drawn_icon_is_an_image_under_its_entry_and_under_nothing_else() {
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "button", "key": "row-9", "name": "not an entry" },
+            { "role": "group", "name": "folder", "children": [
+                { "role": "list-box", "key": "columns-col-1", "children": [
+                    { "role": "list-box-option", "key": "row-1", "name": "archive" },
+                ] },
+            ] },
+        ],
+    });
+    let icon = |above: &[&str], x: f64| RowIcon {
+        above: above.iter().map(|key| (*key).to_owned()).collect(),
+        bounds: bounds(x),
+    };
+    let drawn = Drawn {
+        view: Some(COLUMNS),
+        lists: vec!["columns-col-1".to_owned()],
+        icons: vec![
+            icon(&["content", "row-1", "rows"], 4.0),
+            icon(&["row-9"], 0.0),
+        ],
+        ..Drawn::default()
+    };
+    let snapshot = Snapshot::read(&tree, &drawn);
+
+    let images: Vec<_> = (0..)
+        .map_while(|index| snapshot.at(index))
+        .filter(|seen| seen.role() == "image")
+        .collect();
+    assert_eq!(images.len(), 1, "{images:?}");
+    assert_eq!(images[0].bounds, Some(bounds(4.0)));
+    let row = snapshot
+        .at(images[0].parent.expect("a row"))
+        .expect("the row");
+    assert_eq!(
+        (row.mark, row.name.as_str()),
         (Some(Mark::Entry), "archive")
     );
 }

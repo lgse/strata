@@ -62,6 +62,18 @@ pub(super) struct NameLabel {
     pub(super) bounds: Rect,
 }
 
+/// A row's icon as the view draws it: the GTK row's `image`, which a scenario aims at as an
+/// entry's `part: icon` and a drag starts on. The component keys it as it keys the name
+/// (`strata_components::collection::element::ICON`), and the snapshot presents it under its
+/// row the same way.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct RowIcon {
+    /// The keys of the elements around it, the nearest first.
+    pub(super) above: Vec<String>,
+    /// In window points.
+    pub(super) bounds: Rect,
+}
+
 /// A row as the view draws it.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct DrawnRow {
@@ -122,6 +134,7 @@ pub(super) struct Drawn {
     pub(super) lists: Vec<String>,
     pub(super) columns: Vec<DrawnColumn>,
     pub(super) labels: Vec<NameLabel>,
+    pub(super) icons: Vec<RowIcon>,
     pub(super) buttons: Vec<DrawnButton>,
     pub(super) sidebar: super::sidebar::Gaps,
 }
@@ -311,6 +324,9 @@ impl Snapshot {
         for label in &drawn.labels {
             snapshot.add_label(label);
         }
+        for icon in &drawn.icons {
+            snapshot.add_icon(icon);
+        }
         for button in &drawn.buttons {
             snapshot.add_hidden_button(button);
         }
@@ -427,12 +443,7 @@ impl Snapshot {
 
     /// Presents a row's drawn name as a `label` under the entry it is in.
     fn add_label(&mut self, label: &NameLabel) {
-        let entry = |key: &String| {
-            self.nodes.iter().position(|seen| {
-                seen.mark == Some(Mark::Entry) && seen.key.as_deref() == Some(key.as_str())
-            })
-        };
-        let Some(row) = label.above.iter().find_map(entry) else {
+        let Some(row) = self.entry_around(&label.above) else {
             return;
         };
         let seen = Seen {
@@ -442,6 +453,29 @@ impl Snapshot {
             ..Seen::default()
         };
         self.push(row, "@label", seen);
+    }
+
+    /// Presents a row's drawn icon as an `image` under the entry it is in.
+    fn add_icon(&mut self, icon: &RowIcon) {
+        let Some(row) = self.entry_around(&icon.above) else {
+            return;
+        };
+        let seen = Seen {
+            role: "image".to_owned(),
+            bounds: Some(icon.bounds),
+            ..Seen::default()
+        };
+        self.push(row, "@icon", seen);
+    }
+
+    /// The nearest entry among the elements `above` an element, by their keys.
+    fn entry_around(&self, above: &[String]) -> Option<usize> {
+        let entry = |key: &String| {
+            self.nodes.iter().position(|seen| {
+                seen.mark == Some(Mark::Entry) && seen.key.as_deref() == Some(key.as_str())
+            })
+        };
+        above.iter().find_map(entry)
     }
 
     fn add(&mut self, value: &Value, parent: Option<usize>, path: String) -> usize {
