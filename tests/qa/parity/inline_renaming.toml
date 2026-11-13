@@ -160,9 +160,8 @@ host = "offscreen"
 scenario = "new-item-named-with-path"
 run = "list-nested-file"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A7: New File, which names a new item (slice decisions 23 to 25), at the wait for its editor on line 10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-item-named-with-path"
