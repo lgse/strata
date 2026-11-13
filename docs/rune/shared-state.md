@@ -530,10 +530,10 @@ each:
 
 | Part | What it is | On the Rune side |
 | --- | --- | --- |
-| `keymap()` | The resolved tables, built on first use and kept. Building them logs the file's entries that cannot apply, an uppercase letter written without `<Shift>`, and what the conflict check finds about the keys the file adds | Resolving is shared already: `Keymap::defaults()` and one `Keymap::overridden` for each map, over the entries of `Preferences::keymap`. The conflict report is the conflict check's, which is GTK's (`src/ui/keys/conflicts.rs`) |
+| `keymap()` | The resolved tables, built on first use and kept. Building them logs the file's entries that cannot apply, an uppercase letter written without `<Shift>`, and what the conflict check finds about the keys the file adds | `Keymap::defaults()` and `Keymap::overridden` are shared already. The helper that calls them for both maps and logs each entry that cannot apply (`resolve`) uses no GTK: whoever makes this interface read a saved keymap shares it, by the rule above, with GTK calling the shared one, and writes no second copy of its four warnings. The conflict report is the conflict check's, which is GTK's (`src/ui/keys/conflicts.rs`) |
 | `keymap_revision()`, `shown_keys()` | What a GTK binding compares to know that a key label must be drawn again | Nothing. This interface draws from its state, and its `Active` holds the tables |
 | `set_bindings`, `reset_binding`, `reset_map` | The edits Settings makes to the saved overrides, a few lines each over `KeymapOverrides`. They hold the file's rules: bindings are saved in their normalized form with repeats dropped, the shipped bindings remove the entry, an empty list unbinds, and resetting a map keeps the entries whose ids this version does not know | Needed by the package that builds this interface's keyboard settings. They move then, by the rule above: methods on `KeymapOverrides` in a new file beside `settings/keymap.rs`, in that package's `contract` pull request, with the GTK methods calling them |
-| `edit_keymap` | Rebuilds the kept tables, bumps the revision and saves | `shell::saved(app).change(…)` saves, and the window's `Active` takes the new tables |
+| `edit_keymap` | Rebuilds the kept tables, bumps the revision and saves | `shell::saved(app).change(…)` saves. Nothing takes new tables yet: `commands::Live` holds `Keymap::defaults()` for as long as it lives. Replacing them on a change is part of reading a saved keymap, below |
 
 Nothing moved with this package, for three reasons:
 
@@ -543,17 +543,24 @@ Nothing moved with this package, for three reasons:
   on the interface it moved for.
 - **No view needs the methods.** A key label and a press read `active_keymap()`, which is
   shared, through the `Active` the window registers. Until the Rune side reads accelerator
-  strings that is `Keymap::defaults()`.
+  strings that is `Keymap::defaults()`, and `resolve` would have no caller either: it would
+  warn of every saved entry that names a key and apply only those that unbind a command.
 - **What Rune's settings do around an edit is not decided.** GTK's page asks the conflict
   check before it saves a captured key, and which conflicts Rune reports is an open question
   for the owner.
 
-When the Rune side's key library reads and writes accelerator strings, reading a saved
-keymap is a change in `strata-app` and not a move: the window's `Active` (`commands::Live`)
-resolves `Preferences::keymap` as the first row says, logs the entries that cannot apply,
-and takes new tables when the saved keymap changes. Whether it also logs an uppercase
-letter written without `<Shift>` is settled with the reader, since that line states how the
-reader takes a capital.
+When the Rune side's key library reads and writes accelerator strings, this interface will
+read a saved keymap. That has two parts, and they are the second pull request of the session
+that writes the accelerator reader and writer:
+
+- **`resolve` is shared, not copied:** it moves to a new file beside
+  `crates/strata-desktop/src/settings/keymap.rs`, and `PreferenceManager::keymap` calls it.
+  Its call of `report_capital_letters` does not go with it unasked: that line states how
+  the reader takes a capital letter, so whether both interfaces log it is the reader's
+  author's to settle.
+- **`strata-app` uses it:** the window's `Active` (`commands::Live`) will hold what
+  `resolve` gives for `Preferences::keymap` where it holds `Keymap::defaults()` today, and
+  will take new tables when the saved keymap changes.
 
 ### The Rune interface
 
