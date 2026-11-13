@@ -73,6 +73,7 @@ mod rename_failed;
 mod trash;
 mod undo;
 // A8 View switching and appearance
+mod appearance;
 // A9 Pointer and click modes
 // A10 Search, filter and sort
 // A11 10xer mode
@@ -113,6 +114,7 @@ slots::parts! {
     new_item: new_item::NewItem,
     trash: trash::Trash,
     // A8 View switching and appearance
+    appearance: appearance::Appearance,
     // A9 Pointer and click modes
     // A10 Search, filter and sort
     // A11 10xer mode
