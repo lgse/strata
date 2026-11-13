@@ -98,8 +98,30 @@ fn a_rename_is_undone_by_its_key_and_redone_by_either_of_redos() {
     );
 }
 
-/// `rename-moves-into-path/columns-file`: a typed path moved the item into a folder it made.
-/// Ctrl+Z checks the disk, moves the item back and takes the folder away.
+/// `rename-moves-into-path/columns-file` up to its undo: the typed path `notes/todo.txt` moves
+/// the item into a folder it makes.
+fn moved_into_notes(host: &mut Offscreen, folder: &Path) {
+    let parent = Location::local(folder);
+    act(host, |app| {
+        let todo = entry(app, "todo.txt");
+        let path = TypedPath::parse("notes/todo.txt", false, false).expect("a path");
+        app.browser.place_entry(todo, path.within(&parent), false);
+    });
+    wait_on_disk(host, folder, "notes/todo.txt", true);
+    assert!(!folder.join("todo.txt").exists());
+}
+
+/// What the undo command answers where the keyboard is, as Ctrl+Z asks it.
+fn undo_now(host: &mut Offscreen) -> Option<Outcome> {
+    let mut outcome = None;
+    host.runtime().update(|app, tx| {
+        outcome = Some(run(app, "undo", On::Focus, tx));
+    });
+    outcome
+}
+
+/// `rename-moves-into-path/columns-file`: Ctrl+Z checks the disk, moves the item back and
+/// takes the folder the move made away.
 #[test]
 fn a_move_into_a_folder_it_made_is_undone_after_the_check() {
     hosted(
@@ -107,19 +129,45 @@ fn a_move_into_a_folder_it_made_is_undone_after_the_check() {
         "a_move_into_a_folder_it_made_is_undone_after_the_check",
         |mut host| {
             let folder = listed(&mut host);
-            let parent = Location::local(folder.path());
-            act(&mut host, |app| {
-                let todo = entry(app, "todo.txt");
-                let path = TypedPath::parse("notes/todo.txt", false, false).expect("a path");
-                app.browser.place_entry(todo, path.within(&parent), false);
-            });
-            wait_on_disk(&mut host, folder.path(), "notes/todo.txt", true);
-            assert!(!folder.path().join("todo.txt").exists());
+            moved_into_notes(&mut host, folder.path());
 
             chord(&mut host, 'z', false);
 
             wait_on_disk(&mut host, folder.path(), "todo.txt", true);
             wait_on_disk(&mut host, folder.path(), "notes", false);
+        },
+    );
+}
+
+/// An item now where the undo would put the moved one back: GTK asks, and with no prompt
+/// here the replay stops as the prompt's Cancel does. The key is taken, nothing moves, the
+/// item in the way keeps what it holds, and the entry is still there to undo.
+#[test]
+fn an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry() {
+    hosted(
+        MODULE,
+        "an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry",
+        |mut host| {
+            let folder = listed(&mut host);
+            moved_into_notes(&mut host, folder.path());
+            let in_the_way = folder.path().join("todo.txt");
+            std::fs::write(&in_the_way, "in the way").expect("the item in the way");
+
+            assert_eq!(undo_now(&mut host), Some(Outcome::Ran));
+            let answered = host.run_until(PATIENCE, |host| host.app().undo.checking.is_empty());
+            assert!(answered, "the check never answered");
+            while host.turn() {}
+
+            assert_eq!(
+                std::fs::read_to_string(folder.path().join("notes/todo.txt")).ok(),
+                Some("todo.txt".to_owned()),
+                "the moved item stays where the move put it"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&in_the_way).ok(),
+                Some("in the way".to_owned())
+            );
+            assert!(host.app().browser().pending_undo_group().is_some());
         },
     );
 }
@@ -132,11 +180,7 @@ fn with_nothing_to_undo_the_key_is_not_taken() {
         "with_nothing_to_undo_the_key_is_not_taken",
         |mut host| {
             let _folder = listed(&mut host);
-            let mut outcome = None;
-            host.runtime().update(|app, tx| {
-                outcome = Some(run(app, "undo", On::Focus, tx));
-            });
-            assert_eq!(outcome, Some(Outcome::Declined));
+            assert_eq!(undo_now(&mut host), Some(Outcome::Declined));
         },
     );
 }

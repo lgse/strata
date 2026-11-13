@@ -9,9 +9,9 @@
 //!   the inline edit, the filter and the location bar (`src/ui/window/keyboard/commands.rs`).
 //!   A key with nothing to replay is not taken. In a field Ctrl+Z is the field's own.
 //! - **What is replayed, in GTK's order.** Undo: a rename at once; a move, a typed path's
-//!   move into a folder it made (a group), a copy and a merge after a check of what is on
-//!   disk (`replay`); then the Trash, and what was created, at once. Redo: a rename and a copy
-//!   at once, a move and the Trash after the check.
+//!   move into a folder it made (a group), a copy (what was created, too) and a merge after a
+//!   check of what is on disk (`replay`); then the Trash, at once. Redo: a rename and a copy at
+//!   once, a move and the Trash after the check.
 //! - **The check** reads the replay's locations off the interface thread
 //!   (`strata_fs::adapters::probes::presence`) and answers through `Setup::later`. A second
 //!   press for the same replay while it runs is taken and starts nothing.
