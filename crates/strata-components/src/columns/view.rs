@@ -17,7 +17,7 @@ use super::pointer::BackgroundClick;
 use super::sources::ColumnSources;
 use super::state::ColumnsState;
 use crate::collection::element::{
-    Activation, Collection, Intent, PointerInput, RowMarks, viewport_path,
+    Activation, Collection, Intent, KeyTaken, PointerInput, RowMarks, viewport_path,
 };
 use crate::collection::keyboard::{KeySettings, Rested};
 use crate::collection::pointer::PointerSettings;
@@ -236,7 +236,9 @@ impl<S: 'static> ColumnsView<S> {
     /// column shows and is described as while it has no rows (`Collection::empty`, and
     /// `Collection::description` over [`ColumnsLabels::list`], which the view sets first). The
     /// view sets the rest after (the name, row height, header, marks, intents, drops and keys),
-    /// so don't set those here. The view owns the rows' content slot
+    /// so don't set those here. A host that reads keys ahead of the columns' own sets
+    /// [`Collection::before_keys`] here: the strip gives each key to the active column, whose
+    /// hook hears it first, and a key the hook takes does not reveal the column. The view owns the rows' content slot
     /// (`Collection::content`: the icon, the label and the size badge) and their description
     /// (`Collection::describe`: [`ColumnSources::description`], else the badge's text), so
     /// don't set those either.
@@ -748,10 +750,16 @@ pub(super) fn strip_key<S: 'static>(
         p.state.targeted = Some(active);
         (p.state.columns[active].serial, n)
     };
-    if collection(sh, s, serial).key(s, event, tx) {
-        let p = (sh.parts_mut)(s);
-        p.state.reveal(p.look, tx);
-        return true;
+    match collection(sh, s, serial).key_taken(s, event, tx) {
+        KeyTaken::ByController => {
+            let p = (sh.parts_mut)(s);
+            p.state.reveal(p.look, tx);
+            return true;
+        }
+        // The host's own key (`Collection::before_keys`) moved nothing in the column: Strata
+        // reveals a column when its cursor or the active column changes, not for a key.
+        KeyTaken::ByHost => return true,
+        KeyTaken::No => {}
     }
     let m = event.mods;
     if event.key == Key::Escape

@@ -48,7 +48,7 @@ impl<S> Entry<S> {
         self.place.slot()
     }
 
-    fn view(&self) -> Option<&View<S>> {
+    pub(crate) fn view(&self) -> Option<&View<S>> {
         match &self.place {
             Place::View(view) => Some(view),
             _ => None,

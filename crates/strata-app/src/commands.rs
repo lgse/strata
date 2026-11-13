@@ -13,13 +13,18 @@
 //! - **Keys come from the shared catalog** (`strata_desktop::keys::bindings`), through both
 //!   maps' tables. A press is built once, in [`press`].
 //!
-//! `docs/rune/parity/packages/B3.md`, "Design", has the oracle's stages line by line and the
-//! parts of this that later pull requests add: a part's own table, what a part holds of the
-//! keyboard, and the entry points ahead of a view's and Rune's own keys.
+//! - **A press is heard in one of three places,** by who has the keyboard, and walked once
+//!   ([`Heard`]): ahead of the shown view's own keys and again after them, at the window's
+//!   root element for any other element, and at the window for a text field, a Rune modal
+//!   or nothing at all. Rune has no capture phase; these are the places it gives.
+//!
+//! `docs/rune/parity/packages/B3.md`, "Design", has the oracle's stages line by line, and
+//! "What Rune gives" has Rune's order for a key and what each place can and cannot hear.
 
 use std::{cell::Cell, rc::Rc};
 
 use rune::{KeyEvent, Tx};
+use strata_components::collection::element::Collection;
 use strata_desktop::{
     keys::{self, Active, Command, Context, Digits, KeyPress, Keymap, Matcher},
     settings::Preferences,
@@ -28,9 +33,11 @@ use strata_desktop::{
 use crate::{App, shell, slots::At};
 
 mod browser;
+mod heard;
 mod owners;
 mod press;
 
+use heard::{Asked, Heard, Span, Stamp, span};
 pub(crate) use owners::{Holds, Situation};
 use owners::{Reach, reach};
 
@@ -228,6 +235,8 @@ pub(crate) struct Live {
     tenxer: Cell<bool>,
     typing: Cell<bool>,
     keymap: Rc<Keymap>,
+    /// The press a view's collection last asked the early stages for ([`heard`]).
+    asked: Asked,
 }
 
 impl Live {
@@ -237,6 +246,7 @@ impl Live {
             tenxer: Cell::new(false),
             typing: Cell::new(false),
             keymap: Rc::new(Keymap::defaults()),
+            asked: Asked::default(),
         });
         live.follow(settings);
         let weak = Rc::downgrade(&live);
@@ -376,15 +386,23 @@ fn reading(
         .collect()
 }
 
-/// Offers `press` to each stage in the GTK chain's order, and within a stage to each command
-/// that reads it there, until one runs or leaves it. Who has the keyboard decides which
-/// stages are left ([`owners::reach`]).
-fn walk(app: &mut App, press: &KeyPress, at: &Situation, tx: &mut Tx) -> Outcome {
+/// A press and the stages it is offered where it was heard.
+struct Offer<'a> {
+    press: &'a KeyPress,
+    at: &'a Situation,
+    span: Span,
+}
+
+/// Offers a press to each stage of its span in the GTK chain's order, and within a stage to
+/// each command that reads it there, until one runs or leaves it. Who has the keyboard
+/// decides which stages are left ([`owners::reach`]).
+fn walk(app: &mut App, offer: &Offer<'_>, tx: &mut Tx) -> Outcome {
+    let Offer { press, at, span } = *offer;
     let key = Call {
         on: On::Focus,
         press: Some(press),
     };
-    for stage in Stage::ALL {
+    for stage in Stage::ALL.iter().filter(|stage| span.has(**stage)) {
         for (part, action) in reading(app, press, at, *stage) {
             let outcome = match reach(at, *stage, part) {
                 Reach::Cut => Outcome::Declined,
@@ -412,14 +430,47 @@ pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyP
     keys::rewrite(press, Context { typing })
 }
 
-/// The window's keys: what the focused element passed on, or every key when nothing has the
-/// keyboard.
-pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
+/// One place's hearing of a key: true when a command took it. A key no command takes is not
+/// the registry's: Rune goes on with it, and commits nothing for this handler.
+fn hear(app: &mut App, event: &KeyEvent, heard: Heard, tx: &mut Tx) -> bool {
     let at = Situation::of(app, tx);
+    let stamp = Stamp::of(event, &at, tx);
+    let asked = &shell::live_keys(app).asked;
+    let Some(span) = span(&at, heard, asked.early_for(&stamp)) else {
+        return false;
+    };
+    asked.note(stamp, span);
     let press = read(app, event, &at, tx);
-    // A key no command takes is not the window's: Rune goes on with it, and commits nothing
-    // for this handler.
-    walk(app, &press, &at, tx) == Outcome::Ran
+    let offer = Offer {
+        press: &press,
+        at: &at,
+        span,
+    };
+    walk(app, &offer, tx) == Outcome::Ran
+}
+
+/// Puts the registry ahead of a view's own keys. A view calls it once on the collection its
+/// component is built on, and on each column's where it has several: a command registered
+/// at a stage of the GTK chain then reads its key before the list does, as GTK's window
+/// reads it before its list, and the view's controllers keep every key no command takes.
+///
+/// A view that does not call it loses no command: the root element then asks every stage,
+/// but after the view's own keys, so a command cannot take a key that view's controller
+/// takes.
+pub(crate) fn in_view(collection: Collection<App>) -> Collection<App> {
+    collection.before_keys(|app: &mut App, event, tx| hear(app, event, Heard::BeforeView, tx))
+}
+
+/// The root element's keys: what the focused element and those around it left. Rune asks
+/// here before its own focus navigation, its default button and the window.
+pub(crate) fn from_element(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
+    hear(app, event, Heard::Element, tx)
+}
+
+/// The window's keys: every key when nothing has the keyboard, and what a text field or a
+/// Rune modal passes on when a part says it holds the keyboard.
+pub(crate) fn on_key(app: &mut App, event: &KeyEvent, tx: &mut Tx) -> bool {
+    hear(app, event, Heard::Window, tx)
 }
 
 #[cfg(test)]
