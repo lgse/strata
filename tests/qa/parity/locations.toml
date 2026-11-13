@@ -6,49 +6,43 @@
 scenario = "breadcrumb-returns-to-parent"
 run = "columns"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "deleting-open-root-closes-children"
 run = "columns"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "named-location-controls"
 run = "columns"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "open-folder-follows-renamed-ancestor"
 run = "columns"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "open-folder-follows-renamed-ancestor"
 run = "icons"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "open-folder-follows-renamed-ancestor"
 run = "list"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "path-completion-dismisses-on-window-switch"
@@ -56,23 +50,21 @@ run = "columns"
 package = "A5"
 status = "pending"
 reason = "scope"
-blocker = "A5"
+blocker = "A5: the location bar's path suggestions, at the `documents/` label on line 6; then a second window, at `launch` on line 8 (A21)"
 
 [[run]]
 scenario = "refresh-reconciles-external-changes"
 run = "columns"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "refresh-reconciles-external-changes"
 run = "list"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "scrolled-away-crumbs-and-columns-stay-reachable"
@@ -80,7 +72,7 @@ run = "columns"
 package = "A5"
 status = "pending"
 reason = "scope"
-blocker = "A5"
+blocker = "A5: `select` of an entry in a column scrolled out of view, on line 22, before any crumb step; not yet placed"
 
 [[run]]
 scenario = "sidebar-place-navigates"
@@ -88,15 +80,14 @@ run = "columns"
 package = "A5"
 status = "pending"
 reason = "scope"
-blocker = "A5"
+blocker = "A3: the sidebar, at `click` on its Home place on line 3"
 
 [[run]]
 scenario = "typed-path-navigates"
 run = "columns"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "unreadable-folder-offers-retry"
@@ -104,7 +95,7 @@ run = "columns"
 package = "A5"
 status = "pending"
 reason = "scope"
-blocker = "A5"
+blocker = "A5: GTK's message and Retry button in an unreadable folder's pane, on lines 8 and 9"
 
 [[run]]
 scenario = "unreadable-folder-offers-retry"
@@ -112,7 +103,7 @@ run = "list"
 package = "A5"
 status = "pending"
 reason = "scope"
-blocker = "A5"
+blocker = "A5: GTK's message and Retry button in an unreadable folder's pane, on lines 8 and 9"
 
 [[run]]
 scenario = "unreadable-folder-offers-retry"
@@ -120,7 +111,7 @@ run = "icons"
 package = "A5"
 status = "pending"
 reason = "scope"
-blocker = "A5"
+blocker = "A5: GTK's message and Retry button in an unreadable folder's pane, on lines 8 and 9"
 
 [[run]]
 scenario = "unreadable-location-reports-error"
@@ -128,4 +119,4 @@ run = "columns"
 package = "A5"
 status = "pending"
 reason = "scope"
-blocker = "A5"
+blocker = "A5: F5 replacing an unreadable folder's row, on line 7, then the \"Unable to open directory\" dialog"
