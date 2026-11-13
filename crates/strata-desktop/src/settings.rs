@@ -37,6 +37,7 @@ use crate::{
 mod corner_roundness;
 mod defaults;
 mod folder_view_file;
+pub mod folder_view_policy;
 mod folder_view_store;
 pub mod folder_views;
 mod keymap;
