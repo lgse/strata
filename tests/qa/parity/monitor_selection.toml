@@ -6,22 +6,19 @@
 scenario = "navigation-survives-insertion"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "navigation-survives-insertion"
 run = "icons"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "navigation-survives-insertion"
 run = "list"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
