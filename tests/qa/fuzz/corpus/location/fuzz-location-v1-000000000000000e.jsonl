@@ -1,0 +1,4 @@
+{"scenario":"fuzz-location-v1-000000000000000e","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"pictures"},"when":{"present":{"entry":"pictures"}}}
+{"key":"ctrl+l"}
+{"key":"Return","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}
