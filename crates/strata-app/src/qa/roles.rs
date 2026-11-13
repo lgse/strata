@@ -52,6 +52,7 @@ pub(super) const ROLES: [(&str, &str); 44] = [
 ];
 
 const GROUP: &str = "grouping";
+const TOGGLE_BUTTON: &str = "toggle button";
 /// What GTK reports for a container with no accessible name, and for a role it has no name
 /// for: a scenario's `grouping` must not find Rune's layout groups.
 const UNNAMED_GROUP: &str = "panel";
@@ -68,6 +69,16 @@ pub(super) fn at_spi(role: &str, named: bool) -> &'static str {
         Some(mapped) => mapped,
         None => UNKNOWN,
     }
+}
+
+/// The AT-SPI name for Rune's `role` on a node that reports a pressed state (`toggled`) or
+/// not. A button with one is a toggle button, as AccessKit hands it to AT-SPI (`Role::Button`
+/// with `toggled`, in `accesskit_atspi_common`) and as GTK's toggle buttons are.
+pub(super) fn at_spi_toggled(role: &str, named: bool, toggled: bool) -> &'static str {
+    if toggled && role == "button" {
+        return TOGGLE_BUTTON;
+    }
+    at_spi(role, named)
 }
 
 #[cfg(test)]
