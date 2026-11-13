@@ -1,10 +1,10 @@
 diff --git a/crates/strata-app/src/sidebar/reorder.rs b/crates/strata-app/src/sidebar/reorder.rs
 --- a/crates/strata-app/src/sidebar/reorder.rs
 +++ b/crates/strata-app/src/sidebar/reorder.rs
-@@ -28,5 +28,5 @@ pub(super) fn neighbour(len: usize, from: usize, to: usize) -> Option<(usize, bo
-     Some(match to {
-         0 => (order[1], false),
--        _ => (order[to - 1], true),
-+        _ => (order[to - 1], false),
-     })
- }
+@@ -74,5 +74,5 @@ pub(super) fn reorder_pinned_places(
+ pub(super) fn place_target(landing: Landing) -> (usize, bool) {
+     match landing {
+-        Landing::Row { index, after } => (index, after),
++        Landing::Row { index, after } => (index, !after),
+         Landing::Gap(0) => (0, false),
+         Landing::Gap(index) => (index - 1, true),
