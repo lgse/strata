@@ -496,13 +496,28 @@ class MutationTests(unittest.TestCase):
         self.assertEqual(picked, ["shift-click-range"])
         self.assertEqual(len(problems), 1)
         self.assertTrue(problems[0].startswith("no Rune mutation patch 'rename': "), problems)
+        # A path elsewhere names no Rune patch, though a Rune patch has its file name.
+        for elsewhere in ("tests/qa/mutations/rename-with-f2.patch", "/tmp/rename-with-f2.patch"):
+            with self.subTest(elsewhere):
+                picked, problems = qa_parity_mutation.chosen([elsewhere], available)
+                self.assertEqual(picked, [])
+                self.assertEqual(len(problems), 1)
+                self.assertTrue(problems[0].startswith(f"{elsewhere!r} is no Rune mutation patch"),
+                                problems)
 
     def test_a_patch_named_for_the_gtk_target_or_of_none_stops_before_anything_runs(self):
-        for arguments in (["gtk", "cut"], ["rune", "no-such-patch"]):
-            with self.subTest(arguments), unittest.mock.patch.object(
-                    qa_parity_mutation, "run_rune") as run, contextlib.redirect_stderr(io.StringIO()):
-                self.assertEqual(qa_parity_mutation.main(arguments), 2)
-                run.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            (output / "summary.md").write_text("the last run's\n", encoding="utf-8")
+            for arguments in (["gtk", "cut"], ["rune", "no-such-patch"],
+                              ["rune", "tests/qa/mutations/shift-click-range.patch"]):
+                with self.subTest(arguments), unittest.mock.patch.object(
+                        qa_parity_mutation, "run_rune") as run, unittest.mock.patch.object(
+                        qa_parity_mutation, "OUTPUT", output), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(qa_parity_mutation.main(arguments), 2)
+                    run.assert_not_called()
+                    self.assertTrue((output / "summary.md").exists(),
+                                    "a refused selection leaves the last summary")
 
 
 class RepositoryTests(unittest.TestCase):

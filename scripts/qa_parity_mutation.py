@@ -48,6 +48,17 @@ def patches(directory: Path | None = None) -> list[str]:
     return sorted(path.stem for path in (directory or MUTATIONS).glob("*.patch"))
 
 
+def in_mutations(name: str) -> bool:
+    """Whether `name` is a bare name, or a path to a file of the Rune patches' directory, from
+    here or from the repository: GTK's `tests/qa/mutations/<scenario>.patch` is not one."""
+
+    if "/" not in name:
+        return True
+    path = Path(name)
+    bases = [Path()] if path.is_absolute() else [Path.cwd(), REPOSITORY]
+    return any((base / path).resolve().parent == MUTATIONS.resolve() for base in bases)
+
+
 def chosen(names: list[str], available: list[str]) -> tuple[list[str], list[str]]:
     """The patches `names` select, in the order given and each once, and what is wrong with
     the names that select none. No names select every patch."""
@@ -57,7 +68,10 @@ def chosen(names: list[str], available: list[str]) -> tuple[list[str], list[str]
     picked, problems = [], []
     for name in names:
         scenario = Path(name).name.removesuffix(".patch")
-        if scenario not in available:
+        if not in_mutations(name):
+            problems.append(f"{name!r} is no Rune mutation patch: a path names a patch under "
+                            f"{MUTATIONS.relative_to(REPOSITORY)}")
+        elif scenario not in available:
             problems.append(f"no Rune mutation patch {name!r}: the patches under "
                             f"{MUTATIONS.relative_to(REPOSITORY)} are {', '.join(available)}")
         elif scenario not in picked:
@@ -100,7 +114,6 @@ def run_rune(scenario: str, destination: Path) -> tuple[dict[str, str], int]:
 def check(names: list[str] | None = None) -> int:
     started = time.monotonic()
     available = patches()
-    (OUTPUT / "summary.md").unlink(missing_ok=True)
     if not available:
         print(f"No patch under {MUTATIONS.relative_to(REPOSITORY)}.", file=sys.stderr)
         return 2
@@ -112,6 +125,7 @@ def check(names: list[str] | None = None) -> int:
         print(f"No run on the Rune target in the ledger for: {', '.join(missing)}. A patch is "
               "named for a scenario with a required run, or for a twin.", file=sys.stderr)
         return 2
+    (OUTPUT / "summary.md").unlink(missing_ok=True)
     reports = []
     for scenario in scenarios:
         print(f"== {scenario}: unmodified tree", flush=True)
