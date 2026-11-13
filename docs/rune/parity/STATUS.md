@@ -22,7 +22,7 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | [H1](packages/H1.md) | Whole-corpus ledger | done | None | [#2165](https://github.com/lgse/strata/pull/2165), [#2166](https://github.com/lgse/strata/pull/2166) |
 | [H2](packages/H2.md) | Exception conventions in the runner | done | H1 | [#2171](https://github.com/lgse/strata/pull/2171) |
 | [B1](packages/B1.md) | Shell seams | done | None | [#2167](https://github.com/lgse/strata/pull/2167), [#2169](https://github.com/lgse/strata/pull/2169) |
-| [B2](packages/B2.md) | Shared state out of the GTK package | in progress | None | [#2168](https://github.com/lgse/strata/pull/2168), [#2170](https://github.com/lgse/strata/pull/2170), [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178), [#2188](https://github.com/lgse/strata/pull/2188), [#2195](https://github.com/lgse/strata/pull/2195), [#2197](https://github.com/lgse/strata/pull/2197), [#2255](https://github.com/lgse/strata/pull/2255), [#2259](https://github.com/lgse/strata/pull/2259), [#2262](https://github.com/lgse/strata/pull/2262), [#2265](https://github.com/lgse/strata/pull/2265), [#2267](https://github.com/lgse/strata/pull/2267) |
+| [B2](packages/B2.md) | Shared state out of the GTK package | done | None | [#2168](https://github.com/lgse/strata/pull/2168), [#2170](https://github.com/lgse/strata/pull/2170), [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178), [#2188](https://github.com/lgse/strata/pull/2188), [#2195](https://github.com/lgse/strata/pull/2195), [#2197](https://github.com/lgse/strata/pull/2197), [#2255](https://github.com/lgse/strata/pull/2255), [#2259](https://github.com/lgse/strata/pull/2259), [#2262](https://github.com/lgse/strata/pull/2262), [#2265](https://github.com/lgse/strata/pull/2265), [#2267](https://github.com/lgse/strata/pull/2267), [#2274](https://github.com/lgse/strata/pull/2274), [#2279](https://github.com/lgse/strata/pull/2279) |
 | [B3](packages/B3.md) | Commands and key dispatch | done | B1; B2's key catalog | [#2200](https://github.com/lgse/strata/pull/2200), [#2204](https://github.com/lgse/strata/pull/2204), [#2207](https://github.com/lgse/strata/pull/2207), [#2210](https://github.com/lgse/strata/pull/2210), [#2214](https://github.com/lgse/strata/pull/2214), [#2219](https://github.com/lgse/strata/pull/2219), [#2227](https://github.com/lgse/strata/pull/2227), [#2237](https://github.com/lgse/strata/pull/2237) |
 | [F1](packages/F1.md) | Fuzz driver and GTK calibration | done | None | [#2181](https://github.com/lgse/strata/pull/2181) |
 
@@ -30,13 +30,13 @@ tracking moved here. The issues stay as an archive: each package file links its 
 
 | ID | Package | State | Depends on | Pull requests |
 | --- | --- | --- | --- | --- |
-| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192), [#2199](https://github.com/lgse/strata/pull/2199), [#2202](https://github.com/lgse/strata/pull/2202), [#2208](https://github.com/lgse/strata/pull/2208), [#2211](https://github.com/lgse/strata/pull/2211), [#2220](https://github.com/lgse/strata/pull/2220), [#2221](https://github.com/lgse/strata/pull/2221), [#2223](https://github.com/lgse/strata/pull/2223), [#2231](https://github.com/lgse/strata/pull/2231), [#2236](https://github.com/lgse/strata/pull/2236), [#2238](https://github.com/lgse/strata/pull/2238), [#2246](https://github.com/lgse/strata/pull/2246), [#2248](https://github.com/lgse/strata/pull/2248), [#2253](https://github.com/lgse/strata/pull/2253), [#2260](https://github.com/lgse/strata/pull/2260), [#2263](https://github.com/lgse/strata/pull/2263), [#2264](https://github.com/lgse/strata/pull/2264) |
+| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192), [#2199](https://github.com/lgse/strata/pull/2199), [#2202](https://github.com/lgse/strata/pull/2202), [#2208](https://github.com/lgse/strata/pull/2208), [#2211](https://github.com/lgse/strata/pull/2211), [#2220](https://github.com/lgse/strata/pull/2220), [#2221](https://github.com/lgse/strata/pull/2221), [#2223](https://github.com/lgse/strata/pull/2223), [#2231](https://github.com/lgse/strata/pull/2231), [#2236](https://github.com/lgse/strata/pull/2236), [#2238](https://github.com/lgse/strata/pull/2238), [#2246](https://github.com/lgse/strata/pull/2246), [#2248](https://github.com/lgse/strata/pull/2248), [#2253](https://github.com/lgse/strata/pull/2253), [#2260](https://github.com/lgse/strata/pull/2260), [#2263](https://github.com/lgse/strata/pull/2263), [#2264](https://github.com/lgse/strata/pull/2264), [#2271](https://github.com/lgse/strata/pull/2271), [#2273](https://github.com/lgse/strata/pull/2273), [#2275](https://github.com/lgse/strata/pull/2275); [#2281](https://github.com/lgse/strata/pull/2281) (open) |
 | [A2](packages/A2.md) | List view | done | B1 | [#2205](https://github.com/lgse/strata/pull/2205), [#2206](https://github.com/lgse/strata/pull/2206), [#2212](https://github.com/lgse/strata/pull/2212), [#2213](https://github.com/lgse/strata/pull/2213), [#2215](https://github.com/lgse/strata/pull/2215), [#2216](https://github.com/lgse/strata/pull/2216), [#2217](https://github.com/lgse/strata/pull/2217), [#2222](https://github.com/lgse/strata/pull/2222), [#2224](https://github.com/lgse/strata/pull/2224), [#2225](https://github.com/lgse/strata/pull/2225), [#2226](https://github.com/lgse/strata/pull/2226), [#2228](https://github.com/lgse/strata/pull/2228), [#2229](https://github.com/lgse/strata/pull/2229), [#2234](https://github.com/lgse/strata/pull/2234), [#2247](https://github.com/lgse/strata/pull/2247), [#2250](https://github.com/lgse/strata/pull/2250), [#2251](https://github.com/lgse/strata/pull/2251), [#2256](https://github.com/lgse/strata/pull/2256), [#2257](https://github.com/lgse/strata/pull/2257), [#2258](https://github.com/lgse/strata/pull/2258), [#2268](https://github.com/lgse/strata/pull/2268), [#2266](https://github.com/lgse/strata/pull/2266) |
 | [A3](packages/A3.md) | Sidebar | not started | B1 | None |
 | [A4](packages/A4.md) | Tabs | not started | B1, B2 | None |
 | [A5](packages/A5.md) | Location bar | not started | B1 | None |
 | [A6](packages/A6.md) | Menus, dialogs and keymap | not started | B1, B2, B3 | None |
-| [A7](packages/A7.md) | Entry management and undo | in progress | B3 | None |
+| [A7](packages/A7.md) | Entry management and undo | in progress | B3 | [#2272](https://github.com/lgse/strata/pull/2272), [#2276](https://github.com/lgse/strata/pull/2276), [#2278](https://github.com/lgse/strata/pull/2278); [#2280](https://github.com/lgse/strata/pull/2280) (open) |
 | [H3](packages/H3.md) | Backend reach | not started | H1 | None |
 | [H4](packages/H4.md) | Session host | not started | H1 | None |
 | [H5](packages/H5.md) | Coverage-gap scenarios | held | H0 | None |
@@ -86,33 +86,37 @@ explained in [B3's file](packages/B3.md).
 ## Checkpoints
 
 The plan's checkpoints are where the owner looks at the numbers
-([Checkpoints](README.md#checkpoints)). Each report gives five counts. These are running
-counts, retaken by the coordinator at the commit the table names, `strata-next` `cd250ed3c`
-(2026-11-12), with the command that produces each. The end-of-wave-0 checkpoint report is
-still owed: B3 has closed, and the report is written when B2 closes.
+([Checkpoints](README.md#checkpoints)). Each report gives five counts. The table below holds
+running counts, retaken by the coordinator at the commit it names, `strata-next` `85cb36b77`
+(2026-11-12), with the command that produces each. The end-of-wave-0 report, below it, was
+written at the same commit and stays as written.
 
-| Count | At `cd250ed3c` | Command |
+| Count | At `85cb36b77` | Command |
 | --- | --- | --- |
-| Runs by status and reason | 760 runs: 75 `required`, 0 `parallel`, 676 `pending` (671 `scope`, 3 `platform`, 1 `rune`, 1 `harness`), 9 `excluded`. A1: 20 `required` and 11 `pending` of 31; A2: 19 `required` and 10 `pending` of 29; A7: 62 `pending` of 62 | `./scripts/qa-parity.sh all --counts` |
+| Runs by status and reason | 760 runs: 116 `required`, 0 `parallel`, 635 `pending` (630 `scope`, 3 `platform`, 1 `rune`, 1 `harness`), 9 `excluded`. A1: 20 `required` and 11 `pending` of 31; A2: 21 `required` and 8 `pending` of 29; A6: 48 `pending` of 48; A7: 39 `required` and 23 `pending` of 62 | `./scripts/qa-parity.sh all --counts` |
 | Twins by exception code | 0 of each code | The `twins` line of `./scripts/qa-parity.sh all --counts`; `./scripts/qa-parity.sh all --twins` lists each twin |
-| Normalisation rules by code | 0: `tests/qa/fuzz/normalisation.map` and `calibration.mask` hold comments and no rule | `./scripts/qa-fuzz.sh check` |
-| Open `divergence` and `oracle` findings | 16 entries, all open: 13 `oracle`, 1 `divergence` ([#2254](https://github.com/lgse/strata/issues/2254), of the harness), and [#2179](https://github.com/lgse/strata/issues/2179) and [#2218](https://github.com/lgse/strata/issues/2218), which carry none of the plan's codes | [`findings.md`](findings.md) |
+| Normalisation rules by code | 0: `tests/qa/fuzz/normalisation.map` and `calibration.mask` hold comments and no rule | `./scripts/qa-fuzz.sh check` (in the pinned image) |
+| Open `divergence` and `oracle` findings | 18 entries, all open: 13 `oracle`; 2 `divergence`, [#2254](https://github.com/lgse/strata/issues/2254) (of the harness) and [#2277](https://github.com/lgse/strata/issues/2277); and [#2179](https://github.com/lgse/strata/issues/2179), [#2218](https://github.com/lgse/strata/issues/2218) and [#2269](https://github.com/lgse/strata/issues/2269), which carry none of the plan's codes | [`findings.md`](findings.md) |
 | Packet entries added | 2: entries 99 and 100, in the packet's "Added during parity work" section | `docs/rune/upstream/rune/README.md` |
 
 Both `qa-parity.sh` reports read the ledger and the scenario files on the host: they start no
 container and build nothing.
 
-### End of wave 0
+### End of wave 0: the checkpoint report (2026-11-12, at `85cb36b77`)
 
-The plan's three conditions:
+Every wave 0 package is done: H0, H1, H2, B1, B2, B3 and F1. B2 was the last, with
+[#2279](https://github.com/lgse/strata/pull/2279) (merged as `85cb36b77`). The plan's three conditions, each checked at that commit:
 
-| Condition | State |
-| --- | --- |
-| H1 lists 760 runs, each with a package | Met: 760 runs in 58 files, each with its package ([H1](packages/H1.md)) |
-| B1 is merged | Met: [#2167](https://github.com/lgse/strata/pull/2167) and [#2169](https://github.com/lgse/strata/pull/2169) ([B1](packages/B1.md)) |
-| Two GTK runs of one fuzz seed agree | Met: F1's [#2181](https://github.com/lgse/strata/pull/2181) merged, with the calibration on GTK ([F1](packages/F1.md)) |
+| Condition | Passes | Evidence |
+| --- | --- | --- |
+| H1 lists 760 runs, each with a package | Yes | `./scripts/qa-parity.sh all --counts`: 760 runs in 58 folders, every one in the per-package table. Its reader refuses a ledger with a missing, doubled or ownerless run. No run was added since H1: no commit has touched `tests/qa/scenarios/` since then, and the corpus is still 351 files. Runs that packages took to `required` since, A1's two Columns runs of [#2248](https://github.com/lgse/strata/pull/2248) among them, were already among the 760 |
+| B1 is merged | Yes | [#2167](https://github.com/lgse/strata/pull/2167) and [#2169](https://github.com/lgse/strata/pull/2169) ([B1](packages/B1.md)) |
+| Two GTK runs of one fuzz seed agree | Yes, wherever GTK agrees with itself | F1's [#2181](https://github.com/lgse/strata/pull/2181), the `calibration` alphabet with nothing masked. At 40 actions and two replays, 999 of 1,000 seeds agreed at one sequence to a core, and 299 of 299 at 96 sequences on 24 cores. At 120 actions and three replays, 100 of 100 agreed. The seeds that did not agree are GTK's own faults, each an `oracle` finding with its sequence parked: [#2173](https://github.com/lgse/strata/issues/2173), [#2176](https://github.com/lgse/strata/issues/2176), [#2177](https://github.com/lgse/strata/issues/2177), [#2180](https://github.com/lgse/strata/issues/2180) and [#2201](https://github.com/lgse/strata/issues/2201) ([F1](packages/F1.md)). Since then two area alphabets' smoke tiers, each comparing a target with itself, agree on GTK and on Rune for seeds 1 to 20: A2's `list` ([#2258](https://github.com/lgse/strata/pull/2258)) and A1's `icons` ([#2273](https://github.com/lgse/strata/pull/2273)) |
 
-B2 is a wave 0 package that is not done (B3 closed with
-[#2237](https://github.com/lgse/strata/pull/2237)), and the checkpoint does not wait on it:
-waves are dependency waves, and wave 1 packages start as their own dependencies finish
-([`owner.md`](owner.md#ruled)).
+The five counts at that commit are those of the table above. Twins, normalisation rules and
+packet entries come to 0, 0 and 2. Of the 18 findings, the 13 `oracle` ones are set aside as
+the plan says, and the 2 `divergence` ones belong to [H3](packages/H3.md) ([#2254](https://github.com/lgse/strata/issues/2254)) and
+[A7](packages/A7.md) ([#2277](https://github.com/lgse/strata/issues/2277)).
+
+Waves are dependency waves, and wave 1 packages started as their own dependencies finished
+([`owner.md`](owner.md#ruled)), so this report gates nothing that has not already begun.
