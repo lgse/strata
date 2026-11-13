@@ -69,6 +69,10 @@ enum Step {
     Touches,
     /// The folder shown is renamed elsewhere, its rows read again under the new name.
     Relocated,
+    /// A child column opens, is read, and takes the browser's cursor on its one entry.
+    Child,
+    /// The child column closes, and the folder shows again, already listed.
+    Closed,
 }
 
 struct Visit {
@@ -101,7 +105,7 @@ impl Visit {
     /// A change the view's listener hands the pane, which the visit follows.
     fn apply(&mut self, change: Change) {
         let applied = self.pane.apply(change, &mut self.tx);
-        self.visit.follow(applied);
+        self.visit.follow(applied, &self.pane);
     }
 
     fn id(&self, name: &str) -> EntryId {
@@ -158,6 +162,46 @@ impl Visit {
                 self.visit.interrupt();
                 return;
             }
+            Step::Child => {
+                let child = Location::local("/root/inner");
+                let row = Row::of(&entry_in(&child, "deep"), &self.ids);
+                let cursor = Some(self.ids.of(&entry_in(&child, "deep").location));
+                for change in [
+                    Change::Added(Added {
+                        depth: 1,
+                        location: child.clone(),
+                        show_hidden: false,
+                        active: true,
+                        grouping: None,
+                        reveal: false,
+                    }),
+                    Change::Rows {
+                        depth: 1,
+                        edit: Edit::Replace(vec![row]),
+                        marks: Some(Marks::default()),
+                        grouping: None,
+                    },
+                    Change::Loaded {
+                        depth: 1,
+                        load: Load::Listed,
+                        marks: Marks {
+                            cursor,
+                            selected: cursor.into_iter().collect(),
+                            provisional: false,
+                        },
+                        grouping: None,
+                    },
+                ] {
+                    self.apply(change);
+                    let _ = self.visit.settle(&mut self.pane);
+                }
+                return;
+            }
+            Step::Closed => Change::Truncated {
+                len: 1,
+                replacing: false,
+                active: Some(0),
+            },
             Step::Relocated => Change::Relocated {
                 from_depth: 0,
                 columns: vec![Moved {
@@ -189,8 +233,8 @@ impl Visit {
 
 #[test]
 fn the_first_row_takes_the_cursor_only_when_nothing_else_placed_one_by_the_loads_end() {
-    use Step::{Failed, Loaded, Moves, Relocated, Rows, Touches};
-    let cases: [(&str, &[Step], Option<&str>); 8] = [
+    use Step::{Child, Closed, Failed, Loaded, Moves, Relocated, Rows, Touches};
+    let cases: [(&str, &[Step], Option<&str>); 9] = [
         (
             "rows first, then the load's end with no cursor",
             &[Rows(&NAMES), Loaded(None)],
@@ -229,6 +273,11 @@ fn the_first_row_takes_the_cursor_only_when_nothing_else_placed_one_by_the_loads
         (
             "the folder shown renamed elsewhere, which is no navigation",
             &[Rows(&NAMES), Touches, Loaded(None), Relocated],
+            None,
+        ),
+        (
+            "a closed column that shows its parent again, already listed",
+            &[Rows(&NAMES), Touches, Loaded(None), Child, Closed],
             None,
         ),
     ];

@@ -245,3 +245,52 @@ fn the_list_view_asks_a_folders_count_and_no_files_details() {
         );
     }
 }
+
+/// GTK's Columns rows register a fill only when the time, a file's size or a folder's
+/// `listable` is unknown, or for a folder's count while sizes show (`bind.rs:254-257`): a row
+/// that lacks only its mode is asked by Columns only for a folder while sizes show, and by
+/// the List view always.
+#[test]
+fn a_columns_row_lacking_only_its_mode_is_asked_only_for_a_folders_size() {
+    let only_mode = |mut entry: FileEntry| {
+        entry.size = MetadataValue::Known(1);
+        entry.modified_unix_seconds = MetadataValue::Known(1);
+        entry.child_count = MetadataValue::Known(1);
+        entry
+    };
+    let mut folder = only_mode(photo(0));
+    folder.kind = EntryKind::Directory;
+    folder.listable = MetadataValue::Known(true);
+    let file = only_mode(photo(1));
+    let browser = Recorder {
+        entries: RefCell::new(vec![folder, file]),
+        ..Recorder::default()
+    };
+    let ids = Ids::default();
+    let column = listing(&browser, &ids);
+    for (how, mut fills, expected) in [
+        (
+            "Columns, sizes shown",
+            Fills::unfilled(Details::Folders),
+            vec![(0, true)],
+        ),
+        (
+            "Columns, sizes hidden",
+            Fills::unfilled(Details::Off),
+            vec![],
+        ),
+        (
+            "List",
+            Fills::new(Details::Folders),
+            vec![(0, true), (1, false)],
+        ),
+    ] {
+        fills.see(0..2);
+        fills.request(&browser, 0, &column);
+        assert_eq!(
+            std::mem::take(&mut *browser.details.borrow_mut()),
+            expected,
+            "{how}"
+        );
+    }
+}

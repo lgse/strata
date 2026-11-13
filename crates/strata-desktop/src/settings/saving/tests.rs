@@ -12,20 +12,15 @@ use crate::storage::writer;
 
 /// Runs `run` in a process of its own with `settings` as its settings file, if any.
 fn isolated(name: &str, settings: Option<&str>, run: impl FnOnce()) {
-    strata_test_support::isolated_test(
-        &format!("settings::saving::tests::{name}"),
-        std::iter::empty::<(&str, &str)>(),
-        || true,
-        || {
-            if let Some(contents) = settings {
-                let path = settings_path();
-                fs::create_dir_all(path.parent().expect("a configuration folder"))
-                    .expect("configuration folder");
-                fs::write(path, contents).expect("settings fixture");
-            }
-            run();
-        },
-    );
+    crate::test_support::in_own_process(&format!("settings::saving::tests::{name}"), || {
+        if let Some(contents) = settings {
+            let path = settings_path();
+            fs::create_dir_all(path.parent().expect("a configuration folder"))
+                .expect("configuration folder");
+            fs::write(path, contents).expect("settings fixture");
+        }
+        run();
+    });
 }
 
 /// The result of a save the writer has finished, polled by hand: delivering it needs no

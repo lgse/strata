@@ -18,6 +18,7 @@ use crate::{
     test_support::{PATIENCE, fixture, folder_of, send_key},
 };
 
+mod fills;
 mod history;
 mod keys;
 mod letters;

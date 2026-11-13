@@ -28,14 +28,16 @@ pub(super) struct FirstVisit {
 }
 
 impl FirstVisit {
-    /// Follows what a change did to the pane: another folder showing arms the visit. A
+    /// Follows what a change did to `pane`: another folder showing while it is still read
+    /// arms the visit. One shown already listed does not, as GTK's `prepare` returns at once
+    /// for a column that is not loading: a closed column that shows its parent again. A
     /// relocation of the folder shown (`Change::Relocated`) applies `Within`, so it does not,
     /// as GTK's `arriving` leaves relocations out. A folder back at the position remembered
     /// for it disarms one a step of the same navigation armed (a reset shows nothing before
     /// the new root opens): GTK starts a first visit only when no saved visit is pending.
-    pub(super) fn follow(&mut self, applied: Applied) {
+    pub(super) fn follow(&mut self, applied: Applied, pane: &Pane) {
         match applied {
-            Applied::Entered => self.armed = true,
+            Applied::Entered => self.armed = pane.load() == Some(&Load::Loading),
             Applied::Returned => self.armed = false,
             Applied::Within => {}
         }

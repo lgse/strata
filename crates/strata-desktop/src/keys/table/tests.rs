@@ -164,10 +164,8 @@ fn pressed(key: Key, modifiers: Modifiers, typed: Typed) -> KeyPress {
 
 #[test]
 fn the_first_install_decides_and_the_catalog_then_works_without_a_library() {
-    strata_test_support::isolated_test(
+    crate::test_support::in_own_process(
         "keys::table::tests::the_first_install_decides_and_the_catalog_then_works_without_a_library",
-        std::iter::empty::<(&str, &str)>(),
-        || true,
         || {
             assert!(install(&Table, every_binding_fires));
             assert!(

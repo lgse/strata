@@ -2,7 +2,7 @@
 
 use strata_components::{
     contract::{EntryId, EntryKind, ListEntry, ListSource, ThumbKey},
-    thumbnails::{Outcome, Settings, Step, ThumbnailStore, Viewport},
+    thumbnails::{Outcome, Settings, Step, ThumbnailStore, ViewerId, Viewport},
 };
 use strata_preview::sandbox::Cancellation;
 
@@ -343,36 +343,55 @@ fn photos(filled: bool, ids: &crate::slots::Ids) -> Vec<crate::listing::Row> {
         .collect()
 }
 
-/// The Icons and List views ask for a folder's thumbnails, and the browser's fill lands after
-/// the first poll: the store asks once for each image and cancels nothing.
+/// How a view tells the store its listing changed after a fill.
+type Retell = fn(&mut ThumbnailStore, ViewerId, &crate::listing::Column);
+
+/// A view asks for a folder's thumbnails, and the browser's fill lands after the first poll:
+/// the store asks once for each image and cancels nothing, however the view tells it of the
+/// fill. Columns' poll resyncs a column whose listing changed (`columns/thumbs.rs`); the Icons
+/// grid and the List table sync again from their `on_visible`.
 #[test]
 fn a_fill_landing_after_the_first_poll_asks_nothing_again() {
     use crate::listing::{Column, Edit};
     use strata_core::model::Location;
-    let ids = crate::slots::Ids::default();
-    let mut column = Column::new(Location::local("/photos"), false, None);
-    column.apply(Edit::Replace(photos(false, &ids)));
-    let inbox = Inbox::new();
-    let mut viewer = Viewer::new(inbox.later(), |_, _| None);
-    let mut store = ThumbnailStore::new(Settings::default());
-    let _ = viewer.take_requests(&mut store, 0.0);
-    let id = viewer.id().expect("a viewer");
-    let view = Viewport::new(0..3, Step::new(64)).listing(column.version());
-    store.sync(id, &column, view);
-    for request in viewer.take_requests(&mut store, 0.0) {
-        viewer
-            .pending
-            .insert(request.ticket, Cancellation::default());
+    let retells: [(&str, Retell); 2] = [
+        ("resync, as Columns' poll does", |store, id, column| {
+            let _ = store.resync(id, column, column.version());
+        }),
+        (
+            "sync again, as a view's on_visible does",
+            |store, id, column| {
+                let view = Viewport::new(0..3, Step::new(64)).listing(column.version());
+                let _ = store.sync(id, column, view);
+            },
+        ),
+    ];
+    for (how, retell) in retells {
+        let ids = crate::slots::Ids::default();
+        let mut column = Column::new(Location::local("/photos"), false, None);
+        column.apply(Edit::Replace(photos(false, &ids)));
+        let inbox = Inbox::new();
+        let mut viewer = Viewer::new(inbox.later(), |_, _| None);
+        let mut store = ThumbnailStore::new(Settings::default());
+        let _ = viewer.take_requests(&mut store, 0.0);
+        let id = viewer.id().expect("a viewer");
+        let view = Viewport::new(0..3, Step::new(64)).listing(column.version());
+        store.sync(id, &column, view);
+        for request in viewer.take_requests(&mut store, 0.0) {
+            viewer
+                .pending
+                .insert(request.ticket, Cancellation::default());
+        }
+        assert_eq!(viewer.pending.len(), 3, "{how}: one request a photo");
+
+        let filled = photos(true, &ids).into_iter().enumerate().collect();
+        column.apply(Edit::Refill(filled));
+        retell(&mut store, id, &column);
+
+        assert!(
+            viewer.take_requests(&mut store, 0.1).is_empty(),
+            "{how}: asked again"
+        );
+        assert_eq!(viewer.pending.len(), 3, "{how}: a request cancelled");
     }
-    assert_eq!(viewer.pending.len(), 3, "one request a photo");
-
-    let filled = photos(true, &ids).into_iter().enumerate().collect();
-    column.apply(Edit::Refill(filled));
-    store.resync(id, &column, column.version());
-
-    assert!(
-        viewer.take_requests(&mut store, 0.1).is_empty(),
-        "asked again"
-    );
-    assert_eq!(viewer.pending.len(), 3, "a request cancelled");
 }
