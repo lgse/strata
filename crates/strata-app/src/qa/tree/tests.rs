@@ -3,7 +3,7 @@
 use serde_json::json;
 use strata_qa::{Mark, Rect};
 
-use super::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
+use super::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Shape, Snapshot};
 
 /// The Columns view's shape, as its probe states it.
 const COLUMNS: Shape = Shape {
@@ -470,5 +470,113 @@ fn an_entry_has_a_panel_with_its_own_box_and_nothing_else_does() {
     assert_eq!(
         (entry.mark, entry.name.as_str()),
         (Some(Mark::Entry), "archive")
+    );
+}
+
+#[test]
+fn a_drawn_icon_is_an_image_under_its_entry_and_under_nothing_else() {
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "button", "key": "row-9", "name": "not an entry" },
+            { "role": "group", "name": "folder", "children": [
+                { "role": "list-box", "key": "columns-col-1", "children": [
+                    { "role": "list-box-option", "key": "row-1", "name": "archive" },
+                ] },
+            ] },
+        ],
+    });
+    let icon = |above: &[&str], x: f64| RowIcon {
+        above: above.iter().map(|key| (*key).to_owned()).collect(),
+        bounds: bounds(x),
+        glyph: None,
+    };
+    let drawn = Drawn {
+        view: Some(COLUMNS),
+        lists: vec!["columns-col-1".to_owned()],
+        icons: vec![
+            icon(&["content", "row-1", "rows"], 4.0),
+            icon(&["row-9"], 0.0),
+        ],
+        ..Drawn::default()
+    };
+    let snapshot = Snapshot::read(&tree, &drawn);
+
+    let images: Vec<_> = (0..)
+        .map_while(|index| snapshot.at(index))
+        .filter(|seen| seen.role() == "image")
+        .collect();
+    assert_eq!(images.len(), 1, "{images:?}");
+    assert_eq!(images[0].bounds, Some(bounds(4.0)));
+    let row = snapshot
+        .at(images[0].parent.expect("a row"))
+        .expect("the row");
+    assert_eq!(
+        (row.mark, row.name.as_str()),
+        (Some(Mark::Entry), "archive")
+    );
+}
+
+/// An Icons tile keys its frame, a margin around the slot its glyph fills; GTK's `image` is
+/// the slot (`ThumbnailSlot`), so the snapshot presents the glyph's box, as the row's first
+/// child.
+#[test]
+fn a_tiles_icon_is_its_slot_not_its_frame_and_comes_first() {
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "group", "name": "folder", "children": [
+                { "role": "grid", "key": "icons", "children": [
+                    { "role": "grid-cell", "key": "row-1", "name": "archive" },
+                ] },
+            ] },
+        ],
+    });
+    let frame = Rect {
+        x: 10.0,
+        y: 10.0,
+        width: 108.0,
+        height: 108.0,
+    };
+    let slot = Rect {
+        x: 16.0,
+        y: 16.0,
+        width: 96.0,
+        height: 96.0,
+    };
+    let drawn = Drawn {
+        view: Some(Shape {
+            name: "Icons",
+            list: "grid",
+            entry: "grid-cell",
+        }),
+        lists: vec!["icons".to_owned()],
+        labels: vec![label(&["row-1"], "archive", 20.0)],
+        icons: vec![RowIcon {
+            above: vec!["row-1".to_owned()],
+            bounds: frame,
+            glyph: Some(slot),
+        }],
+        ..Drawn::default()
+    };
+    let snapshot = Snapshot::read(&tree, &drawn);
+
+    let image = (0..)
+        .map_while(|index| snapshot.at(index))
+        .find(|seen| seen.role() == "image")
+        .expect("the tile's image");
+    assert_eq!(
+        image.bounds,
+        Some(slot),
+        "the slot, not the frame around it"
+    );
+    let row = snapshot
+        .at(image.parent.expect("its tile"))
+        .expect("the tile");
+    let first = row.children.first().and_then(|child| snapshot.at(*child));
+    assert_eq!(
+        first.map(|seen| seen.role()),
+        Some("image"),
+        "the icon comes first"
     );
 }

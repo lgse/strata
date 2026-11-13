@@ -9,10 +9,13 @@ use std::{
 };
 
 use rune::ElementInfo;
-use strata_components::collection::element::LABEL;
+use strata_components::{
+    collection::element::{ICON, LABEL},
+    thumbnails::GLYPH,
+};
 use strata_qa::Rect;
 
-use super::tree::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
+use super::tree::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Shape, Snapshot};
 use crate::{App, host::offscreen::Offscreen, shell};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
@@ -51,6 +54,29 @@ fn name_labels(elements: &[ElementInfo]) -> Vec<NameLabel> {
         })
     };
     elements.iter().filter(drawn).filter_map(label).collect()
+}
+
+/// The icons the view draws in rows, each with the keys of the elements around it.
+fn row_icons(elements: &[ElementInfo]) -> Vec<RowIcon> {
+    let drawn = |element: &&ElementInfo| !element.exiting && element.key.as_deref() == Some(ICON);
+    let icon = |element: &ElementInfo| {
+        let inside = |inner: &&ElementInfo| {
+            !inner.exiting
+                && inner.key.as_deref() == Some(GLYPH)
+                && inner
+                    .parent
+                    .and_then(|parent| elements.get(parent))
+                    .is_some_and(|parent| std::ptr::eq(parent, element))
+        };
+        RowIcon {
+            above: above(elements, element)
+                .filter_map(|outer| outer.key.clone())
+                .collect(),
+            bounds: rect(element),
+            glyph: elements.iter().find(inside).map(rect),
+        }
+    };
+    elements.iter().filter(drawn).map(icon).collect()
 }
 
 /// The column whose list is keyed `list`, as drawn: its rows are the keyed, named elements
@@ -157,6 +183,7 @@ fn drawn(host: &Offscreen) -> Drawn {
             .filter_map(|list| drawn_column(&elements, list))
             .collect(),
         labels: name_labels(&elements),
+        icons: row_icons(&elements),
         buttons: drawn_buttons(&elements),
         sidebar: super::sidebar::Gaps::drawn(&elements),
         lists,
