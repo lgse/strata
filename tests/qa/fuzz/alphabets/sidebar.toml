@@ -1,0 +1,112 @@
+# The sidebar's alphabet (A3): what a user does to the sidebar and the header's toggle in
+# Columns on the canonical fixture, by the keys, clicks, drags and menus GTK's sidebar and
+# the Rune sidebar both take today: the width toggle by Ctrl+B and by its button, the
+# built-in places reordered by drag, the rows' context menus by right-click and the Menu key,
+# Unpin from them, and the keyboard walked into the sidebar, along it, up into the header and
+# back down, between the rows and out to the files.
+#
+# What a replay can see of the sidebar is what it leaves in `settings.toml` (the width step,
+# `sidebar_order`, `sidebar_show_*`), its menus (`app.menu`), and the files losing the
+# keyboard to it and taking it back (`app.focused`, `app.panes[].focused`).
+#
+# Type to search is off (the header's `prefs`), so h, j, k and l are the arrows, as GTK reads
+# them then.
+#
+# The keyboard comes in by Tab from the files to the header's toggle, then Down
+# (`top_bar_navigation`): Left of the fixture's own column is its parent, /tmp, outside the
+# fixture, so Left from the files never reaches the sidebar here.
+#
+# Left out, with why:
+# - Return, Space and a click on a row: every built-in place (Home, Trash, Network, Desktop)
+#   is outside the fixture, and opening one ends the replay. So is Return on a crumb that the
+#   header's arrows reach.
+# - Pins, the PINNED heading and its collapse: the bookmarks file is outside the fixture, and
+#   no header key seeds it.
+# - Empty Trash…: the Trash is outside the fixture and holds nothing a replay put there.
+# - Ctrl+Shift+B, GTK's `focus_sidebar`: no command takes it on Rune yet.
+# - The rows' other menu rows (Open in New Tab, Connect to server…, Customize…, Properties):
+#   other packages' commands, inert on Rune, and opening a dialog or a tab outside the area.
+# - Left from the files: see above.
+# - A row dropped on itself: a click on it, which opens its place (see the drags below).
+area = "sidebar"
+version = 1
+about = "Columns on the canonical fixture, type to search off: the sidebar's width toggle by Ctrl+B and its button, built-in places reordered by drag, the rows' context menus by right-click and the Menu key with Unpin and dismissal, and the keyboard taken into the sidebar from the header, along its rows and the header, and back to the files"
+header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
+
+[[action]]
+name = "toggle-key"
+weight = 6
+steps = ['{"key":"ctrl+b"}']
+
+[[action]]
+name = "toggle-click"
+weight = 3
+steps = ['{"click":{"named":"Toggle sidebar (Ctrl+B)","within":{"window":true}}}']
+
+# A drop on the upper or lower part of another row, as `builtin-places-reorder-survive-restart`
+# drops; skipped while the sidebar shows either row not (hidden, or a place unpinned). The rows
+# dragged and dropped on come from lists that share none: a row dropped on itself is a click on
+# it, which opens a place outside the fixture.
+[[action]]
+name = "reorder"
+weight = 2
+steps = ['{"drag":{"from":{"sidebar":"<from>"},"from_at":["50%","50%"],"to":{"sidebar":"<to>"},"to_at":["50%","<half>"]},"steps":12,"when":{"all":[{"present":{"sidebar":"<from>"}},{"present":{"sidebar":"<to>"}}]}}']
+choose.from = ["Home", "Network"]
+choose.half = ["1/5", "4/5"]
+choose.to = ["Trash", "Desktop"]
+
+[[action]]
+name = "reorder-back"
+weight = 2
+steps = ['{"drag":{"from":{"sidebar":"<from>"},"from_at":["50%","50%"],"to":{"sidebar":"<to>"},"to_at":["50%","<half>"]},"steps":12,"when":{"all":[{"present":{"sidebar":"<from>"}},{"present":{"sidebar":"<to>"}}]}}']
+choose.from = ["Trash", "Desktop"]
+choose.half = ["1/5", "4/5"]
+choose.to = ["Home", "Network"]
+
+[[action]]
+name = "tab"
+weight = 3
+steps = ['{"key":"<key>"}']
+choose.key = ["Tab", "shift+Tab"]
+
+[[action]]
+name = "arrows"
+weight = 8
+steps = ['{"key":"<key>"}']
+choose.key = ["Down", "Up", "Right", "Left"]
+
+[[action]]
+name = "letters"
+weight = 2
+steps = ['{"key":"<key>"}']
+choose.key = ["j", "k", "h", "l"]
+
+[[action]]
+name = "shifted"
+weight = 2
+steps = ['{"key":"shift+<key>"}']
+choose.key = ["Down", "Up"]
+
+# The Menu key opens the focused row's menu in the sidebar, and the focused entry's in the
+# files; either way the dismissal or Unpin below may follow.
+[[action]]
+name = "menu-key"
+weight = 2
+steps = ['{"key":"Menu"}']
+
+[[action]]
+name = "right-click"
+weight = 3
+steps = ['{"click":{"sidebar":"<place>"},"button":3,"when":{"present":{"sidebar":"<place>"}}}']
+choose.place = ["Home", "Trash", "Network", "Desktop"]
+
+[[action]]
+name = "dismiss"
+weight = 3
+steps = ['{"key":"Escape","when":{"present":{"menu_item":"Properties"}}}']
+
+# Hides a place for good, so it is rare: the sidebar would otherwise empty early.
+[[action]]
+name = "unpin"
+weight = 1
+steps = ['{"click":{"menu_item":"Unpin"},"when":{"present":{"menu_item":"Unpin"}}}']
