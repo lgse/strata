@@ -12,7 +12,9 @@
 //!   entry has the keyboard the bar is the window's location owner ([`Holds::Location`]).
 //! - **Enter or Navigate** opens the typed location (`navigate_input_located`), and **Escape,
 //!   Cancel or a press elsewhere** goes back to the crumbs. The keyboard goes back to the shown
-//!   view, except after a press elsewhere, which keeps it where the press put it.
+//!   view, except after a press elsewhere, which keeps it where the press put it. A location
+//!   that could not be opened stays the entry's text: the next Ctrl+L opens on it
+//!   (`Bar::typed`).
 //!   **A crumb** opens its folder selecting the one the user came from.
 //! - **The names** are GTK's, with the keys as they are bound now ([`labels`]).
 //!
@@ -63,6 +65,12 @@ pub(crate) struct Bar {
     crumbs: Vec<Location>,
     /// The folder the trail names.
     shown: Option<Location>,
+    /// What an opened location left in the entry. GTK's entry keeps the text Enter opened
+    /// until the columns change or the view does (`set_location`, from
+    /// `sync_displayed_location`), or an edit is cancelled (`restore_location_text`); so after
+    /// a location that could not be opened, the next Ctrl+L opens on it. A location refused at
+    /// once is not kept, as GTK restores the folder's path then.
+    typed: Option<String>,
     /// The suggestions' listing in flight.
     completing: completion::Completing,
     /// Where a listing's answer comes back.
@@ -96,6 +104,23 @@ fn moves(event: &BrowserEvent) -> bool {
             | BrowserEvent::FocusChanged { .. }
             | BrowserEvent::SelectionSetChanged { .. }
     )
+}
+
+/// What makes GTK's entry name the folder again (`on_columns_truncated`, `on_column_added`
+/// and `on_columns_relocated` call `sync_displayed_location`); a reset alone does not.
+fn renames(event: &BrowserEvent) -> bool {
+    matches!(
+        event,
+        BrowserEvent::ColumnsTruncated { .. }
+            | BrowserEvent::ColumnAdded { .. }
+            | BrowserEvent::ColumnsRelocated { .. }
+    )
+}
+
+/// False: nothing drawn changes, the entry being closed.
+fn forget_typed(app: &mut App, _: &mut Tx) -> bool {
+    app.location.typed = None;
+    false
 }
 
 /// GTK's `displayed_location`. Only the Columns view shows every open column; it is told
@@ -134,7 +159,8 @@ fn follow(app: &mut App, tx: &mut Tx) -> bool {
 
 /// Ctrl+L: the entry, on the folder's path or on what was typed (`begin_location_edit`).
 fn begin(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
-    let text = app.location.trail.text.clone();
+    let bar = &app.location;
+    let text = bar.typed.clone().unwrap_or_else(|| bar.trail.text.clone());
     let polled = app.location.state.begin_edit(&text);
     intents::route(app, polled, tx);
     Outcome::Ran
@@ -149,6 +175,7 @@ impl Part for Bar {
             trail: Trail::default(),
             crumbs: Vec::new(),
             shown: None,
+            typed: None,
             completing: completion::Completing::default(),
             later: setup.later.clone(),
         }
@@ -156,6 +183,9 @@ impl Part for Bar {
 
     fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
         Some(Box::new(|event, _, heard| {
+            if renames(event) {
+                heard.then(forget_typed);
+            }
             if moves(event) {
                 heard.then(follow);
             }
@@ -165,6 +195,7 @@ impl Part for Bar {
     // `set_view_mode` calls `sync_displayed_location`: Columns names its deepest column, the
     // other views the active one.
     fn switched(app: &mut App, tx: &mut Tx) {
+        app.location.typed = None;
         follow(app, tx);
     }
 

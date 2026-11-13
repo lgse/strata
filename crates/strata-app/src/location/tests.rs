@@ -233,3 +233,99 @@ fn the_strip_shows_a_text_cursor_and_its_buttons_a_pointer() {
         },
     );
 }
+
+fn press(host: &mut Offscreen, key: Key) {
+    let event = KeyEvent {
+        key,
+        mods: Mods::default(),
+    };
+    send_key(host, event);
+    idle(host);
+}
+
+/// Ctrl+L, `text` in the entry, and Enter.
+fn submit(host: &mut Offscreen, text: &str) {
+    edit(host);
+    let text = text.to_owned();
+    act(host, move |app, _| {
+        let mut typed = rune::TextEdit::new(&text);
+        typed.focused = true;
+        app.location.state.edit = typed;
+    });
+    press(host, Key::Enter);
+}
+
+/// Escape on the error dialog.
+fn dismiss(host: &mut Offscreen) {
+    let shown = host.run_until(PATIENCE, |host| dialog_name(&host.tree()).is_some());
+    assert!(shown, "no dialog");
+    press(host, Key::Escape);
+    let closed = host.run_until(PATIENCE, |host| dialog_name(&host.tree()).is_none());
+    assert!(closed, "the dialog stayed");
+}
+
+/// The entry's text on the next Ctrl+L, with the edit then cancelled.
+fn reopened(host: &mut Offscreen) -> String {
+    edit(host);
+    let text = host.app().location.state.edit.text.clone();
+    press(host, Key::Escape);
+    text
+}
+
+/// #2380: GTK's entry keeps the text Enter opened until the columns change, so a location that
+/// could not be opened is the next Ctrl+L's text; Escape or another folder opened forgets it,
+/// and a location refused at once is never kept.
+#[test]
+fn a_location_that_could_not_be_opened_is_the_next_edits_text() {
+    hosted(
+        MODULE,
+        "a_location_that_could_not_be_opened_is_the_next_edits_text",
+        |mut host| {
+            let folder = open(&mut host);
+            let inner = folder.path().join("inner");
+            std::fs::create_dir(&inner).expect("the inner folder");
+            let path = |path: &std::path::Path| path.display().to_string();
+            let missing = path(&folder.path().join("missing"));
+
+            submit(&mut host, &missing);
+            dismiss(&mut host);
+            assert_eq!(reopened(&mut host), missing, "kept for the next Ctrl+L");
+            assert_eq!(
+                reopened(&mut host),
+                path(folder.path()),
+                "Escape forgets it"
+            );
+
+            submit(&mut host, &missing);
+            dismiss(&mut host);
+            host.app().open(Location::local(&inner));
+            let opened = host.run_until(PATIENCE, |host| {
+                host.app().location.shown == Some(Location::local(&inner))
+            });
+            assert!(opened, "the inner folder opened");
+            idle(&mut host);
+            assert_eq!(
+                reopened(&mut host),
+                path(&inner),
+                "another folder forgets it"
+            );
+
+            // One that opens is forgotten as its columns change: the entry names the folder.
+            submit(&mut host, &format!("{}/", path(folder.path())));
+            let opened = host.run_until(PATIENCE, |host| {
+                host.app().location.shown == Some(Location::local(folder.path()))
+            });
+            assert!(opened, "the folder opened again");
+            idle(&mut host);
+            assert_eq!(reopened(&mut host), path(folder.path()), "opened: not kept");
+
+            submit(&mut host, "not/absolute");
+            dismiss(&mut host);
+            assert_eq!(
+                reopened(&mut host),
+                path(folder.path()),
+                "refused at once: not kept"
+            );
+        },
+    );
+}
