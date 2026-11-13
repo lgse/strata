@@ -1325,3 +1325,43 @@ fn absurd_margins_and_steps_neither_panic_nor_overflow() {
     st.sync(v, &src, Viewport::new(10..14, Step::new(u32::MAX)));
     let _ = drain(&mut st, 0.0);
 }
+
+/// A dropped viewer's slot goes to the next viewer, fresh: however many viewers come and go,
+/// the list is no longer than the most alive at once, a reused slot carries no viewport over,
+/// and a late result for the dropped viewer's cancelled request is not held.
+#[test]
+fn a_dropped_viewers_slot_is_reused_fresh() {
+    let mut st = store(1 << 20);
+    let src = source(100, &[]);
+    let _kept = st.viewer();
+    for _ in 0..1000 {
+        let v = st.viewer();
+        st.sync(v, &src, view(0..10));
+        st.drop_viewer(v);
+        assert!(
+            st.inner.borrow().viewers.len() <= 2,
+            "no longer than the peak"
+        );
+    }
+    let _ = st.take_cancelled();
+
+    let old = st.viewer();
+    st.sync(old, &src, view(0..10));
+    let request = st.pop(0.0).expect("a request");
+    st.drop_viewer(old);
+    assert!(st.take_cancelled().contains(&request.ticket));
+
+    let new = st.viewer();
+    assert_eq!(new, old, "the slot reused");
+    assert!(!st.resync(new, &src, 2), "no viewport carried over");
+    assert!(st.pop(0.1).is_none(), "nothing wanted before it syncs");
+    st.sync(new, &src, view(50..60));
+    let late = st.complete(request.ticket, image(S4), 0.2);
+    assert_eq!(late, Landed::Dropped(Why::Cancelled));
+    assert_eq!(
+        st.state(request.key),
+        State::Empty,
+        "the late result is not held"
+    );
+    assert_eq!(st.pop(0.3).map(|r| index(r.key)), Some(50));
+}
