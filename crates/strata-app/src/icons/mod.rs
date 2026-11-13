@@ -38,6 +38,11 @@ pub(crate) struct Icons {
     /// The folder shown when the size was last set, so the part's poll can tell when another
     /// folder shows and set the size that folder follows.
     sized_for: Option<Location>,
+    /// The folder views' revision the size was last read at: a change there is read again.
+    sized_at: u64,
+    /// The size the shown folder resolved to when last read: a change of the values applies
+    /// only when this changes.
+    resolved: f32,
     /// The grid's viewer in the window's thumbnails.
     thumbs: Viewer,
     /// The metadata fills of the rows near the viewport, with the icon details the tiles show.
@@ -71,6 +76,8 @@ impl Icons {
             grid: IconsGridState::new(),
             size: size::tile_size(settings.icons_thumbnail_size),
             sized_for: None,
+            sized_at: 0,
+            resolved: size::tile_size(settings.icons_thumbnail_size),
             thumbs: Viewer::new(later, part::locate),
             fills: Fills::new(Details::All),
         }

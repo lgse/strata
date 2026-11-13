@@ -14,27 +14,31 @@
 //! - **A step** moves along C3's ladder (`Look::tiles`, GTK's `STEPS`), which keeps it between
 //!   32 and 256. **A reset** goes back to the size the folder follows: the saved default, or
 //!   GTK's 64 while folders' views are not remembered.
-//! - **Kept as GTK keeps it.** While `remember_folder_views` is off, the size is the saved
-//!   default, for every folder. While it is on, GTK keeps the size each remembered folder
-//!   chose in `folder-views.toml`; this interface does not hold that store yet, so a changed
-//!   size lasts while its folder shows, as GTK keeps it for a folder it does not remember,
-//!   and another folder shows the default.
+//! - **Kept as GTK keeps it,** by the policy both interfaces share
+//!   (`strata_desktop::settings::folder_view_policy`): while `remember_folder_views` is off
+//!   the size is the saved default, for every folder; while it is on, a remembered folder keeps
+//!   its own in `folder-views.toml` ([`crate::folder_views`]) unless it equals the default, and
+//!   a folder with no key keeps a changed size while it shows.
 
 use rune::Tx;
 use strata_components::icons_grid::{SizeCommand, SizeRequest};
+use strata_core::model::Location;
 use strata_desktop::{
     keys::{
         Map, Modifiers,
         bindings::{THUMBNAILS_LARGER, THUMBNAILS_RESET, THUMBNAILS_SMALLER},
     },
-    settings::Preferences,
+    settings::{
+        Preferences,
+        folder_view_policy::{self as policy, IconsSizeKept},
+    },
 };
 
 use super::view;
 use crate::{
     App,
     commands::{Action, Call, Keys, Outcome, Stage},
-    shell,
+    folder_views, shell,
 };
 
 /// The size commands, read at the dispatcher's `zoom_shortcut` stage (`keyboard.rs:466`),
@@ -79,46 +83,98 @@ fn apply(app: &mut App, command: SizeCommand, tx: &mut Tx) -> Outcome {
 }
 
 /// C3's request: a step's size, or the one a reset goes back to, kept as GTK keeps it.
-pub(super) fn resized(app: &mut App, request: SizeRequest, _: &mut Tx) {
-    let remembers = remembers_folder_views(app);
+pub(super) fn resized(app: &mut App, request: SizeRequest, tx: &mut Tx) {
+    let shown = shown_folder(app).cloned();
     let size = match request {
-        SizeRequest::Step { to, .. } => to,
-        SizeRequest::Reset if remembers => default_size(app),
-        // GTK's `DEFAULT_ICONS_THUMBNAIL_SIZE`, the shipped default.
-        SizeRequest::Reset => tile_size(Preferences::default().icons_thumbnail_size),
+        SizeRequest::Step { to, .. } => {
+            keep(app, shown.as_ref(), stored(to), tx);
+            to
+        }
+        SizeRequest::Reset => reset_to(app, shown.as_ref(), tx),
     };
     app.icons.size = size;
-    if !remembers {
-        let saved = stored(size);
-        shell::saved(app).change(|settings| settings.icons_thumbnail_size = saved);
+}
+
+/// Keeps a changed size where the shared policy says: the default, or the folder's own
+/// (`set_folder_icons_size`, which GTK's slider calls on every move).
+fn keep(app: &mut App, location: Option<&Location>, size: i32, tx: &mut Tx) {
+    match policy::keep_icons_size(shell::preferences(app), location, size) {
+        IconsSizeKept::Default(size) => {
+            shell::saved(app).change(|settings| settings.icons_thumbnail_size = size);
+        }
+        IconsSizeKept::Folder(key, size) => folder_views::change(
+            app,
+            |views| views.update(&key, |view| view.icons_size = size),
+            tx,
+        ),
+        IconsSizeKept::Shown => {}
     }
 }
 
-/// Another folder shows at the size it follows: the saved default, while this interface keeps
-/// no folder's own. Call it from the part's poll; C3's poll then lays the grid out at it.
+/// The size a reset goes back to, with what it keeps (`ThumbnailResize::Reset`): a remembered
+/// folder forgets its own size and follows the default; while folders' views are remembered
+/// any other folder takes the default as it is; while they are not, the default goes back to
+/// GTK's shipped 64.
+fn reset_to(app: &mut App, location: Option<&Location>, tx: &mut Tx) -> f32 {
+    let settings = shell::preferences(app);
+    let remembered = location.and_then(|location| policy::remembered_key(settings, location));
+    if let Some(key) = remembered {
+        folder_views::change(
+            app,
+            |views| views.update(&key, |view| view.icons_size = None),
+            tx,
+        );
+        return folder_size(app, location);
+    }
+    if settings.remember_folder_views {
+        return tile_size(settings.icons_thumbnail_size);
+    }
+    // GTK's `DEFAULT_ICONS_THUMBNAIL_SIZE`, the shipped default.
+    let size = Preferences::default().icons_thumbnail_size;
+    keep(app, location, size, tx);
+    tile_size(size)
+}
+
+/// Another folder shows at the size it follows, and a shown folder follows a change of the
+/// values (another process's, say) only when the size it resolves to changes, as GTK's
+/// `apply_resolved_icons_size` does: a size kept only while its folder shows stays. Call it
+/// from the part's poll; C3's poll then lays the grid out at it.
 pub(super) fn follow_folder(app: &mut App) {
+    let revision = folder_views::revision(app);
     let icons = &app.icons;
-    let shown = icons
-        .single
-        .pane
-        .listing()
-        .map(|listing| listing.location());
-    if icons.sized_for.as_ref() == shown {
+    let shown = shown_folder(app);
+    let moved = icons.sized_for.as_ref() != shown;
+    if !moved && icons.sized_at == revision {
         return;
     }
     let shown = shown.cloned();
-    let size = default_size(app);
+    let size = folder_size(app, shown.as_ref());
     let icons = &mut app.icons;
+    let resolved_anew = moved || icons.resolved != size;
     icons.sized_for = shown;
-    icons.size = size;
+    icons.sized_at = revision;
+    icons.resolved = size;
+    if resolved_anew {
+        icons.size = size;
+    }
 }
 
-fn remembers_folder_views(app: &mut App) -> bool {
-    shell::saved(app).preferences().remember_folder_views
+fn shown_folder(app: &App) -> Option<&Location> {
+    app.icons
+        .single
+        .pane
+        .listing()
+        .map(|listing| listing.location())
 }
 
-fn default_size(app: &mut App) -> f32 {
-    tile_size(shell::saved(app).preferences().icons_thumbnail_size)
+/// The size `location` shows at: its own while it is remembered, else the default
+/// (`icons_size_for`).
+fn folder_size(app: &App, location: Option<&Location>) -> f32 {
+    let views = folder_views::views(app);
+    let size = policy::icons_size_for(shell::preferences(app), location, |key| {
+        views.view(key).icons_size
+    });
+    tile_size(size)
 }
 
 /// A saved size as the grid takes it: loading holds it between 32 and 256 (`stored.rs` in

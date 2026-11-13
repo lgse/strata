@@ -13,6 +13,7 @@ use crate::{
 use strata_desktop::settings::{
     FOLDER_VIEWS_SAVE_DELAY as SAVE_DELAY, FOLDER_VIEWS_USE_SAVE_DELAY as USE_SAVE_DELAY,
     FolderViewStore as SharedStore, UnreadableAtStartup, Written,
+    folder_view_policy::{self as policy, IconsSizeKept},
 };
 // The tests name the path here.
 pub(in crate::ui) use strata_desktop::settings::folder_views_path;
@@ -94,12 +95,9 @@ impl PreferenceManager {
     /// Defaults changed while this was off can equal saved values, which are
     /// dropped when it is turned back on.
     pub(in crate::ui) fn set_remember_folder_views(&self, enabled: bool) {
-        self.preferences.borrow_mut().remember_folder_views = enabled;
-        if enabled {
-            let (sort, size) = (self.default_sort_options(), self.icons_thumbnail_size());
-            self.change_folder_views(Affects::Sorts, |views| {
-                views.prune_default_sort(sort) | views.prune_default_icons_size(size)
-            });
+        let prune = policy::set_remember_folder_views(&mut self.preferences.borrow_mut(), enabled);
+        if let Some(prune) = prune {
+            self.change_folder_views(Affects::Sorts, |views| prune.apply(views));
         }
         self.save_preferences();
     }
@@ -110,10 +108,7 @@ impl PreferenceManager {
     }
 
     fn remembered_key(&self, location: &Location) -> Option<FolderKey> {
-        if !self.remember_folder_views() {
-            return None;
-        }
-        key_for_location(location)
+        policy::remembered_key(&self.preferences.borrow(), location)
     }
 
     pub(in crate::ui) fn remembers(&self, location: &Location) -> bool {
@@ -206,33 +201,30 @@ impl PreferenceManager {
     }
 
     pub(in crate::ui) fn icons_size_for(&self, location: Option<&Location>) -> i32 {
-        location
-            .and_then(|location| self.remembered_key(location))
-            .and_then(|key| {
-                self.folder_view_store()
-                    .shared
-                    .borrow()
-                    .views()
-                    .view(&key)
-                    .icons_size
-            })
-            .unwrap_or_else(|| self.icons_thumbnail_size())
+        // `preferences` stays borrowed while the closure may load the store, which borrows
+        // only the store and starts its monitors.
+        policy::icons_size_for(&self.preferences.borrow(), location, |key| {
+            self.folder_view_store()
+                .shared
+                .borrow()
+                .views()
+                .view(key)
+                .icons_size
+        })
     }
 
     /// A folder that is not remembered keeps a changed size only while it is shown.
     pub(in crate::ui) fn set_folder_icons_size(&self, location: Option<&Location>, size: i32) {
-        let size = size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
-        if !self.remember_folder_views() {
-            self.set_icons_thumbnail_size(size);
-            return;
+        let kept = policy::keep_icons_size(&self.preferences.borrow(), location, size);
+        match kept {
+            IconsSizeKept::Default(size) => self.set_icons_thumbnail_size(size),
+            IconsSizeKept::Folder(key, size) => {
+                self.change_folder_views(Affects::IconsSizesOnly, |views| {
+                    views.update(&key, |view| view.icons_size = size)
+                });
+            }
+            IconsSizeKept::Shown => {}
         }
-        let Some(key) = location.and_then(key_for_location) else {
-            return;
-        };
-        let icons_size = (size != self.icons_thumbnail_size()).then_some(size);
-        self.change_folder_views(Affects::IconsSizesOnly, |views| {
-            views.update(&key, |view| view.icons_size = icons_size)
-        });
     }
 
     pub(in crate::ui) fn reset_folder_icons_size(&self, location: &Location) {
@@ -245,12 +237,10 @@ impl PreferenceManager {
     }
 
     pub(in crate::ui) fn set_default_icons_size(&self, size: i32) {
-        let size = size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
-        self.set_icons_thumbnail_size(size);
-        if self.remember_folder_views() {
-            self.change_folder_views(Affects::IconsSizesOnly, |views| {
-                views.prune_default_icons_size(size)
-            });
+        let prune = policy::set_default_icons_size(&mut self.preferences.borrow_mut(), size);
+        self.save_preferences();
+        if let Some(prune) = prune {
+            self.change_folder_views(Affects::IconsSizesOnly, |views| prune.apply(views));
         }
     }
 

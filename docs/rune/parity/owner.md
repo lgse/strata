@@ -177,10 +177,6 @@ comments of 2026-11-12, unless another is named.
   windows" is: from another process GTK adopts five keys only, the sort and the icon size.
   Meanwhile: one `Saving` for the file in a process, and the Rune side follows nothing
   another process saves.
-- **Where policy that spans the settings and the per-folder views lives**
-  (`set_remember_folder_views`, `set_default_sort_options`, `set_folder_icons_size`,
-  `set_default_icons_size`). Meanwhile: in `src/ui`'s wrapper, which the Rune side would
-  re-implement.
 - **Where `active_omarchy_theme` lives**: the Omarchy variant methods need it, and it is
   neither a saved value nor bookkeeping. Meanwhile: in `src/ui`.
 - **A home for the exhaustive saved-preferences fixture** before `src/ui` is deleted; the
@@ -557,6 +553,17 @@ Rulings of the owner on the parity work, oldest first.
   "Can B2 close with the folder-view timer rule left in each interface?", the owner said:
   "Close with it" (to the orchestrating session's question, 2026-11-12). Built in
   [#2262](https://github.com/lgse/strata/pull/2262).
+- **2026-11-12: the per-folder views' policy is shared.** Asked under B2 where the policy that
+  spans the settings and the per-folder views lives (`set_remember_folder_views`,
+  `set_default_sort_options`, `set_folder_icons_size`, `set_default_icons_size`), the owner
+  said: "Move it, shared" (relayed by the coordinator, 2026-11-12). So it moves into the
+  shared crate, for both interfaces. It is `strata_desktop::settings::folder_view_policy`, a
+  new file beside the moved store, which `src/ui/preferences/folder_view_settings.rs` calls:
+  the gate, where a changed size is kept, and what a new default prunes. That the sort's share
+  goes there when [A10](packages/A10.md) needs it is the package's reading, not the owner's
+  words. The timer rule stays in each interface, by the ruling above; the Rune side's is
+  `crates/strata-app/src/folder_views.rs`. Moved by [A1](packages/A1.md)'s pull request
+  [#2281](https://github.com/lgse/strata/pull/2281).
 - **2026-11-12: shared scenarios written during parity work stay on `strata-next`.** Asked
   whether parity-written shared scenarios stay on `strata-next` only, the coordinator's
   ruling, the owner said: "Yep I agree." So such a scenario is written on `strata-next`, with

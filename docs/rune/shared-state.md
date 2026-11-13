@@ -20,7 +20,7 @@ the files on disk keep their format and their place.
 
 | Store | State | Shared part | What `src/ui` keeps |
 | --- | --- | --- | --- |
-| Per-folder views | Moved: the model, the file code, and the store that holds the values and the bookkeeping of a write. When a write is scheduled, the monitors, the values of folders in the trash, the manager's methods and the notices have not | `strata_desktop::settings::folder_views`, `settings::folder_view_file` and `settings::FolderViewStore` | `src/ui/preferences/folder_view_settings.rs`: a wrapper around the store with the timer, the monitors and the trashed values, and the manager's methods |
+| Per-folder views | Moved: the model, the file code, the store that holds the values and the bookkeeping of a write, and the size's policy (the gate, where a changed size is kept, what a new default prunes). When a write is scheduled, the monitors, the values of folders in the trash, the sort's policy, the manager's methods and the notices have not | `strata_desktop::settings::folder_views`, `settings::folder_view_file`, `settings::FolderViewStore` and `settings::folder_view_policy` | `src/ui/preferences/folder_view_settings.rs`: a wrapper around the store with the timer, the monitors and the trashed values, and the manager's methods |
 | Tab sessions | Moved, whole | `strata_desktop::tabs_session` | One import in `src/ui/mod.rs`. When to save and how to restore stay in `src/ui/window/composition/tabs.rs` |
 | Key catalog | Moved, behind a backend seam: the key and modifier types, the catalog, the command registry and `Keymap`, `KeyPress` and its normalizer, the alias rewrite and the labels. Reading a GDK event, GTK's own effect for an alias, capture, composition and the conflict check have not | `strata_desktop::keys` | `src/ui/keys/`: the reader and the old names (`mod.rs`), the GDK backend, and `alias.rs`, `capture.rs`, `composition.rs` and `conflicts.rs` with every test |
 | `PreferenceManager` | The save bookkeeping moved, and resolving the saved keymap. The manager, its getters and setters, its bindings and its notices have not, by the owner's ruling of 2026-11-12 ([`parity/owner.md`](parity/owner.md#ruled)) | The schema, from V5b, `strata_desktop::settings::Saving` and `settings::resolve_keymap` | `src/ui/preferences.rs` and the files under it, with `persistence.rs` as the wrapper around `Saving` and `keymap.rs` calling `resolve_keymap` |
@@ -133,15 +133,37 @@ for it and give the same order to any other interface.
 ([`parity/owner.md`](parity/owner.md#ruled)): GTK keeps its GLib timer, and a Rune part arms
 its own from its loop, with the two delays above.
 
-**What the store does not carry is the policy around the values**, which stays in the
-manager's methods and is the Rune side's to meet when a package needs it
-([`parity/packages/A8.md`](parity/packages/A8.md), [`A10.md`](parity/packages/A10.md)):
+**What the store does not carry is the policy around the values.** By the owner's ruling
+of 2026-11-12 ([`parity/owner.md`](parity/owner.md#ruled)) it is shared:
+`settings/folder_view_policy.rs` is a new file beside the store, and the GTK manager's
+methods call it. It holds, for the icon size:
 
 - the gate: a folder's saved view is read and written only while `remember_folder_views`
   is on (`remembered_key`), and only for a location `key_for_location` gives a key;
-- what is stored: a sort or a size equal to the default is not stored, and a change of a
-  default prunes the values that now equal it;
-- what follows a folder that is renamed, moved, trashed, restored or found deleted.
+- what is stored: a size equal to the default is not stored, and with folders' views off a
+  changed size is the default (`keep_icons_size`, `IconsSizeKept`);
+- what a change of a default prunes: the values that now equal it, and on turning folders'
+  views back on the sorts and sizes that came to equal the defaults (`Prune`).
+
+Its functions take `Preferences` and say what follows for the views, and read the views
+only through a callback for a folder that is remembered, so an interface loads its store as
+lazily as it likes: GTK only for a remembered folder, as before. Saving `settings.toml` and
+scheduling the write stay the caller's. Four tests in `settings/folder_view_policy/tests.rs`
+hold it.
+
+Still in the manager's methods: the sort's policy (`resolve_folder_sort`,
+`set_folder_sort_options`, `reset_folder_sort`, `set_default_sort_options`), which goes
+beside the size's when [`A10.md`](parity/packages/A10.md)'s per-folder sort needs it
+(`Prune` already prunes a sort), and what follows a folder that is renamed, moved, trashed,
+restored or found deleted.
+
+**The Rune side's store** is `crates/strata-app/src/folder_views.rs`: the process's one
+`FolderViewStore`, held by the window and loaded with it, its timer stamped with the window's
+clock (`Tx::clock`) when the write is asked and fired from the poll, the
+three-step settling of a write, the write at exit, once, from `on_close` or `on_quit` (a quit
+runs no `on_close`), and a file monitor that rereads and adopts what another process saved,
+once more when it is live. The notices are logged only, since that
+interface has none yet.
 
 Six tests in `settings/folder_view_store/tests.rs` hold the protocol, each in a process of
 its own, with a write's result polled by hand: a change counts as saved when its write is
@@ -157,7 +179,7 @@ and a write that finds another process saving is still owed.
   of trashed folders.
 - **`schedule_folder_views_write` with its timer,** line for line.
 - **Every `PreferenceManager` method:** the ones that resolve a folder's sort and change the
-  values, with the policy above, and the ones that start a write and take its result, adopt
+  values, calling the shared policy for the size, and the ones that start a write and take its result, adopt
   what a monitor found, publish the change to bindings and show the notices. They call the
   store where they held the values.
 
@@ -659,6 +681,7 @@ Where each file is:
 | New code from `main` in that file, or in `src/ui/preferences.rs`, that uses an import the moves dropped: `fs`, `io`, `PathBuf`, `file_stamp`, `lock_saves`, `read_state_file`, `FolderViewsSave`, `load_folder_views`, `save_folder_views`, `libc` | It merges clean and does not build. Code that reads or writes the file belongs in `folder_view_file.rs`, and code that keeps the values or settles a write in `folder_view_store.rs`: apply it there. Code that is GTK's own stays, with its import put back |
 | New code from `main` that reads `store.views` or `store.load_failure` | It merges clean and does not build: read through the store, as the row above says |
 | In that file on `main`: `FILE_NAME`, `EXIT_LOCK_WAIT`, `folder_views_path`, the read in `FolderViewStore::load`, `FolderViewsSave`, `save_folder_views` | `crates/strata-desktop/src/settings/folder_view_file.rs`. A change from `main` to one of them conflicts in `folder_view_settings.rs`, against lines that are gone, and is applied to the new file by hand |
+| In that file on `main`: the bodies of `remembered_key`, `icons_size_for`, `set_folder_icons_size`, `set_default_icons_size` and `set_remember_folder_views` | Their policy is `crates/strata-desktop/src/settings/folder_view_policy.rs` (`remembered_key`, `icons_size_for`, `keep_icons_size`, `set_default_icons_size`, `set_remember_folder_views`, `Prune`), which both interfaces call; the five methods now call it. A change from `main` to one of them conflicts in `folder_view_settings.rs`. A change to the policy (the gate, the clamp, a size equal to the default, what is pruned) is applied to the new file by hand; a change to what GTK does around it (loading the store, saving `settings.toml`, `change_folder_views` and what it publishes, the timer) stays in the wrapper |
 | `src/ui/preferences/trashed.rs` | The same file as on `main` |
 | `src/ui/tabs_session.rs`, `tabs_session/tests.rs` | The file of the same name under `crates/strata-desktop/src/` |
 | `mod tabs_session;` in `src/ui/mod.rs` | `use strata_desktop::tabs_session;` in the same file |

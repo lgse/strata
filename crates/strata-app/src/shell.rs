@@ -30,6 +30,7 @@ use strata_platform::csd::{self, Csd};
 use crate::{
     App, Built, PARTS,
     commands::{self, Live, On},
+    folder_views,
     settings::Saved,
     slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, Slot, View},
     startup::UiThread,
@@ -87,6 +88,8 @@ pub(crate) struct Window {
     /// The window's decoded thumbnails, which every view that draws them reads, each through
     /// a viewer of its own ([`crate::thumbnails`] has the render pool, one per process).
     thumbnails: ThumbnailStore,
+    /// The per-folder views, one store for the process ([`crate::folder_views`]).
+    folder_views: folder_views::Kept,
 }
 
 /// The window's own share of an event: the columns or the active one changed, so the window
@@ -161,6 +164,7 @@ impl App {
         let built = Built::new(&setup);
         let keys = Live::registered(saved, first_window_reports().as_deref());
         let thumbnails = thumbnail_store(saved);
+        let folder_views = folder_views::Kept::load(later.clone());
         let window = Window {
             settings,
             events,
@@ -174,6 +178,7 @@ impl App {
             labels: Labels::translated(),
             applied: (0, 0),
             thumbnails,
+            folder_views,
         };
         Self::assemble(Look::fallback(true), browser, window, built)
     }
@@ -257,6 +262,11 @@ pub(crate) fn saved(app: &mut App) -> &mut Saved {
     &mut app.window.settings
 }
 
+/// The saved settings as they are now, for a build or a reader that does not change them.
+pub(crate) fn preferences(app: &App) -> &strata_desktop::settings::Preferences {
+    app.window.settings.preferences()
+}
+
 /// The GTK window's rule (`src/ui/window/composition/tabs.rs`): the folder, then the name.
 fn title_for(location: Option<&Location>) -> String {
     location.map_or_else(
@@ -282,6 +292,14 @@ impl Window {
     /// The window's thumbnails, for a view's handlers: borrow this field with the view's own.
     pub(crate) fn thumbnails_mut(&mut self) -> &mut ThumbnailStore {
         &mut self.thumbnails
+    }
+
+    pub(crate) fn folder_views(&self) -> &folder_views::Kept {
+        &self.folder_views
+    }
+
+    pub(crate) fn folder_views_mut(&mut self) -> &mut folder_views::Kept {
+        &mut self.folder_views
     }
 }
 
@@ -519,6 +537,7 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
 /// nothing is left in the queue for a frame that may not come.
 pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let mut ran = settle(app, tx);
+    folder_views::poll(app, clock, tx);
     let parts = app.window.parts;
     for part in parts.active() {
         ran |= (part.poll)(app, clock, tx);

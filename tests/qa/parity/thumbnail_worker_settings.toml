@@ -3,6 +3,20 @@
 # The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
 
 [[run]]
+scenario = "icons-thumbnail-size-keys-saved"
+run = "icons-default"
+package = "A1"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "icons-thumbnail-size-keys-saved"
+run = "icons-remembered"
+package = "A1"
+status = "required"
+host = "offscreen"
+
+[[run]]
 scenario = "thumbnail-workers-spin-button-persists"
 run = "columns"
 package = "A1"
