@@ -151,9 +151,8 @@ blocker = "H3: lgse/strata#2254, the `middle_visible` note looks for a scroll pa
 scenario = "return-restores-nested-scroll"
 run = "list"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A1: the viewport a folder had, restored on Back and Up, at `moved` on line 22. A1's plan takes it with this scenario's Icons run (its pull request 3); it belongs in the shared `Pane`, so it is a `contract` change to `pane.rs`"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "select-all-selects-every-entry"
