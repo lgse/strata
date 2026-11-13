@@ -71,16 +71,15 @@ scenario = "scrolled-away-crumbs-and-columns-stay-reachable"
 run = "columns"
 package = "A5"
 status = "pending"
-reason = "scope"
-blocker = "A5: `select` of an entry in a column scrolled out of view, on line 22, before any crumb step; not yet placed"
+reason = "harness"
+blocker = "H3: `select` of an entry in a column scrolled out of view, on line 22, before any crumb step; H3's planned second pull request scrolls a clipped target into view on Rune (`Backend::scroll`, `scroll_position`)"
 
 [[run]]
 scenario = "sidebar-place-navigates"
 run = "columns"
 package = "A5"
-status = "pending"
-reason = "scope"
-blocker = "A3: the sidebar, at `click` on its Home place on line 3"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "typed-path-navigates"
