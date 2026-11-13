@@ -34,7 +34,7 @@ use strata_kit::{icons::IconName, look::Look};
 use strata_platform::csd::{self, Csd};
 
 use crate::{
-    App, Built, PARTS,
+    App, Built, PARTS, buttons,
     commands::{self, Live, On},
     folder_views,
     location::labels::with_keys,
@@ -453,10 +453,11 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
             })
             .build(&look.kit)
             .key(format!("header-{}", button.key));
-        match face.checked {
+        let action = match face.checked {
             Some(on) => action.checked(on),
             None => action,
-        }
+        };
+        buttons::on_return(action)
     };
     let header = Header::new("header", look).leading(action(&LEADING));
     let header = match location {

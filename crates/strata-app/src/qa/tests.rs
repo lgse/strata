@@ -21,6 +21,7 @@ use crate::{
     test_support::{fixture, in_own_process},
 };
 
+mod ready;
 mod rename;
 mod scroll;
 
@@ -28,11 +29,22 @@ const INPUT_LOG: &str = "STRATA_INPUT_LOG";
 
 /// Runs the test `name` of this module on the QA mode's own host, in a process of its own.
 fn staged(name: &str, input_log: Option<PathBuf>, run: impl FnOnce(Rune)) {
+    staged_after(name, input_log, || {}, run);
+}
+
+/// As [`staged`], with `prepare` run in the test's own process before the settings are read.
+fn staged_after(
+    name: &str,
+    input_log: Option<PathBuf>,
+    prepare: impl FnOnce(),
+    run: impl FnOnce(Rune),
+) {
     let log: Vec<_> = input_log
         .iter()
         .map(|path| (INPUT_LOG, path.as_os_str()))
         .collect();
     in_own_process(&format!("qa::tests::{name}"), &log, || {
+        prepare();
         let settings = startup::load_settings();
         let ui = UiThread::claim().expect("the UI thread");
         let host = Offscreen::sized(ui, settings, SIZE).without_animations();
