@@ -44,7 +44,7 @@ mod listings;
 mod mirror;
 mod part;
 mod selection;
-mod thumbs;
+pub(crate) mod thumbs;
 mod view;
 
 pub(crate) use selection::Input;

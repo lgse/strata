@@ -34,11 +34,14 @@ pub(super) fn table(app: &App) -> ListTable<App> {
 
 /// The pane's collection, with the rows the viewport shows recorded for the fills.
 fn base(app: &App) -> Collection<App> {
-    single::collection::<List>(app).on_visible(|app: &mut App, range| {
-        // Recorded only: the part asks for the fills once a poll.
-        app.list.fills.see(range);
-        false
-    })
+    single::collection::<List>(app)
+        .icon(app.list.thumbs.icon(&app.look))
+        .on_visible(|app: &mut App, range| {
+            // Recorded only: the part asks for the fills and syncs the thumbnails once a poll.
+            app.list.fills.see(range.clone());
+            app.list.thumbs.see(range);
+            false
+        })
 }
 
 /// The collection with the table's parts: what the poll ticks.
@@ -48,6 +51,7 @@ pub(super) fn ticked(app: &App) -> Collection<App> {
 
 /// The view: the pane's group around the table.
 pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+    app.list.thumbs.set_scale(frame.cx.env().scale);
     let table = table(app).build(app, base(app), frame.layer);
     Some(single::group::<List>(app, table))
 }

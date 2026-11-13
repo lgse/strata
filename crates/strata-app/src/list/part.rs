@@ -95,7 +95,7 @@ impl Part for List {
     });
 
     fn new(setup: &Setup<'_>) -> Self {
-        Self::with_settings(setup.settings)
+        Self::with_settings(setup.settings, setup.later.clone())
     }
 
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {
@@ -110,6 +110,7 @@ impl Part for List {
         let said = single::poll::<Self>(app, clock, tx);
         let ticked = view::ticked(app).tick(app, tx);
         fill(app);
-        ticked | said | redate(app, clock, tx)
+        let pruned = super::thumbs::poll(app, clock);
+        ticked | said | pruned | redate(app, clock, tx)
     }
 }
