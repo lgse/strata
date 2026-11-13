@@ -7,7 +7,7 @@ use std::{collections::HashMap, fmt::Write as _, rc::Rc};
 
 use serde_json::Value;
 use strata_components::{collection::element::row_key, contract::EntryId};
-use strata_qa::{Mark, Rect};
+use strata_qa::{Mark, Orientation, Rect, Scroll};
 
 use super::roles;
 
@@ -84,6 +84,50 @@ pub(super) struct Drawn {
     pub(super) labels: Vec<NameLabel>,
 }
 
+/// How far a scroll view has scrolled, how far it can, and how much it shows: along x, then
+/// y, in points.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct Scrolled {
+    pub(super) offset: [f64; 2],
+    pub(super) max: [f64; 2],
+    pub(super) page: [f64; 2],
+}
+
+/// Less than this far to go is nowhere: Rune's tree rounds to a tenth of a point.
+const SCROLLS_AT_LEAST: f64 = 0.5;
+
+impl Scrolled {
+    fn axis(along: Orientation) -> usize {
+        match along {
+            Orientation::Horizontal => 0,
+            Orientation::Vertical => 1,
+        }
+    }
+
+    fn scrolls(&self, axis: usize) -> bool {
+        self.max[axis] >= SCROLLS_AT_LEAST
+    }
+
+    pub(super) fn along(&self, along: Orientation) -> Scroll {
+        let axis = Self::axis(along);
+        Scroll {
+            value: self.offset[axis],
+            page: self.page[axis],
+            scrollable: self.scrolls(axis),
+        }
+    }
+
+    /// Where the scroll bar GTK would show stands: a scrolled window shows the vertical one
+    /// when its content is taller than it, else the horizontal one when it is wider, else
+    /// none.
+    pub(super) fn bar(&self) -> Option<f64> {
+        [1, 0]
+            .into_iter()
+            .find(|axis| self.scrolls(*axis))
+            .map(|axis| self.offset[axis])
+    }
+}
+
 /// One node as Rune reports it.
 #[derive(Debug, Default)]
 pub(super) struct Seen {
@@ -105,6 +149,8 @@ pub(super) struct Seen {
     /// A text field's selection as Rune reports it: the line and the place in it of the end
     /// that stays, then of the end that moves, which is the caret.
     pub(super) selection: Option<[u64; 4]>,
+    /// A scroll view's offsets and limits.
+    pub(super) scroll: Option<Scrolled>,
     pub(super) mark: Option<Mark>,
 }
 
@@ -172,6 +218,30 @@ fn bounds(node: &Value) -> Option<Rect> {
         y: y.as_f64()?,
         width: width.as_f64()?,
         height: height.as_f64()?,
+    })
+}
+
+/// What a scroll view reports. Rune's tree gives its offsets and how far it scrolls down
+/// (`"scroll": [x, y, y_max]`), and no horizontal limit: that is how far its content's box,
+/// the union of its children's, reaches past its own. The content is laid out whole, only its
+/// rows are mounted lazily, and those scroll down.
+fn scrolled(node: &Value) -> Option<Scrolled> {
+    let [x, y, down] = node["scroll"].as_array()?.as_slice() else {
+        return None;
+    };
+    let own = bounds(node)?;
+    let children = node["children"].as_array().map_or(&[][..], Vec::as_slice);
+    let boxes = children.iter().filter_map(bounds);
+    let (left, right) = boxes.fold(
+        (f64::INFINITY, f64::NEG_INFINITY),
+        |(left, right), child| (left.min(child.x), right.max(child.x + child.width)),
+    );
+    let across = (right - left - own.width).max(0.0);
+    let x = x.as_f64()?;
+    Some(Scrolled {
+        offset: [x, y.as_f64()?],
+        max: [across.max(x), down.as_f64()?],
+        page: [own.width, own.height],
     })
 }
 
@@ -303,6 +373,7 @@ impl Snapshot {
             bounds: bounds(value),
             active_descendant: value["activeDescendant"].as_str().map(str::to_owned),
             selection: selection(value),
+            scroll: scrolled(value),
             mark: None,
         });
         let children = value["children"].as_array().map_or(&[][..], Vec::as_slice);

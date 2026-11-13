@@ -53,8 +53,8 @@ fn a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else() {
     let drawn = Drawn {
         view: Some(COLUMNS),
         lists: vec!["columns-col-1".to_owned()],
-        columns: Vec::new(),
         labels: labels.to_vec(),
+        ..Drawn::default()
     };
     let snapshot = Snapshot::read(&tree, &drawn);
 
@@ -111,7 +111,7 @@ fn drawn_folder() -> Drawn {
         view: Some(COLUMNS),
         lists: vec![column.list.clone()],
         columns: vec![column],
-        labels: Vec::new(),
+        ..Drawn::default()
     }
 }
 
@@ -193,8 +193,7 @@ fn entries_of(tree: &serde_json::Value, list: &str) -> Vec<String> {
     let drawn = Drawn {
         view: Some(LIST),
         lists: vec![list.to_owned()],
-        columns: Vec::new(),
-        labels: Vec::new(),
+        ..Drawn::default()
     };
     let snapshot = Snapshot::read(tree, &drawn);
     (0..)
@@ -235,4 +234,91 @@ fn a_groups_header_is_not_an_entry() {
                     { "role": "row", "key": "row-4", "name": "todo.txt" } ] } ] } ] } ] });
 
     assert_eq!(entries_of(&tree, "list"), ["archive", "todo.txt"]);
+}
+
+/// A scroll view as Rune's tree reports it: its box, its offsets and how far it scrolls down,
+/// and its content's box.
+fn scroll_view(scroll: [f64; 3], own: [f64; 4], content: [f64; 4]) -> serde_json::Value {
+    json!({
+        "role": "window",
+        "children": [{
+            "role": "scroll-view",
+            "scroll": scroll,
+            "bounds": own,
+            "children": [{ "role": "group", "bounds": content }],
+        }],
+    })
+}
+
+#[test]
+fn a_scroll_views_offsets_limits_and_bar_are_read_from_the_tree() {
+    use strata_qa::{Orientation::Horizontal, Orientation::Vertical, Scroll};
+    let scroll = |value: f64, page: f64, scrollable: bool| Scroll {
+        value,
+        page,
+        scrollable,
+    };
+    // What Rune reports, then the scroll along x and along y, and the bar's position.
+    let cases = [
+        (
+            "the Columns strip, scrolled to its end",
+            scroll_view(
+                [1401.0, 0.0, 0.0],
+                [201.0, 36.0, 999.0, 724.0],
+                [-1200.0, 36.0, 2400.0, 724.0],
+            ),
+            (scroll(1401.0, 999.0, true), scroll(0.0, 724.0, false)),
+            Some(1401.0),
+        ),
+        (
+            "a column's rows, scrolled down: the content's box is only the mounted rows",
+            scroll_view(
+                [0.0, 1397.0, 1397.0],
+                [900.0, 77.0, 300.0, 683.0],
+                [900.0, -1294.0, 300.0, 2054.0],
+            ),
+            (scroll(0.0, 300.0, false), scroll(1397.0, 683.0, true)),
+            Some(1397.0),
+        ),
+        (
+            "a strip at its start, wider than it shows",
+            scroll_view(
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 400.0, 300.0],
+                [0.0, 0.0, 900.0, 300.0],
+            ),
+            (scroll(0.0, 400.0, true), scroll(0.0, 300.0, false)),
+            Some(0.0),
+        ),
+        (
+            "the sidebar, whose places fit",
+            scroll_view(
+                [0.0, 0.0, 0.0],
+                [0.0, 36.0, 201.0, 724.0],
+                [0.0, 36.0, 201.0, 136.0],
+            ),
+            (scroll(0.0, 201.0, false), scroll(0.0, 724.0, false)),
+            None,
+        ),
+    ];
+    for (case, tree, (across, down), bar) in cases {
+        let snapshot = Snapshot::read(&tree, &Drawn::default());
+        let view = snapshot.at(1).expect("the scroll view");
+        let scrolled = view.scroll.expect("a scroll view's offsets");
+        assert_eq!(
+            (scrolled.along(Horizontal), scrolled.along(Vertical)),
+            (across, down),
+            "{case}"
+        );
+        assert_eq!(scrolled.bar(), bar, "{case}");
+    }
+
+    let plain =
+        json!({ "role": "window", "children": [{ "role": "group", "bounds": [0, 0, 10, 10] }] });
+    let snapshot = Snapshot::read(&plain, &Drawn::default());
+    assert_eq!(
+        snapshot.at(1).map(|seen| seen.scroll),
+        Some(None),
+        "a group scrolls nothing"
+    );
 }
