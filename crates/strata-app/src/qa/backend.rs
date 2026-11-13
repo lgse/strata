@@ -21,6 +21,7 @@ use super::{
     field,
     input_log::InputLog,
     keyboard::Keyboard,
+    replaced::Replacements,
     stage::Stage,
     tree::{Kept, Node, Seen, Snapshot},
 };
@@ -43,6 +44,7 @@ pub(super) struct Rune {
     pointer: Cell<(i16, i16)>,
     quitting: Cell<bool>,
     log: InputLog,
+    replacements: Rc<Replacements>,
 }
 
 fn modifier_name(modifier: Modifier) -> &'static str {
@@ -56,7 +58,9 @@ fn modifier_name(modifier: Modifier) -> &'static str {
 
 impl Rune {
     pub(super) fn new(host: Offscreen, log: InputLog) -> Self {
+        let replacements = Replacements::watch(&host.app().browser);
         Self {
+            replacements,
             stage: RefCell::new(Stage::new(host)),
             keyboard: RefCell::default(),
             pointer: Cell::new((0, 0)),
@@ -323,10 +327,19 @@ impl Backend for Rune {
     }
 
     fn keep(&self, node: &Node) -> Kept {
-        self.snapshot().keep(node)
+        self.snapshot().keep(node).as_of(self.replacements.now())
     }
 
+    /// A row its column has been replaced in since is another row, as on GTK.
     fn recall(&self, kept: &Kept) -> Option<Node> {
+        let replaced = kept.entry().is_some_and(|entry| {
+            let stage = self.stage.borrow();
+            self.replacements
+                .replaced_since(stage.app(), entry, kept.since())
+        });
+        if replaced {
+            return None;
+        }
         self.snapshot().recall(kept)
     }
 

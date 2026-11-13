@@ -319,6 +319,12 @@ pub(crate) fn id_of(app: &App, location: &Location) -> EntryId {
     app.window.ids.of(location)
 }
 
+/// The id the entry at `location` has been given, if any, without issuing one.
+#[cfg(feature = "qa")]
+pub(crate) fn known_id(app: &App, location: &Location) -> Option<EntryId> {
+    app.window.ids.known(location)
+}
+
 /// The keyboard leaves the shown view at its start, as Left in the first column asks: the
 /// sidebar takes it. False when there is no sidebar, or none that can take it, and the
 /// keyboard stays where it is.
