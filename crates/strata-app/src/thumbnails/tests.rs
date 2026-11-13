@@ -126,8 +126,9 @@ struct Case {
     /// Cache reads running, and waiting.
     reading: usize,
     reads: usize,
-    /// Renders waiting, in order.
+    /// Renders waiting, in order, the first `cancelled` of them abandoned.
     renders: Vec<Kind>,
+    cancelled: usize,
     room: usize,
     starts: Option<Started>,
 }
@@ -142,6 +143,7 @@ impl Case {
             reading: 0,
             reads: 0,
             renders: vec![],
+            cancelled: 0,
             room,
             starts,
         }
@@ -149,7 +151,7 @@ impl Case {
 }
 
 fn pool_cases() -> Vec<Case> {
-    use Kind::{Image, Pdf, RenderedModel};
+    use Kind::{Image, Pdf};
     let render = |kind| Some(Started::Render(kind));
     vec![
         Case {
@@ -176,6 +178,15 @@ fn pool_cases() -> Vec<Case> {
             renders: vec![Pdf],
             ..Case::idle("one worker takes a heavy kind", 1, READERS, render(Pdf))
         },
+    ]
+}
+
+/// The pool's cases past the render limits: the STL rule, the readers, the queue's bound and
+/// a job cancelled while it waits, which `Pool::next` drops before any worker takes it.
+fn queue_cases() -> Vec<Case> {
+    use Kind::{Image, Pdf, RenderedModel};
+    let render = |kind| Some(Started::Render(kind));
+    vec![
         Case {
             running: vec![RenderedModel],
             renders: vec![RenderedModel, Image],
@@ -212,13 +223,23 @@ fn pool_cases() -> Vec<Case> {
             renders: vec![Image; 64],
             ..Case::idle("the queue full", 1, 0, None)
         },
+        Case {
+            renders: vec![Pdf, Image],
+            cancelled: 1,
+            ..Case::idle(
+                "a cancelled waiting render never reaches a worker",
+                2,
+                READERS,
+                render(Image),
+            )
+        },
     ]
 }
 
 /// The pool's limits, as GTK's `jobs.rs` sets them.
 #[test]
 fn the_pool_starts_what_its_limits_allow() {
-    for case in pool_cases() {
+    for case in pool_cases().into_iter().chain(queue_cases()) {
         let mut pool = Pool::default();
         for kind in &case.running {
             pool.count(*kind, true);
@@ -228,6 +249,9 @@ fn the_pool_starts_what_its_limits_allow() {
             .extend((0..case.reads).map(|_| queued(Kind::Image)));
         pool.renders
             .extend(case.renders.iter().map(|kind| queued(*kind)));
+        for queued in pool.renders.iter().take(case.cancelled) {
+            queued.job.cancellation.cancel();
+        }
 
         assert_eq!(pool.room(case.limit), case.room, "{}: room", case.name);
         let started = pool.next(case.limit).map(|start| match start {
@@ -283,4 +307,72 @@ fn a_viewer_fitted_to_fewer_parts_leaves_none_behind() {
         );
         let _ = viewer.take_requests(&mut store, f64::from(round));
     }
+}
+
+/// A folder's rows as the browser first lists them, `photo-<n>.png` with no time or size, or
+/// as a fill completes them.
+fn photos(filled: bool, ids: &crate::slots::Ids) -> Vec<crate::listing::Row> {
+    use strata_core::model::{EntryKind as Kind, FileEntry, Location, MetadataValue};
+    (0..3)
+        .map(|index| {
+            let name = format!("photo-{index}.png");
+            let (modified, size) = match filled {
+                true => (MetadataValue::Known(1), MetadataValue::Known(10)),
+                false => (MetadataValue::Unknown, MetadataValue::Unknown),
+            };
+            let entry = FileEntry {
+                location: Location::local(format!("/photos/{name}")),
+                thumbnail_path: None,
+                native_name: name.clone().into(),
+                display_name: name,
+                kind: Kind::File,
+                size,
+                modified_unix_seconds: modified,
+                created_unix_seconds: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
+                recent_uri: None,
+                mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unavailable,
+                is_hidden: false,
+            };
+            crate::listing::Row::of(&entry, ids)
+        })
+        .collect()
+}
+
+/// The Icons and List views ask for a folder's thumbnails, and the browser's fill lands after
+/// the first poll: the store asks once for each image and cancels nothing.
+#[test]
+fn a_fill_landing_after_the_first_poll_asks_nothing_again() {
+    use crate::listing::{Column, Edit};
+    use strata_core::model::Location;
+    let ids = crate::slots::Ids::default();
+    let mut column = Column::new(Location::local("/photos"), false, None);
+    column.apply(Edit::Replace(photos(false, &ids)));
+    let inbox = Inbox::new();
+    let mut viewer = Viewer::new(inbox.later(), |_, _| None);
+    let mut store = ThumbnailStore::new(Settings::default());
+    let _ = viewer.take_requests(&mut store, 0.0);
+    let id = viewer.id().expect("a viewer");
+    let view = Viewport::new(0..3, Step::new(64)).listing(column.version());
+    store.sync(id, &column, view);
+    for request in viewer.take_requests(&mut store, 0.0) {
+        viewer
+            .pending
+            .insert(request.ticket, Cancellation::default());
+    }
+    assert_eq!(viewer.pending.len(), 3, "one request a photo");
+
+    let filled = photos(true, &ids).into_iter().enumerate().collect();
+    column.apply(Edit::Refill(filled));
+    store.resync(id, &column, column.version());
+
+    assert!(
+        viewer.take_requests(&mut store, 0.1).is_empty(),
+        "asked again"
+    );
+    assert_eq!(viewer.pending.len(), 3, "a request cancelled");
 }
