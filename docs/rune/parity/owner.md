@@ -428,6 +428,10 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    keyboard is on. Beside A1's items 3 and 4 (Up from the first row; focus after Back,
    Forward and Up). Found by the List alphabet (#2258), whose renames start with a Down for
    it; a differential run will compare `app.focused` there. Meanwhile: Rune keeps the entry.
+5. **Which package takes the Open With chooser?** Rune has none; GTK opens its own when a file
+   has no default application, and no package of the plan covers it. The coordinator suggests
+   [A7](packages/A7.md), entry management, or a package of its own after A7. Meanwhile:
+   Return on such a file does nothing on Rune.
 
 ### Packages added later
 
