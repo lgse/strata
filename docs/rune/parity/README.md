@@ -675,14 +675,11 @@ Mutation runs are too heavy on wall-clock time to be routine verification. By th
 rule of 2026-11-12 ([`owner.md`](owner.md#ruled)), one is run only when there is a question
 whether tests are effective:
 
-- **A Rune mutation patch a package wrote or changed** is proven once, alone, by hand, since
-  `./scripts/qa-parity.sh mutations` runs every Rune patch and has no per-patch selection
-  yet. Start with the files the patch touches clean. Run its scenario on Rune unpatched
-  (`./scripts/qa-parity.sh <folder> --target rune --scenario <scenario>`) and see it pass.
-  Apply the patch (`git apply tests/qa/parity/mutations/<scenario>.patch`), run the same
-  selection and see a step fail: a build or launch failure, or a mutated tree that ran
-  nothing, is not a catch. Restore the files (`git restore -- <files>`, or `git apply -R`),
-  and see `git status --porcelain` empty before committing anything.
+- **A Rune mutation patch a package wrote or changed** is proven once, alone:
+  `./scripts/qa-parity.sh mutations <scenario>`, with the files the patch touches clean. It
+  runs the scenario's runs on Rune unpatched and sees them pass, applies the patch, sees a
+  step fail (a build or launch failure, or a mutated tree that ran nothing, is not a catch),
+  and restores the files; see `git status --porcelain` empty before committing anything.
 - **A patch that stopped applying** because the code it breaks moved, once it is refreshed.
   The check before a pull request finds one.
 - **A runner change to how a step is judged.**
