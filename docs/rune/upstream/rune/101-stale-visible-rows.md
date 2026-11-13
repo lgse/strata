@@ -19,11 +19,12 @@ Leads for a Rune-only repro, from the review of lgse/strata#2291 (by reading, at
   (`runtime/virtual/window.rs:26`): once it has sent `0..0`, nothing is sent again until the
   computed range changes, whatever the list now draws.
 - The shapes seen differed from run to run and part to part: `0..5` then `0..0` in one frame
-  with the sidebar; a first column fixed and a second column, opened later, still `0..0`
-  with the crumbs.
+  with the sidebar, and with the crumbs too; and with the crumbs, a first column fixed by
+  stopping their reveal while a second column, opened later, still reported `0..0`.
 - The workaround leans on a later `on_layout` of the list's viewport, and Rune stops layout
-  reports after four layout-only commits, so a list whose layout settles before its stale
-  report can still miss it. A repro should check the report after the layouts stop.
+  reports after four layout-only commits, until anything else commits or a scroll moves, so
+  a list whose layout settles before its stale report can still miss it until then. A repro
+  should check the report after the layouts stop.
 
 Paste from here.
 
