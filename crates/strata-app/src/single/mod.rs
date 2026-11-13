@@ -21,7 +21,9 @@
 //! - **What both build:** the base [`collection`] a view's component adds its parts to, and
 //!   the [`group`] around it, named by the folder and described as the view.
 
-use rune::{El, Tx, WheelEvent, col, text};
+use std::borrow::Cow;
+
+use rune::{El, Tx, WheelEvent, col};
 use strata_components::{
     collection::{
         element::{Activation, Collection, CollectionState, Describe, Intent},
@@ -43,7 +45,7 @@ use crate::{
     pane::{Applied, Pane},
     rename, shell,
     slots::{At, Editing, Listener, Rows, Setup},
-    surface::Surface,
+    surface::{self, Surface},
 };
 
 /// A single-pane view's state that is not its component's.
@@ -153,7 +155,7 @@ pub(crate) fn title<V: SinglePane>(app: &App) -> String {
 
 /// What the view says in place of entries while it shows none ([`status`]), and whether it
 /// draws it.
-fn status<V: SinglePane>(app: &App) -> Option<(&str, bool)> {
+fn status<V: SinglePane>(app: &App) -> Option<(Cow<'_, str>, bool)> {
     let single = V::single(app);
     single.surface.status(0, single.pane.listing()?)
 }
@@ -163,21 +165,17 @@ fn status<V: SinglePane>(app: &App) -> Option<(&str, bool)> {
 /// `src/ui/accessibility.rs`).
 fn described<V: SinglePane>(app: &App) -> String {
     match status::<V>(app) {
-        Some((status, _)) => status.to_owned(),
+        Some((status, _)) => status.into_owned(),
         None => V::single(app).entries.clone(),
     }
 }
 
 fn shown_status<V: SinglePane>(app: &App) -> Option<El> {
-    let (message, _) = status::<V>(app).filter(|(_, shown)| *shown)?;
-    let look = &app.look;
-    Some(
-        col().w_full().px(look.space.lg).py(look.space.lg).child(
-            text(message.to_owned())
-                .font(look.kit.ty.ui)
-                .color(look.kit.c.text_muted),
-        ),
-    )
+    let (said, _) = status::<V>(app).filter(|(_, shown)| *shown)?;
+    let single = V::single(app);
+    let (listing, depth) = (single.pane.listing()?, single.pane.depth()?);
+    let failed = surface::failed(listing, depth);
+    Some(surface::drawn(app, &single.surface, &said, failed))
 }
 
 fn source<V: SinglePane>(app: &App) -> (&dyn EntrySource, &CollectionState) {

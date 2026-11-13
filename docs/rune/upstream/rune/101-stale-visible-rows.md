@@ -21,6 +21,11 @@ Leads for a Rune-only repro, from the review of lgse/strata#2291 (by reading, at
 - The shapes seen differed from run to run and part to part: `0..5` then `0..0` in one frame
   with the sidebar, and with the crumbs too; and with the crumbs, a first column fixed by
   stopping their reveal while a second column, opened later, still reported `0..0`.
+- Not the view's place in the tree: with the shell's wrappers keyed so the view keeps one
+  path whether the sidebar is drawn or not (A3's sidebar pull request), and the catch-up
+  turned off, `columns::tests::fills` still fail with the sidebar mounted (checked once,
+  2026-11-13). The remount a path change caused at the sidebar's first poll is fixed there
+  on its own account.
 - The workaround leans on a later `on_layout` of the list's viewport, and Rune stops layout
   reports after four layout-only commits, until anything else commits or a scroll moves, so
   a list whose layout settles before its stale report can still miss it until then. A repro

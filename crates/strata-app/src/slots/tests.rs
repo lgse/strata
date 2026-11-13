@@ -93,7 +93,7 @@ fn view<P: Made>() -> Entry<Log> {
 fn rail() -> Sidebar<Log> {
     Sidebar {
         build: nothing,
-        focus: "rail",
+        focus: |_| "rail".to_owned(),
     }
 }
 

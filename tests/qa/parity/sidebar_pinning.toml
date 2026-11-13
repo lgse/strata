@@ -16,31 +16,34 @@ run = "columns"
 package = "A3"
 status = "pending"
 reason = "scope"
-blocker = "A3"
+blocker = "A19: a file drag from the view's rows onto the sidebar, at `drag` from an entry on line 5: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "foreign-folder-drags-validate"
 run = "columns-False-False"
 package = "A3"
 status = "pending"
-reason = "scope"
-blocker = "A3"
+host = "session"
+reason = "platform"
+blocker = "H4: a drag from another process (a GTK window on X11), which the offscreen host cannot receive; then A19 wires the sidebar's drops"
 
 [[run]]
 scenario = "foreign-folder-drags-validate"
 run = "columns-True-False"
 package = "A3"
 status = "pending"
-reason = "scope"
-blocker = "A3"
+host = "session"
+reason = "platform"
+blocker = "H4: a drag from another process (a GTK window on X11), which the offscreen host cannot receive; then A19 wires the sidebar's drops"
 
 [[run]]
 scenario = "foreign-folder-drags-validate"
 run = "columns-False-True"
 package = "A3"
 status = "pending"
-reason = "scope"
-blocker = "A3"
+host = "session"
+reason = "platform"
+blocker = "H4: a drag from another process (a GTK window on X11), which the offscreen host cannot receive; then A19 wires the sidebar's drops"
 
 [[run]]
 scenario = "pinned-rows-transfer-and-remote-gaps"
@@ -48,7 +51,7 @@ run = "columns"
 package = "A3"
 status = "pending"
 reason = "scope"
-blocker = "A3"
+blocker = "A19: a file drag from the view's rows onto the sidebar, at `drag` from an entry on line 11: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "spring-loaded-rows-keep-pin-intent"
@@ -56,7 +59,7 @@ run = "columns"
 package = "A3"
 status = "pending"
 reason = "scope"
-blocker = "A3"
+blocker = "A19: a file drag from the view's rows onto the sidebar, at `drag` from an entry on line 2: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "tenxer-pin-feedback-identifies-slot"
