@@ -178,19 +178,11 @@ impl Row {
         &self.facts
     }
 
-    #[expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )]
     pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// The browser's kind of entry, which with the name says its file type.
-    #[expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )]
     pub(crate) fn entry_kind(&self) -> Kind {
         self.entry_kind
     }

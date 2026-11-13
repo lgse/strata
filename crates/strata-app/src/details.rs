@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 //! The text a view shows of a row's [`Facts`]: the details line under an Icons tile, and the
-//! List view's size column when it comes. Shared code: both views call it, and a component
+//! List view's Mode, Size, Type and Modified cells. Shared code: both views call it, and a component
 //! gets the finished text as data. Text comes from the catalogs only: sizes through
 //! `strata_core::i18n::file_size`, the plural of "items" through `count_u64`.
 //!
@@ -65,13 +65,6 @@ pub(crate) fn icons_line(folder: bool, facts: &Facts) -> Option<String> {
 
 /// Permission bits as the List view's Mode column shows them: `drwxr-xr-x  755`
 /// (`format_permissions` in `src/ui/browser/properties.rs`).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )
-)]
 pub(crate) fn permissions(mode: u32) -> String {
     let kind = if mode & 0o170_000 == 0o040_000 {
         'd'
@@ -97,25 +90,11 @@ pub(crate) fn permissions(mode: u32) -> String {
 }
 
 /// The Mode cell: the permissions, or nothing the browser does not know (`entry_mode`).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )
-)]
 pub(crate) fn mode_cell(facts: &Facts) -> String {
     facts.mode.map(permissions).unwrap_or_default()
 }
 
 /// The Size cell: a folder's item count, else a file's size, or nothing (`entry_size`).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )
-)]
 pub(crate) fn size_cell(folder: bool, facts: &Facts) -> String {
     if folder {
         return items(facts).unwrap_or_default();
@@ -125,13 +104,6 @@ pub(crate) fn size_cell(folder: bool, facts: &Facts) -> String {
 
 /// The Modified cell: the date in the saved format, or a dash
 /// (`strata_core::util::modified_date`).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )
-)]
 pub(crate) fn modified_cell(facts: &Facts) -> String {
     match facts.modified {
         Some(seconds) => modified_date_for_seconds(seconds, DateDisplay::Preferred),
@@ -141,13 +113,6 @@ pub(crate) fn modified_cell(facts: &Facts) -> String {
 
 /// The Type cell: the MIME type's description, or the kind's in the catalogs (`entry_type`).
 /// Read for the rows drawn only: it is a MIME lookup.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )
-)]
 pub(crate) fn type_cell(folder: &Location, kind: EntryKind, name: &str) -> String {
     match entry_type_of(folder, kind, name) {
         EntryType::Known(description) => description,

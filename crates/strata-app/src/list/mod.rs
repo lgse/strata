@@ -6,9 +6,9 @@
 //! selection, the pane's. A folder opens in place, as GTK's List view opens it
 //! (`activate_in_place`).
 //!
-//! The table shows the Name column alone for now: the cells of Mode, Size, Type and Modified
-//! need text the listing does not copy yet, and their formatters are the GTK application's
-//! (`src/ui/browser_modes/metadata.rs`).
+//! The table has GTK's five columns ([`columns`]): Name, Mode, Size, Type and Modified, in the
+//! saved order and visibility, at the saved widths. What a row does not know yet (a size, a
+//! date, a mode) is asked for while it is near the viewport ([`crate::fills`]).
 
 use strata_components::{
     collection::keyboard::{KeySettings, Letters},
@@ -17,8 +17,9 @@ use strata_components::{
 use strata_core::i18n::tr;
 use strata_desktop::settings::Preferences;
 
-use crate::single::Single;
+use crate::{fills::Fills, single::Single};
 
+mod columns;
 mod part;
 mod view;
 
@@ -29,12 +30,14 @@ pub(crate) const VIEW: &str = "list";
 pub(crate) struct List {
     single: Single,
     table: ListTableState,
-    /// The columns shown, in order.
+    /// The columns shown, in order: the saved `list_column_order` and `list_hidden_columns`.
     layout: ColumnLayout,
-    /// The column widths set by hand in this window.
+    /// The column widths set by hand: the saved `browser_list_columns`.
     widths: ColumnWidths,
-    /// The Name column's heading (`list_headings.rs` in `src/ui/browser_modes`).
-    name: String,
+    /// The columns' headings (`list_headings.rs` in `src/ui/browser_modes`).
+    headings: columns::Headings,
+    /// The metadata fills of the rows near the viewport, without the Icons view's details.
+    fills: Fills,
 }
 
 /// The keys of the List table. Every row is at the pane's left edge (`at_left_edge` in
@@ -59,9 +62,10 @@ impl List {
         Self {
             single: Single::new(VIEW, clicks, keys(typing), tr("List view")),
             table: ListTableState::new(),
-            layout: view::layout(),
-            widths: ColumnWidths::default(),
-            name: view::name_heading(),
+            layout: columns::layout(settings),
+            widths: columns::widths(settings),
+            headings: columns::Headings::translated(),
+            fills: Fills::new(false),
         }
     }
 }
