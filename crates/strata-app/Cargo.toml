@@ -34,7 +34,7 @@ rune.workspace = true
 rune-kit.workspace = true
 strata-components.workspace = true
 strata-core.workspace = true
-strata-desktop.workspace = true
+strata-desktop = { workspace = true, features = ["xkb-keys"] }
 strata-fs.workspace = true
 strata-kit.workspace = true
 strata-platform = { workspace = true, features = ["csd", "glib-loop"] }
