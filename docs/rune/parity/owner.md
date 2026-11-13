@@ -452,6 +452,17 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
   2026-11-12 has none; the owner decides the rule. Source: the pull request that moved
   tracking here.
 
+### Shared scenarios written during parity work
+
+- **Should a shared scenario written on `strata-next` for parity also go to `main`?** The
+  plan writes a new shared scenario on `main` first ("Integration with `main`"), but agents
+  open no pull requests against `main`, and such a scenario earns its ledger row only with
+  Rune there. So far: `inline_renaming/rename-survives-entry-listed-above` ([A7](packages/A7.md),
+  [#2283](https://github.com/lgse/strata/pull/2283)) and
+  `thumbnail_worker_settings/icons-thumbnail-size-keys-saved` ([A1](packages/A1.md),
+  [#2281](https://github.com/lgse/strata/pull/2281)). Meanwhile, by the coordinator's ruling
+  of 2026-11-13: they stay on `strata-next` only.
+
 ### H5: Coverage-gap scenarios
 
 - **Who merges H5's pull requests.** H5 writes its scenarios on `main` first, and agents were
