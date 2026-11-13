@@ -366,8 +366,12 @@ sequence only together with the alphabet's version, so the version is part of th
   position.
 - **Reach:** of the scenarios that read the viewport, the only Icons one is this run, and none
   of the List ones is `required`: no required run passes for the wrong reason.
-- **State:** open, [H3](packages/H3.md)'s. The fix finds the collection's own viewport, a
-  descendant of the entry list, rather than the nearest ancestor.
+- **State:** fixed by [H3](packages/H3.md)'s first pull request, a `contract` change to the
+  engine: a pane's viewport is the scroll pane inside its entry list nearest it, not looking
+  inside an entry, and only when there is none the nearest one around it. GTK's lists hold
+  none and read as before; Rune's Icons grid has its viewport, and List reads its rows'
+  vertical viewport instead of the sideways strip. `return-restores-nested-scroll/icons`
+  flips when the coordinator asks.
 
 ### #2269: a `strata-platform` icon loader test failed once under load
 

@@ -88,6 +88,104 @@ fn an_entry_target_aims_at_its_row_or_at_the_part_it_names() {
     );
 }
 
+/// Where a scroll pane stands against a pane's entry list.
+#[derive(Clone, Copy, Debug)]
+enum Scroller {
+    AroundList,
+    InsideList,
+    InsideEntry,
+}
+
+/// A pane `home` whose entry `notes` is under scroll panes placed as `scrollers` say, the
+/// outermost first; and those scroll panes, in the same order.
+fn scrolled_listing(fake: &mut Fake, scrollers: &[Scroller]) -> Vec<usize> {
+    let frame = [0.0, 40.0, 400.0, 560.0];
+    let mut parent = fake.add(
+        WINDOW,
+        Node {
+            mark: Some(Mark::Pane("List")),
+            ..drawn("grouping", "home", [0.0, 0.0, 400.0, 600.0])
+        },
+    );
+    let mut panes = Vec::new();
+    let mut add_pane = |fake: &mut Fake, parent: &mut usize| {
+        *parent = fake.add(*parent, drawn("scroll pane", "", frame));
+        panes.push(*parent);
+    };
+    for _ in scrollers.iter().filter(|at| matches!(at, Scroller::AroundList)) {
+        add_pane(fake, &mut parent);
+    }
+    parent = fake.add(
+        parent,
+        Node {
+            mark: Some(Mark::EntryContainer),
+            ..drawn("list", "home", frame)
+        },
+    );
+    fake.add(parent, drawn("label", "Loading", [0.0, 40.0, 400.0, 20.0]));
+    for _ in scrollers.iter().filter(|at| matches!(at, Scroller::InsideList)) {
+        add_pane(fake, &mut parent);
+    }
+    parent = fake.add(
+        parent,
+        Node {
+            mark: Some(Mark::Entry),
+            ..drawn("list item", "notes", [0.0, 40.0, 400.0, 30.0])
+        },
+    );
+    for _ in scrollers.iter().filter(|at| matches!(at, Scroller::InsideEntry)) {
+        add_pane(fake, &mut parent);
+    }
+    panes
+}
+
+#[test]
+fn a_panes_viewport_is_the_scroll_pane_nearest_inside_its_list_else_around_it() {
+    use Scroller::{AroundList, InsideEntry, InsideList};
+    // The scroll panes, outermost first, and which of them the pane's viewport is.
+    let cases: [(&str, &[Scroller], usize); 5] = [
+        ("GTK: a scrolled window around the list", &[AroundList], 0),
+        ("a Rune collection: its viewport inside the list", &[InsideList], 0),
+        (
+            "Rune's List table: the sideways strip around, the rows' viewport inside",
+            &[AroundList, InsideList],
+            1,
+        ),
+        (
+            "two inside: the one nearest the list",
+            &[InsideList, InsideList],
+            0,
+        ),
+        (
+            "one inside an entry is the entry's own",
+            &[AroundList, InsideEntry],
+            0,
+        ),
+    ];
+    for (case, scrollers, wanted) in cases {
+        let mut fake = Fake::new();
+        let panes = scrolled_listing(&mut fake, scrollers);
+        let kept = Remembered::default();
+        let found = scope(&fake, &kept)
+            .locate_now(&target(json!({ "viewport": null })), None, Aim::Point)
+            .map(|located| located.node);
+        assert_eq!(found, Ok(panes[wanted]), "{case}");
+    }
+
+    let mut fake = Fake::new();
+    scrolled_listing(&mut fake, &[InsideEntry]);
+    let kept = Remembered::default();
+    assert_eq!(
+        scope(&fake, &kept)
+            .locate_now(&target(json!({ "viewport": null })), None, Aim::Point)
+            .map(|located| located.node),
+        Err(LookupError::Missing(
+            "the entry list has no scroll viewport".to_owned()
+        )),
+        "a list with no scroll pane of its own or around it has none"
+    );
+}
+
 #[test]
 fn a_role_target_takes_the_nth_drawn_match_inside_its_scope() {
     let mut fake = Fake::new();
