@@ -776,7 +776,6 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `locations/path-completion-dismisses-on-window-switch/columns`, whose line 6
   waits for the `label` (it is pending on [A21](packages/A21.md)'s second window as well); C6's
   suggestion list (`crates/strata-components/src/location_bar/popup.rs`).
-- **State:** open, C6's, with A5 as the package that meets it. Whether C6 should present the
-  row's text as a label inside the item, as GTK's tree has it, or the run take an `a11y` twin,
-  is the coordinator's to place; the item's name already carries the text, so a twin keeps
-  what a screen reader hears.
+- **State:** ruled by the coordinator (2026-11-14): C6 stays as it is, since a screen reader
+  hears the same name; the run takes an `a11y` twin once it can otherwise flip, after
+  [A21](packages/A21.md)'s second window. [A5](packages/A5.md)'s, or whoever flips the run.
