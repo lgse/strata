@@ -712,9 +712,29 @@ pub(super) fn on_layout<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S, r: [f32; 4],
     {
         st.reveal(&cfg.key, src, index, tx);
     }
-    if !changed {
+    let caught_up = catch_up_visible(cfg, s);
+    if !changed && !caught_up {
         tx.live_only();
     }
+}
+
+/// A list laid out with lines in view while the range Rune last reported is empty: the range
+/// from the list's own layout, for the host's `on_visible` (Rune packet entry 101, U-C1f-7).
+/// Rune can report a newly mounted list's rows as none before the list's first layout, and
+/// then not again until the rows in view change. True when the host asked to build the view.
+fn catch_up_visible<S: 'static>(cfg: &Rc<Config<S>>, s: &mut S) -> bool {
+    let (src, st) = (cfg.get_mut)(s);
+    let len = src.len();
+    if !st.visible.is_empty() || len == 0 {
+        return false;
+    }
+    let map = st.line_map(len);
+    let Some(lines) = st.lines_in_view(map.count(len)) else {
+        return false;
+    };
+    let range = map.entries_in(lines, len);
+    st.visible = range.clone();
+    cfg.on_visible.as_ref().is_some_and(|f| f(s, range))
 }
 
 /// `on_visible_rows` on the rows stack, with lines turned into entries by `map`, the map of
