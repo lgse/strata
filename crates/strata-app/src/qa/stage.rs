@@ -9,7 +9,10 @@ use std::{
 };
 
 use rune::ElementInfo;
-use strata_components::collection::element::{ICON, LABEL};
+use strata_components::{
+    collection::element::{ICON, LABEL},
+    thumbnails::GLYPH,
+};
 use strata_qa::Rect;
 
 use super::tree::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Shape, Snapshot};
@@ -56,11 +59,22 @@ fn name_labels(elements: &[ElementInfo]) -> Vec<NameLabel> {
 /// The icons the view draws in rows, each with the keys of the elements around it.
 fn row_icons(elements: &[ElementInfo]) -> Vec<RowIcon> {
     let drawn = |element: &&ElementInfo| !element.exiting && element.key.as_deref() == Some(ICON);
-    let icon = |element: &ElementInfo| RowIcon {
-        above: above(elements, element)
-            .filter_map(|outer| outer.key.clone())
-            .collect(),
-        bounds: rect(element),
+    let icon = |element: &ElementInfo| {
+        let inside = |inner: &&ElementInfo| {
+            !inner.exiting
+                && inner.key.as_deref() == Some(GLYPH)
+                && inner
+                    .parent
+                    .and_then(|parent| elements.get(parent))
+                    .is_some_and(|parent| std::ptr::eq(parent, element))
+        };
+        RowIcon {
+            above: above(elements, element)
+                .filter_map(|outer| outer.key.clone())
+                .collect(),
+            bounds: rect(element),
+            glyph: elements.iter().find(inside).map(rect),
+        }
     };
     elements.iter().filter(drawn).map(icon).collect()
 }

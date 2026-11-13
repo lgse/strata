@@ -70,8 +70,12 @@ pub(super) struct NameLabel {
 pub(super) struct RowIcon {
     /// The keys of the elements around it, the nearest first.
     pub(super) above: Vec<String>,
-    /// In window points.
+    /// The keyed element's box, in window points.
     pub(super) bounds: Rect,
+    /// The box of the glyph inside it (`strata_components::thumbnails::GLYPH`), when it holds
+    /// one. An Icons tile keys its frame, a margin around the thumbnail slot the glyph fills,
+    /// where GTK's `image` is the slot alone (`ThumbnailSlot`, `src/ui/icons_cell.rs`).
+    pub(super) glyph: Option<Rect>,
 }
 
 /// A row as the view draws it.
@@ -462,10 +466,14 @@ impl Snapshot {
         };
         let seen = Seen {
             role: "image".to_owned(),
-            bounds: Some(icon.bounds),
+            bounds: Some(icon.glyph.unwrap_or(icon.bounds)),
             ..Seen::default()
         };
         self.push(row, "@icon", seen);
+        // First among the row's children, as GTK's row holds its icon first, so an image
+        // added later, such as a badge, does not stand in for it.
+        let children = &mut self.nodes[row].children;
+        children.rotate_right(1);
     }
 
     /// The nearest entry among the elements `above` an element, by their keys.
