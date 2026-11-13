@@ -43,7 +43,7 @@ use strata_components::location_bar::{
 use strata_components::scroll::Autoscroll;
 use strata_components::sidebar::{
     DEFAULT_KEY as SIDEBAR, Device, DeviceGroup, DropSite as SideSite, ItemId, Pin, PinVerdict,
-    Place, PlacesSidebar, SidebarData, SidebarIntent, SidebarState, Unchecked,
+    Place, PlacesSidebar, SidebarData, SidebarIntent, SidebarLabels, SidebarState, Unchecked,
 };
 use strata_components::tabs::{
     BrowserTabs, BrowserTabsState, Tab, TabId, TabsData, TabsIntent, new_tab_key, tab_key,
@@ -1566,6 +1566,11 @@ pub fn view(w: &Win, cx: &mut Cx<Win>) -> El {
         pins: &w.pins,
         devices: &w.devices,
         current: None,
+        labels: SidebarLabels {
+            pinned: "PINNED",
+            devices: "DEVICES",
+            rows: |rows| format!("{rows} items"),
+        },
     };
     let sidebar = PlacesSidebar::new(&w.sidebar, |w: &mut Win| &mut w.sidebar, data)
         .dnd(wiring.binder())

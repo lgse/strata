@@ -485,6 +485,7 @@ pub fn view(g: &Gallery, cx: &mut Cx<Gallery>) -> El {
         pins: &[],
         devices: &[],
         current: Some(&ItemId::Place("home".into())),
+        labels: super::c8::LABELS,
     };
     let sidebar = PlacesSidebar::new(&d.sidebar, sidebar_state, data)
         .trash_icon(|el| dress_target(&d.fx, TRASH_TARGET, el))
