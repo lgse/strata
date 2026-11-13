@@ -205,3 +205,6 @@ fn tab_carries_a_rename_over_a_group_boundary_in_the_order_shown() {
         assert_eq!(browser_holds(&host).0, [next]);
     });
 }
+
+mod saved;
+mod thumbs;

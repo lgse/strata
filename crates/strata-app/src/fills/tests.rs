@@ -4,7 +4,7 @@ use std::{cell::RefCell, collections::HashSet, path::Path};
 
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 
-use super::{Filler, Fills};
+use super::{Details, Filler, Fills};
 use crate::{
     listing::{Column, Edit, Row},
     slots::Ids,
@@ -39,6 +39,8 @@ fn photo(index: usize) -> FileEntry {
 struct Recorder {
     entries: RefCell<Vec<FileEntry>>,
     requests: RefCell<Vec<usize>>,
+    /// Each fill's position with whether it was asked with details.
+    details: RefCell<Vec<(usize, bool)>>,
     priorities: RefCell<usize>,
 }
 
@@ -60,8 +62,9 @@ impl Filler for Recorder {
         self.entries.borrow().get(position).cloned()
     }
 
-    fn request(&self, (_, position): (usize, usize), _location: Location, _details: bool) {
+    fn request(&self, (_, position): (usize, usize), _location: Location, details: bool) {
         self.requests.borrow_mut().push(position);
+        self.details.borrow_mut().push((position, details));
     }
 
     fn prioritize(&self, _depth: usize, _near: &[Location]) {
@@ -94,7 +97,7 @@ fn a_scroll_asks_each_near_row_once_per_poll() {
     let browser = Recorder::of(1_000);
     let ids = Ids::default();
     let column = listing(&browser, &ids);
-    let mut fills = Fills::new(true);
+    let mut fills = Fills::new(Details::All);
 
     fills.see(0..20);
     fills.request(&browser, 0, &column);
@@ -141,7 +144,7 @@ fn a_row_is_asked_again_only_after_its_fill_landed() {
     let browser = Recorder::of(4);
     let ids = Ids::default();
     let column = listing(&browser, &ids);
-    let mut fills = Fills::new(true);
+    let mut fills = Fills::new(Details::All);
     fills.see(0..4);
     fills.request(&browser, 0, &column);
     assert_eq!(browser.take(), vec![0, 1, 2, 3]);
@@ -187,7 +190,7 @@ fn a_row_scrolled_out_and_back_is_asked_again() {
     let browser = Recorder::of(200);
     let ids = Ids::default();
     let column = listing(&browser, &ids);
-    let mut fills = Fills::new(true);
+    let mut fills = Fills::new(Details::All);
     fills.see(0..20);
     fills.request(&browser, 0, &column);
     assert!(browser.take().contains(&3));
@@ -203,4 +206,42 @@ fn a_row_scrolled_out_and_back_is_asked_again() {
         (0..25).collect::<Vec<_>>(),
         "every row back in the range"
     );
+}
+
+/// GTK's List asks a folder's fill with details, for its item count, and a file's without
+/// (`list_factory.rs`, `details = entry.is_directory()`); so a file that lacks only an
+/// image's dimensions is not asked for at all, and a folder that lacks only its count is.
+/// The Icons view asks every row with details.
+#[test]
+fn the_list_view_asks_a_folders_count_and_no_files_details() {
+    let known = |mut entry: FileEntry| {
+        entry.size = MetadataValue::Known(1);
+        entry.modified_unix_seconds = MetadataValue::Known(1);
+        entry.mode = MetadataValue::Known(0o644);
+        entry
+    };
+    let mut folder = known(photo(0));
+    folder.kind = EntryKind::Directory;
+    folder.listable = MetadataValue::Known(true);
+    let unread = photo(1);
+    let image = known(photo(2));
+    let browser = Recorder {
+        entries: RefCell::new(vec![folder, unread, image]),
+        ..Recorder::default()
+    };
+    let ids = Ids::default();
+    let column = listing(&browser, &ids);
+    for (details, expected) in [
+        (Details::Folders, vec![(0, true), (1, false)]),
+        (Details::All, vec![(0, true), (1, true), (2, true)]),
+    ] {
+        let mut fills = Fills::new(details);
+        fills.see(0..3);
+        fills.request(&browser, 0, &column);
+        assert_eq!(
+            std::mem::take(&mut *browser.details.borrow_mut()),
+            expected,
+            "{details:?}"
+        );
+    }
 }

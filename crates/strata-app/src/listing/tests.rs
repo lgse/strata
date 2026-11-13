@@ -217,6 +217,34 @@ fn a_grouped_listing_shows_type_groups_in_strata_fs_order_and_each_in_the_browse
     }
 }
 
+/// A grouped row read again, as a metadata fill or a change on disk reads it, keeps its group
+/// when its type did not change, and takes its new one when it did: what `group_at` reads, from
+/// which the pane builds the group headers.
+#[test]
+fn a_refilled_grouped_row_keeps_its_group_or_takes_its_new_one() {
+    let ids = Ids::default();
+    let names = ["b.txt", "a.png", "c.txt"];
+    let mut column = column(&ids, &names);
+    assert!(column.set_grouping(Some(by_name())));
+    let groups = |column: &Column| -> Vec<Option<TypeGroup>> {
+        (0..column.len())
+            .map(|index| column.group_at(index))
+            .collect()
+    };
+    let before = groups(&column);
+    let mut sized = entry("b.txt");
+    sized.size = MetadataValue::Known(12);
+
+    column.apply(Edit::Refill(vec![(0, Row::of(&sized, &ids))]));
+
+    assert_eq!(groups(&column), before, "a fill changes no group");
+    let mut renamed = entry("b.txt");
+    renamed.kind = Kind::Directory;
+    column.apply(Edit::Refill(vec![(0, Row::of(&renamed, &ids))]));
+    assert!(groups(&column).iter().all(Option::is_some));
+    assert_ne!(groups(&column), before, "a new type, a new group");
+}
+
 /// Ungrouped, nothing changes from the browser's order, no type is read and no lookup is
 /// built; turning grouping off again goes back to the browser's order.
 #[test]

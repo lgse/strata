@@ -6,21 +6,30 @@
 //! selection, the pane's. A folder opens in place, as GTK's List view opens it
 //! (`activate_in_place`).
 //!
-//! The table shows the Name column alone for now: the cells of Mode, Size, Type and Modified
-//! need text the listing does not copy yet, and their formatters are the GTK application's
-//! (`src/ui/browser_modes/metadata.rs`).
+//! The table has GTK's five columns ([`columns`]): Name, Mode, Size, Type and Modified, in the
+//! saved order and visibility, at the saved widths. What a row does not know yet (a size, a
+//! date, a mode) is asked for while it is near the viewport ([`crate::fills`]).
+//! An image's row draws its thumbnail at 18 points, from the window's store ([`thumbs`]).
 
 use strata_components::{
     collection::keyboard::{KeySettings, Letters},
     context_menu::AnchorEdge,
     list_table::{ColumnLayout, ColumnWidths, ListTableState},
 };
-use strata_core::i18n::tr;
+use strata_core::{i18n::tr, util::DateFormat};
 use strata_desktop::settings::Preferences;
 
-use crate::single::{Made, Single};
+use crate::{
+    App,
+    fills::{Details, Fills},
+    single::{Made, Single},
+    slots::Later,
+};
 
+mod columns;
+mod dates;
 mod part;
+mod thumbs;
 mod view;
 
 /// The table's key: its collection's, and the element that takes the keyboard. Every
@@ -30,12 +39,21 @@ pub(crate) const VIEW: &str = "list";
 pub(crate) struct List {
     single: Single,
     table: ListTableState,
-    /// The columns shown, in order.
+    /// The columns shown, in order: the saved `list_column_order` and `list_hidden_columns`.
     layout: ColumnLayout,
-    /// The column widths set by hand in this window.
+    /// The column widths set by hand: the saved `browser_list_columns`.
     widths: ColumnWidths,
-    /// The Name column's heading (`list_headings.rs` in `src/ui/browser_modes`).
-    name: String,
+    /// The columns' headings (`list_headings.rs` in `src/ui/browser_modes`).
+    headings: columns::Headings,
+    /// The metadata fills of the rows near the viewport, with a folder's item count.
+    fills: Fills,
+    /// The saved date format is relative ("5m ago"), whose text moves with the clock. Read
+    /// at start: a live change is A18's.
+    relative_dates: bool,
+    /// When the relative dates read again.
+    dates: dates::Dates,
+    /// The rows' thumbnails, from the window's store.
+    thumbs: thumbs::Thumbs,
 }
 
 /// The keys of the List table. Every row is at the pane's left edge (`at_left_edge` in
@@ -52,7 +70,7 @@ fn keys(typing: bool) -> KeySettings {
 }
 
 impl List {
-    fn with_settings(settings: &Preferences) -> Self {
+    fn with_settings(settings: &Preferences, later: Later<App>) -> Self {
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
         // `explorer_file_clicks` and `explorer_folder_clicks`: the List view's.
@@ -66,9 +84,13 @@ impl List {
                 menu_at: AnchorEdge::Center,
             }),
             table: ListTableState::new(),
-            layout: view::layout(),
-            widths: ColumnWidths::default(),
-            name: view::name_heading(),
+            layout: columns::layout(settings),
+            widths: columns::widths(settings),
+            headings: columns::Headings::translated(),
+            fills: Fills::new(Details::Folders),
+            relative_dates: DateFormat::parse(&settings.date_format) == DateFormat::Relative,
+            dates: dates::Dates::default(),
+            thumbs: thumbs::Thumbs::new(later),
         }
     }
 }
