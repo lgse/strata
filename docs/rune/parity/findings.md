@@ -315,7 +315,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `src/ui/browser/view_filter.rs:78`, `src/ui/browser/columns.rs:137`,
   `src/ui/browser_modes/context_menu.rs:70` and `src/ui/browser_modes/pane.rs:75`. No
   scenario presses the Menu key with the cursor out of view.
-- **State:** open, not taken up. The Rune interface opens nothing in any view; which of
-  GTK's outcomes it should have is with the owner
-  ([`owner.md`](owner.md#b3-commands-and-key-dispatch)). A fix on GTK, if taken up, starts
-  from a bug issue on `main`.
+- **State:** open, not taken up. List's behaviour is a defect to fix on `main`: a menu with
+  destructive rows opens for an entry the user did not choose. The bug issue there is the
+  owner's to file and schedule; this entry and its reference are not that issue. The Rune
+  interface's List view deliberately does not reproduce it: it opens nothing, as Columns
+  and Icons do, by the orchestrating session's ruling of 2026-11-12
+  ([`owner.md`](owner.md#b3-commands-and-key-dispatch)). A difference between the targets
+  here is therefore not a Rune fault.

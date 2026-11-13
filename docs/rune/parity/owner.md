@@ -233,21 +233,23 @@ Source for all of these: [B3](packages/B3.md), "Design", and the archived issue
   `context_menu_command` sits in the middle of that chain. No shipped key shows the
   difference; a user's binding that put the Menu key on an earlier or later command could.
   Meanwhile: the controller's place.
-- **The Menu key with the cursor's entry scrolled out of view.** GTK's three views do three
-  things, seen in a run on the GTK target on 2026-11-12 (400 files, the cursor on the
-  first and selected, the wheel turned until that row was out of view, then the Menu key;
-  Shift+F10 the same):
-  - Columns and Icons open nothing, and nothing scrolls.
-  - List opens the menu of another entry, the one drawn where the cursor's row was last
-    placed, and makes that entry the selection. The menu's rows then act on a file the user
-    did not choose (finding [#2235](https://github.com/lgse/strata/issues/2235)).
-  - In every view a row partly in view gets its own menu, where it is drawn.
+- **The Menu key with the cursor's entry scrolled out of view.** Seen in a run on the GTK
+  target on 2026-11-12 (400 files, the cursor on the first and selected, the wheel turned
+  until that row was out of view, then the Menu key; Shift+F10 the same): GTK's Columns and
+  Icons views open nothing and scroll nothing; its List view opens the menu of another
+  entry, the one drawn where the cursor's row was last placed, and makes that entry the
+  selection, so Move to Trash and Permanently delete are offered for a file the user did
+  not choose (finding [#2235](https://github.com/lgse/strata/issues/2235)). In every view a row partly in view gets its own menu,
+  where it is drawn. Two questions:
+  1. The Rune interface's List view differs from GTK's on purpose: it opens nothing, as
+     Columns and Icons do, because GTK's List behaviour is a fault. To confirm; and the bug
+     on `main` is the owner's to file and schedule.
+  2. Whether the Rune interface should go further and scroll the row into view and open its
+     menu there, in every view, which strata-components' C21 can do and GTK does in none.
 
-  The options for the Rune interface: (a) nothing opens in any view; (b) each view as GTK
-  has it, List's included; (c) the row is scrolled into view and its menu opens there, which
-  strata-components' C21 can do and GTK does in no view. Meanwhile, in force from the pull
-  request that binds the Menu key: (a), with a row partly in view getting its menu where it
-  is drawn. Each other option is one condition in
+  In force, by the orchestrating session's ruling of 2026-11-12, from the pull request that
+  binds the Menu key: nothing opens and nothing scrolls in any view, and a row partly in
+  view gets its menu where it is drawn. Revealing instead is one condition in
   `crates/strata-app/src/commands/menu_key.rs`.
 - **The other six cases, each with the default in force** from the registry's pull request:
   2. *The digit row above level 1 (AltGr).* Read as GTK reads it where Rune gives the key's
