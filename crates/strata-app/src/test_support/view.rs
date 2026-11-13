@@ -374,8 +374,8 @@ pub(crate) fn choose(host: &mut Offscreen, name: &str) {
 
 /// The opacity, as drawn, of the placeholder icon in the entry named `name`: C25's glyph under
 /// the element the entry is named on.
-pub(crate) fn icon_opacity(host: &Offscreen, name: &str) -> Option<f32> {
-    let elements = host.elements();
+pub(crate) fn icon_opacity(host: &mut Offscreen, name: &str) -> Option<f32> {
+    let elements = host.runtime().elements();
     let entry = elements
         .iter()
         .find(|e| !e.exiting && e.label.as_deref() == Some(name))?;

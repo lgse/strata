@@ -587,9 +587,9 @@ fn a_file_icon_dims_as_the_view_does(mode: &'static str, shape: Shape, dims: boo
         let folder = fixture();
         open(&mut host, shape, folder.path());
         let file =
-            crate::test_support::view::icon_opacity(&host, "readme.md").expect("a file icon");
+            crate::test_support::view::icon_opacity(&mut host, "readme.md").expect("a file icon");
         let folder =
-            crate::test_support::view::icon_opacity(&host, "archive").expect("a folder icon");
+            crate::test_support::view::icon_opacity(&mut host, "archive").expect("a folder icon");
 
         assert_eq!(folder, 1.0, "a folder's icon");
         assert_eq!(file < 1.0, dims, "a file's icon at {file}");
