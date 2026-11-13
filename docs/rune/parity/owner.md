@@ -45,12 +45,31 @@ session's notes, the item says so.
 
 ### The gallery while its tests are off
 
-- **Goldens will go stale while they are not run.** When the gallery is cleaned up, decide
-  whether to re-bless them from scratch. Meanwhile: they are left as they are, and
-  `mise run bless` stays. Two options the owner has not chosen between, for running them
-  again: installing lavapipe, which the harness uses with no code change
-  (`crates/strata-gallery/tests/goldens/support.rs`), or a cap across worktrees on how many
-  gallery processes run at once. Source: the coordinator, 2026-11-12.
+- **What is unguarded while the gallery's tests are off, and whether to re-bless at the
+  cleanup.** Not run as validation now:
+  - the look of every component scene (514 PNG goldens);
+  - each scene's accessibility tree (514 accessibility goldens);
+  - the 897 scripts, which are the per-bullet behaviour checks of the feature map;
+  - the per-page in-process tests (`tests/c*.rs`, `k*`, `w*`, `x1`, `gallery.rs`);
+  - `tests/goldens/registry.rs` and `keys.rs`: every page has tests and docs, scene names are
+    unique and come in light and dark, and no golden or script folder is orphaned.
+
+  The goldens will go stale while they are not run; when the gallery is cleaned up, decide
+  whether to re-bless them from scratch. Two facts beside it:
+  - the parity runs reach only components mounted in `strata-app`, so a component no area
+    has mounted yet has `strata-components`' unit tests and nothing else;
+  - the accessibility goldens, the registry and key tests and the page tests start no GPU
+    child (four page targets, `c1`, `c1_marquee`, `c4` and `c24`, each have one call that
+    does), so they
+    are off because the instruction names the crate, not because they were measured as
+    costly.
+
+  So there are three options the owner has not chosen between, for running some of it again:
+  installing lavapipe, which the harness uses with no code change
+  (`crates/strata-gallery/tests/goldens/support.rs`); a cap across worktrees on how many
+  gallery processes run at once; or keeping the in-process tests (accessibility goldens,
+  registry, keys, page tests) and leaving only the PNG goldens and scripts off. Meanwhile:
+  all of them stay off, and `mise run bless` stays. Source: the coordinator, 2026-11-12.
 
 ### The plan's copy
 
@@ -445,9 +464,9 @@ Rulings of the owner on the parity work, oldest first.
   up that crate and reduce the overhead later but for now the parity with GTK strata is
   quite enough to assure quality in my opinion" (recorded by the orchestrating session,
   2026-11-12). So `mise run test-rune` runs `strata-gallery`'s unit tests only, its goldens,
-  page tests and scripts run on demand with `mise run test-gallery`, and `AGENTS.md`'s
-  bullets on gallery scenes, goldens and scripts per component are suspended until the
-  cleanup. `strata-components`' and `strata-app`'s own tests still run. Which test targets
+  page tests and scripts run on demand with `mise run test-gallery`. That `AGENTS.md`'s
+  bullets on a gallery scene, an accessibility golden and a script per component are
+  suspended until the cleanup too is the coordinator's reading. `strata-components`' and `strata-app`'s own tests still run. Which test targets
   count as "the basic unit tests" (`--lib --bins --examples`) is the coordinator's reading.
 
 ## Housekeeping

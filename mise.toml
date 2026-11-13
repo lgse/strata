@@ -52,8 +52,8 @@ env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test $lane --all-targets
 # its renderer, and with debug info each link takes more than two gigabytes of memory.
 #
 # By the owner's instruction of 2026-11-12, strata-gallery's integration tests (its goldens,
-# page tests and scripts, which start a gallery process each) are not run here: only its unit
-# tests are. `mise run test-gallery` runs the rest on demand. A trailing filter goes to both
+# page tests and scripts; the PNG goldens and the scripts start a gallery process each) are not
+# run here: only its unit tests are. `mise run test-gallery` runs the rest on demand. A trailing filter goes to both
 # cargo runs; mise appends the task's arguments to the script's last line, `both`.
 [tasks.test-rune]
 description = "Run the Rune side's tests headless, never on the desktop display, with only the gallery's unit tests"
@@ -61,6 +61,11 @@ raw_args = true
 run = '''
 lane="$(python3 scripts/lanes.py rune)" || exit
 rest="$(printf '%s' "$lane" | sed 's/--package strata-gallery//')"
+case "$rest" in
+  *strata-gallery*)
+    echo "test-rune: strata-gallery is still in the first run's packages: $rest" >&2
+    exit 1 ;;
+esac
 headless() {
   env -u DISPLAY -u WAYLAND_SOCKET WAYLAND_DISPLAY=strata-test-no-wayland \
     DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/strata-test-no-bus \
@@ -76,8 +81,9 @@ both
 
 # strata-gallery's integration tests: tests/goldens (the PNG and accessibility goldens and the
 # scripts) and the per-page targets, not x2 or x3, which test-platform runs. Part of no gate
-# for now, by the owner's instruction of 2026-11-12: each test starts a gallery process that
-# opens a GPU device, and run in their hundreds they load the machine (docs/rune/testing.md).
+# for now, by the owner's instruction of 2026-11-12: each PNG golden and each script starts a
+# gallery process that opens a GPU device, and run by the hundred they load the machine
+# (docs/rune/parity/working.md).
 [tasks.test-gallery]
 description = "On demand only, part of no gate: the gallery's goldens, page tests and scripts (not x2 or x3)"
 raw_args = true
@@ -148,7 +154,8 @@ done
 # (crates/strata-platform/tests/support/). Nothing reaches the desktop's display or bus. Builds
 # the peer and the examples first: a test can't make cargo build another package's binary, and
 # `cargo test` leaves examples under hashed names only. The gate for a shell change is
-# `mise run test-platform window::` alone; x2 and x3 stay here, run on demand.
+# `mise run test-platform window::`; a change to strata-platform still owes its own session
+# tests. x2 and x3 stay here, run on demand.
 [tasks.test-platform]
 description = "Run the compositor tests (strata-platform's, the gallery's x2 and x3, and strata-rune's window), each in a private headless sway session"
 usage = '''

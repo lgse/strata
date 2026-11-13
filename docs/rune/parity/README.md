@@ -599,7 +599,7 @@ check skipped is named with its reason. This list is the orchestrating session's
 | Always | `typos`, and `mise run scripts`: the Python tests under `scripts/`, which hold the ledger, the mutation patches' rules and the fuzz files, and read `.github/workflows/`, `tests/container/`, the manifests and `packaging/`. CI ran them on every pull request; they take seconds |
 | `src/`, a shared crate, `tests/` or a manifest changed | `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` |
 | A Rune-side crate changed | The Rune lane's `cargo fmt --all --check`, and `cargo clippy $(python3 scripts/lanes.py rune) --all-targets --all-features --locked -- -D warnings` |
-| Any Rune crate changed | The plain binary builds: `cargo build --locked -p strata-rune`, with default features and no `qa`. The coordinator's addition, below |
+| A Rune-side or shared crate changed | The plain binary compiles: `cargo check --locked -p strata-rune`, with default features and no `qa`. The coordinator's addition, below |
 | `src/` or a shared crate changed | `./scripts/quality.sh test`. With CI off it is the only run of the GTK unit tests, so it is required there |
 | `src/` or a shared crate changed | The build without UnRAR: the GTK lane checked with `--no-default-features --features test-support`, and four tests under it, below |
 | A manifest, `Cargo.lock` or `deny.toml` changed | `cargo deny check`, the two `cargo tree` guards of `ci.yml`'s "Quality build and lint", and the same UnRAR guard for `strata-rune`, below |
@@ -637,7 +637,10 @@ xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session 
 
 **The plain binary**, the coordinator's addition of 2026-11-12, not the owner's words. Tests,
 clippy and the QA runs all build with `--all-features`, so none of them builds `strata-rune` as
-a user runs it. On 2026-11-12 `strata-next` at `67578bfbc` did not compile that way
+a user runs it, and a test-only item in a shared crate breaks that build the same way. It is a
+`cargo check`: it would have caught the error below, links nothing, and avoids the large debug
+link the `mise` tasks warn of; after the first run it takes under a second. On 2026-11-12
+`strata-next` at `67578bfbc` did not compile that way
 (`crates/strata-app/src/single/first_visit.rs:53` called `Pane::load`, which is compiled only
 for tests and the `qa` feature), every gate had passed, and the owner found it by running the
 window by hand. `ci.yml` does not build the Rune side at all.
@@ -649,6 +652,22 @@ Where the loss is largest:
   included.
 - **`cargo deny`** no longer sees a new advisory on `strata-next` unless a manifest changes
   there; `main`'s CI still checks nearly the same lock file.
+
+### What the parity runs do not cover
+
+The coordinator's, from a reviewer's reading of the code, 2026-11-12:
+
+- **The windowed host.** The parity runs drive the app on the offscreen host at a fixed size
+  (`strata_qa::serve`, from `crates/strata-app/src/qa.rs`, on `host::offscreen`), while a
+  user gets `host::windowed`, whose loop only the three `strata-rune` window tests exercise
+  (`mise run test-platform window::`). Finding
+  [#2179](https://github.com/lgse/strata/issues/2179) is the kind of fault no parity run can
+  see.
+- **Animation.** The QA build sets animations off (`Offscreen::without_animations`), as GTK's
+  QA runs do, so behaviour during a column's animation is untested.
+
+The rest of the QA-only code only reads state or routes output. Looking at the real window by
+hand is what covers both for now.
 
 ### When a mutation run is right
 

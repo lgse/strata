@@ -83,7 +83,7 @@ first frame at 0 s, then one every 1/60 s up to 1 s, as `--snap` does. So the pa
 either pre-fills its state or schedules results that come due before 1 s.
 
 Test a page's behavior in process in `crates/strata-gallery/tests/<id>.rs`, with the tests
-inside `mod <id> { … }`, so `mise run test <id>::` runs them with the page's goldens. Mount a
+inside `mod <id> { … }`, so `mise run test-gallery <id>::` runs them with the page's goldens. Mount a
 scene with `strata_gallery::runtime`, send keys with `Runtime::key` or pointer input, step
 `Runtime::frame`, and read the state; or write a script. `tests/goldens/keys.rs` shows the
 key routing itself: a page hook that takes Escape keeps the page open.
@@ -391,8 +391,9 @@ The task builds the peer and strata-platform's examples, then runs the `#[ignore
 `crates/strata-platform/tests/session/`, the gallery's `x2` and `x3`, and `strata-rune`'s
 `tests/window.rs`, which starts the real binary on a folder (`mise run test-platform
 window::`). `mise run test` and `check` never start a session. The gate for a change to a
-host, the shell or the key routing is `mise run test-platform window::` alone; the rest of the
-task runs on demand.
+host, the shell or the key routing is `mise run test-platform window::`; a change to
+`strata-platform` still owes its own session tests, and the gallery's `x2` and `x3` run on
+demand.
 
 | Variable | Effect |
 | --- | --- |
