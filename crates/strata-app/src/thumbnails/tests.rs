@@ -237,3 +237,50 @@ fn the_pool_starts_what_its_limits_allow() {
         assert_eq!(started, case.starts, "{}", case.name);
     }
 }
+
+fn photo_at(index: u64) -> ListSource {
+    let mut entry = ListEntry::new(EntryId::new(index), "photo.png", EntryKind::File, "");
+    entry.thumbnail = Some(ThumbKey::new(index));
+    ListSource::new(vec![entry])
+}
+
+/// A viewer fitted to fewer parts (Columns' columns closing) drops the store's viewers past
+/// them, and their requests come back cancelled; however often columns open and close, the
+/// viewer holds one store viewer for each part open.
+#[test]
+fn a_viewer_fitted_to_fewer_parts_leaves_none_behind() {
+    let inbox = Inbox::new();
+    let mut viewer = Viewer::new(inbox.later(), |_, _| None);
+    let mut store = ThumbnailStore::new(Settings::default());
+    let step = Step::new(32);
+    for round in 0..20 {
+        viewer.fit(&mut store, 3);
+        for part in 0..3 {
+            let id = viewer.id_at(part).expect("a viewer for each part");
+            store.sync(id, &photo_at(part as u64 + 1), Viewport::new(0..1, step));
+        }
+        for request in viewer.take_requests(&mut store, f64::from(round)) {
+            viewer
+                .pending
+                .insert(request.ticket, Cancellation::default());
+        }
+        assert_eq!(viewer.pending.len(), 3, "round {round}: one request a part");
+
+        viewer.fit(&mut store, 1);
+        let _ = viewer.take_requests(&mut store, f64::from(round));
+        assert_eq!(viewer.id_at(1), None, "round {round}");
+        assert_eq!(
+            viewer.pending.len(),
+            1,
+            "round {round}: the closed parts' cancelled"
+        );
+        assert_eq!(store.stats().requested, 1, "round {round}");
+        viewer.pending.clear();
+        store.sync(
+            viewer.id_at(0).expect("the first part"),
+            &ListSource::new(Vec::new()),
+            Viewport::new(0..0, step),
+        );
+        let _ = viewer.take_requests(&mut store, f64::from(round));
+    }
+}

@@ -94,6 +94,10 @@
 //! past every viewer's margin are never asked for, and requests out for them are cancelled. A
 //! result for a cancelled request is dropped, as Strata drops it.
 //!
+//! A new viewer takes the slot of one dropped before ([`ThumbnailStore::viewer`]), so the list
+//! the ranking walks is never longer than the most viewers alive at once, however many views
+//! come and go (a viewer per Columns column). A dropped viewer's id may so name the next one.
+//!
 //! # Handles live while a viewer is near
 //!
 //! Handles that hold nothing and wait for no result (empty, failed or stopped) are pruned once
