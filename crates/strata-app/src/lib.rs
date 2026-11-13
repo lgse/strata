@@ -66,6 +66,7 @@ mod error_dialog;
 mod location;
 mod open_failed;
 mod pane_header;
+mod popover;
 // A6 Menus, dialogs and keymap
 // A7 Entry management and undo
 mod new_item;

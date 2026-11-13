@@ -267,7 +267,7 @@ impl Part for PaneHeader {
     /// A press on Back held long enough lists the history, and its release goes nowhere; the
     /// thumbnail size's slider follows the size.
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
-        let followed = thumbnail_size::follow(app);
+        let followed = thumbnail_size::follow(app, tx);
         let Some(since) = app.pane_header.held else {
             return followed;
         };
