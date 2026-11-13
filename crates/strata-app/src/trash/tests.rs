@@ -11,7 +11,7 @@ use crate::{
     App,
     commands::{On, Outcome, run},
     host::offscreen::Offscreen,
-    test_support::{PATIENCE, fixture, hosted, send_key},
+    test_support::{PATIENCE, fixture, hosted, hosted_after, send_key},
 };
 
 const MODULE: &str = "trash::tests";
@@ -112,6 +112,10 @@ fn trashing_an_open_folder_from_its_row_moves_on_to_the_next() {
             host.runtime().update(|app: &mut App, tx| {
                 let row = On::Row((0, crate::shell::id_of(app, &archive)));
                 outcome = Some(run(app, "trash", row, tx));
+                // Before the deletion lands, the keyboard is on the folder's row above.
+                assert_eq!(app.browser.active_depth(), Some(0));
+                let focused = app.browser.focused_entry().map(|entry| entry.location);
+                assert_eq!(focused.as_ref(), Some(&archive));
             });
             assert_eq!(outcome, Some(Outcome::Ran));
             let path = folder.path().join("archive");
@@ -127,6 +131,38 @@ fn trashing_an_open_folder_from_its_row_moves_on_to_the_next() {
                     .is_some_and(|entry| entry.location == documents)
             });
             assert!(next, "the cursor on the next folder");
+        },
+    );
+}
+
+/// `confirm_delete` outside Columns: Delete acts on the selection, or the folder the
+/// keyboard entered, and never on the cursor's entry alone. After Escape clears the
+/// selection in List, Delete trashes nothing.
+#[test]
+fn outside_columns_delete_with_nothing_selected_trashes_nothing() {
+    hosted_after(
+        MODULE,
+        "outside_columns_delete_with_nothing_selected_trashes_nothing",
+        || {
+            let file = strata_core::storage::config_directory().join("settings.toml");
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = "mode = \"theme\"\ntheme = \"azure-glow\"\nbrowser_mode = \"list\"\n";
+            std::fs::write(file, saved).expect("settings");
+        },
+        |mut host| {
+            let folder = listed(&mut host);
+            let todo = folder.path().join("todo.txt");
+            select(&mut host, &Location::local(&todo));
+            key(&mut host, Key::Escape, Mods::default());
+            assert!(
+                host.app().browser().selected_entries().is_empty(),
+                "Escape cleared the selection"
+            );
+
+            key(&mut host, Key::Delete, Mods::default());
+            host.run_until(std::time::Duration::from_millis(500), |_| false);
+            assert!(todo.exists(), "Delete trashed the cursor's entry");
+            assert_eq!(trashed_count(), 0);
         },
     );
 }

@@ -24,6 +24,10 @@
 //!   left to the view.
 //! - **The fly-to-trash animation** (`prepare_fly_to_trash`): C23's trash flight.
 //! - **A recursive search's own selection** (`selected_search_results`): A10's.
+//! - **A trash that fails for some items** (`on_operation_completed_with_errors` in
+//!   `src/ui/browser/events/operations.rs`): GTK shows "Completed with errors" and offers to
+//!   delete the items it could not trash permanently. Here the failure is silent; the report
+//!   and its retry come with the confirmation dialogs, which the retry opens.
 
 use rune::Tx;
 use strata_core::model::{FileEntry, Location};
@@ -46,6 +50,7 @@ pub(crate) struct Trash;
 
 /// Nothing is drawn: the rows leave, and the dialogs are left out.
 fn nothing(app: &App, _: &mut Frame<'_, App>) -> Option<rune::El> {
+    // Goes when the confirmation dialog's state lands here.
     let Trash = &app.trash;
     None
 }
@@ -85,11 +90,20 @@ fn can_remove(location: &Location) -> bool {
     !is_trash(location) || trash_item()
 }
 
-/// What the key acts on, and whether its folder is the Trash (`confirm_delete`).
+/// Whether the shown view is Columns, where a column's cursor counts when nothing is
+/// selected in it.
+fn in_columns(app: &App) -> bool {
+    shell::shown_view(app).is_some_and(|view| (view.shows)("columns"))
+}
+
+/// What the key acts on, and whether its folder is the Trash (`confirm_delete`). In Columns:
+/// the active column's selection, or its cursor's entry, else the folder the keyboard
+/// entered. In the other views: the selection, or that folder, and never the cursor alone.
 fn focused_entries(app: &App) -> (Vec<FileEntry>, bool) {
     let browser = &app.browser;
     let depth = browser.active_depth();
     let column = depth
+        .filter(|_| in_columns(app))
         .map(|depth| browser.command_entries(depth))
         .filter(|entries| !entries.is_empty());
     let entries = column.unwrap_or_else(|| browser.deletion_entries());
