@@ -88,7 +88,7 @@ explained in [B3's file](packages/B3.md).
 The plan's checkpoints are where the owner looks at the numbers
 ([Checkpoints](README.md#checkpoints)). Each report gives five counts. These are running
 counts, retaken by the coordinator at the commit the table names, `strata-next` `91970db38`
-(2026-11-13), with the command that produces each. The end-of-wave-0 checkpoint report is
+(2026-11-12), with the command that produces each. The end-of-wave-0 checkpoint report is
 still owed: B3 has closed, and the report is written when B2 closes.
 
 | Count | At `91970db38` | Command |
