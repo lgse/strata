@@ -22,6 +22,7 @@ use crate::{
 };
 
 mod rename;
+mod scroll;
 
 const INPUT_LOG: &str = "STRATA_INPUT_LOG";
 
