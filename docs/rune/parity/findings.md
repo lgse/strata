@@ -348,3 +348,23 @@ sequence only together with the alphabet's version, so the version is part of th
   and Icons do, by the orchestrating session's ruling of 2026-11-12
   ([`owner.md`](owner.md#b3-commands-and-key-dispatch)). A difference between the targets
   here is therefore not a Rune fault.
+
+### #2254: the QA engine finds no viewport for a pane whose scroll pane is inside its entry list
+
+- **Code:** `divergence`, of the harness. [Issue](https://github.com/lgse/strata/issues/2254), filed on 2026-11-12 as the finding's reference and
+  closed at once: its state is kept here.
+- **Seen:** on Rune, `keyboard_navigation/return-restores-nested-scroll/icons` stops at line 4,
+  its `middle_visible` note reading nothing, before the position restore it checks.
+- **By reading:** the shared engine takes a pane's viewport to be the nearest ancestor of the
+  entry list with the role `scroll pane` (`viewport` in `crates/strata-qa/src/engine/locate.rs`).
+  Every C1e collection puts its container role on its outer element and its vertical scroll
+  viewport inside (`crates/strata-components/src/collection/element/mod.rs`, about lines
+  900-935), so no ancestor qualifies: the Icons grid (C3) shows it. The List view passes for
+  another reason: C4 wraps its collection in its sideways scroll viewport, an ancestor, so on
+  Rune List `middle_visible`, `visible` and `visible_top` read the horizontal pane. That is
+  close enough for the middle-entry note; a `scroll_value` check would read the sideways
+  position.
+- **Reach:** of the scenarios that read the viewport, the only Icons one is this run, and none
+  of the List ones is `required`: no required run passes for the wrong reason.
+- **State:** open, [H3](packages/H3.md)'s. The fix finds the collection's own viewport, a
+  descendant of the entry list, rather than the nearest ancestor.

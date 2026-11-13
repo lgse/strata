@@ -4,7 +4,7 @@
 
 use rune::Tx;
 
-use strata_components::{contract::EntryId, thumbnails::ThumbnailStore};
+use strata_components::{contract::EntryId, icons_grid::IconsGrid, thumbnails::ThumbnailStore};
 
 use super::{Icons, VIEW, view};
 #[cfg(feature = "qa")]
@@ -56,6 +56,12 @@ impl SinglePane for Icons {
 
     fn renaming(app: &mut App) -> (&Single, &mut Rename) {
         (&app.icons.single, &mut app.rename)
+    }
+
+    /// C3's key: the tiles a row holds at the grid's last width, and their height.
+    fn layout_key(app: &App) -> u64 {
+        let width = app.icons.single.pane.collection().viewport().w;
+        IconsGrid::<App>::layout_key(width, app.icons.size, &app.look)
     }
 }
 
