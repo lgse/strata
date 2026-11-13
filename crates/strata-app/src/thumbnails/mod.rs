@@ -76,6 +76,8 @@ pub(crate) struct Job {
     pub(crate) path: PathBuf,
     /// The long edge, in pixels, the result may have at most.
     pub(crate) edge: u32,
+    /// Set when nobody waits for the job any more: a job not started yet is dropped, and a
+    /// render already running runs to its end ([`Rendering::run`]).
     pub(crate) cancellation: Cancellation,
     /// Hears the result, on the interface thread.
     pub(crate) done: Box<dyn FnOnce(Made)>,
@@ -270,20 +272,57 @@ async fn render(queued: Queued) {
         done,
     } = job;
     let made = gio::spawn_blocking(move || {
-        if cancellation.is_cancelled() {
-            return Outcome::Stopped.into();
-        }
-        let rendered = kind::render(&path, kind, &cancellation);
-        if let (Ok(rendered), Some(mtime)) = (&rendered, modified) {
-            thumbnail_cache::store(&path, mtime, &rendered.png);
-        }
-        made(rendered, edge)
+        let rendering = Rendering {
+            path: &path,
+            kind,
+            modified,
+            edge,
+            abandoned: &cancellation,
+        };
+        rendering.run(kind::render, thumbnail_cache::store)
     })
     .await
     .unwrap_or_else(|_| Outcome::Failed.into());
     POOL.with_borrow_mut(|pool| pool.count(kind, false));
     done(made);
     start();
+}
+
+/// One render on its blocking thread.
+struct Rendering<'a> {
+    path: &'a Path,
+    kind: Kind,
+    /// The file's modification time the render is stored under in the shared cache.
+    modified: Option<i64>,
+    edge: u32,
+    /// The job's cancellation: nobody waits for it any more.
+    abandoned: &'a Cancellation,
+}
+
+impl Rendering<'_> {
+    /// Renders with `render` and stores the result with `store`, as GTK's jobs do: a job
+    /// abandoned before it starts is not rendered, and one abandoned while it renders runs to
+    /// its end, its result neither stored nor waited for. The worker gets a cancellation of
+    /// its own that nothing sets: `strata-preview` discards a worker whose render ends in an
+    /// error, a cancelled one included, so cancelling a running render would cost a sandbox
+    /// (GTK's `demote_offscreen` cancels only the jobs still queued).
+    fn run(
+        &self,
+        render: impl FnOnce(&Path, Kind, &Cancellation) -> Result<Thumbnail, String>,
+        store: impl FnOnce(&Path, i64, &[u8]),
+    ) -> Made {
+        if self.abandoned.is_cancelled() {
+            return Outcome::Stopped.into();
+        }
+        let rendered = render(self.path, self.kind, &Cancellation::default());
+        if self.abandoned.is_cancelled() {
+            return Outcome::Stopped.into();
+        }
+        if let (Ok(rendered), Some(mtime)) = (&rendered, self.modified) {
+            store(self.path, mtime, &rendered.png);
+        }
+        made(rendered, self.edge)
+    }
 }
 
 /// `path`'s thumbnail from the shared cache, at most `edge` pixels on its long side.

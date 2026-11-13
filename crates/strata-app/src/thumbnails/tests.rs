@@ -6,7 +6,7 @@ use strata_components::{
 };
 use strata_preview::sandbox::Cancellation;
 
-use super::{Job, Kind, Pool, Queued, READERS, Start, Viewer, decode, made};
+use super::{Job, Kind, Pool, Queued, READERS, Rendering, Start, Viewer, decode, made};
 use crate::slots::Inbox;
 
 fn photo() -> ListSource {
@@ -126,8 +126,9 @@ struct Case {
     /// Cache reads running, and waiting.
     reading: usize,
     reads: usize,
-    /// Renders waiting, in order.
+    /// Renders waiting, in order, the first `cancelled` of them abandoned.
     renders: Vec<Kind>,
+    cancelled: usize,
     room: usize,
     starts: Option<Started>,
 }
@@ -142,6 +143,7 @@ impl Case {
             reading: 0,
             reads: 0,
             renders: vec![],
+            cancelled: 0,
             room,
             starts,
         }
@@ -212,6 +214,16 @@ fn pool_cases() -> Vec<Case> {
             renders: vec![Image; 64],
             ..Case::idle("the queue full", 1, 0, None)
         },
+        Case {
+            renders: vec![Pdf, Image],
+            cancelled: 1,
+            ..Case::idle(
+                "an abandoned render never reaches a worker",
+                2,
+                READERS,
+                render(Image),
+            )
+        },
     ]
 }
 
@@ -228,6 +240,9 @@ fn the_pool_starts_what_its_limits_allow() {
             .extend((0..case.reads).map(|_| queued(Kind::Image)));
         pool.renders
             .extend(case.renders.iter().map(|kind| queued(*kind)));
+        for queued in pool.renders.iter().take(case.cancelled) {
+            queued.job.cancellation.cancel();
+        }
 
         assert_eq!(pool.room(case.limit), case.room, "{}: room", case.name);
         let started = pool.next(case.limit).map(|start| match start {
@@ -283,4 +298,81 @@ fn a_viewer_fitted_to_fewer_parts_leaves_none_behind() {
         );
         let _ = viewer.take_requests(&mut store, f64::from(round));
     }
+}
+
+/// What a render did, as [`Rendering::run`]'s worker and store saw it.
+#[derive(Debug, Default, PartialEq)]
+struct Seen {
+    rendered: bool,
+    worker_cancelled: bool,
+    stored: bool,
+}
+
+/// One render, the viewer leaving before it starts or while it runs.
+fn rendering(abandon_before: bool, abandon_during: bool) -> (Seen, Outcome) {
+    let abandoned = Cancellation::default();
+    if abandon_before {
+        abandoned.cancel();
+    }
+    let seen = std::cell::RefCell::new(Seen::default());
+    let png = {
+        let mut png = Vec::new();
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([0, 0, 255, 255]))
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .expect("a PNG");
+        png
+    };
+    let job = Rendering {
+        path: std::path::Path::new("/photos/photo.png"),
+        kind: Kind::Image,
+        modified: Some(1),
+        edge: 64,
+        abandoned: &abandoned,
+    };
+    let made = job.run(
+        |_, _, worker| {
+            if abandon_during {
+                abandoned.cancel();
+            }
+            let mut seen = seen.borrow_mut();
+            seen.rendered = true;
+            seen.worker_cancelled = worker.is_cancelled();
+            Ok(strata_preview::sandbox::browser::Thumbnail {
+                png: png.clone(),
+                metadata: None,
+            })
+        },
+        |_, _, _| seen.borrow_mut().stored = true,
+    );
+    (seen.into_inner(), made.outcome)
+}
+
+/// A render runs to its end when its viewer leaves meanwhile, as GTK's do: the worker's own
+/// cancellation is never set (a cancelled worker is discarded, and the next render starts a
+/// new sandbox), and the result is neither stored nor handed on. One abandoned before it
+/// starts is never rendered.
+#[test]
+fn a_render_runs_to_its_end_when_its_viewer_leaves() {
+    let (seen, outcome) = rendering(false, true);
+    assert_eq!(
+        seen,
+        Seen {
+            rendered: true,
+            worker_cancelled: false,
+            stored: false,
+        },
+        "left while rendering"
+    );
+    assert_eq!(outcome, Outcome::Stopped);
+
+    let (seen, outcome) = rendering(true, false);
+    assert_eq!(seen, Seen::default(), "left before it started");
+    assert_eq!(outcome, Outcome::Stopped);
+
+    let (seen, outcome) = rendering(false, false);
+    assert!(
+        seen.rendered && seen.stored && !seen.worker_cancelled,
+        "{seen:?}"
+    );
+    assert!(matches!(outcome, Outcome::Ready { .. }));
 }
