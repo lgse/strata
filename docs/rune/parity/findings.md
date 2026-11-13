@@ -451,7 +451,9 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Seen:** in a full `./scripts/qa-parity.sh all --target rune` for
   [#2294](https://github.com/lgse/strata/pull/2294)'s gate, the run failed at line 49: the
   log counted 4 "browser sandbox started" where the step wants `$initial` + 1, 3. Alone, it
-  passed 3 of 3. Not touched by #2294, by its review: that change routes the collection's
+  passed 3 of 3. Again in [#2306](https://github.com/lgse/strata/pull/2306)'s gate, at the
+  same line with 5 counted; alone, 3 of 3 passed. The run turns no wheel and clicks no
+  clipped target, which is all #2306 changes. Not touched by #2294, by its review: that change routes the collection's
   caught-up visible range through `route::on_visible` and skips lines that hold no entry,
   and neither reaches when the render pool starts or discards a worker.
 - **Concerns:** `browser_workers/browser-workers-reuse-processes/list`, `required` since

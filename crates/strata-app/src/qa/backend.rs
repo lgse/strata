@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rune::{KeyEvent, PhysicalInput, PointerButton, accesskit::Action};
+use rune::{KeyEvent, PhysicalInput, PointerButton, WheelEvent, accesskit::Action};
 use strata_core::{i18n::tr, logging::criticals, storage};
 use strata_qa::{
     Backend, Chord, Command, FieldState, Labels, Mark, Modifier, Orientation, Outcome, Rect, Scope,
@@ -123,6 +123,18 @@ impl Rune {
         self.log.key(name, false);
         self.show_modifiers(stage);
         stage.settle();
+    }
+
+    /// One click of the wheel at (x, y), as Rune's window host delivers it off macOS: with
+    /// the held modifiers, and with Shift turning it sideways.
+    fn wheel_click(&self, x: f32, y: f32, delta: f32) -> WheelEvent {
+        let mods = self.keyboard.borrow().mods();
+        let (dx, dy) = if mods.shift {
+            (delta, 0.0)
+        } else {
+            (0.0, delta)
+        };
+        WheelEvent::new(dx, dy).at(x, y).mods(mods)
     }
 
     fn set_modifier(&self, modifier: Modifier, pressed: bool) {
@@ -287,13 +299,15 @@ impl Backend for Rune {
         self.frame(node)
     }
 
-    /// No gate run scrolls yet, so no pane is reported as one that can.
-    fn scroll(&self, _node: &Node, _along: Orientation) -> Option<Scroll> {
-        None
+    /// A scroll view's, as Rune's tree reports it (`tree::Scrolled`).
+    fn scroll(&self, node: &Node, along: Orientation) -> Option<Scroll> {
+        let scrolled = self.read(node, |_, seen| seen.scroll).flatten()?;
+        Some(scrolled.along(along))
     }
 
-    fn scroll_position(&self, _scroller: &Node) -> Option<f64> {
-        None
+    fn scroll_position(&self, scroller: &Node) -> Option<f64> {
+        let scrolled = self.read(scroller, |_, seen| seen.scroll).flatten()?;
+        scrolled.bar()
     }
 
     fn labels(&self) -> Labels {
@@ -442,8 +456,8 @@ impl Backend for Rune {
             (3, false) => runtime.secondary_up(x, y),
             // A wheel click is a press and release of button 4 or 5, as X numbers them.
             // Positive moves the content down, which is the wheel turning up.
-            (4, true) => runtime.wheel(x, y, WHEEL_CLICK),
-            (5, true) => runtime.wheel(x, y, -WHEEL_CLICK),
+            (4, true) => runtime.wheel_event(self.wheel_click(x, y, WHEEL_CLICK)),
+            (5, true) => runtime.wheel_event(self.wheel_click(x, y, -WHEEL_CLICK)),
             (4 | 5, false) => {}
             _ => return Err(format!("the pointer has no button {number}")),
         }
