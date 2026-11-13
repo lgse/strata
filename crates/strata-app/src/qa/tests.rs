@@ -18,7 +18,7 @@ use super::{SIZE, backend::Rune, input_log::InputLog};
 use crate::{
     host::offscreen::Offscreen,
     startup::{self, UiThread},
-    test_support::fixture,
+    test_support::{fixture, in_own_process},
 };
 
 mod rename;
@@ -27,18 +27,17 @@ const INPUT_LOG: &str = "STRATA_INPUT_LOG";
 
 /// Runs the test `name` of this module on the QA mode's own host, in a process of its own.
 fn staged(name: &str, input_log: Option<PathBuf>, run: impl FnOnce(Rune)) {
-    strata_test_support::isolated_test(
-        &format!("qa::tests::{name}"),
-        input_log.iter().map(|path| (INPUT_LOG, path.as_os_str())),
-        || true,
-        || {
-            let settings = startup::load_settings();
-            let ui = UiThread::claim().expect("the UI thread");
-            let host = Offscreen::sized(ui, settings, SIZE).without_animations();
-            let log = InputLog::from_environment().expect("the input log");
-            run(Rune::new(host, log));
-        },
-    );
+    let log: Vec<_> = input_log
+        .iter()
+        .map(|path| (INPUT_LOG, path.as_os_str()))
+        .collect();
+    in_own_process(&format!("qa::tests::{name}"), &log, || {
+        let settings = startup::load_settings();
+        let ui = UiThread::claim().expect("the UI thread");
+        let host = Offscreen::sized(ui, settings, SIZE).without_animations();
+        let log = InputLog::from_environment().expect("the input log");
+        run(Rune::new(host, log));
+    });
 }
 
 /// A step waits by turning the host itself, so its future never parks.
