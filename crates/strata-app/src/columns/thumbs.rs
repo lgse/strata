@@ -26,11 +26,12 @@ use crate::{App, shell, slots::Later, thumbnails::Viewer};
 /// A row's thumbnail, in points: GTK's 17 × 17 (`set_thumbnail_or_icon(…, 17, 17)`).
 const ROW_THUMBNAIL: f32 = 17.0;
 
-/// What a column last synced with the store.
+/// What a column last synced with the store: each Columns column's, and the List view's one
+/// pane's (`crate::list::thumbs`).
 #[derive(Default, Clone)]
-struct Synced {
+pub(crate) struct Synced {
     /// The range its view reported since the last poll, not yet synced.
-    range: Option<Range<usize>>,
+    pub(crate) range: Option<Range<usize>>,
     /// The folder and the listing's version the store last saw: a sibling opened at the same
     /// depth is another folder, whose listing's version may equal the last one's.
     location: Option<Location>,
@@ -39,7 +40,7 @@ struct Synced {
 
 /// What a poll tells the store of one column.
 #[derive(Debug, PartialEq)]
-enum Sync {
+pub(crate) enum Sync {
     /// The rows the view shows now.
     View(Range<usize>),
     /// The step changed: the last rows at the new step.
@@ -52,7 +53,7 @@ enum Sync {
 impl Synced {
     /// What to tell the store of the column now showing `location` at `version`, and the
     /// column recorded as told.
-    fn next(&mut self, location: &Location, version: u64, restep: bool) -> Sync {
+    pub(crate) fn next(&mut self, location: &Location, version: u64, restep: bool) -> Sync {
         let moved = self.location.as_ref() != Some(location);
         let changed = moved || self.version != Some(version);
         self.location = Some(location.clone());

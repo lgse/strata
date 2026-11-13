@@ -39,6 +39,9 @@ pub(crate) struct Added {
     pub(crate) active: bool,
     /// Whether the browser groups its folder by file type, and under which preferences.
     pub(crate) grouping: Option<ViewPreferences>,
+    /// The browser will reveal an entry in it (`BrowserColumnSnapshot::reveal_pending`): a
+    /// remembered position does not come back over it.
+    pub(crate) reveal: bool,
 }
 
 /// A column whose folder moved, with everything it shows read again.
@@ -299,6 +302,10 @@ impl Reader<'_> {
                     show_hidden: self.show_hidden(*depth),
                     active: self.browser.active_depth() == Some(*depth),
                     grouping: self.grouping(*depth),
+                    reveal: self
+                        .browser
+                        .column_snapshot(*depth)
+                        .is_some_and(|snapshot| snapshot.reveal_pending),
                 }));
             }
             BrowserEvent::ColumnsRelocated { from_depth } => self.relocated(*from_depth),

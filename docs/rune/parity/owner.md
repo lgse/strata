@@ -383,6 +383,10 @@ the orchestrating session, 2026-11-12):
    window, so every view of a window reads it. GTK's decoded-image cache is one per process
    (`THUMBNAIL_CACHE`), so with several windows an image is decoded and held once per window:
    [A21](packages/A21.md)'s to settle with multi-window. Nothing a user sees differs.
+8. **The pane header's Back, Forward and Up buttons, with the history list, are [A5](packages/A5.md)'s**
+   (Location bar), with the header's shell, since the breadcrumbs live in the same header. The
+   plan placed them with no package; B3 said so when it closed. Placed by the coordinator,
+   2026-11-12. `keyboard_navigation/back-history-dropdown` waits on it.
 
 ### A2: List view
 
