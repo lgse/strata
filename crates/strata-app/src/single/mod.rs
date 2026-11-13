@@ -37,7 +37,7 @@ use strata_core::i18n::tr;
 use self::first_visit::FirstVisit;
 use crate::{
     App, commands, events,
-    listing::{Column, Load, Words},
+    listing::{Column, Words},
     menus::{self, Request},
     pane::{Applied, Pane},
     rename, shell,
@@ -383,6 +383,7 @@ fn tick_rename<V: SinglePane>(app: &mut App) -> Polled {
 /// Whether the folder the launch opened has been listed, or could not be: the probe's.
 #[cfg(feature = "qa")]
 pub(crate) fn listed<V: SinglePane>(app: &App) -> bool {
+    use crate::listing::Load;
     matches!(pane::<V>(app).load(), Some(Load::Listed | Load::Failed(_)))
 }
 
