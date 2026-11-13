@@ -564,6 +564,15 @@ Rulings of the owner on the parity work, oldest first.
   words. The timer rule stays in each interface, by the ruling above; the Rune side's is
   `crates/strata-app/src/folder_views.rs`. Moved by [A1](packages/A1.md)'s pull request
   [#2281](https://github.com/lgse/strata/pull/2281).
+- **2026-11-12: shared scenarios written during parity work stay on `strata-next`.** Asked
+  whether parity-written shared scenarios stay on `strata-next` only, the coordinator's
+  ruling, the owner said: "Yep I agree." So such a scenario is written on `strata-next`, with
+  its ledger row, and not on `main` first as the plan's "Integration with `main`" has it for
+  GTK-side changes: agents open no pull requests against `main`, and the scenario earns its
+  row only with Rune there. So far: `inline_renaming/rename-survives-entry-listed-above`
+  ([A7](packages/A7.md), [#2283](https://github.com/lgse/strata/pull/2283)) and
+  `thumbnail_worker_settings/icons-thumbnail-size-keys-saved` ([A1](packages/A1.md),
+  [#2281](https://github.com/lgse/strata/pull/2281)).
 
 ## Housekeeping
 

@@ -8,6 +8,7 @@ use strata_kit::look::Look;
 use super::*;
 use crate::collection::element::{Collection, CollectionState};
 use crate::contract::{EntryId, EntryKind, EntrySource, LinkTarget, ListEntry, ListSource};
+use crate::icons_grid::{GridLines, TileMetrics};
 
 const KEY: &str = "files";
 const FRAME: f64 = 1.0 / 60.0;
@@ -287,6 +288,8 @@ struct App {
     collection_heard: Vec<String>,
     /// In [`hosted_view`]: where the editor is told the keyboard returns.
     returns: Option<&'static str>,
+    /// Lay the entries out as Icons' tiles of this size, not as rows.
+    tile: Option<f32>,
 }
 
 /// What the host does with a [`RenameIntent::FieldMenu`].
@@ -335,7 +338,7 @@ fn editor() -> RenameEditor<App> {
         })
 }
 
-fn view(s: &App, _: &mut Cx<App>) -> El {
+fn collection(s: &App) -> Collection<App> {
     let list = Collection::new(
         KEY,
         |s: &App| (&s.listing, &s.coll),
@@ -345,8 +348,15 @@ fn view(s: &App, _: &mut Cx<App>) -> El {
     )
     .rename(|s: &App| s.rename.renaming_in(KEY), editor().slot())
     .on_press(|s: &mut App, p, _| s.collection_heard.push(format!("press {:?}", p.button)))
-    .on_intent(|s: &mut App, i, _| s.collection_heard.push(format!("{i:?}")))
-    .build(s);
+    .on_intent(|s: &mut App, i, _| s.collection_heard.push(format!("{i:?}")));
+    match s.tile {
+        Some(size) => list.lines(GridLines::new(TileMetrics::new(&s.look, size, 2, false))),
+        None => list,
+    }
+}
+
+fn view(s: &App, _: &mut Cx<App>) -> El {
+    let list = collection(s).build(s);
     let page = col()
         .w_full()
         .h_full()
@@ -383,6 +393,7 @@ fn app(n: usize) -> App {
         menu_at: None,
         collection_heard: Vec::new(),
         returns: None,
+        tile: None,
     }
 }
 
@@ -562,6 +573,75 @@ fn a_row_scrolled_out_of_view_cancels_its_edit_once_it_had_shown() {
             by: By::Scrolled
         })
     );
+}
+
+/// lgse/strata#2277: an entry listed above the row moves it down a line, still in view. The
+/// edit goes on, as GTK's lease on its bound entry does; the range Rune reported for the
+/// frame before the change ends one entry too early.
+#[test]
+fn an_entry_listed_above_the_row_keeps_its_edit() {
+    let mut rt = mount(5);
+    begin(&mut rt, 5);
+    assert!(rt.state.rename.is_open(), "{:?}", rt.state.heard);
+    rt.update(|s, _| {
+        let mut entries = s.listing.entries().to_vec();
+        let above = ListEntry::new(
+            EntryId::new(99),
+            "a above.txt".to_owned(),
+            EntryKind::File,
+            "text",
+        );
+        entries.insert(0, above);
+        s.listing.replace(entries);
+    });
+    frames(&mut rt, 5);
+    assert!(rt.state.rename.is_open(), "{:?}", rt.state.heard);
+    assert_eq!(rt.state.rename.renaming(), Some(EntryId::new(5)));
+}
+
+/// A tile size changed at the same width (Icons' Ctrl+Alt+= and Ctrl+Shift+wheel, which run
+/// before the edit's stage): the tiles flow into lines of another count, and for a frame the
+/// row is placed against the scroll from before the cursor's reveal. The edit goes on, as
+/// GTK's does.
+#[test]
+fn a_tile_size_change_keeps_the_edit() {
+    let mut rt = Runtime::new(
+        App {
+            tile: Some(48.0),
+            ..app(200)
+        },
+        view,
+        (400.0, 300.0),
+        Env::new(false, 1.0),
+    );
+    rt.poll = Some(|s: &mut App, _, _| {
+        let polled = s.rename.tick(KEY, &s.listing, &s.coll);
+        s.heard.extend(polled.intents);
+        polled.changed
+    });
+    rt.frame(0.0);
+    frames(&mut rt, 2);
+    // The entry being renamed is the cursor's, as in Icons.
+    rt.update(|s, _| {
+        let index = s.listing.index_of(EntryId::new(120)).expect("the entry");
+        s.coll.selection.select_only(&s.listing, index);
+    });
+    begin(&mut rt, 120);
+    frames(&mut rt, 10);
+    assert!(rt.state.rename.is_open(), "{:?}", rt.state.heard);
+    let before = rt.state.coll.per_line();
+    rt.update(|s, tx| {
+        s.tile = Some(256.0);
+        collection(s).reflow(s, tx);
+    });
+    frames(&mut rt, 10);
+    assert_ne!(
+        rt.state.coll.per_line(),
+        before,
+        "the size changes the count"
+    );
+    assert!(rt.state.rename.is_open(), "{:?}", rt.state.heard);
+    assert_eq!(rt.state.rename.renaming(), Some(EntryId::new(120)));
 }
 
 #[test]

@@ -405,8 +405,11 @@ sequence only together with the alphabet's version, so the version is part of th
   cancels by `Scrolled` once the edited row's index leaves `visible_range()`, the range last
   reported and so a frame old (`crates/strata-components/src/collection/element/state.rs`): an
   insertion above pushes the row's index past its end while the row stays on screen.
-- **Concerns:** the C5 rename editor in every view; no scenario creates an entry above a row
-  being renamed.
-- **State:** open, A7's. The fix is a `contract` pull request to `strata-components` after
-  decision 25, with a scenario and its run on GTK: start a rename, create a file that sorts
-  above it, and see the editor keep its text.
+- **Concerns:** the C5 rename editor in every view.
+- **State:** fixed by [A7](packages/A7.md)'s `contract` pull request
+  [#2283](https://github.com/lgse/strata/pull/2283): `RenameState::tick` counts the row as
+  scrolled out only when both `CollectionState::shows_entry` (its place by the last layout,
+  against the scroll now) and `visible_range` say so, since each goes stale for a frame on its
+  own (an entry listed above; the lines flowing anew at a tile size). GTK keeping the edit is confirmed by running it: the new
+  scenario `inline_renaming/rename-survives-entry-listed-above` passes on both targets, and
+  fails on Rune with the old check, at its line 13.

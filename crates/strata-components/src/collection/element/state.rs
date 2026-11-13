@@ -185,6 +185,21 @@ impl CollectionState {
         self.visible.clone()
     }
 
+    /// Whether any of the line holding entry `index` of `len` is in the viewport: the line's
+    /// place by the last build's layout, against the scroll as it is now. Unlike
+    /// [`CollectionState::visible_range`], which Rune reports a frame after a commit, it follows
+    /// a change to the listing at once: an entry listed above moves the line down a line with
+    /// it. False before the first build has laid a row out.
+    pub fn shows_entry(&self, index: usize, len: usize) -> bool {
+        let h = self.row_height;
+        if h <= 0.0 || index >= len {
+            return false;
+        }
+        let top = self.line_map(len).line_of(index) as f32 * h;
+        let offset = self.scroll.get();
+        top < offset + self.viewport.h && top + h > offset
+    }
+
     /// The part of the content the viewport shows, in content coordinates.
     pub fn visible_content(&self) -> Rect {
         Rect::new(0.0, self.scroll.get(), self.viewport.w, self.viewport.h)
