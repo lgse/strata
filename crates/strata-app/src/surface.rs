@@ -22,7 +22,7 @@ use strata_components::contract::EntrySource;
 use strata_core::{i18n::tr, model::Location};
 
 use crate::{
-    App,
+    App, buttons,
     listing::{Column, Load},
     shell,
 };
@@ -170,11 +170,12 @@ pub(crate) fn drawn(app: &App, surface: &Surface, said: &str, failed: Option<usi
         return page;
     };
     let button = |label: &str, key: String, act: fn(&mut App, usize, &mut Tx)| {
-        Button::new(label.to_owned())
+        let button = Button::new(label.to_owned())
             .variant(ButtonVariant::Neutral)
             .on_press_tx(move |app: &mut App, tx: &mut Tx| act(app, depth, tx))
             .build(&look.kit)
-            .key(key)
+            .key(key);
+        buttons::on_return(button)
     };
     let page = match administrator(app, depth) {
         Some(_) => page.child(button(
