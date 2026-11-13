@@ -383,7 +383,13 @@ fn the_hosts_wheel_hook_hears_each_wheel_before_the_size_wheel() {
     let cases = [
         ("a plain wheel", Mods::default(), false, true, false),
         ("Ctrl+Shift+wheel", resize, false, false, true),
-        ("Ctrl+Shift+wheel the host takes", resize, true, false, false),
+        (
+            "Ctrl+Shift+wheel the host takes",
+            resize,
+            true,
+            false,
+            false,
+        ),
     ];
     for (case, mods, takes, scrolls, resizes) in cases {
         let mut h = host(400, 900.0, 600.0);
@@ -398,7 +404,11 @@ fn the_hosts_wheel_hook_hears_each_wheel_before_the_size_wheel() {
             rt.frame(DT);
         }
         assert_eq!(rt.state.wheels, 1, "{case}: the host heard it");
-        assert_eq!(rt.state.coll.scroll_offset() > 0.0, scrolls, "{case}: scrolled");
+        assert_eq!(
+            rt.state.coll.scroll_offset() > 0.0,
+            scrolls,
+            "{case}: scrolled"
+        );
         assert_eq!(rt.state.size != 64.0, resizes, "{case}: resized");
     }
 }
