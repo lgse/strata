@@ -477,6 +477,20 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    Return. Source: the review of A5's [#2311](https://github.com/lgse/strata/pull/2311),
    2026-11-14.
 
+### A8: View switching and appearance
+
+1. **The List headings and the keyboard** (finding
+   [#2331](https://github.com/lgse/strata/issues/2331)). GTK's List headings are plain
+   buttons that Tab reaches and Return and Space press, to sort
+   (`src/ui/browser_modes/list_headings.rs`). C4's are no Tab stops: its table is one focus
+   stop, as rune-kit's Table is, and assistive technology presses a heading through its press
+   action (`crates/strata-components/src/list_table/mod.rs`). C4's docs called that an owner
+   ruling, but no ruling records it: the owner's sign-off of 2026-11-10 covers the deviations
+   marked OWNER in `docs/rune/work/STATUS.md`, and C4's row does not mark it. Should the
+   headings stay off the Tab order, or take focus and sort on Return and Space as GTK's do?
+   Meanwhile: they stay as they are; no scenario Tabs onto a heading. Source: A8's agent,
+   2026-11-14, by the coordinator's ruling.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

@@ -588,5 +588,9 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Reach:** by reading, no scenario Tabs onto a heading. The gap is older than
   [#2329](https://github.com/lgse/strata/pull/2329), which made the headings `button`s for
   assistive technology and left them unfocusable. Found in #2329's review.
-- **State:** open, [A8](packages/A8.md)'s: give C4's headings focus with Return and Space
-  pressing them, as GTK's buttons do, or have the owner confirm the ruling as a deviation.
+- **State:** open, waiting for the owner ([`owner.md`](owner.md#a8-view-switching-and-appearance),
+  A8 item 1). C4's "owner ruling" was a reading: the owner's sign-off of 2026-11-10 covers
+  the deviations marked OWNER in `docs/rune/work/STATUS.md`, and C4's row does not mark this
+  one. Meanwhile the headings stay as they are, and C4's docs call it a deviation pending the
+  owner's confirmation. [A8](packages/A8.md) builds focusable headings only if the owner
+  asks for them.
