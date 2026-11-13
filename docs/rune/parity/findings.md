@@ -564,7 +564,7 @@ sequence only together with the alphabet's version, so the version is part of th
   `view_switching/list-column-drag-applies-on-release`, `list-column-resize-tracks-pointer`
   and `chooser_selection/chooser-heading-escape-keeps-selection` at the headings as
   `{"role":"button","name":"Size"}`. Each still waits on another part first.
-- **State:** fixed by [H3](packages/H3.md)'s C4 roles pull request, a `contract` change to C4:
+- **State:** fixed by [H3](packages/H3.md)'s [#2329](https://github.com/lgse/strata/pull/2329), a `contract` change to C4:
   the collection takes `Roles::LISTBOX` (`listbox` and `option`, heard as `list` and
   `list item`), its cells take no role, and its heading strip is a box of `button`s. The List
   probe's roles are `("list-box", "list-box-option")`. Nothing a user does changes: the
