@@ -10,7 +10,7 @@ use crate::listing::{Column, Edit, Load};
 fn read(surface: &Surface, place: usize, listing: &Column) -> Option<(String, bool)> {
     surface
         .status(place, listing)
-        .map(|(said, drawn)| (said.to_owned(), drawn))
+        .map(|(said, drawn)| (said.into_owned(), drawn))
 }
 
 fn folder(path: &str) -> Column {
@@ -113,4 +113,18 @@ fn another_folder_of_the_same_name_in_the_same_place_restarts_the_grace_period()
     assert_eq!(read(&surface, 0, &second), silent());
     assert!(surface.watch(one(&second), 1.0 + grace * 2.5, &mut tx));
     assert_eq!(read(&surface, 0, &second), loading());
+}
+
+/// A folder that could not be read says so over the browser's reason, drawn, as GTK's
+/// status page does (`show_load_error`), and not as the bare reason.
+#[test]
+fn an_unreadable_folder_says_so_over_the_browsers_reason() {
+    let surface = Surface::translated();
+    let mut listing = folder("/locked");
+    listing.set_load(Load::Failed("Permission denied".to_owned()));
+    let said = (
+        "Unable to read this directory\nPermission denied".to_owned(),
+        true,
+    );
+    assert_eq!(read(&surface, 0, &listing), Some(said));
 }

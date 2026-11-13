@@ -10,16 +10,22 @@
 //! ([`crate::slots`], "Who owns what").
 //!
 //! A view holds one [`Surface`] for its listings, watches them in its poll
-//! ([`Surface::watch`]) and asks it what each says ([`Surface::status`]). Each listing waits
+//! ([`Surface::watch`]), asks it what each says ([`Surface::status`]) and draws that with
+//! [`drawn`], the one drawing every view shares. Each listing waits
 //! out a grace period of its own, as each GTK column has its own loading pages.
 
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
-use rune::Tx;
+use rune::{El, Tx, col, text};
+use rune_kit::{Button, ButtonVariant};
 use strata_components::contract::EntrySource;
 use strata_core::{i18n::tr, model::Location};
 
-use crate::listing::{Column, Load};
+use crate::{
+    App,
+    listing::{Column, Load},
+    shell,
+};
 
 /// How long a read goes unannounced: GTK's `GRACE_PERIOD`
 /// (`src/ui/loading_skeleton/delay.rs`), after which its loading page shows. A read that ends
@@ -39,6 +45,8 @@ struct Reading {
 pub(crate) struct Surface {
     empty: String,
     loading: String,
+    retry: String,
+    administrator: String,
     /// One for each listing the view watched last, by its place: a view's listings are its
     /// columns, or its one pane, so this holds no more than the view has columns.
     readings: Vec<Reading>,
@@ -87,6 +95,8 @@ impl Surface {
         Self {
             empty: tr("This directory is empty"),
             loading: tr("Loading"),
+            retry: tr("Retry"),
+            administrator: tr("Open as Administrator"),
             readings: Vec::new(),
         }
     }
@@ -98,16 +108,16 @@ impl Surface {
         &'a self,
         place: usize,
         listing: &'a Column,
-    ) -> Option<(&'a str, bool)> {
+    ) -> Option<(Cow<'a, str>, bool)> {
         if listing.len() > 0 {
             return None;
         }
         let announced = self.readings.get(place).is_some_and(|read| read.announced);
         match listing.load() {
-            Load::Failed(message) => Some((message, true)),
-            _ if reading(listing) && announced => Some((&self.loading, false)),
-            _ if reading(listing) => Some(("", false)),
-            _ => Some((&self.empty, true)),
+            Load::Failed(message) => Some((Cow::Owned(unreadable(message)), true)),
+            _ if reading(listing) && announced => Some((Cow::Borrowed(&self.loading), false)),
+            _ if reading(listing) => Some((Cow::Borrowed(""), false)),
+            _ => Some((Cow::Borrowed(&self.empty), true)),
         }
     }
 
@@ -127,6 +137,75 @@ impl Surface {
         }
         changed
     }
+}
+
+/// What GTK's surface says of a folder that could not be read, over the browser's `message`.
+fn unreadable(message: &str) -> String {
+    rust_i18n::t!(
+        "Unable to read this directory\n%{message}",
+        message = message
+    )
+    .into_owned()
+}
+
+/// What a view's listing for the browser's column `depth` draws in place of entries:
+/// `said`, from [`Surface::status`], and under it, for a folder that could not be read,
+/// Retry and, where the browser offers it, Open as Administrator, as GTK's status page
+/// stacks them.
+pub(crate) fn drawn(app: &App, surface: &Surface, depth: usize, said: &str, listing: &Column) -> El {
+    let look = &app.look;
+    let message = text(said.to_owned())
+        .font(look.kit.ty.ui)
+        .color(look.kit.c.text_muted);
+    let page = col()
+        .w_full()
+        .px(look.space.lg)
+        .py(look.space.lg)
+        .gap(look.space.sm)
+        .child(message);
+    if !matches!(listing.load(), Load::Failed(_)) {
+        return page;
+    }
+    let button = |label: &str, key: String, act: fn(&mut App, usize, &mut Tx)| {
+        Button::new(label.to_owned())
+            .variant(ButtonVariant::Neutral)
+            .on_press_tx(move |app: &mut App, tx: &mut Tx| act(app, depth, tx))
+            .build(&look.kit)
+            .key(key)
+    };
+    let page = match administrator(app, depth) {
+        Some(_) => page.child(button(
+            &surface.administrator,
+            format!("surface-administrator-{depth}"),
+            open_as_administrator,
+        )),
+        None => page,
+    };
+    page.child(button(&surface.retry, format!("surface-retry-{depth}"), retry))
+}
+
+/// The `admin://` form the browser offers for column `depth`'s folder, when only
+/// permissions kept the user out.
+fn administrator(app: &App, depth: usize) -> Option<Location> {
+    app.browser.column_snapshot(depth)?.administrator
+}
+
+/// Retry: the column's folder is read again (`install_pane_surface`'s `retry_column`).
+fn retry(app: &mut App, depth: usize, tx: &mut Tx) {
+    shell::publish(app);
+    app.browser.retry_column(depth);
+    shell::settle(app, tx);
+}
+
+/// Open as Administrator: the folder's `admin://` form opens in its place
+/// (`open_as_administrator` in `src/ui/browser/location.rs`).
+fn open_as_administrator(app: &mut App, depth: usize, tx: &mut Tx) {
+    let Some(administrator) = administrator(app, depth) else {
+        return;
+    };
+    shell::publish(app);
+    app.browser.navigate_location(administrator, true);
+    shell::settle(app, tx);
 }
 
 #[cfg(test)]

@@ -59,6 +59,8 @@ mod list;
 // A3 Sidebar
 // A4 Tabs
 // A5 Location bar
+mod error_dialog;
+mod open_failed;
 // A6 Menus, dialogs and keymap
 // A7 Entry management and undo
 mod new_item;
@@ -95,11 +97,12 @@ slots::parts! {
     // A3 Sidebar
     // A4 Tabs
     // A5 Location bar
+    error_dialog: error_dialog::ErrorDialog,
+    open_failed: open_failed::OpenFailed,
     // A6 Menus, dialogs and keymap
     // A7 Entry management and undo
     undo: undo::Undo,
     new_item: new_item::NewItem,
-    rename_failed: rename_failed::RenameFailed,
     trash: trash::Trash,
     // A8 View switching and appearance
     // A9 Pointer and click modes
