@@ -444,8 +444,9 @@ cannot read a press as GDK does is in
 - **`conflicts.rs`,** with three import lines changed. It knows which keys GTK's widgets
   and input methods take, so it is GTK's. What the Rune settings report as a conflict is an
   open question for the owner (lgse/strata#2133, lgse/strata#2150).
-- **`PreferenceManager`'s keymap methods** (`src/ui/preferences/keymap.rs`), unchanged:
-  they use the conflict check.
+- **`PreferenceManager`'s keymap methods** (`src/ui/preferences/keymap.rs`), unchanged.
+  "The keymap methods", under `PreferenceManager` below, says what each is and why none
+  moved.
 - **Every test.** `src/ui/keys/command/tests.rs` kept its path, through a test-only module
   in `mod.rs`, so its test names and the names its GTK tests re-run themselves by did not
   change.
@@ -521,6 +522,38 @@ it. Until then it stays where `main` has it. Every range rule is already shared,
 
 So this package closes with the manager's getters and setters still in `src/ui`. What moved
 is its state bookkeeping and its persistence.
+
+### The keymap methods
+
+`src/ui/preferences/keymap.rs` stays whole. Its parts, and what the Rune side does about
+each:
+
+| Part | What it is | On the Rune side |
+| --- | --- | --- |
+| `keymap()` | The resolved tables, built on first use and kept. Building them logs the file's entries that cannot apply, an uppercase letter written without `<Shift>`, and what the conflict check finds about the keys the file adds | Resolving is shared already: `Keymap::defaults()` and one `Keymap::overridden` for each map, over the entries of `Preferences::keymap`. The conflict report is the conflict check's, which is GTK's (`src/ui/keys/conflicts.rs`) |
+| `keymap_revision()`, `shown_keys()` | What a GTK binding compares to know that a key label must be drawn again | Nothing. This interface draws from its state, and its `Active` holds the tables |
+| `set_bindings`, `reset_binding`, `reset_map` | The edits Settings makes to the saved overrides, a few lines each over `KeymapOverrides`. They hold the file's rules: bindings are saved in their normalized form with repeats dropped, the shipped bindings remove the entry, an empty list unbinds, and resetting a map keeps the entries whose ids this version does not know | Needed by the package that builds this interface's keyboard settings. They move then, by the rule above: methods on `KeymapOverrides` in a new file beside `settings/keymap.rs`, in that package's `contract` pull request, with the GTK methods calling them |
+| `edit_keymap` | Rebuilds the kept tables, bumps the revision and saves | `shell::saved(app).change(…)` saves, and the window's `Active` takes the new tables |
+
+Nothing moved with this package, for three reasons:
+
+- **Nothing on the Rune side can run an edit yet.** `set_bindings` writes each binding with
+  `Binding::accelerator`, which panics on the Rune side's key library until it writes
+  accelerator strings ("What `Xkb` answers"). A moved edit would have no caller and no test
+  on the interface it moved for.
+- **No view needs the methods.** A key label and a press read `active_keymap()`, which is
+  shared, through the `Active` the window registers. Until the Rune side reads accelerator
+  strings that is `Keymap::defaults()`.
+- **What Rune's settings do around an edit is not decided.** GTK's page asks the conflict
+  check before it saves a captured key, and which conflicts Rune reports is an open question
+  for the owner.
+
+When the Rune side's key library reads and writes accelerator strings, reading a saved
+keymap is a change in `strata-app` and not a move: the window's `Active` (`commands::Live`)
+resolves `Preferences::keymap` as the first row says, logs the entries that cannot apply,
+and takes new tables when the saved keymap changes. Whether it also logs an uppercase
+letter written without `<Shift>` is settled with the reader, since that line states how the
+reader takes a capital.
 
 ### The Rune interface
 
