@@ -498,11 +498,11 @@ fn answered(app: &mut App, answer: Answer, tx: &mut Tx) {
         Answer::Abandoned(request) => {
             asked_for(app, Some(request));
         }
-        Answer::Failed { request, message } => {
-            if let Some(asked) = asked_for(app, request) {
-                failed(app, &asked, message, tx);
-            }
-        }
+        // GTK reports every failed rename, its undo and redo among them, whoever asked.
+        Answer::Failed { request, message } => match asked_for(app, request) {
+            Some(asked) => failed(app, &asked, message, tx),
+            None => rename_failed::show(app, message),
+        },
     }
 }
 
