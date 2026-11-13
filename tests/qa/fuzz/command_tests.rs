@@ -17,8 +17,8 @@ use super::{
     project::Difference,
     report::{Examined, Run},
     rules::Ignored,
+    targets::Comparison,
 };
-use crate::target::Target;
 
 fn parse(line: &str) -> Result<Options, String> {
     Options::parse(line.split_whitespace().map(str::to_owned))
@@ -172,13 +172,23 @@ fn examined(streams: &[&[&str]]) -> Examined {
         area: "sample".to_owned(),
         name: "fuzz-sample-v1-0000000000000007".to_owned(),
         steps: 2,
+        targets: "gtk".to_owned(),
         streams: streams.iter().map(|focused| stream(focused)).collect(),
-        divergence: None,
-        unmasked: None,
+        comparisons: Vec::new(),
         error: None,
         parked: None,
         kept: None,
     }
+}
+
+/// The one comparison of a run on GTK alone.
+fn on_gtk(found: Option<Divergence>, unmasked: Option<Divergence>) -> Vec<Comparison> {
+    vec![Comparison {
+        between: "on gtk".to_owned(),
+        divergence: found,
+        unmasked,
+        compared: 2,
+    }]
 }
 
 fn differing() -> Divergence {
@@ -195,16 +205,15 @@ fn differing() -> Divergence {
 
 fn run_of(line: &str) -> Run {
     let options = parse(line).expect("the selections should parse");
-    Run::new(&options, Target::Gtk, &Ignored::default())
+    Run::new(&options, &Ignored::default())
 }
 
 pub(crate) fn a_command_fails_on_what_did_not_agree_and_on_nothing_replayed() {
     let agreeing = || examined(&[&["archive", "documents"], &["archive", "documents"]]);
     let mut differs = agreeing();
-    differs.divergence = Some(differing());
-    differs.unmasked = Some(differing());
+    differs.comparisons = on_gtk(Some(differing()), Some(differing()));
     let mut masked = agreeing();
-    masked.unmasked = Some(differing());
+    masked.comparisons = on_gtk(None, Some(differing()));
     let mut unsettled = agreeing();
     unsettled.streams[1].observations[1].settled = false;
     let mut warned = agreeing();
@@ -241,7 +250,7 @@ pub(crate) fn a_perturbed_run_and_a_survey_of_parked_sequences_say_what_they_are
         "run --alphabet calibration --seeds 1 --perturb {perturbation}"
     ));
     let mut differs = examined(&[&["archive", "documents"], &["archive", "perturbed"]]);
-    differs.divergence = Some(differing());
+    differs.comparisons = on_gtk(Some(differing()), Some(differing()));
     let lines = run.judge(&differs);
     assert!(lines[0].starts_with("PERTURBED DIFFER "), "{lines:?}");
     let failure = run
@@ -263,7 +272,7 @@ pub(crate) fn a_perturbed_run_and_a_survey_of_parked_sequences_say_what_they_are
     let mut survey = run_of("replay --parked");
     let mut still = examined(&[&["archive", "documents"], &["archive", "pictures"]]);
     still.parked = Some(parked.clone());
-    still.divergence = Some(differing());
+    still.comparisons = on_gtk(Some(differing()), Some(differing()));
     let mut agrees = examined(&[&["archive"], &["archive"], &["archive"]]);
     agrees.parked = Some(parked.clone());
     let lines = [survey.judge(&still), survey.judge(&agrees)].concat();

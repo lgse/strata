@@ -24,8 +24,9 @@ use super::{
     rules::Ignored,
     sequence::Sequence,
     shrink::{CONFIRMATIONS, Shrunk},
+    targets::{Comparison, Targets},
 };
-use crate::{REPOSITORY, target::Target};
+use crate::REPOSITORY;
 
 /// What every line and file of a run that perturbs carries, so that a difference the
 /// harness put in is never read as the application's.
@@ -36,11 +37,13 @@ pub(crate) struct Examined {
     pub(crate) area: String,
     pub(crate) name: String,
     pub(crate) steps: usize,
+    /// The folder its artifacts go under, named for the targets it was replayed on.
+    pub(crate) targets: String,
     pub(crate) streams: Vec<Stream>,
-    /// Where two replays differ outside the map and the mask.
-    pub(crate) divergence: Option<Divergence>,
-    /// Where they differ with nothing left out: what calibration counts.
-    pub(crate) unmasked: Option<Divergence>,
+    /// Each target with itself, then the two targets with each other: where the replays
+    /// differ outside the map and the mask, and where they differ with nothing left out,
+    /// which is what calibration counts (`targets.rs`).
+    pub(crate) comparisons: Vec<Comparison>,
     /// Why the sequence could not be replayed, which is the harness's fault.
     pub(crate) error: Option<String>,
     /// The parked line of a sequence that `replay --parked` replays on purpose.
@@ -51,34 +54,28 @@ pub(crate) struct Examined {
 /// How a sequence came out, the worst first.
 enum Verdict<'a> {
     Error(&'a str),
-    Differ(&'a Divergence),
+    /// Every comparison whose replays differ outside the map and the mask.
+    Differ(Vec<&'a Comparison>),
     /// Some step did not come to rest, so its state was not compared.
     Unsettled(usize),
     /// The replays differ on masked fields only.
-    Masked(&'a Divergence),
+    Masked(&'a Comparison, &'a Divergence),
     Agree,
 }
 
 impl Examined {
-    pub(crate) fn new(area: &str, sequence: &Sequence) -> Self {
+    pub(crate) fn new(area: &str, sequence: &Sequence, targets: &Targets) -> Self {
         Self {
             area: area.to_owned(),
             name: sequence.name.clone(),
             steps: sequence.steps.len(),
+            targets: targets.label(),
             streams: Vec::new(),
-            divergence: None,
-            unmasked: None,
+            comparisons: Vec::new(),
             error: None,
             parked: None,
             kept: None,
         }
-    }
-
-    fn count(&self, outcome: Outcome) -> usize {
-        self.streams
-            .iter()
-            .map(|stream| stream.count(outcome))
-            .sum()
     }
 
     fn unsettled(&self) -> usize {
@@ -105,14 +102,44 @@ impl Examined {
         }
     }
 
+    fn differing(&self) -> Vec<&Comparison> {
+        self.comparisons
+            .iter()
+            .filter(|comparison| comparison.divergence.is_some())
+            .collect()
+    }
+
+    fn masked(&self) -> Option<(&Comparison, &Divergence)> {
+        self.comparisons.iter().find_map(|comparison| {
+            comparison
+                .unmasked
+                .as_ref()
+                .map(|unmasked| (comparison, unmasked))
+        })
+    }
+
     fn verdict(&self) -> Verdict<'_> {
-        match (&self.error, &self.divergence, &self.unmasked) {
-            (Some(error), _, _) => Verdict::Error(error),
-            (None, Some(divergence), _) => Verdict::Differ(divergence),
-            (None, None, _) if self.unsettled() > 0 => Verdict::Unsettled(self.unsettled()),
-            (None, None, Some(unmasked)) => Verdict::Masked(unmasked),
-            (None, None, None) => Verdict::Agree,
+        if let Some(error) = &self.error {
+            return Verdict::Error(error);
         }
+        let differing = self.differing();
+        if !differing.is_empty() {
+            return Verdict::Differ(differing);
+        }
+        if self.unsettled() > 0 {
+            return Verdict::Unsettled(self.unsettled());
+        }
+        match self.masked() {
+            Some((comparison, unmasked)) => Verdict::Masked(comparison, unmasked),
+            None => Verdict::Agree,
+        }
+    }
+
+    /// The first divergence outside the map and the mask, the one a shrink would take.
+    fn divergence(&self) -> Option<&Divergence> {
+        self.comparisons
+            .iter()
+            .find_map(|comparison| comparison.divergence.as_ref())
     }
 }
 
@@ -120,12 +147,18 @@ fn first_line(text: &str) -> &str {
     text.lines().next().unwrap_or_default()
 }
 
-/// `DIFFER <name> at step <n> <action>: <field> (<left> | <right>)`, under `PERTURBED` when
-/// the harness put the difference in.
-pub(crate) fn differ_line(name: &str, divergence: &Divergence, perturbed: bool) -> String {
+/// `DIFFER <name> <between> at step <n> <action>: <field> (<left> | <right>)`, under
+/// `PERTURBED` when the harness put the difference in. `between` says which replays:
+/// `on gtk`, or `gtk against rune` with the GTK value first.
+pub(crate) fn differ_line(
+    name: &str,
+    between: &str,
+    divergence: &Divergence,
+    perturbed: bool,
+) -> String {
     let first = divergence.fields.first();
     format!(
-        "{}DIFFER {name} at step {} {}: {} ({} | {})",
+        "{}DIFFER {name} {between} at step {} {}: {} ({} | {})",
         mark(perturbed),
         divergence.step,
         divergence.action,
@@ -155,6 +188,8 @@ pub(crate) struct Run {
     /// Which sequences: the alphabet and its versions, or the corpus.
     pub(crate) what: String,
     command: &'static str,
+    /// The folder under an area's artifacts that the run's sequences are kept in.
+    targets: String,
     header: Vec<String>,
     perturbed: bool,
     /// `replay --parked`: a survey of parked sequences, which fails only when it cannot run.
@@ -165,7 +200,8 @@ pub(crate) struct Run {
     replays: usize,
     observed: usize,
     compared: usize,
-    counts: BTreeMap<&'static str, usize>,
+    /// Each outcome's count, by the target that answered it.
+    counts: BTreeMap<(String, &'static str), usize>,
     fields: BTreeMap<String, usize>,
     areas: BTreeSet<String>,
     /// Observations that changed after their step's reply, and how long each such change
@@ -190,15 +226,10 @@ struct Tally {
 }
 
 impl Run {
-    pub(crate) fn new(options: &Options, target: Target, ignored: &Ignored) -> Self {
+    pub(crate) fn new(options: &Options, ignored: &Ignored) -> Self {
         let rest = options.rest;
-        let mut header = vec![
-            format!(
-                "FUZZ replays: target {}, {} of each sequence, {} sequences at once",
-                target.name(),
-                options.repeats,
-                options.jobs
-            ),
+        let mut header = vec![replays_line(options)];
+        header.extend([
             format!(
                 "FUZZ rest: {} equal samples {} ms apart, budget {} ms",
                 rest.samples,
@@ -206,7 +237,7 @@ impl Run {
                 rest.budget.as_millis()
             ),
             rule_counts(ignored),
-        ];
+        ]);
         if options.perturbation.is_some() {
             header.push(format!(
                 "FUZZ {PERTURBED}: the last replay of each sequence is changed on purpose; a \
@@ -221,6 +252,7 @@ impl Run {
                 Command::Shrink => "shrink",
                 _ => "",
             },
+            targets: options.targets.label(),
             header,
             perturbed: options.perturbation.is_some(),
             survey: options.parked,
@@ -280,26 +312,35 @@ impl Run {
             self.tally.findings += 1;
             lines.push(format!("FINDING {}: {finding}{kept}", examined.name));
         }
-        let (failed, line) = self.verdict_line(examined, &kept);
+        let (failed, verdict) = self.verdict_lines(examined, &kept);
         if failed || finding.is_some() {
             self.tally.failed += 1;
         }
-        lines.push(line);
+        lines.extend(verdict);
         lines
     }
 
-    /// The line for a sequence's verdict, and whether the verdict fails the command.
-    fn verdict_line(&mut self, examined: &Examined, kept: &str) -> (bool, String) {
+    /// The lines for a sequence's verdict, one for each comparison that differs, and
+    /// whether the verdict fails the command.
+    fn verdict_lines(&mut self, examined: &Examined, kept: &str) -> (bool, Vec<String>) {
         let name = &examined.name;
-        match examined.verdict() {
+        let (failed, line) = match examined.verdict() {
             Verdict::Error(error) => {
                 self.tally.errors += 1;
                 (true, format!("ERROR {name}: could not replay: {error}"))
             }
-            Verdict::Differ(divergence) => {
+            Verdict::Differ(differing) => {
                 self.tally.differ += 1;
-                let line = differ_line(name, divergence, self.perturbed);
-                (true, format!("{line}{kept}"))
+                let lines = differing
+                    .iter()
+                    .filter_map(|comparison| {
+                        let divergence = comparison.divergence.as_ref()?;
+                        let line =
+                            differ_line(name, &comparison.between, divergence, self.perturbed);
+                        Some(format!("{line}{kept}"))
+                    })
+                    .collect();
+                return (true, lines);
             }
             Verdict::Unsettled(observations) => {
                 self.tally.unsettled += 1;
@@ -309,10 +350,11 @@ impl Run {
                 );
                 (true, line)
             }
-            Verdict::Masked(unmasked) => {
+            Verdict::Masked(comparison, unmasked) => {
                 self.tally.masked += 1;
                 let line = format!(
-                    "MASKED {name} at step {} {}: {}{kept}",
+                    "MASKED {name} {} at step {} {}: {}{kept}",
+                    comparison.between,
                     unmasked.step,
                     unmasked.action,
                     unmasked.signature()
@@ -328,7 +370,8 @@ impl Run {
                 );
                 (false, line)
             }
-        }
+        };
+        (failed, vec![line])
     }
 
     /// A parked sequence replayed on purpose: whether what it was parked for still shows.
@@ -342,14 +385,18 @@ impl Run {
                 self.tally.failed += 1;
                 format!("ERROR {}: could not replay: {error}", examined.name)
             }
-            Verdict::Differ(divergence) => {
+            Verdict::Differ(differing) => {
                 self.tally.differ += 1;
+                let first = differing[0];
+                let divergence = first.divergence.as_ref().unwrap_or_else(|| {
+                    unreachable!("a differing comparison has its divergence")
+                });
                 format!(
                     "STILL DIFFERS, PARKED ({issue}): {}",
-                    differ_line(&examined.name, divergence, self.perturbed)
+                    differ_line(&examined.name, &first.between, divergence, self.perturbed)
                 )
             }
-            Verdict::Unsettled(_) | Verdict::Masked(_) | Verdict::Agree => {
+            Verdict::Unsettled(_) | Verdict::Masked(..) | Verdict::Agree => {
                 self.tally.agree += 1;
                 format!(
                     "AGREES IN {} REPLAYS, STILL PARKED ({issue}): {}",
@@ -371,23 +418,18 @@ impl Run {
                 .map(|stream| stream.observations.len())
         };
         self.observed += lengths().sum::<usize>();
-        if let Some(shortest) = lengths().min() {
-            self.compared += shortest * (examined.streams.len() - 1);
-        }
-        for outcome in [
-            Outcome::Refused,
-            Outcome::Skipped,
-            Outcome::Failed,
-            Outcome::Left,
-            Outcome::Closed,
-        ] {
-            *self.counts.entry(outcome.name()).or_default() += examined.count(outcome);
-        }
-        *self.counts.entry("unsettled").or_default() += examined.unsettled();
-        *self.counts.entry("criticals").or_default() += examined.criticals();
-        let fields: BTreeSet<String> = examined
-            .unmasked
+        self.compared += examined
+            .comparisons
             .iter()
+            .map(|comparison| comparison.compared)
+            .sum::<usize>();
+        for stream in &examined.streams {
+            self.count_stream(stream);
+        }
+        let fields: BTreeSet<String> = examined
+            .comparisons
+            .iter()
+            .flat_map(|comparison| &comparison.unmasked)
             .flat_map(|unmasked| &unmasked.fields)
             .map(|difference| pattern_of(&difference.field))
             .collect();
@@ -395,6 +437,33 @@ impl Run {
             *self.fields.entry(field).or_default() += 1;
         }
         self.count_late_changes(examined);
+    }
+
+    fn count_stream(&mut self, stream: &Stream) {
+        let target = &stream.header.target;
+        let mut add = |name: &'static str, count: usize| {
+            *self.counts.entry((target.clone(), name)).or_default() += count;
+        };
+        for outcome in [
+            Outcome::Refused,
+            Outcome::Skipped,
+            Outcome::Failed,
+            Outcome::Left,
+            Outcome::Closed,
+        ] {
+            add(outcome.name(), stream.count(outcome));
+        }
+        add("unsettled", stream.unsettled());
+        add("criticals", stream.criticals());
+    }
+
+    /// An outcome's count on every target together, or on the one named.
+    fn counted(&self, target: Option<&str>, name: &str) -> usize {
+        self.counts
+            .iter()
+            .filter(|((on, counted), _)| *counted == name && target.is_none_or(|one| one == on))
+            .map(|(_, count)| count)
+            .sum()
     }
 
     fn count_late_changes(&mut self, examined: &Examined) {
@@ -415,7 +484,7 @@ impl Run {
     /// The summary: what ran, what agreed, the steps, what calibration reads, and the rule
     /// and mask counts once more.
     pub(crate) fn summary(&self) -> Vec<String> {
-        let count = |name: &str| self.counts.get(name).copied().unwrap_or_default();
+        let count = |name: &str| self.counted(None, name);
         let tally = &self.tally;
         let mut lines = vec![
             format!(
@@ -431,22 +500,20 @@ impl Run {
                 tally.findings
             ),
             format!(
-                "FUZZ steps: {} observations in {} replays, {} compared; {} refused, {} \
-                 skipped, {} failed, {} unsettled, {} GLib warnings or worse",
+                "FUZZ steps: {} observations in {} replays, {} compared; {}",
                 self.observed,
                 self.replays,
                 self.compared,
-                count(Outcome::Refused.name()),
-                count(Outcome::Skipped.name()),
-                count(Outcome::Failed.name()),
-                count("unsettled"),
-                count("criticals"),
+                self.outcomes(None),
             ),
             format!(
                 "FUZZ replays that ended early: {} left the fixture, {} closed the window",
                 count(Outcome::Left.name()),
                 count(Outcome::Closed.name()),
             ),
+        ];
+        lines.extend(self.outcomes_by_target());
+        lines.extend([
             self.late_changes(),
             self.first_fields(),
             format!(
@@ -454,14 +521,40 @@ impl Run {
                 self.load,
                 load_average()
             ),
-        ];
+        ]);
         lines.extend(self.header[2..].iter().cloned());
         lines.extend(
             self.areas
                 .iter()
-                .map(|area| format!("FUZZ artifacts: {ARTIFACTS}/{area}/")),
+                .map(|area| format!("FUZZ artifacts: {ARTIFACTS}/{area}/{}/", self.targets)),
         );
         lines
+    }
+
+    /// `<n> refused, <n> skipped, …` on every target together, or on the one named.
+    fn outcomes(&self, target: Option<&str>) -> String {
+        let count = |name: &str| self.counted(target, name);
+        format!(
+            "{} refused, {} skipped, {} failed, {} unsettled, {} GLib warnings or worse",
+            count(Outcome::Refused.name()),
+            count(Outcome::Skipped.name()),
+            count(Outcome::Failed.name()),
+            count("unsettled"),
+            count("criticals"),
+        )
+    }
+
+    /// On two targets, each one's outcomes: a step one skips and the other sends is where
+    /// their states parted.
+    fn outcomes_by_target(&self) -> Vec<String> {
+        let targets: BTreeSet<&str> = self.counts.keys().map(|(on, _)| on.as_str()).collect();
+        if targets.len() < 2 {
+            return Vec::new();
+        }
+        targets
+            .into_iter()
+            .map(|on| format!("FUZZ steps on {on}: {}", self.outcomes(Some(on))))
+            .collect()
     }
 
     fn first_fields(&self) -> String {
@@ -535,21 +628,73 @@ impl Run {
     }
 }
 
-fn artifacts(area: &str, name: &str) -> PathBuf {
-    Path::new(REPOSITORY).join(ARTIFACTS).join(area).join(name)
+/// `target/qa-fuzz/<area>/<targets>/<sequence>`: a run on one target keeps its sequences
+/// apart from a run on another, and from a differential run's.
+fn artifacts(area: &str, targets: &str, name: &str) -> PathBuf {
+    Path::new(REPOSITORY)
+        .join(ARTIFACTS)
+        .join(area)
+        .join(targets)
+        .join(name)
+}
+
+/// What the replays of each comparison did, for `divergence.json`.
+fn comparisons_report(examined: &Examined, perturbed: bool) -> Vec<serde_json::Value> {
+    examined
+        .comparisons
+        .iter()
+        .map(|comparison| {
+            json!({
+                "between": comparison.between,
+                "divergence": comparison.divergence.as_ref().map(Divergence::report),
+                "unmasked": comparison.unmasked.as_ref().map(Divergence::report),
+                "title": comparison
+                    .divergence
+                    .as_ref()
+                    .filter(|_| !perturbed)
+                    .map(|found| found.title(&examined.area)),
+            })
+        })
+        .collect()
+}
+
+/// `FUZZ replays: …`: the targets, how many replays of each sequence, and how many at once.
+fn replays_line(options: &Options) -> String {
+    let targets = &options.targets;
+    if targets.is_differential() {
+        format!(
+            "FUZZ replays: {}, {} of each sequence on each side by side, {} sequences at \
+             once; each target compared with itself, then every {} replay with the first {} one",
+            targets.describe(),
+            options.repeats,
+            options.jobs,
+            targets.pair().1.name(),
+            targets.pair().0.name(),
+        )
+    } else {
+        format!(
+            "FUZZ replays: {}, {} of each sequence, {} sequences at once",
+            targets.describe(),
+            options.repeats,
+            options.jobs
+        )
+    }
 }
 
 fn relative(path: &Path) -> PathBuf {
     path.strip_prefix(REPOSITORY).unwrap_or(path).to_owned()
 }
 
-/// Writes each replay's stream, transcript and logs as `<target>-<n>`, with `-perturbed`
-/// on the one the harness changed.
+/// Writes each replay's stream, transcript and logs as `<target>-<n>`, n counting that
+/// target's replays, with `-perturbed` on the one the harness changed.
 fn write_replays(directory: &Path, replays: &[Replayed]) {
-    for (index, replayed) in replays.iter().enumerate() {
+    let mut counted: BTreeMap<&str, usize> = BTreeMap::new();
+    for replayed in replays {
         let header = &replayed.stream.header;
+        let number = counted.entry(header.target.as_str()).or_default();
+        *number += 1;
         let changed = if header.perturbed { "-perturbed" } else { "" };
-        let stem = format!("{}-{}{changed}", header.target, index + 1);
+        let stem = format!("{}-{number}{changed}", header.target);
         for (suffix, text) in [
             ("stream.jsonl", replayed.stream.text()),
             ("transcript.jsonl", replayed.transcript.clone()),
@@ -585,9 +730,9 @@ impl Evidence<'_> {
 /// Keeps a sequence's file, streams, transcripts and logs when its replays did not agree,
 /// showed a finding, or `--keep` asks for all. Returns where, under the checkout.
 pub(crate) fn keep(examined: &Examined, evidence: &Evidence, keep_all: bool) -> Option<PathBuf> {
-    let directory = artifacts(&examined.area, &examined.name);
+    let directory = artifacts(&examined.area, &examined.targets, &examined.name);
     let _ = fs::remove_dir_all(&directory);
-    let differs = examined.unmasked.is_some() || examined.error.is_some();
+    let differs = examined.masked().is_some() || examined.error.is_some();
     if !(keep_all || differs || evidence.has_finding()) {
         return None;
     }
@@ -595,17 +740,11 @@ pub(crate) fn keep(examined: &Examined, evidence: &Evidence, keep_all: bool) -> 
     let perturbed = evidence.perturbed();
     let _ = fs::write(directory.join("sequence.jsonl"), evidence.sequence.text());
     write_replays(&directory, evidence.replays);
-    let title = examined
-        .divergence
-        .as_ref()
-        .filter(|_| !perturbed)
-        .map(|found| found.title(&examined.area));
     let report = json!({
         "sequence": examined.name,
         "error": examined.error,
-        "divergence": examined.divergence.as_ref().map(Divergence::report),
-        "unmasked": examined.unmasked.as_ref().map(Divergence::report),
-        "title": title,
+        "divergence": examined.divergence().map(Divergence::report),
+        "comparisons": comparisons_report(examined, perturbed),
         "perturbed": perturbed,
     });
     let _ = fs::write(
@@ -618,7 +757,13 @@ pub(crate) fn keep(examined: &Examined, evidence: &Evidence, keep_all: bool) -> 
 /// Prints a shrink's result and keeps the shortest sequence beside the two replays that
 /// last showed its divergence. A perturbed divergence is marked on every line and in every
 /// file, and gets no issue title: it is not the application's.
-pub(crate) fn shrunk(area: &str, shrunk: &Shrunk, shortest: &Sequence, evidence: &Evidence) {
+pub(crate) fn shrunk(
+    area: &str,
+    targets: &Targets,
+    shrunk: &Shrunk,
+    shortest: &Sequence,
+    evidence: &Evidence,
+) {
     let original = evidence.sequence;
     let perturbed = evidence.perturbed();
     println!(
@@ -635,13 +780,13 @@ pub(crate) fn shrunk(area: &str, shrunk: &Shrunk, shortest: &Sequence, evidence:
     }
     println!(
         "{}",
-        differ_line(&shortest.name, &shrunk.divergence, perturbed)
+        differ_line(&shortest.name, &targets.between(), &shrunk.divergence, perturbed)
     );
     let title = (!perturbed).then(|| shrunk.divergence.title(area));
     if let Some(title) = &title {
         println!("FUZZ title: {title}");
     }
-    let directory = artifacts(area, &original.name);
+    let directory = artifacts(area, &targets.label(), &original.name);
     let _ = fs::remove_dir_all(&directory);
     if fs::create_dir_all(&directory).is_err() {
         return;

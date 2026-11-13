@@ -18,6 +18,7 @@ use super::{
     rules::{self, CAUSES, Ignored, exceptions},
     sequence::{Loaded, Sequence},
     shrink::{CONFIRMATIONS, shrink},
+    targets::{Left, Targets, between, comparisons},
 };
 use crate::{
     REPOSITORY,
@@ -174,6 +175,7 @@ fn compare_files(left: &Path, right: &Path) -> Result<(), String> {
         }
         Some(divergence) => Err(report::differ_line(
             &ours.header.sequence,
+            &between(&ours.header.target, &theirs.header.target),
             &divergence,
             perturbed,
         )),
@@ -275,8 +277,10 @@ fn origin_of(sequence: &Sequence) -> Result<Origin, String> {
 struct Bench<'a> {
     options: &'a Options,
     manifest: Manifest,
-    ignored: Ignored,
-    target: Target,
+    /// The mask alone: what a comparison of one target with itself leaves out.
+    same: Ignored,
+    /// The map and the mask: what a comparison of two targets leaves out.
+    across: Ignored,
 }
 
 impl<'a> Bench<'a> {
@@ -284,25 +288,77 @@ impl<'a> Bench<'a> {
         Ok(Self {
             options,
             manifest: manifest(),
-            // One target replayed against itself: the map's rules do not apply.
-            ignored: Ignored::load(true)?,
-            target: Target::from_environment()?,
+            same: Ignored::load(true)?,
+            across: Ignored::load(false)?,
         })
     }
 
-    fn replay(&self, loaded: &Loaded, perturbed: bool) -> Result<Replayed, String> {
+    fn targets(&self) -> &Targets {
+        &self.options.targets
+    }
+
+    /// What the command's comparisons leave out, for the summary: the map counts only when
+    /// two targets are compared.
+    fn reported(&self) -> &Ignored {
+        if self.targets().is_differential() {
+            &self.across
+        } else {
+            &self.same
+        }
+    }
+
+    fn replay(&self, loaded: &Loaded, target: Target, perturbed: bool) -> Result<Replayed, String> {
         replay(&Replay {
             loaded,
+            target,
             manifest: &self.manifest,
             rest: self.options.rest,
             perturbation: self.options.perturbation.as_ref().filter(|_| perturbed),
         })
     }
+
+    /// `--repeats` replays on one target, one after another. Only the last replay of the
+    /// last target is perturbed, when the command perturbs.
+    fn series(&self, loaded: &Loaded, target: Target) -> (Vec<Replayed>, Option<String>) {
+        let repeats = self.options.repeats;
+        let mut replays = Vec::new();
+        for index in 0..repeats {
+            let perturbed = target == self.targets().last() && index + 1 == repeats;
+            match self.replay(loaded, target, perturbed) {
+                Ok(replayed) => replays.push(replayed),
+                Err(error) => return (replays, Some(error)),
+            }
+        }
+        (replays, None)
+    }
+
+    /// Every target's series, the targets side by side; the replays in the order the
+    /// targets are listed, and the first error met.
+    fn replays(&self, loaded: &Loaded) -> (Vec<Replayed>, Option<String>) {
+        let series: Vec<_> = std::thread::scope(|scope| {
+            let started: Vec<_> = self
+                .targets()
+                .all()
+                .iter()
+                .map(|&target| scope.spawn(move || self.series(loaded, target)))
+                .collect();
+            started.into_iter().map(|one| one.join()).collect()
+        });
+        let mut replays = Vec::new();
+        let mut error = None;
+        for one in series {
+            let (done, failed) =
+                one.unwrap_or_else(|_| (Vec::new(), Some("a replay panicked".to_owned())));
+            replays.extend(done);
+            error = error.or(failed);
+        }
+        (replays, error)
+    }
 }
 
 fn examine_all(options: &Options) -> Result<(), String> {
     let bench = Bench::new(options)?;
-    let mut run = Run::new(options, bench.target, &bench.ignored);
+    let mut run = Run::new(options, bench.reported());
     let plan = planned(options)?;
     run.what = plan.what;
     for (name, parked) in &plan.skipped {
@@ -323,7 +379,8 @@ fn examine_all(options: &Options) -> Result<(), String> {
                     let examined =
                         std::panic::catch_unwind(AssertUnwindSafe(|| examine(&job, &bench)))
                             .unwrap_or_else(|_| {
-                                let mut failed = Examined::new(&job.area, &job.sequence);
+                                let mut failed =
+                                    Examined::new(&job.area, &job.sequence, bench.targets());
                                 failed.error =
                                     Some("the replay panicked; the reason is above".to_owned());
                                 failed
@@ -344,11 +401,11 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Replays one sequence `--repeats` times, one after another, and compares each replay with
-/// the first: once with nothing left out, for calibration, and once as the map and the mask
-/// have it. Only the last replay is perturbed, when the command perturbs.
+/// Replays one sequence `--repeats` times on each target and compares the replays: each
+/// target with itself, then, on two targets, every Rune replay with the first GTK one
+/// (`targets.rs`).
 fn examine(job: &Job, bench: &Bench) -> Examined {
-    let mut examined = Examined::new(&job.area, &job.sequence);
+    let mut examined = Examined::new(&job.area, &job.sequence, bench.targets());
     examined.parked.clone_from(&job.parked);
     let loaded = match job.sequence.load() {
         Ok(loaded) => loaded,
@@ -357,53 +414,48 @@ fn examine(job: &Job, bench: &Bench) -> Examined {
             return examined;
         }
     };
-    let repeats = bench.options.repeats;
-    let mut replays: Vec<Replayed> = Vec::new();
-    for index in 0..repeats {
-        match bench.replay(&loaded, index + 1 == repeats) {
-            Ok(replayed) => replays.push(replayed),
-            Err(error) => {
-                examined.error = Some(error);
-                break;
-            }
-        }
-    }
-    if let Some((first, others)) = replays.split_first() {
-        let against = |ignored: &Ignored| {
-            others
-                .iter()
-                .find_map(|other| compare(&first.stream, &other.stream, ignored))
-        };
-        examined.unmasked = against(&Ignored::default());
-        examined.divergence = against(&bench.ignored);
-    }
+    let (replays, error) = bench.replays(&loaded);
+    examined.error = error;
+    let streams: Vec<Stream> = replays
+        .iter()
+        .map(|replayed| replayed.stream.clone())
+        .collect();
+    let left = Left {
+        same: &bench.same,
+        across: &bench.across,
+    };
+    examined.comparisons = comparisons(&streams, bench.targets(), &left);
     let evidence = Evidence {
         sequence: &job.sequence,
         replays: &replays,
     };
     examined.kept = report::keep(&examined, &evidence, bench.options.keep);
-    examined.streams = replays
-        .into_iter()
-        .map(|replayed| replayed.stream)
-        .collect();
+    examined.streams = streams;
     examined
 }
 
-/// Replays the steps twice at once, the second replay perturbed when the command says so,
-/// and compares the two.
+/// Replays the steps on the command's two targets at once, or twice on its one target, the
+/// second replay perturbed when the command says so, and compares the two with what the
+/// pair's comparison leaves out.
 fn diverges(
     sequence: &Sequence,
     bench: &Bench,
 ) -> Result<(Option<Divergence>, [Replayed; 2]), String> {
     let loaded = sequence.load()?;
+    let (reference, other) = bench.targets().pair();
     let (left, right) = std::thread::scope(|scope| {
-        let left = scope.spawn(|| bench.replay(&loaded, false));
-        let right = bench.replay(&loaded, true);
+        let left = scope.spawn(|| bench.replay(&loaded, reference, false));
+        let right = bench.replay(&loaded, other, true);
         (left.join(), right)
     });
     let left = left.map_err(|_| "a replay panicked".to_owned())??;
     let right = right?;
-    let divergence = compare(&left.stream, &right.stream, &bench.ignored);
+    let ignored = if reference == other {
+        &bench.same
+    } else {
+        &bench.across
+    };
+    let divergence = compare(&left.stream, &right.stream, ignored);
     Ok((divergence, [left, right]))
 }
 
@@ -415,7 +467,7 @@ fn shrink_one(options: &Options) -> Result<(), String> {
     };
     let area = origin_of(&sequence)?.area;
     let perturbed = options.perturbation.is_some();
-    let mut run = Run::new(options, bench.target, &bench.ignored);
+    let mut run = Run::new(options, bench.reported());
     run.what = format!("shrinking {}", sequence.name);
     run.start(1);
     let (found, replays) = diverges(&sequence, &bench)?;
@@ -425,7 +477,11 @@ fn shrink_one(options: &Options) -> Result<(), String> {
             sequence.name
         ));
     };
-    println!("{}", report::differ_line(&sequence.name, &found, perturbed));
+    let between = bench.targets().between();
+    println!(
+        "{}",
+        report::differ_line(&sequence.name, &between, &found, perturbed)
+    );
     let mut last = replays;
     let shrunk = shrink(&sequence.steps, &found, options.limit, &mut |steps| {
         let (divergence, replays) = diverges(&sequence.with_steps(steps.to_vec()), &bench)?;
@@ -439,7 +495,7 @@ fn shrink_one(options: &Options) -> Result<(), String> {
         sequence: &sequence,
         replays: &last,
     };
-    report::shrunk(&area, &shrunk, &shortest, &evidence);
+    report::shrunk(&area, bench.targets(), &shrunk, &shortest, &evidence);
     if !shrunk.is_confirmed() {
         return Err(format!(
             "{}: the shortest sequence diverged {} times out of {CONFIRMATIONS}: this is \
