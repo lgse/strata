@@ -27,3 +27,10 @@ fn every_key_constant_is_the_gdk_key_of_its_name() {
         assert_eq!(gdk.map(IntoGlib::into_glib), Some(*keysym), "{constant}");
     }
 }
+
+#[test]
+fn the_name_of_no_key_reads_as_no_key() {
+    assert_eq!(super::Key::from_name("VoidSymbol"), None);
+    assert_eq!(super::Key::VoidSymbol.name().as_deref(), Some("0xffffff"));
+    assert_eq!(super::Key::from_name("Return"), Some(super::Key::Return));
+}

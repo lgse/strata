@@ -248,13 +248,17 @@ are GTK's accelerator strings, which `settings.toml` saves: reading one and writ
   no library (`keys/table.rs`). `strata-app` installs it when the UI thread is claimed,
   which every host and every hosted test does, and refuses the claim if another library
   was installed first. What the table answers, and what it does not, is below.
+- **`keys::Xkb` is the backend that takes its place** (`keys/xkb.rs`, behind the cargo
+  feature `xkb-keys`): the table for every key the code declares, and libxkbcommon for the
+  rest, corrected to GDK's answers. No interface installs it yet. What it answers is below,
+  after the table's.
 - A lookup with no backend installed panics, with a message that says so. That is why the
   tests of the moved code stayed in the GTK lane: they ask GDK.
 - The seam is one process-wide value, and it goes when GTK does. `install` answers whether
   its call was the one that installed.
 
 **What `Table` answers.** It is the first piece of the Rune side's key library, and the
-table the `xkbcommon` backend will sit behind, so that a key the code declares reads and
+table the `xkbcommon` backend sits behind, so that a key the code declares reads and
 writes the same whatever library a user has installed:
 
 | | The table | Not yet |
@@ -270,6 +274,32 @@ maps and all thirteen languages. `strata-desktop`'s own tests hold the table wit
 and the GTK application's `ui::keys::tests::table` holds every answer in the left column to
 GDK's. That test ties the three written names to the GDK of the test image: a GTK that
 writes one of those keys by another name fails it, and the table follows the image.
+
+**What `Xkb` answers.** Everything the table does, and for every other key what GDK
+answers, for the libraries of the test image. It links libxkbcommon, which the loader finds
+at run time; the GTK application does not link it, and only its tests enable the feature.
+
+| | `Xkb` | How it follows GDK |
+| --- | --- | --- |
+| Names written | A declared key by the table. A direct-Unicode keysym as `U+0100`, a key with no name as `0x1a4`: both formatted here by the keysym's range, never from the library's own spelling of a number. A vendor key without its `XF86` prefix | GDK names no vendor key but XFree86's, and none of XFree86's keys named after the Linux kernel's key codes: both ranges are rules. Beyond them, 15 keys libxkbcommon names are written as numbers, and 16 are written by another name (`Eth`, `Ooblique`, `kappa`, `Henkan`) |
+| Names read | A declared key by the table. A vendor key with its prefix or without, and not with the prefix twice. A NUL in a name is refused before it reaches the library, whose binding would panic. A number is refused: `U20AC`, `0x61` | The two vendor ranges are refused, 31 more names libxkbcommon reads are refused by name (`guillemetleft`, `dead_lowline`), and two that only GDK reads are read (`SelectButton`, `WindowClear`) |
+| Characters | The table's, then the library's | 27 keys type another character for GDK or none, and 55 characters have another key |
+| Case | Through the character the key types, with the one-character mapping, and a direct-Unicode keysym always onto its character's own key | 114 keys in lower case and 141 in upper are in tables: keys GDK pairs by position with no character behind them, characters Unicode maps to more than one, and characters with a case that GDK leaves alone, such as the Roman numerals |
+| Accelerator strings | None read, none written, as on the table | The reader and the writer are the next step, in two functions of `keys/xkb.rs` that a session which has not read GTK's source fills in |
+
+A key written as a number is not read back, as on GTK, where a binding to a key GDK does
+not name is saved and lost at the next start
+([`parity/owner.md`](parity/owner.md#b2-shared-state-out-of-the-gtk-package)).
+
+Two tests hold it: `tests/key_lookups.rs`, in the GTK application's test lane, compares it
+with GDK over every keysym, name and character and fails on a difference no rule covers,
+and `keys/xkb/tests.rs` holds what needs no GDK. `docs/testing.md`, "The key lookups and the
+test image", says how the tables follow the image's libraries and the Rust toolchain.
+
+`keys::library_in_use()` names the libxkbcommon the process runs on, as the file the loader
+mapped (the library has no call that tells its version), for the interface to log when it
+installs the backend: a report that a key reads differently on the two interfaces starts
+with which library read it.
 
 `install` takes a second answer that is also the interface's own: `NeverFires`, whether a
 binding in a map's entry can ever fire there, which `label` uses to leave such a binding

@@ -213,16 +213,34 @@ comments of 2026-11-12, unless another is named.
   shipped keys that is GTK's answer too: its check leaves out none of them in either map,
   with type-to-search on or off. The two differ only for a key a user added, which the
   Rune side does not read yet. Source: [#2195](https://github.com/lgse/strata/pull/2195) and [#2197](https://github.com/lgse/strata/pull/2197).
-- **A rebinding's round trip where key libraries differ.** With the `xkbcommon` backend
-  the names of keys beyond those the code declares follow the user's installed library,
-  and the comparison with GDK is exact only for the test image's pair of GTK and
-  `xkbcommon`. Where a user's library names a key the image's does not, or the reverse, a
-  rebinding of that key can be lost at restart or be unreadable by a 1.x release. On the
-  host's versions `xkbcommon` read 361 names GDK refuses, 139 of them not `XF86` keys;
-  the count for the image's pair comes with the backend. Meanwhile, by the orchestrating
-  session's ruling: a refusal list exact for the image's pair, no reading of numbers added
-  to cure it, and every declared key read from Strata's own table whatever library is
-  installed.
+- **A rebinding's round trip where key libraries differ.** A key the code declares never
+  diverges: both interfaces read and write it from Strata's own table, whatever is
+  installed, and that is every key a shipped binding uses. The question is a key a user
+  binds beyond those. With the `xkbcommon` backend its name follows the user's installed
+  libraries, and the backend's rules are exact for the test image's GTK, GLib and
+  libxkbcommon. Measured ([#2255](https://github.com/lgse/strata/pull/2255)): libxkbcommon 1.13 reads 359 names that GDK refuses and names 321 keys
+  that GDK writes as a number. The backend refuses and numbers all of them: 328 names and
+  306 keys by two rules (GDK names no vendor's keys but XFree86's, and none of XFree86's
+  keys named after the Linux kernel's key codes), and 31 names and 15 keys one by one. GDK
+  reads two names libxkbcommon does not, and writes 16 keys by another name. The image's
+  GTK 4.22 and a developer host's GTK 4.24 gave the same rows throughout, so on those
+  pairs no name is read on one interface and refused on the other. Where a user's
+  libraries differ from the image's, a rebinding of such a key can be lost at restart or be
+  unreadable by the other interface or by a 1.x release, in four ways:
+  1. *A newer libxkbcommon* reads names it added outside the two ranges: read on Rune,
+     refused by GTK.
+  2. *An older libxkbcommon* lacks names GDK has: read by GTK, refused on Rune.
+  3. *A newer GDK* names keys the rules write as numbers, or reads names the rules refuse:
+     read by GTK, refused on Rune, and the reverse for a name GDK dropped.
+  4. *A GLib whose Unicode tables differ from the compiler's* gives a letter another case
+     on one interface only, so a binding to a recently added cased letter with Shift is
+     recorded differently.
+
+  How many keys that is depends on the user's libraries and cannot be counted here. The
+  Rune interface logs which libxkbcommon it runs on when it installs the backend, so a
+  report can be placed. Meanwhile, by the orchestrating session's ruling: the rules exact
+  for the image's libraries, no reading of numbers added to cure it, and every declared
+  key read from Strata's own table whatever library is installed.
 - **Tab-session restore has no QA scenario.** No scenario seeds or reads `tabs.toml` or
   sets `restore_tabs`, so the ledger holds no interface to the rules for using the shared
   store, which live in GTK code that is deleted at parity (`docs/rune/shared-state.md`,

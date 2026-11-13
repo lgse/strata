@@ -48,9 +48,10 @@ impl Backend for Gdk {
 }
 
 /// Installs GDK as the key library of this process, with the GTK stages' answer to which
-/// bindings never fire. `main` calls it before anything reads a key.
-pub(crate) fn install() {
-    strata_desktop::keys::install(&Gdk, conflicts::never_fires);
+/// bindings never fire, and says whether this call was the one that installed. `main` calls
+/// it before anything reads a key.
+pub(crate) fn install() -> bool {
+    strata_desktop::keys::install(&Gdk, conflicts::never_fires)
 }
 
 /// A `#[test]` has no start-up to install from, and a test that forgot would fail only for

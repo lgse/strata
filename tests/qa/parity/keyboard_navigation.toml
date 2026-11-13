@@ -84,7 +84,7 @@ run = "list"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "B3: the header's Back button, at `drag` on it on line 13"
+blocker = "A5: the pane header's Back button, at `drag` on line 13 (placed with A5 by the coordinator, 2026-11-12)"
 
 [[run]]
 scenario = "back-then-file-keys-target-focused-folder"
@@ -151,9 +151,8 @@ blocker = "H3: lgse/strata#2254, the `middle_visible` note looks for a scroll pa
 scenario = "return-restores-nested-scroll"
 run = "list"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A1: the viewport a folder had, restored on Back and Up, at `moved` on line 22. A1's plan takes it with this scenario's Icons run (its pull request 3); it belongs in the shared `Pane`, so it is a `contract` change to `pane.rs`"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "select-all-selects-every-entry"

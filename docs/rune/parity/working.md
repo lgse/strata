@@ -101,6 +101,9 @@ The checkpoint a package feeds is its wave's, in the plan's
   mutation, and an uncommitted edit to a file a patch names stops the run or is discarded
   with the patch. So no source file is edited until the run ends; a Markdown file that must
   change is added by its own path; and `git status` is read before anything is committed.
+  The mutation runner ignores an interrupt (SIGINT) when it was started detached, so a run
+  that has to be stopped is killed, which leaves its patch in the tree: take it out by hand,
+  `git restore -- <the patched files>`, and check that `git status --porcelain` is empty.
 - **The rules carried over from the slice** are the plan's
   ([Rules carried over from the slice](README.md#rules-carried-over-from-the-slice)). The one
   ruled exception to never editing a GTK mutation patch is a line of `quick-preview.patch`

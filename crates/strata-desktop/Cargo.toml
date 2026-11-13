@@ -18,6 +18,10 @@ test-support = [
     "strata-fs/test-support",
     "strata-preview/test-support",
 ]
+# The key library that asks libxkbcommon for what `keys::Table` does not answer. Only the
+# Rune interface enables it, and the GTK application's tests, which hold it to GDK. Never
+# in the GTK application itself, which asks GDK.
+xkb-keys = ["dep:xkbcommon"]
 
 [dependencies]
 strata-core.workspace = true
@@ -40,6 +44,8 @@ tempfile.workspace = true
 toml.workspace = true
 tracing.workspace = true
 ureq.workspace = true
+# Not the workspace's entry: that one has the default features, which this does not need.
+xkbcommon = { version = "0.9.0", default-features = false, optional = true }
 zstd.workspace = true
 
 [dev-dependencies]
