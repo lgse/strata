@@ -43,6 +43,9 @@ use crate::{
 
 mod history;
 
+#[cfg(test)]
+mod tests;
+
 /// The header's state: the back history's menu, and a press held on Back.
 pub(crate) struct PaneHeader {
     menu: ContextMenuState,
@@ -106,9 +109,13 @@ pub(crate) fn bar(app: &App, view: &str, title: &str) -> El {
         .fold(row().items_center(), |buttons, button| {
             buttons.child(navigation(app, view, button))
         });
+    // Middle-ellipsized, as GTK's heading label is.
     let heading = text(title.to_owned())
         .font(look.kit.ty.ui_medium)
         .color(look.kit.c.text_base)
+        .truncate_middle()
+        .shrink()
+        .min_w(0.0)
         .description(title.to_owned());
     // Other packages' actions follow the heading here, in GTK's order (the module docs).
     let actions = row().key(format!("{view}-header-actions")).items_center();
@@ -152,13 +159,19 @@ fn navigation(app: &App, view: &str, button: &Button) -> El {
         .on_key(back_key)
 }
 
-/// A press on one of the buttons: its command, unless it is the release of a press held on
-/// Back that listed the history instead.
+/// A press on one of the buttons: its command, unless it is Back's, and the release of a
+/// press held on Back that listed the history instead.
 fn pressed(app: &mut App, command: &str, tx: &mut Tx) {
-    if std::mem::take(&mut app.pane_header.swallow) {
+    if command == "history-back" && std::mem::take(&mut app.pane_header.swallow) {
         return;
     }
     commands::run(app, command, On::Focus, tx);
+}
+
+/// The history closed, chosen from or not: a held press's release is no longer pending, as
+/// Back lies inert behind the menu and its release may reach the menu's scrim instead.
+fn closed(app: &mut App) {
+    app.pane_header.swallow = false;
 }
 
 /// A press held on Back: its start, until it is let go.
@@ -204,6 +217,7 @@ fn open(app: &mut App) {
 
 /// A history entry was chosen: the browser goes back to it in one step.
 fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
+    closed(app);
     let MenuIntent::Activate { action, .. } = intent;
     let Some(index) = history::index_of(&action) else {
         return;
@@ -221,6 +235,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         |app: &mut App| &mut app.pane_header.menu,
     )
     .on_intent(chosen)
+    .on_dismiss(|app: &mut App, _| closed(app))
     .build(app, &app.look, frame.layer);
     Some(menu)
 }
