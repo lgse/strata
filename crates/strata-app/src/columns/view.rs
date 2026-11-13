@@ -70,8 +70,9 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
             .empty(move |app: &App| shown_status(app, depth))
             .icon(app.columns.thumbs.icon(&app.look))
             .on_visible(move |app: &mut App, range| {
-                // Recorded only: the part syncs the store once a poll.
-                app.columns.thumbs.see(depth, range);
+                // Recorded only: the part syncs the store and asks for fills once a poll.
+                app.columns.thumbs.see(depth, range.clone());
+                app.columns.fills.see(depth, range);
                 false
             });
         // A column with no rows is described as GTK's directory surface is then.

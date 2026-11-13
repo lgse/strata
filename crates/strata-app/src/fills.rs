@@ -4,7 +4,8 @@
 //! (its size, a folder's count, an image's dimensions, a video's length) is asked for while
 //! the row is on screen or near it. Shared code: the Icons view asks every row's details
 //! ([`Details::All`]), the List view a folder's only, for its item count ([`Details::Folders`],
-//! as GTK's List asks with `details = entry.is_directory()`).
+//! as GTK's List asks with `details = entry.is_directory()`), and Columns a folder's while
+//! sizes show, else none ([`Details::Off`]), one [`Fills`] for each column.
 //!
 //! GTK's rule (`schedule_refresh` in `src/ui/thumbnail/viewport.rs`, at `62bbb1609`; ported as
 //! new code and listed in `docs/rune/parity/packages/A1.md`, "Ported from GTK"):
@@ -70,9 +71,13 @@ impl Filler for Rc<Browser> {
 pub(crate) enum Details {
     /// Every row: the Icons view's details line shows all three.
     All,
-    /// Folders only, for their item count: the List view's Size column. GTK's List asks with
-    /// `details = entry.is_directory()` (`src/ui/browser_modes/list_factory.rs`).
+    /// Folders only, for their item count: the List view's Size column, and Columns' while
+    /// sizes show. GTK's List asks with `details = entry.is_directory()`
+    /// (`src/ui/browser_modes/list_factory.rs`), its Columns rows with
+    /// `show_sizes && entry.is_directory()` (`src/ui/browser/columns/rows/bind.rs`).
     Folders,
+    /// No row: Columns while sizes are hidden.
+    Off,
 }
 
 impl Details {
@@ -80,6 +85,7 @@ impl Details {
         match self {
             Self::All => true,
             Self::Folders => entry.is_directory(),
+            Self::Off => false,
         }
     }
 }

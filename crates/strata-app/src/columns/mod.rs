@@ -39,6 +39,7 @@ use crate::{
 };
 
 mod editing;
+mod fills;
 mod intents;
 mod listings;
 mod mirror;
@@ -50,6 +51,7 @@ mod view;
 pub(crate) use selection::Input;
 pub(crate) use view::view;
 
+use fills::ColumnFills;
 use listings::Listings;
 use mirror::Mirror;
 use thumbs::Thumbs;
@@ -84,6 +86,8 @@ pub(crate) struct Columns {
     surface: Surface,
     /// The rows' thumbnails: a store viewer for each open column.
     thumbs: Thumbs,
+    /// The rows' metadata fills: one for each open column.
+    fills: ColumnFills,
 }
 
 /// With "Type to search" off a plain letter starts no search, so `h j k l` are the arrows:
@@ -119,6 +123,7 @@ impl Columns {
             labels: view::Labels::translated(),
             surface: Surface::translated(),
             thumbs: Thumbs::new(later),
+            fills: ColumnFills::new(settings.columns_show_sizes),
         }
     }
 
