@@ -271,7 +271,7 @@ fn the_stepper_changes_the_text_size_and_stays_open() {
 }
 
 /// In List, Group by file type is sensitive: it saves the setting, the List view groups the
-/// folder shown, and the popover closes. Hidden files shows them, checked, and closes it.
+/// folder shown with the cursor where it was, and the popover closes. Hidden files shows them, checked, and closes it.
 #[test]
 fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
     hosted_with(
@@ -282,6 +282,10 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
         |mut host| {
             let folder = fixture();
             open(&mut host, LIST, folder.path());
+            press(&mut host, Key::End, Mods::default());
+            press(&mut host, Key::Up, Mods::default());
+            let cursor = view::seen(&host, LIST).focused;
+            assert_eq!(cursor.as_deref(), Some("readme.md"));
             open_popover(&mut host);
             assert!(
                 row(&host, "appearance-group").4,
@@ -304,6 +308,11 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
             assert!(
                 headings(&host) > 0,
                 "the List view shows the file-type groups at once"
+            );
+            assert_eq!(
+                view::seen(&host, LIST).focused,
+                cursor,
+                "the cursor stays on its entry through the regroup"
             );
 
             open_popover(&mut host);
