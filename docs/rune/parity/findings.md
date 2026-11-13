@@ -285,3 +285,18 @@ sequence only together with the alphabet's version, so the version is part of th
   does not remove the cause. The thing to fix is the number of sessions started at once: a
   limit on concurrent sway sessions in the harness, or on the test threads the task asks
   for. [`working.md`](working.md#while-building) has how to run the window tests alone.
+
+### #2235: the Menu key opens no menu when the cursor's entry is scrolled out of view
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2235), filed on 2026-11-12 as the finding's reference and
+  closed at once: its state is kept here.
+- With the cursor on a selected entry scrolled out of view, the Menu key and Shift+F10 open
+  nothing on GTK and the key is not taken: `open_focused_context_menu` finds the place from
+  the row as drawn (`shown_row_at`, `item_widget`), and a row out of view is not bound.
+  Found by reading, in [B3](packages/B3.md)'s work on the Menu key; not run on GTK.
+- **Concerns:** `src/ui/browser/view_filter.rs:78`, `src/ui/browser/columns.rs:137` and
+  `src/ui/browser_modes/pane.rs:75`. No scenario presses the Menu key with the cursor out
+  of view.
+- **State:** open, not taken up. The Rune interface builds GTK's outcome; whether it should
+  reveal the row instead is with the owner ([`owner.md`](owner.md#b3-commands-and-key-dispatch)).
+  A fix on GTK, if taken up, starts from a bug issue on `main`.

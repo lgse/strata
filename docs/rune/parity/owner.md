@@ -233,6 +233,15 @@ Source for all of these: [B3](packages/B3.md), "Design", and the archived issue
   `context_menu_command` sits in the middle of that chain. No shipped key shows the
   difference; a user's binding that put the Menu key on an earlier or later command could.
   Meanwhile: the controller's place.
+- **The Menu key with the cursor's entry scrolled out of view.** GTK opens an entry's menu
+  at the row it has drawn, and has no row for an entry out of view (`shown_row_at` in
+  `src/ui/browser/columns.rs`, `item_widget` in the mode views): nothing opens, and nothing
+  says why. That reads as a limit of how GTK finds the place, arguably a fault a keyboard
+  user would notice, and is recorded as finding [#2235](https://github.com/lgse/strata/issues/2235). strata-components' C21 can scroll
+  the row in and open the menu there. Which the Rune interface does is the owner's.
+  Meanwhile, in force from the pull request that binds the Menu key: GTK's outcome, so
+  nothing opens and nothing scrolls. Revealing instead is one condition in
+  `crates/strata-app/src/commands/menu_key.rs`.
 - **The other six cases, each with the default in force** from the registry's pull request:
   2. *The digit row above level 1 (AltGr).* Read as GTK reads it where Rune gives the key's
      base character and Shift is not held: such a character has no position, so it is a
