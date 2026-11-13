@@ -16,7 +16,7 @@ use strata_desktop::settings::Preferences;
 
 use crate::{
     App,
-    fills::Fills,
+    fills::{Details, Fills},
     single::{Made, Single},
     slots::Later,
     thumbnails::Viewer,
@@ -69,7 +69,7 @@ impl Icons {
             // `strata_desktop::settings`). The size a folder remembers is B2's store's.
             size: f32::from(u16::try_from(settings.icons_thumbnail_size).unwrap_or(64)),
             thumbs: Viewer::new(later, part::locate),
-            fills: Fills::new(true),
+            fills: Fills::new(Details::All),
         }
     }
 }
