@@ -373,6 +373,7 @@ fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
         key: key.to_owned(),
         name: name.to_owned(),
         bounds: bounds(0.0),
+        column: None,
     };
     let drawn = Drawn {
         buttons: vec![
@@ -420,6 +421,61 @@ fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
     assert!(
         !behind,
         "nothing is presented behind a dialog, to stay cautious"
+    );
+}
+
+/// `column_background/context-menu-keeps-column-target` waits for the pane holding a column
+/// header's Refresh button with the column's menu open: a button drawn inside a column
+/// presented from what is drawn hangs under that column's pane, as a column's header actions
+/// do in GTK's tree, and one drawn outside every column hangs off the window's root, even
+/// where its box lies over a column's.
+#[test]
+fn a_button_behind_an_open_menu_hangs_under_the_column_it_is_drawn_in() {
+    let menu = json!({
+        "role": "window",
+        "children": [
+            { "role": "menu", "name": "folder", "states": ["modal"], "children": [
+                { "role": "menu-item", "key": "menu-item1", "name": "New Folder" },
+            ] },
+        ],
+    });
+    let button = |key: &str, column: Option<&str>| DrawnButton {
+        key: key.to_owned(),
+        name: key.to_owned(),
+        bounds: bounds(0.0),
+        column: column.map(str::to_owned),
+    };
+    let drawn = Drawn {
+        buttons: vec![
+            button("columns-refresh", Some("columns-col-1")),
+            button("sidebar-pin", None),
+        ],
+        ..drawn_folder()
+    };
+
+    let snapshot = Snapshot::read(&menu, &drawn);
+
+    let seen: Vec<_> = (0..).map_while(|index| snapshot.at(index)).collect();
+    let pane = seen
+        .iter()
+        .find(|seen| seen.mark == Some(Mark::Pane("Columns")))
+        .expect("the pane");
+    let parent_of = |key: &str| {
+        let button = seen
+            .iter()
+            .find(|seen| seen.key.as_deref() == Some(key))
+            .expect("the button");
+        button.parent.and_then(|index| snapshot.at(index))
+    };
+    assert_eq!(
+        parent_of("columns-refresh").map(|parent| parent.node.clone()),
+        Some(pane.node.clone()),
+        "a button drawn in the column hangs under its pane"
+    );
+    assert_eq!(
+        parent_of("sidebar-pin").and_then(|parent| parent.parent),
+        None,
+        "a button drawn outside every column hangs off the window's root"
     );
 }
 

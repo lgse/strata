@@ -865,8 +865,14 @@ sequence only together with the alphabet's version, so the version is part of th
   Rune's `begin` (`crates/strata-app/src/location/mod.rs`) opens on the trail's text, the shown
   location's path.
 - **Concerns:** `location v1`'s seed `0x7`, shrunk to 5 steps, confirmed 3 of 3, the same in
-  24 of 24 GTK replays, and parked in `tests/qa/fuzz/corpus/location/`.
-- **State:** open, [A5](packages/A5.md)'s to fix in `crates/strata-app/src/location/`.
+  24 of 24 GTK replays; with `location v2`'s seeds `0x7` and `0xd`, in
+  `tests/qa/fuzz/corpus/location/`.
+- **State:** fixed by [A5](packages/A5.md)'s [#2383](https://github.com/lgse/strata/pull/2383): the bar keeps the text Enter opened
+  (`Bar::typed`, `crates/strata-app/src/location/`) for the next Ctrl+L, and forgets it as
+  GTK's entry does: when the columns are truncated, added to or relocated, when the view
+  switches, and when an edit is cancelled; a location refused at once is not kept. A hosted
+  test, `location::tests::a_location_that_could_not_be_opened_is_the_next_edits_text`, holds
+  each. The three sequences are unparked and replay as kept sequences.
 
 ### #2381: after an outside click closes "Unable to open location", GTK's keyboard is on the first crumb
 
@@ -883,3 +889,30 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, waiting for the owner ([`owner.md`](owner.md#a5-location-bar), A5 item 3):
   GTK's keyboard lands where nothing put it, and whether Rune copies that is not the
   alphabet's to decide.
+
+### #2376: a background click in a scrolled inactive column selects its first visible entry on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2376), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the reviewer of [#2374](https://github.com/lgse/strata/pull/2374), by reading. A
+  plain click on the empty space of a column that isn't active makes it active and selects an
+  entry in it: GTK's `clear_marquee_selection` (`src/ui/browser/columns/append/surface.rs`)
+  selects the column's first entry, C2's `background_click`
+  (`crates/strata-components/src/columns/view.rs`) its first entry in view. They differ only in
+  a scrolled column.
+- **Concerns:** no scenario yet; the scenarios that cover the press start at the top.
+- **State:** open, [A8](packages/A8.md)'s.
+
+### #2377: a drag from a column's background clears only that column's selection on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2377), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the reviewer of [#2374](https://github.com/lgse/strata/pull/2374), by reading. On
+  GTK the marquee's press calls `clear_marquee_selection`, which clears every column's selection
+  and closes the deeper columns before the band moves. On Rune a press that becomes a band goes
+  to the marquee (`crates/strata-components/src/columns/pointer.rs`), whose `begin`
+  (`crates/strata-components/src/collection/marquee/machine.rs`) starts the band in its own
+  column's selection only, so the other columns keep theirs.
+- **Concerns:** no scenario yet drags from a column's background with entries selected in
+  another column.
+- **State:** open, [A8](packages/A8.md)'s.
