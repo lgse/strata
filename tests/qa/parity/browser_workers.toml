@@ -6,9 +6,8 @@
 scenario = "browser-workers-reuse-processes"
 run = "columns"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1: Columns rows asking the window's thumbnails for what they show, a `contract` change to `columns/`, at `all_cached_in` on line 7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "browser-workers-reuse-processes"
@@ -37,9 +36,8 @@ blocker = "A8: the Appearance popover, at `open_menu` on its header button on li
 scenario = "idle-workers-exit-and-restart"
 run = "columns"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A1: Columns rows asking the window's thumbnails for what they show, a `contract` change to `columns/`, at `all_cached_in` on line 5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "list-icons-fill-duration-cached"
