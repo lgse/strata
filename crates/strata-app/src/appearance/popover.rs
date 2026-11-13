@@ -10,6 +10,8 @@
 //! - **Preview panel,** a `toggle button` described with its key, drawn unpressed: it runs
 //!   `preview-panel`, which the preview drawer's package registers, and is inert until then
 //!   (the coordinator's ruling 1 in `docs/rune/parity/packages/A8.md`). It closes the popover.
+//! - **DENSITY:** the Frame and Content sliders ([`super::density`]), which save as they move;
+//!   the popover stays open.
 //! - **TEXT SIZE:** "Aa", then GTK's stepper: Decrease, the size as "N px" (it resets it,
 //!   described with its key), Increase, each running the text size's commands
 //!   ([`super::text_size`]). The popover stays open.
@@ -23,7 +25,7 @@
 //! keys, Escape, a press or a wheel outside, and the keyboard leaving it are the plain
 //! popover's.
 //!
-//! Left out until their pull requests: the DENSITY sliders, "Customize columns…" (List) and
+//! Left out until their pull requests: "Customize columns…" (List) and
 //! "Show sizes in Columns view" (Columns), and the header button's icon following the view.
 
 use rune::{El, Tx, col, icon, row, text};
@@ -35,7 +37,10 @@ use strata_desktop::keys::{
 };
 use strata_kit::{icons::IconName, look::Look};
 
-use super::views::{COLUMNS, ICONS, LIST};
+use super::{
+    density::{self, CONTENT, FRAME},
+    views::{COLUMNS, ICONS, LIST},
+};
 use crate::{
     App, buttons,
     commands::{self, Action, Call, On, Outcome},
@@ -74,6 +79,7 @@ struct Labels {
     icons: String,
     list: String,
     preview: String,
+    density: String,
     text_size: String,
     group: String,
     group_description: String,
@@ -91,6 +97,7 @@ impl State {
                 icons: tr("Icons"),
                 list: tr("List"),
                 preview: tr("Preview panel"),
+                density: tr("DENSITY"),
                 text_size: tr("TEXT SIZE"),
                 group: tr("Group by file type"),
                 group_description: tr("Group List entries under file-type headings"),
@@ -111,6 +118,8 @@ fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     let state = &mut app.appearance.popover;
     state.open = !state.open;
     if state.open {
+        FRAME.follow_saved(app);
+        CONTENT.follow_saved(app);
         tx.focus(SHOW_COLUMNS, true);
     }
     Outcome::Ran
@@ -147,15 +156,10 @@ fn groups(app: &App) -> bool {
 
 /// The popover's controls, in order: the disabled Group row is none.
 fn stops(app: &App) -> Vec<&'static str> {
-    let mut stops = vec![
-        SHOW_COLUMNS,
-        SHOW_ICONS,
-        SHOW_LIST,
-        PREVIEW_PANEL,
-        SMALLER,
-        RESET,
-        LARGER,
-    ];
+    let mut stops = vec![SHOW_COLUMNS, SHOW_ICONS, SHOW_LIST, PREVIEW_PANEL];
+    stops.extend(FRAME.keys);
+    stops.extend(CONTENT.keys);
+    stops.extend([SMALLER, RESET, LARGER]);
     if groups(app) {
         stops.push(GROUP);
     }
@@ -177,6 +181,8 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
         .child(heading(look, &state.labels.view))
         .children(view_rows(app))
         .child(preview_row(app))
+        .child(heading(look, &state.labels.density))
+        .child(density::sliders(app))
         .child(heading(look, &state.labels.text_size))
         .child(stepper(app))
         .child(group_row(app))
@@ -186,7 +192,7 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
         anchor: BUTTON,
         label: state.labels.appearance.clone(),
         stops: stops(app),
-        own_arrows: &[],
+        own_arrows: &[FRAME.keys[0], CONTENT.keys[0]],
         listing: shell::view_focus(app),
         close,
         parent: None,

@@ -36,6 +36,7 @@ use crate::{
 
 mod corner_roundness;
 mod defaults;
+mod density;
 mod folder_view_file;
 pub mod folder_view_policy;
 mod folder_view_store;
@@ -50,6 +51,7 @@ mod text_size;
 
 pub use corner_roundness::CornerRoundness;
 pub use defaults::default_sidebar_order;
+pub use density::{DensityPresets, store_density_px, stored_density_px};
 use defaults::{
     default_browser_density, default_browser_mode, default_cross_volume_drop_strategy,
     default_date_format, default_density_custom_px, default_double_clicks, default_enabled,
