@@ -409,7 +409,7 @@ impl<S: 'static> Collection<S> {
         self
     }
 
-    /// The roles: [`Roles::LISTBOX`] (the default), [`Roles::GRID_ROWS`] or
+    /// The roles: [`Roles::LISTBOX`] (the default), [`Roles::LIST`], [`Roles::GRID_ROWS`] or
     /// [`Roles::GRID_CELLS`].
     pub fn roles(mut self, roles: Roles) -> Self {
         self.cfg.roles = roles;

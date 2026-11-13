@@ -24,8 +24,8 @@ const MODULE: &str = "list::tests";
 
 const LIST: Shape = Shape {
     described: "List view",
-    list: "grid",
-    entry: "row",
+    list: "list",
+    entry: "list-item",
 };
 
 /// The saved setting that groups the List view by file type.
