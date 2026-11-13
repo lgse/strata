@@ -15,13 +15,13 @@ use std::{cell::Cell, ops::Range};
 
 use strata_components::{
     collection::element::Slot,
-    contract::EntryId,
-    thumbnails::{Step, ThumbnailStore, Viewport, icon_slot},
+    contract::{EntryId, EntrySource},
+    thumbnails::{Step, ThumbnailStore, ViewerId, Viewport, icon_slot},
 };
 use strata_core::model::Location;
 use strata_kit::look::Look;
 
-use crate::{App, shell, slots::Later, thumbnails::Viewer};
+use crate::{App, listing::Column, shell, slots::Later, thumbnails::Viewer};
 
 /// A row's thumbnail, in points: GTK's 17 × 17 (`set_thumbnail_or_icon(…, 17, 17)`).
 const ROW_THUMBNAIL: f32 = 17.0;
@@ -50,15 +50,53 @@ pub(crate) enum Sync {
     Nothing,
 }
 
+impl Sync {
+    /// Tells the store what viewer `id` shows of `listing`, at `step`. True when the store
+    /// pruned handles a row may still draw.
+    pub(crate) fn tell(
+        self,
+        store: &mut ThumbnailStore,
+        id: ViewerId,
+        listing: &Column,
+        step: Step,
+    ) -> bool {
+        let version = listing.version();
+        match self {
+            Self::View(range) => {
+                store.sync(id, listing, Viewport::new(range, step).listing(version))
+            }
+            Self::Step => store.set_step(id, listing, step),
+            Self::Again => store.resync(id, listing, version),
+            Self::Nothing => false,
+        }
+    }
+}
+
 impl Synced {
     /// What to tell the store of the column now showing `location` at `version`, and the
     /// column recorded as told.
-    pub(crate) fn next(&mut self, location: &Location, version: u64, restep: bool) -> Sync {
+    ///
+    /// A range reported empty while the listing has `entries` is passed over: Rune reports a
+    /// list it measured at no height as showing no rows (Rune packet entry 101), as it does a
+    /// folder just opened before its first layout, and the rows report again once laid out.
+    /// Synced, it would cancel the renders the rows had asked for, running ones included,
+    /// which GTK's rows keep while they stay bound.
+    pub(crate) fn next(
+        &mut self,
+        location: &Location,
+        version: u64,
+        entries: usize,
+        restep: bool,
+    ) -> Sync {
         let moved = self.location.as_ref() != Some(location);
         let changed = moved || self.version != Some(version);
         self.location = Some(location.clone());
         self.version = Some(version);
-        match self.range.take() {
+        match self
+            .range
+            .take()
+            .filter(|range| !range.is_empty() || entries == 0)
+        {
             Some(range) => Sync::View(range),
             None if restep => Sync::Step,
             None if changed => Sync::Again,
@@ -150,15 +188,9 @@ pub(super) fn poll(app: &mut App, clock: f64) -> bool {
         else {
             continue;
         };
-        let version = listing.version();
-        pruned |= match column.next(listing.location(), version, restep) {
-            Sync::View(range) => {
-                store.sync(id, listing, Viewport::new(range, step).listing(version))
-            }
-            Sync::Step => store.set_step(id, listing, step),
-            Sync::Again => store.resync(id, listing, version),
-            Sync::Nothing => false,
-        };
+        pruned |= column
+            .next(listing.location(), listing.version(), listing.len(), restep)
+            .tell(store, id, listing, step);
     }
     Viewer::pump(app, parts, clock);
     pruned
