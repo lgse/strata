@@ -114,6 +114,14 @@ pub(crate) struct Facts {
 }
 
 impl Facts {
+    /// Whether a time or a size known in both differs: the file changed.
+    fn contradict(&self, other: &Facts) -> bool {
+        fn differ<T: PartialEq>(a: Option<T>, b: Option<T>) -> bool {
+            matches!((a, b), (Some(a), Some(b)) if a != b)
+        }
+        differ(self.modified, other.modified) || differ(self.size, other.size)
+    }
+
     fn of(entry: &FileEntry) -> Self {
         Self {
             size: known(&entry.size),
@@ -168,17 +176,17 @@ impl Row {
     /// until a known time or size changes. GTK's window is wider: a slot showing a thumbnail
     /// of that path is not asked again until it is bound anew.
     fn keep_key_of(&mut self, previous: &Row) {
-        let differs = |was: Option<i64>, now: Option<i64>| matches!((was, now), (Some(was), Some(now)) if was != now);
-        let resized = matches!(
-            (previous.facts.size, self.facts.size),
-            (Some(was), Some(now)) if was != now
-        );
-        let same_file = self.id == previous.id
-            && !differs(previous.facts.modified, self.facts.modified)
-            && !resized;
-        if same_file && previous.thumbnail.is_some() && self.thumbnail.is_some() {
+        if self.same_file_as(previous) {
             self.thumbnail = previous.thumbnail;
         }
+    }
+
+    /// Whether this row is `previous`'s file read again, as far as its facts tell: the same
+    /// entry, both with a thumbnail key, and no known time or size differing.
+    fn same_file_as(&self, previous: &Row) -> bool {
+        let keyed = previous.thumbnail.is_some() && self.thumbnail.is_some();
+        let same_entry = self.id == previous.id;
+        keyed && same_entry && !self.facts.contradict(&previous.facts)
     }
 
     pub(crate) fn of(entry: &FileEntry, ids: &Ids) -> Self {
