@@ -3,6 +3,8 @@
 //! The sidebar's own state, held by the app and reached by accessor: the width step, the
 //! collapsed sections, the reorder drags, the drop hover and the host's pin check.
 
+use std::collections::HashMap;
+
 use rune_kit::shell::PaneState;
 use strata_kit::look::Look;
 use strata_kit::slots::sidebar as slot;
@@ -215,6 +217,8 @@ pub struct SidebarState {
     /// when the pointer is still over it (U21), and that press opens nothing. The next press
     /// on any row, or the next drag, forgets it.
     pub(crate) dropped: Option<ItemId>,
+    /// Each row's laid-out box, in window points: where a menu the keyboard opens on it goes.
+    pub(crate) boxes: HashMap<ItemId, [f32; 4]>,
 }
 
 impl SidebarState {
@@ -226,6 +230,12 @@ impl SidebarState {
             pins_reorder: RowDrag::new().gap(slot::row_gap(look)),
             ..SidebarState::default()
         }
+    }
+
+    /// Where the row `item` was last laid out, `[x, y, w, h]` in window points: the anchor of
+    /// a menu the keyboard opens on it, as GTK points a row's popover at the row.
+    pub fn row_box(&self, item: &ItemId) -> Option<[f32; 4]> {
+        self.boxes.get(item).copied()
     }
 
     /// Where a drag is over the sidebar, and whether that site takes it.

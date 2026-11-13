@@ -69,6 +69,12 @@
 //! it. A menu grows to show its widest row whole, up to 360 pt; rune-kit's rows would shrink
 //! their labels instead, and it draws submenus 160 pt wide.
 //!
+//! The point is the menu's top-left. A host that centres a menu under what it opened on, as
+//! GTK centres a popover on the widget it points at, reads how wide it draws from
+//! [`MenuModel::width`] and puts the point half that to the left of the centre: Strata's
+//! sidebar does, under a row for a menu the keyboard opens and under the pointer for a
+//! right-click.
+//!
 //! # Keys
 //!
 //! An open menu holds the keyboard, its first enabled row focused. Up and Down skip separators
