@@ -113,7 +113,7 @@ run = "list-file"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4. Then A7: New File, which names a new item (slice decisions 23 to 25)"
+blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
@@ -138,7 +138,7 @@ run = "list-folder"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4. Then A7: New Folder, which names a new item (slice decisions 23 to 25)"
+blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4"
 
 [[run]]
 scenario = "new-item-first-free-number"
