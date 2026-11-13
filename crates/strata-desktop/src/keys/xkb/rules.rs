@@ -83,9 +83,11 @@ pub(super) fn from_name(name: &str) -> Option<u32> {
     if name.contains('\0') {
         return None;
     }
-    // GDK reads a vendor key with its prefix or without, and not with the prefix twice.
+    // GDK reads a vendor key with its prefix or without, and not with the prefix twice, nor
+    // with an underscore after it, which libxkbcommon also reads (`XF86_AudioPlay`).
     let plain = name.strip_prefix("XF86").unwrap_or(name);
-    if plain.starts_with("XF86") || is_number(plain) || is_refused(plain) {
+    if plain.starts_with("XF86") || plain.starts_with('_') || is_number(plain) || is_refused(plain)
+    {
         return None;
     }
     if let Some(keysym) = found(tables::READ, plain) {

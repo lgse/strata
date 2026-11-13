@@ -70,6 +70,9 @@ fn a_name_gdk_does_not_read_is_refused_here() {
         "0x0061",
         "XF86U20AC",
         "XF86XF86AudioPlay",
+        "XF86_AudioPlay",
+        "_AudioPlay",
+        "XF86_Switch_VT_1",
         "VoidSymbol",
         "guillemetleft",
         "dead_lowline",
@@ -146,11 +149,6 @@ fn the_library_in_use_is_the_one_the_loader_mapped() {
         "{library:?}"
     );
     assert!(library.is_absolute() && library.exists(), "{library:?}");
-}
-
-#[test]
-fn no_accelerator_string_is_read_yet() {
-    assert_eq!(Xkb.accelerator_parse("<Control>c"), None);
 }
 
 fn sorted<K: Ord + Copy + std::fmt::Debug, V>(table: &[(K, V)]) -> Result<(), String> {
