@@ -11,8 +11,9 @@
 //!   (`filter_and_location_commands`); again while editing, it keeps the typed text. While the
 //!   entry has the keyboard the bar is the window's location owner ([`Holds::Location`]).
 //! - **Enter or Navigate** opens the typed location (`navigate_input_located`), and **Escape,
-//!   Cancel or a press elsewhere** goes back to the crumbs; either way the keyboard goes back
-//!   to the shown view. **A crumb** opens its folder selecting the one the user came from.
+//!   Cancel or a press elsewhere** goes back to the crumbs. The keyboard goes back to the shown
+//!   view, except after a press elsewhere, which keeps it where the press put it.
+//!   **A crumb** opens its folder selecting the one the user came from.
 //! - **The names** are GTK's, with the keys as they are bound now ([`labels`]).
 //!
 //! Not on this interface yet: path suggestions (an empty list answers each request), the
@@ -36,6 +37,9 @@ use crate::{
 mod intents;
 mod labels;
 mod trail;
+
+#[cfg(test)]
+mod tests;
 
 /// The element key of the bar.
 const KEY: &str = "location";
@@ -92,21 +96,21 @@ fn displayed(app: &App) -> Option<Location> {
 }
 
 /// The bar names the folder the view shows now (`sync_displayed_location`). False when it
-/// already did.
+/// already did, or when no folder shows.
 fn follow(app: &mut App, tx: &mut Tx) -> bool {
-    let shown = displayed(app);
-    if shown == app.location.shown {
+    // With no folder shown, the last one's trail stays, as GTK's does.
+    let Some(shown) = displayed(app) else {
+        return false;
+    };
+    if app.location.shown.as_ref() == Some(&shown) {
         return false;
     }
     let home = Location::local(crate::launch::home_directory());
-    let (trail, crumbs) = shown
-        .as_ref()
-        .map(|location| trail::of(location, &home))
-        .unwrap_or_default();
+    let (trail, crumbs) = trail::of(&shown, &home);
     let bar = &mut app.location;
     bar.trail = trail;
     bar.crumbs = crumbs;
-    bar.shown = shown;
+    bar.shown = Some(shown);
     let polled = bar.state.navigated();
     intents::route(app, polled, tx);
     true
@@ -143,7 +147,7 @@ impl Part for Bar {
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let polled = app.location.state.tick(clock, tx);
         let changed = polled.changed;
-        intents::route(app, polled, tx);
+        intents::route_ticked(app, polled, tx);
         changed
     }
 

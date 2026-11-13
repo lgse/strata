@@ -14,10 +14,11 @@ use strata_kit::icons::IconName;
 /// crumb's id is its index in that list.
 pub(super) fn of(location: &Location, home: &Location) -> (Trail, Vec<Location>) {
     let folders = visible(location, home);
+    let current = folders.len().saturating_sub(1);
     let crumbs = folders
         .iter()
         .enumerate()
-        .map(|(index, folder)| crumb(index, folder, home))
+        .map(|(index, folder)| crumb(index, folder, home, index < current))
         .collect();
     (Trail::new(crumbs, location.display_path()), folders)
 }
@@ -31,7 +32,9 @@ fn visible(location: &Location, home: &Location) -> Vec<Location> {
     folders
 }
 
-fn crumb(index: usize, folder: &Location, home: &Location) -> Crumb {
+/// Crumb `index`, with the lock before its label when it is an ancestor that is an
+/// administrator root (`ancestor_crumb_button`; the current folder's label has none).
+fn crumb(index: usize, folder: &Location, home: &Location, ancestor: bool) -> Crumb {
     let label = if folder == home {
         "~".to_owned()
     } else {
@@ -39,7 +42,8 @@ fn crumb(index: usize, folder: &Location, home: &Location) -> Crumb {
     };
     // The root's crumb is followed by no separator: `/` reads as one.
     let joins = is_filesystem_root(folder);
-    let badge = (folder.is_administrator() && folder.parent().is_none()).then_some(IconName::Lock);
+    let root = folder.is_administrator() && folder.parent().is_none();
+    let badge = (ancestor && root).then_some(IconName::Lock);
     Crumb::new(index.to_string(), label)
         .description(folder.display_path())
         .icon(icon(folder, home))

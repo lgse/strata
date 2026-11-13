@@ -48,3 +48,18 @@ fn each_crumb_opens_its_own_folder_and_the_entry_starts_on_the_full_path() {
     }
     assert_eq!(folders.last(), Some(&shown));
 }
+
+#[test]
+fn the_administrator_lock_marks_the_root_only_as_an_ancestor() {
+    let home = Location::local("/home/ada");
+    let badges = |uri: &str| -> Vec<bool> {
+        let (trail, _) = of(&Location::uri(uri), &home);
+        trail
+            .crumbs
+            .iter()
+            .map(|crumb| crumb.badge.is_some())
+            .collect()
+    };
+    assert_eq!(badges("admin:///etc"), [true, false]);
+    assert_eq!(badges("admin:///"), [false]);
+}

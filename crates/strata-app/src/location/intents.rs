@@ -3,7 +3,7 @@
 //! What the bar's intents do: GTK's `submit_location`, `cancel_location_edit` and the crumbs'
 //! handlers (`src/ui/browser/location.rs`, `location/breadcrumbs.rs`).
 
-use rune::Tx;
+use rune::{TextEdit, Tx};
 use strata_components::location_bar::{Completions, LocationIntent, Polled, Via};
 use strata_fs::services::{LocationValidationError, sanitize_uri_credentials};
 
@@ -34,6 +34,21 @@ pub(super) fn route(app: &mut App, polled: Polled, tx: &mut Tx) {
     }
 }
 
+/// Routes what the bar's tick raised. Its `Cancelled` is a press elsewhere that took the
+/// keyboard from the entry, and the keyboard stays where that press put it: GTK cancels in the
+/// press's capture phase (`install_location_cancellation`, `src/ui/window/composition/input.rs`)
+/// and the pressed widget then takes focus. Only when nothing has the keyboard does it go back
+/// to the view. It cannot still be in the bar: the entry has lost it, and the bar's buttons
+/// take none.
+pub(super) fn route_ticked(app: &mut App, polled: Polled, tx: &mut Tx) {
+    for intent in polled.intents {
+        match intent {
+            LocationIntent::Cancelled if tx.focused().is_some() => {}
+            intent => heard(app, intent, tx),
+        }
+    }
+}
+
 /// A crumb: a click or the hierarchy menu opens its folder selecting the one the user came
 /// from (`navigate_to_ancestor`); a drag resting on it opens it plainly
 /// (`attach_crumb_drop_target`).
@@ -57,17 +72,24 @@ fn open(app: &mut App, id: &str, via: Via, tx: &mut Tx) {
 
 /// Enter, Navigate or a chosen suggestion: the typed location opens, and the keyboard goes
 /// back to the view. The bar is on its crumbs already.
+///
+/// GTK mounts a location that needs it and shows "Unable to open location" for the rest;
+/// neither is on this interface yet. A location refused here, before it is opened, is logged.
+/// One that is opened and then refused (missing, unreadable, unmounted) comes back as the
+/// browser's `LocationNavigationRejected`, which no part hears yet: the bar has closed, and
+/// nothing shows.
 fn submit(app: &mut App, text: &str, tx: &mut Tx) {
+    // What was typed, a password in a URI among it, is not kept in the closed entry or its
+    // undo history.
+    app.location.state.edit = TextEdit::new("");
     shell::publish(app);
     let browser = app.browser.clone();
     let opened = typed(text).and_then(|input| browser.navigate_input_located(&input, None));
     shell::settle(app, tx);
-    match opened {
-        Ok(_) => give_back(app, tx),
-        // GTK mounts a location that needs it, and shows "Unable to open location" for the
-        // rest; neither is on this interface yet.
-        Err(error) => tracing::warn!(%error, "the typed location did not open"),
+    if let Err(error) = opened {
+        tracing::warn!(%error, "the typed location did not open");
     }
+    give_back(app, tx);
 }
 
 /// The text to open: a URI loses the credentials typed into it, which GTK hands its mount
