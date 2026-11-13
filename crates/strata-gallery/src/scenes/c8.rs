@@ -183,12 +183,12 @@ impl Demo {
             SidebarIntent::ContextMenu { item, .. } => {
                 format!("Menu {}", item.as_ref().map_or("sidebar", |i| i.id()))
             }
-            SidebarIntent::MovePlace { from, to } => {
+            SidebarIntent::MovePlace { from, to, .. } => {
                 let p = self.places.remove(from);
                 self.places.insert(to, p);
                 format!("Move place {from} to {to}")
             }
-            SidebarIntent::MovePin { id, from, to } => {
+            SidebarIntent::MovePin { id, from, to, .. } => {
                 let p = self.pins.remove(from);
                 self.pins.insert(to, p);
                 format!("Move pin {id} to {to}")

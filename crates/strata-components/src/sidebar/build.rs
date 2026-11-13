@@ -9,7 +9,7 @@ use strata_kit::look::Look;
 use strata_kit::slots::sidebar as slot;
 
 use super::data::{DeviceLine, ItemId, SidebarData, device_lines};
-use super::drag::Block;
+use super::drag::{Block, Landing};
 use super::heading::heading;
 use super::intent::{DropSite, Gap, Section, SidebarIntent};
 use super::rows::{Ctx, Spec, device_row, folder_row, row_icon, trash_full, trash_icon};
@@ -237,8 +237,12 @@ fn places<S: 'static>(
             reorder: Some((i, n)),
             lifted: ctx.state.places_reorder.dragging() == Some(i),
         };
-        let intent: Rc<dyn Fn(usize, usize) -> SidebarIntent> =
-            Rc::new(|from, to| SidebarIntent::MovePlace { from, to });
+        let intent: Rc<dyn Fn(usize, Landing) -> SidebarIntent> =
+            Rc::new(move |from, landing| SidebarIntent::MovePlace {
+                from,
+                to: landing.place(from, n),
+                landing,
+            });
         block = block.child(folder_row(
             ctx,
             spec,
@@ -297,11 +301,12 @@ fn pinned<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
             lifted: !collapsed && ctx.state.pins_reorder.dragging() == Some(i),
         };
         let ids = ids.clone();
-        let intent: Rc<dyn Fn(usize, usize) -> SidebarIntent> =
-            Rc::new(move |from, to| SidebarIntent::MovePin {
+        let intent: Rc<dyn Fn(usize, Landing) -> SidebarIntent> =
+            Rc::new(move |from, landing| SidebarIntent::MovePin {
                 id: ids[from].clone(),
                 from,
-                to,
+                to: landing.place(from, n),
+                landing,
             });
         // Collapsed, the lone open pin has nowhere to move to.
         let reorder =

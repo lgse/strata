@@ -366,3 +366,26 @@ fn a_place_dropped_in_the_gap_below_a_row_lands_after_it_and_is_saved() {
         },
     );
 }
+
+/// A drag that ends where it began opens nothing, as Strata's drag source claims the gesture:
+/// the press Rune sends on that release is the drag's.
+#[test]
+fn a_drag_dropped_back_in_place_opens_nothing() {
+    hosted(
+        MODULE,
+        "a_drag_dropped_back_in_place_opens_nothing",
+        |mut host| {
+            let [x, y, w, h] = bounds(&mut host, "sidebar-place-home");
+            let middle = (x + w / 2.0, y + h / 2.0);
+            drag(&mut host, middle, (middle.0, middle.1 + 10.0));
+            host.run_until(std::time::Duration::from_millis(300), |_| false);
+            assert_eq!(host.app().browser().active_location(), None);
+            assert_eq!(host.app().sidebar.current, None);
+            let order = saved_order();
+            assert!(
+                order.is_empty(),
+                "a drop in place saves no order: {order:?}"
+            );
+        },
+    );
+}

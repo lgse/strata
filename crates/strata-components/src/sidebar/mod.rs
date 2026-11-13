@@ -71,11 +71,14 @@
 //! - **Reorders step rows aside.** Strata draws an accent line in the gap where a dragged
 //!   row will land. The sidebar's drag lifts the row and springs its neighbours aside instead,
 //!   as rune-kit's reorder draws it, which shows the same place. It lands where Strata's would
-//!   ([`landing`]): before or after the row under the pointer by which half the pointer is in,
-//!   or beside a gap. Dropping a row on either gap next to it is still a no-op.
-//! - **A built-in place dragged past its block lands at the block's end.** Strata drops a
-//!   built-in place on a pin as a no-op. Places and pins are two separate reorder lists, so a
-//!   place never lands among the pins, and a drag past the end of its block lands at the end.
+//!   ([`landing`], [`Landing`]): on the row under the pointer, before or after it by which half
+//!   the pointer is in, or in a gap, and the host moves it as Strata does. A drop always ends
+//!   the drag without opening the row, as Strata's drag claims its gesture. The drag starts
+//!   past GTK's 8 point threshold.
+//! - **A drop where Strata takes none moves nothing.** Past the gap before a block's first row
+//!   or after its last, over the other block (a place on the pins, a pin on the places) or off
+//!   the sidebar's side, a dragged row lands nowhere and goes back, as Strata's sidebar refuses
+//!   such a drop. rune-kit's `Reorder` clamped it to the list's end.
 //! - **The open-gap animation.** Strata draws a 2 px line in the gap. Here a gap taking a drag
 //!   opens to `sidebar.gap.open` (half a row) on the kit's disclosure spring, and draws the
 //!   line inside; with animations off it opens at once.
@@ -177,7 +180,7 @@ pub use build::PlacesSidebar;
 pub use data::{
     Device, DeviceGroup, ItemId, LockState, Pin, Place, PlaceKind, Release, RowIcon, SidebarData,
 };
-pub use drag::{RowDrag, landing};
+pub use drag::{Landing, RowDrag, Rows, landing};
 pub use drops::pin_action;
 pub use heading::count_words;
 pub use intent::{DropSite, Gap, Section, SidebarIntent, Via};

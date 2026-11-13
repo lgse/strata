@@ -167,7 +167,7 @@ fn heard_pins(later: &Later<App>, pins: Result<&Vec<(Location, String)>, &io::Er
     }
 }
 
-/// Lists the rows again from the settings and the pins.
+/// Lists the rows again from the settings and the pins, and lets go of a held row.
 fn relist(app: &mut App) {
     let listed = places::listed(
         shell::preferences(app),
@@ -175,6 +175,9 @@ fn relist(app: &mut App) {
         &Environment::current(),
     );
     app.sidebar.listed = listed;
+    // A drag held across the change would carry a row that may no longer be where it was.
+    app.sidebar.state.places_reorder.cancel();
+    app.sidebar.state.pins_reorder.cancel();
 }
 
 impl Sidebar {
@@ -255,8 +258,8 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
                 tx.focus(view, true);
             }
         }
-        SidebarIntent::MovePlace { from, to } => reorder::move_place(app, from, to),
-        SidebarIntent::MovePin { from, to, .. } => reorder::move_pin(app, from, to),
+        SidebarIntent::MovePlace { from, landing, .. } => reorder::move_place(app, from, landing),
+        SidebarIntent::MovePin { from, landing, .. } => reorder::move_pin(app, from, landing),
         SidebarIntent::SectionToggled { section, collapsed } => {
             shell::saved(app).change(|settings| match section {
                 Section::Pinned => settings.sidebar_pinned_collapsed = collapsed,

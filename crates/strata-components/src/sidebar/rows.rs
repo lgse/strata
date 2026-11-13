@@ -14,7 +14,7 @@ use strata_kit::look::Look;
 use strata_kit::slots::sidebar as slot;
 
 use super::data::{Device, ItemId, LockState, PlaceKind, RowIcon};
-use super::drag::{self, Block, RowDrag};
+use super::drag::{self, Block, Landing, RowDrag};
 use super::intent::{DropSite, SidebarIntent, Via};
 use super::state::SidebarState;
 use super::{ActionFn, Emit, trash_target_key};
@@ -298,7 +298,7 @@ fn dress<S>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
 pub(crate) type Reordering<'a> = (
     &'a RowDrag,
     Block,
-    std::rc::Rc<dyn Fn(usize, usize) -> SidebarIntent>,
+    std::rc::Rc<dyn Fn(usize, Landing) -> SidebarIntent>,
 );
 
 /// A built-in place or a pin. Both widths drag to reorder ([`super::drag`]).
@@ -322,21 +322,14 @@ pub(crate) fn folder_row<S: 'static>(
         r.build(&look.kit)
     };
     let built = match (spec.reorder, reorder) {
-        (Some(place), Some((state, block, intent))) => {
+        (Some((index, count)), Some((state, block, intent))) => {
             let emit = ctx.emit.clone();
-            let access = ctx.access;
-            let source = spec.item.clone();
             drag::attach(
                 built,
                 look,
-                (state, block, access),
-                place,
-                move |s: &mut S, from, to, tx| {
-                    // Rune presses the row on the release that ends its drag (U21): that press
-                    // opens nothing.
-                    access(s).dropped = Some(source.clone());
-                    emit(s, intent(from, to), tx);
-                },
+                (state, block, ctx.access),
+                (spec.item.clone(), index, count),
+                move |s: &mut S, from, landing, tx| emit(s, intent(from, landing), tx),
             )
         }
         _ => built,
