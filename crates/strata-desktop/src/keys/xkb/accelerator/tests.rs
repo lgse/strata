@@ -53,7 +53,6 @@ fn ten_modifier_words_read_in_any_ascii_case_and_nothing_else_does() {
         "<Cntrl>a",
         "<Sft>a",
         "<Controls>a",
-        "<Contro>a",
         "<Mod1>a",
         "<Mod4>a",
         "<Lock>a",

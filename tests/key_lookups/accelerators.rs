@@ -315,14 +315,14 @@ fn odd() -> Vec<String> {
 
 type Parsed = Option<(u32, u32)>;
 
-fn xkb_parse(accelerator: &String) -> Parsed {
+fn xkb_parse(accelerator: &str) -> Parsed {
     Xkb.accelerator_parse(accelerator)
         .map(|(key, modifiers)| (key.keysym(), modifiers.bits()))
 }
 
 /// As the GTK application's backend reads it, which keeps only the modifiers `Modifiers` has.
-fn gdk_parse(accelerator: &String) -> Parsed {
-    gtk::accelerator_parse(accelerator.as_str()).map(|(key, modifiers)| {
+fn gdk_parse(accelerator: &str) -> Parsed {
+    gtk::accelerator_parse(accelerator).map(|(key, modifiers)| {
         let modifiers = Modifiers::from_bits_truncate(modifiers.bits());
         (key.into_glib(), modifiers.bits())
     })
@@ -337,10 +337,6 @@ fn key_part_differs(accelerator: &str) -> bool {
         .map(|key| Xkb.key_to_lower(key).keysym());
     let gdk = gdk::Key::from_name(part).map(|key| key.to_lower().into_glib());
     xkb != gdk
-}
-
-fn parse_explained(accelerator: &String, _: &Parsed, _: &Parsed) -> bool {
-    key_part_differs(accelerator)
 }
 
 type Written = (u32, Modifiers);
@@ -396,10 +392,10 @@ fn row<I: std::fmt::Debug, T: std::fmt::Debug>(input: &I, gdk: &T) -> String {
 fn parse(name: &'static str) -> Lookup<String, Parsed> {
     Lookup {
         name,
-        xkb: xkb_parse,
-        gdk: gdk_parse,
+        xkb: |accelerator| xkb_parse(accelerator),
+        gdk: |accelerator| gdk_parse(accelerator),
         row,
-        tolerated: parse_explained,
+        tolerated: |accelerator, _, _| key_part_differs(accelerator),
     }
 }
 
