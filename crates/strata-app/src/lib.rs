@@ -61,6 +61,7 @@ mod list;
 // A5 Location bar
 // A6 Menus, dialogs and keymap
 // A7 Entry management and undo
+mod new_item;
 mod undo;
 // A8 View switching and appearance
 // A9 Pointer and click modes
@@ -95,6 +96,7 @@ slots::parts! {
     // A6 Menus, dialogs and keymap
     // A7 Entry management and undo
     undo: undo::Undo,
+    new_item: new_item::NewItem,
     // A8 View switching and appearance
     // A9 Pointer and click modes
     // A10 Search, filter and sort
