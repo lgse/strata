@@ -184,8 +184,8 @@ fn a_column_the_tree_holds_is_not_presented_twice() {
 /// The List view's shape, as its probe states it.
 const LIST: Shape = Shape {
     name: "List",
-    list: "grid",
-    entry: "row",
+    list: "list-box",
+    entry: "list-box-option",
 };
 
 /// The names of the entries a snapshot of `tree` reads, with `list` the List table's key.
@@ -203,19 +203,19 @@ fn entries_of(tree: &serde_json::Value, list: &str) -> Vec<String> {
         .collect()
 }
 
-/// The table's headings are a row of its grid, as C4 builds it, and no entry.
+/// The table's headings, a box of buttons over the list as C4 builds it, are no entry.
 #[test]
 fn a_tables_headings_row_is_not_an_entry() {
     let tree = json!({ "role": "window", "children": [
         { "role": "group", "name": "folder", "children": [
-            { "role": "grid", "key": "list", "name": "folder", "children": [
+            { "role": "list-box", "key": "list", "name": "folder", "children": [
                 { "role": "group", "key": "list-headings-menu-trigger", "children": [
-                    { "role": "row", "key": "list-headings", "name": "Name", "children": [
-                        { "role": "column-header", "key": "head-name", "name": "Name" } ] } ] },
+                    { "role": "group", "key": "list-headings", "children": [
+                        { "role": "button", "key": "head-name", "name": "Name" } ] } ] },
                 { "role": "scroll-view", "key": "viewport", "children": [
                     { "role": "group", "key": "rows", "children": [
-                        { "role": "row", "key": "row-1", "name": "archive" },
-                        { "role": "row", "key": "row-2", "name": "readme.md" } ] } ] } ] } ] } ] });
+                        { "role": "list-box-option", "key": "row-1", "name": "archive" },
+                        { "role": "list-box-option", "key": "row-2", "name": "readme.md" } ] } ] } ] } ] } ] });
 
     assert_eq!(entries_of(&tree, "list"), ["archive", "readme.md"]);
 }
@@ -226,12 +226,12 @@ fn a_tables_headings_row_is_not_an_entry() {
 fn a_groups_header_is_not_an_entry() {
     let tree = json!({ "role": "window", "children": [
         { "role": "group", "name": "folder", "children": [
-            { "role": "grid", "key": "list", "name": "folder", "children": [
+            { "role": "list-box", "key": "list", "name": "folder", "children": [
                 { "role": "group", "key": "rows", "children": [
-                    { "role": "row", "key": "head-8322393941", "name": "Folder" },
-                    { "role": "row", "key": "row-1", "name": "archive" },
+                    { "role": "list-box-option", "key": "head-8322393941", "name": "Folder" },
+                    { "role": "list-box-option", "key": "row-1", "name": "archive" },
                     { "role": "heading", "key": "head-52759", "name": "Text" },
-                    { "role": "row", "key": "row-4", "name": "todo.txt" } ] } ] } ] } ] });
+                    { "role": "list-box-option", "key": "row-4", "name": "todo.txt" } ] } ] } ] } ] });
 
     assert_eq!(entries_of(&tree, "list"), ["archive", "todo.txt"]);
 }

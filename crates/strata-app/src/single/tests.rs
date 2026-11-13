@@ -57,8 +57,8 @@ const LIST: Case = Case {
     mode: "list",
     shape: Shape {
         described: "List view",
-        list: "grid",
-        entry: "row",
+        list: "list-box",
+        entry: "list-box-option",
     },
     next: Key::Down,
     previous: Key::Up,

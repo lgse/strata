@@ -25,7 +25,8 @@
 //!
 //! # What the table adds to the collection
 //!
-//! [`ListTable::collection`] sets the collection's roles ([`Roles::GRID_ROWS`]), its row
+//! [`ListTable::collection`] sets the collection's roles ([`Roles::LISTBOX`]: a list of
+//! options, as GTK's List view is a `GtkListView` of list items, not a table), its row
 //! height (`list.row.height`), its label (the name cut in the middle, so the extension stays
 //! visible; [`ListTable::label`] replaces it), its content (the cells) and its hit regions.
 //! [`ListTable::build`] adds the heading strip as the collection's header, and wraps it all in
@@ -89,10 +90,13 @@
 //!
 //! # What assistive technology hears
 //!
-//! The collection is a grid named by the host. Its first row is the headings: column headers
-//! named by their titles, the sorted one with its direction, the sortable ones pressed to sort.
-//! Each entry is a row named by its name, holding a grid cell per shown column, named by its
-//! text. The cursor's row is the grid's active descendant (C1e).
+//! What GTK's List view gives it: GTK's List is a `GtkListView` of list items under a box of
+//! heading buttons (`src/ui/browser_modes/list_pane.rs`, `list_headings.rs`), not a table
+//! (finding lgse/strata#2324). The collection is a list box named by the host, heard as a
+//! `list`; each entry is an option named by its name, heard as a `list item`, with its cells'
+//! texts inside it and no cell roles, as GTK's row holds labels. Above it the headings are
+//! buttons named by their titles, the sorted one with its direction, the sortable ones pressed
+//! to sort. The cursor's option is the list's active descendant (C1e).
 //!
 //! # Decisions and deviations
 //!
@@ -262,7 +266,8 @@
 //! - **R-C4-3: column index and count for grid cells.** AccessKit has `column_index` and
 //!   `column_count`, but no `El` builder sets them, so a screen reader can't say which column a
 //!   cell is in. Repro: a `grid` of `row`s of `gridcell`s with `columnheader`s; `--tree` has no
-//!   column index anywhere. Ask: `El::column_index(i)` and `El::column_count(n)`.
+//!   column index anywhere. Ask: `El::column_index(i)` and `El::column_count(n)`. C4 itself
+//!   no longer needs it: it is a list, as GTK's List view is (lgse/strata#2324).
 //! - **R-C4-4: live widths.** A column resize must commit the view on every move to give each
 //!   mounted row's cell its new width. Repro: 30 rows of 5 cells, drag a width 100 frames: the
 //!   view runs 100 times. Ask: a live width (as `live_offset` is a live position) that cells
@@ -543,7 +548,7 @@ impl<S: 'static> ListTable<S> {
             viewport_path(base.scope()),
         );
         let edge_shared = shared.clone();
-        base.roles(Roles::GRID_ROWS)
+        base.roles(Roles::LISTBOX)
             .on_scroll(move |p| {
                 feed.set(p);
                 bar.follow(p);

@@ -35,10 +35,10 @@ use crate::{
 const FOCUS_MODIFIERS: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_MASK);
 
 /// The header's toggle, which Up from the sidebar's top reaches.
-pub(super) const TOGGLE: &str = "header-sidebar-toggle";
+const TOGGLE: &str = "header-sidebar-toggle";
 
 /// The pinned section's heading, the first element when no place is shown.
-pub(super) const PINNED_HEADING: &str = "sidebar-heading-pinned";
+const PINNED_HEADING: &str = "sidebar-heading-pinned";
 
 /// One arrow's keys at the stage: the arrow, and its other key as pressed.
 macro_rules! arrow {
@@ -80,7 +80,6 @@ fn up(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
         (false, _) => step(call, UP, Key::Up, tx),
         (true, true) => Outcome::Ran,
         (true, false) => {
-            app.sidebar.header_entry = tx.focused().map(str::to_owned);
             tx.focus(TOGGLE, true);
             Outcome::Ran
         }
@@ -116,7 +115,7 @@ fn plain(press: &KeyPress, arrow: Command) -> bool {
 impl super::Sidebar {
     /// The key of the sidebar's first element: the first place's row, else the pinned
     /// section's heading.
-    pub(super) fn first_key(&self) -> Option<String> {
+    fn first_key(&self) -> Option<String> {
         let place = self
             .listed
             .rows
