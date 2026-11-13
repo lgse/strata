@@ -40,6 +40,7 @@ mod folder_view_file;
 mod folder_view_store;
 pub mod folder_views;
 mod keymap;
+mod keymap_resolve;
 mod list_columns;
 mod persistence;
 mod saving;
@@ -64,6 +65,7 @@ pub use folder_view_store::{
     USE_SAVE_DELAY as FOLDER_VIEWS_USE_SAVE_DELAY, UnreadableAtStartup, Written,
 };
 pub use keymap::KeymapOverrides;
+pub use keymap_resolve::resolve_keymap;
 use list_columns::is_default_list_column_order;
 pub use list_columns::{
     ListColumnId, ListColumns, default_list_column_order, sanitize_list_column_order,
