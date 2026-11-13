@@ -15,7 +15,11 @@ use strata_desktop::keys::{
 };
 
 use super::{Action, Call, Keys, On, Outcome, Reads, Situation, Stage};
-use crate::{App, appearance::views, shell};
+use crate::{
+    App,
+    appearance::{text_size, views},
+    shell,
+};
 
 const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
 const SUPER: Modifiers = Modifiers::SUPER_MASK;
@@ -171,4 +175,8 @@ pub(super) const ACTIONS: &[Action<App>] = &[
     views::SHOW_COLUMNS,
     views::SHOW_ICONS,
     views::SHOW_LIST,
+    // `zoom_shortcut` in `src/ui/window/keyboard.rs`: the text size.
+    text_size::LARGER,
+    text_size::SMALLER,
+    text_size::RESET,
 ];
