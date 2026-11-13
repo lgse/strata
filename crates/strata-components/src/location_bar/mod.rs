@@ -35,10 +35,11 @@
 //!
 //! # The crumbs
 //!
-//! - A sideways viewport (`{key}-crumbs`) holds the list: each ancestor is a button
-//!   ([`crumb_key`], a Tab stop that Return and Space press) inside a list item, with the
-//!   folder's full path as its description and no tooltip; the current folder is a label in the
-//!   accent with the Copy path button. Labels past [`CRUMB_CHARS`] are shortened in the middle
+//! - A sideways viewport (`{key}-crumbs`), a scroll pane to assistive technology, holds the
+//!   crumbs as a group of plain buttons, as GTK's are: each ancestor is a button ([`crumb_key`],
+//!   a Tab stop that Return and Space press), with the folder's full path as its description and
+//!   no tooltip; the current folder is a label in the accent with the Copy path button, which
+//!   Return and Space press too. Labels past [`CRUMB_CHARS`] are shortened in the middle
 //!   and keep their natural width, so a deep path scrolls rather than squeezes.
 //! - A press on a separator, the current label or the empty space after the crumbs opens the
 //!   entry; a secondary press anywhere opens the hierarchy menu under the bar at the press's x.

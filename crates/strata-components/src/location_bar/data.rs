@@ -176,7 +176,7 @@ impl Completions {
 pub struct LocationLabels {
     /// The bar: a navigation landmark.
     pub bar: String,
-    /// The crumbs' list.
+    /// The crumbs' group.
     pub crumbs: String,
     /// The entry and the combobox around it.
     pub entry: String,

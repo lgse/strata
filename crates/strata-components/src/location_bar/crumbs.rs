@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 //! The crumb strip: ancestors as buttons, the current folder with its Copy path button, in a
-//! sideways scroll viewport with edge fades and an overflow bar in its own row underneath.
+//! sideways scroll viewport with edge fades and an overflow bar in its own row underneath. As
+//! GTK's are (`src/ui/browser/location/breadcrumbs.rs`), the crumbs are plain buttons in a box
+//! inside a scroll pane, which assistive technology meets as such.
 
 use rune::{
-    El, Key, KeyEvent, PointerButton, PointerEvent, Tx, WheelEvent, col, el, icon, row, text,
+    El, Key, KeyEvent, Mods, PointerButton, PointerEvent, Tx, WheelEvent, col, el, icon, row, text,
 };
 use strata_kit::icons::IconName;
 
@@ -32,7 +34,7 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
     let n = crumbs.len();
     let mut content = row()
         .key(format!("{}-trail-{}", cx.key, cx.state.trail_generation()))
-        .role("list")
+        .role("group")
         .label(cx.labels.crumbs.clone())
         .h(cx.row())
         .items_center()
@@ -41,7 +43,7 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
         content = content.child(if i + 1 == n {
             current(cx, crumb, n)
         } else {
-            ancestor(cx, i, crumb, n)
+            ancestor(cx, i, crumb)
         });
         if i + 1 < n && !crumb.joins_next {
             content = content.child(
@@ -49,7 +51,8 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
                     .key(format!("{}-sep-{i}", cx.key))
                     .font(look.kit.ty.ui)
                     .color(look.kit.c.text_weak)
-                    .a11y_hidden(),
+                    .a11y_hidden()
+                    .on_press_tx(opens_the_entry(cx)),
             );
         }
     }
@@ -59,7 +62,8 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
             .grow(1.0)
             .min_w(look.space.xl)
             .h(cx.row())
-            .a11y_hidden(),
+            .a11y_hidden()
+            .on_press_tx(opens_the_entry(cx)),
     );
     // Each navigation mounts a new row (keyed by its count), and so does the strip coming back
     // from the entry, so its first layout scrolls the strip to its end: the current crumb shows
@@ -75,13 +79,9 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
     let (feed, bar) = (cx.state.feed.clone(), cx.state.bar.clone());
     let wheel_feed = cx.state.feed.clone();
     let wheel_key = viewport.clone();
-    let text = cx.trail.text.clone();
-    let press_emit = cx.emit.clone();
     let height = cx.height();
     let strip = row()
         .key(viewport.clone())
-        // The row inside is the crumbs' list; the viewport only scrolls and takes presses.
-        .role("none")
         .w_full()
         .h(cx.row())
         .scroll_x()
@@ -103,12 +103,6 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
             );
             tx.live_only();
             true
-        })
-        // A press on a separator, the current crumb or the empty space opens the entry; the
-        // crumb buttons take their own presses.
-        .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-            let polled = access(s).begin_edit(&text);
-            route(&press_emit, s, polled, tx);
         })
         // The hierarchy menu opens under the whole bar at the press's x, so it never covers the
         // crumbs it lists.
@@ -135,9 +129,20 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
     cx.state.bar.area(column)
 }
 
+/// A press that opens the entry: on a separator, the current crumb or the empty space. Each
+/// takes its own, as the viewport is a scroll pane and Rune presents a box that takes presses as
+/// a button.
+fn opens_the_entry<S: 'static>(cx: &Ctx<'_, S>) -> impl Fn(&mut S, &mut Tx) + 'static {
+    let (access, emit, text) = (cx.access, cx.emit.clone(), cx.trail.text.clone());
+    move |s: &mut S, tx: &mut Tx| {
+        let polled = access(s).begin_edit(&text);
+        route(&emit, s, polled, tx);
+    }
+}
+
 /// An ancestor: a button that opens its folder, a new tab or window on a middle click, and a
 /// drop zone.
-fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb, n: usize) -> El {
+fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb) -> El {
     let look = cx.look;
     let k = &look.kit;
     let hovered = matches!(cx.state.drop_hover(), Some((j, DropHover::Accepting)) if j == i);
@@ -220,14 +225,24 @@ fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb, n: usize) -> E
     if open_in_new {
         button = button.pointer_buttons([PointerButton::Middle]);
     }
-    let button = cx
-        .dnd
-        .drop_zone_keyed(button, crumb_key(cx.key, i), drops::zone(cx, i, &id));
-    el().key(format!("{}-item-{i}", cx.key))
-        .role("listitem")
-        .label(crumb.label.clone())
-        .position_in_set(i + 1, n)
-        .child(button)
+    cx.dnd
+        .drop_zone_keyed(button, crumb_key(cx.key, i), drops::zone(cx, i, &id))
+}
+
+/// Return presses a focused button as Space does, as GTK's buttons take both (finding
+/// lgse/strata#2310): Rune gives a focused button's Return to the default button. A held Return
+/// presses it once.
+fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if ev.key != Key::Enter || ev.mods != Mods::default() {
+        return false;
+    }
+    if !tx.key_repeat() {
+        tx.send_key(KeyEvent {
+            key: Key::Text(" ".to_owned()),
+            mods: Mods::default(),
+        });
+    }
+    true
 }
 
 /// The current folder: a label in the accent, and the Copy path button.
@@ -255,10 +270,12 @@ fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
             emit(s, LocationIntent::CopyPath, tx);
         })
         .build(k)
-        .key(format!("{}-copy", cx.key));
+        .key(format!("{}-copy", cx.key))
+        .on_key(return_as_space::<S>);
     let mut name = row()
         .key(format!("{}-current", cx.key))
         .role("none")
+        .on_press_tx(opens_the_entry(cx))
         .h(cx.row())
         .px(look.space.xs)
         .gap(look.space.xxs)
@@ -279,9 +296,7 @@ fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
     );
     row()
         .key(format!("{}-item-{}", cx.key, n - 1))
-        .role("listitem")
-        .label(crumb.label.clone())
-        .position_in_set(n, n)
+        .role("none")
         .items_center()
         .child(name)
         .child(copy)
