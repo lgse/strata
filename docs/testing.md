@@ -628,13 +628,27 @@ both are tied to the libraries of the pinned test image:
 - **`tests/key_lookups.rs`** compares `Xkb` with GDK for every legacy keysym,
   every direct-Unicode keysym, every vendor's keys and `VoidSymbol`: the name
   written, the name read (every name either library writes and the names in the
-  installed `xkbcommon-keysyms.h`, each without `XF86`, with it and with it
-  twice, and the numeric forms GDK refuses), the character a key types, the key
+  installed `xkbcommon-keysyms.h`, each without `XF86`, with it, with it
+  twice, with it and an underscore and with an underscore alone, and the
+  numeric forms GDK refuses), the character a key types, the key
   of a character, and both cases. It needs no display and takes about fifteen
   seconds. A difference is written to `key-lookups/<lookup>.txt` under the
   test's target directory (`CARGO_TARGET_TMPDIR`), as the table of
   `xkb/tables.rs` it belongs in and the row that table would hold, with GDK's
   answer in it.
+- **`every_accelerator_reads_and_writes_as_gtk_does`**, in the same file
+  (`tests/key_lookups/accelerators.rs`), compares `Xkb`'s accelerator reader and
+  writer with `gtk::accelerator_parse` and `gtk::accelerator_name`: every set of
+  the six modifiers in several spellings and orders over the declared keys' names
+  in four cases, every name of the first test in four cases, a table of odd inputs
+  and of mutations at every position, every keysym written, and what each side
+  wrote read back by the same side. GTK's two calls need GTK started, so this test
+  needs a display: the test runners give it a private one and set
+  `STRATA_REQUIRE_GTK_TESTS`, under which a GTK that does not start fails it;
+  without that variable it says it skipped. It prints its counts with
+  `--nocapture`. A difference goes to `key-lookups/accelerator_*.txt`, as the
+  input with GTK's answer and `Xkb`'s: there is no table to add a row to, since
+  the reader and the writer correct nothing; the fault is in them or in a lookup.
 - **`ui::keys::tests::table`** holds `keys::Table`, which answers for the keys the
   code declares, to GDK, the three names GDK writes by another X name among them.
 
@@ -676,12 +690,27 @@ STRATA_KEY_LOOKUPS_TOLERATE_OTHER_LIBRARIES=1 \
   cargo test --locked -p strata --all-features --test key_lookups -- --nocapture
 ```
 
+Without a display that runs only the first test: the accelerator comparison
+says it skipped. To run it too, start the command under a private display and
+bus, never the desktop's. `./scripts/test-headless.py` does not pass the
+variable on, so:
+
+```bash
+env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+  xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- \
+  env GDK_BACKEND=x11 GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
+  STRATA_KEY_LOOKUPS_TOLERATE_OTHER_LIBRARIES=1 \
+  cargo test --locked -p strata --all-features --test key_lookups -- --nocapture
+```
+
 Three classes of difference are then counted and not failed, their counts
 printed (libtest shows them only with `--nocapture`) and their rows written to
 `key-lookups/tolerated-<lookup>.txt`: a key that one library names and the other
 writes as a number, a name that one library reads and the other refuses, and a
 direct-Unicode keysym whose character has another case in only one side's
-Unicode tables. The header may be missing. **A tolerant run checks less:** it
+Unicode tables. In the accelerator test, a difference whose key name the two
+lookups read or write differently is counted the same way; the modifiers are
+never tolerated. The header may be missing. **A tolerant run checks less:** it
 does not notice a row taken out of the tables of refused names or of keys
 written as numbers, nor a fault that refused every name. It is for telling
 whether a failure on that machine is the machine's libraries; the image's run,
