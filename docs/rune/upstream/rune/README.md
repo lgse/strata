@@ -207,6 +207,7 @@ gaps"), by number. The owner ranks each at the filing pass.
 | 101 | [A virtual list's `on_visible_rows` reports no rows, and never again, though rows show](101-stale-visible-rows.md) | New issue | strata-components' collections (C1e): every view's fills, thumbnails and rename scroll check | The collection's catch-up from its own layout (`catch_up_visible`, U-C1f-7) | Drafted from `strata-app`'s hosted tests; no Rune-only repro yet |
 | 102 | [rune-kit's `Reorder` rounds where a dragged row lands, and keeps its drag offset private](102-reorder-rounds-its-target.md) | New issue, or a comment on U21 | strata-components' places sidebar (C8): reordering places and pins | C8's own row drag (`RowDrag`, `landing`) | Drafted, checked by source and the parity runs |
 | 103 | [Return can't press a focused button, and the only switch for it is `Cx::web_focus`](103-return-presses-a-button.md) | New issue | Every button of Strata's Rune interface; C15's dialogs route around it | `strata-app`'s `buttons::on_return`, and C15's Return-as-Space | Drafted, checked by reading and `strata-app`'s hosted tests |
+| 104 | [A popover can't close on a wheel outside it and let that wheel scroll what is under it](104-outside-wheel-closes-a-popover.md) | New issue | Strata's popovers that GTK closes on an outside scroll: the Icons header's Thumbnail size first | None: the popover stays open and the wheel goes nowhere (finding lgse/strata#2341) | Drafted, checked by reading |
 
 ## Owner decisions (2026-11-10)
 

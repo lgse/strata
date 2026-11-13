@@ -590,3 +590,30 @@ sequence only together with the alphabet's version, so the version is part of th
   assistive technology and left them unfocusable. Found in #2329's review.
 - **State:** open, [A8](packages/A8.md)'s: give C4's headings focus with Return and Space
   pressing them, as GTK's buttons do, or have the owner confirm the ruling as a deviation.
+
+### #2340: the thumbnail-size slider pages by 10 steps and steps onto its grid
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2340), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the review of [#2336](https://github.com/lgse/strata/pull/2336). GTK's scale
+  (`set_increments(16.0, 1.0)` in `src/ui/browser_modes/icons_controls.rs`) pages 1 px and steps
+  16 from its value (65 to 81 after a drag); C20a's `Slider` pages its `Range`'s 10 steps and
+  lands a step on the next grid point (80), as its module docs choose.
+- **Concerns:** C20a's slider (`crates/strata-components/src/controls/slider/`), and through it
+  the Icons pane header's "Thumbnail size" ([A5](packages/A5.md)). No QA run reaches these keys.
+- **State:** open, C20a's, by the coordinator's placing; #2336 leaves C20a as it is.
+
+### #2341: a popover cannot close on a wheel outside it and let the wheel through
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2341), filed on 2026-11-14
+  as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the review of [#2336](https://github.com/lgse/strata/pull/2336). GTK closes the
+  Icons header's "Thumbnail size" popover on a wheel outside it and scrolls the grid
+  (`dismiss_on_outside_scroll`, `src/ui/scrolling/popover.rs`). On Rune a modal makes the
+  outside inert, and a popover that is not modal needs rune-kit's scrim to close on a press,
+  which takes the wheel from the grid; Rune has no outside hook.
+- **Concerns:** the "Thumbnail size" popover ([A5](packages/A5.md)), and every popover GTK
+  dismisses on an outside scroll, the sort popover among them.
+- **State:** open. Rune packet entry
+  [104](../upstream/rune/104-outside-wheel-closes-a-popover.md) is drafted; no workaround, so
+  the wheel outside does nothing while the popover is open.
