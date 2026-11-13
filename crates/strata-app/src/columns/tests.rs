@@ -716,8 +716,8 @@ fn click_empty(host: &mut Offscreen, pane: &str) {
 
 /// `background_selection/empty-column-clears-other-columns`: with Ctrl+clicks adding to the
 /// root's selection while the empty `archive` column is open, a press on that column's empty
-/// space clears every column's selection, as GTK's marquee group does for any background
-/// click, and the columns stay open.
+/// space clears every column's selection, as GTK's `clear_marquee_selection` does, and the
+/// columns stay open.
 #[test]
 fn a_press_on_a_columns_empty_space_clears_every_columns_selection() {
     hosted(
