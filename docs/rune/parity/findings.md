@@ -704,7 +704,12 @@ sequence only together with the alphabet's version, so the version is part of th
   anchor, with the cursor as the anchor. The same path serves List and Icons.
 - **Concerns:** seed `0x14` of `columns v1`, shrunk to 4 steps and parked in
   `tests/qa/fuzz/corpus/columns/`.
-- **State:** open, F2's to fix (a `contract` pull request on `handover.rs`).
+- **State:** fixed by [F2](packages/F2.md)'s [#2363](https://github.com/lgse/strata/pull/2363), on `handover.rs` and C1. The marks a
+  view adopts carry the browser's anchor, and `Selection::restore` keeps the anchor it is given
+  while there is a cursor, where it replaced it with the cursor (`Option::and`), which also
+  broke position restore's range anchor. A hosted test holds it in Columns, List and Icons
+  (`commands::tests::refresh_anchor`), and the shrunk sequence is no longer parked: the corpus
+  replay holds it to agreeing on both targets.
 
 ### #2355: Rune's right-click moves the Shift anchor, GTK's does not
 

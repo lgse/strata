@@ -167,7 +167,7 @@ fn after_a_column_closes_the_browsers_cursor_is_adopted_in_the_column_shown() {
         marks: Marks {
             cursor: Some(left),
             selected: vec![left],
-            provisional: false,
+            ..Marks::default()
         },
         active: Some(1),
         reveal: true,
