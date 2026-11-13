@@ -368,3 +368,23 @@ sequence only together with the alphabet's version, so the version is part of th
   of the List ones is `required`: no required run passes for the wrong reason.
 - **State:** open, [H3](packages/H3.md)'s. The fix finds the collection's own viewport, a
   descendant of the entry list, rather than the nearest ancestor.
+
+### #2269: a `strata-platform` icon loader test failed once under load
+
+- **Code:** none of the plan's: a flaky Rune-side unit test, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2269), filed on 2026-11-12 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in a full `mise run test-rune` for [A1](packages/A1.md)'s
+  [#2264](https://github.com/lgse/strata/pull/2264) gate, while a `./scripts/qa-parity.sh all`
+  build loaded the machine, the held lookup in the test's `hold` helper stayed `Pending` where
+  `NotFound` was wanted, after its 10 s wait (`loader/tests.rs:116`). The branch did not touch
+  `strata-platform`. Alone, the test passed 3 of 3.
+- **Concerns:** `icon_theme::loader::tests::a_request_dropped_and_pushed_out_of_the_recent_icons_before_its_turn_is_skipped`
+  in `crates/strata-platform/src/icon_theme/loader/tests.rs`.
+- **What it suggests:** Rune-side tests are meant to run on Rune's virtual clock, but this one
+  drives the loader's real lookup thread against a wall-clock deadline, so it depends on
+  thread timing. A candidate, not verified: `LoadedIcon::wait` returns once a lookup's outcome
+  is set, before the lookup thread calls the waker; a `hold` that shuts the gate in that window
+  holds the thread in the waker for the previous lookup, and the held one never runs.
+- **State:** open, not taken up. Rerun it alone once if it fails again; do not chase it in a
+  package's gate.
