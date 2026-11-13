@@ -22,7 +22,7 @@ run = "list-name-sort"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A7"
+blocker = "unplaced: the List details cell for a symlink's size (A2's area, `contract` details): the row of a file link shows its target's size on GTK, 100 kB at line 5, and nothing on Rune. Asked in owner.md, A7"
 
 [[run]]
 scenario = "delete-file-symlink-sizes-link"
@@ -30,7 +30,7 @@ run = "list-size-sort"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A7"
+blocker = "unplaced: the List details cell for a symlink's size (A2's area, `contract` details): the row of a file link shows its target's size on GTK, 100 kB at line 5, and nothing on Rune. Asked in owner.md, A7"
 
 [[run]]
 scenario = "delete-to-trash"
@@ -59,7 +59,7 @@ run = "columns"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A7"
+blocker = "A8: the Appearance popover at line 2 (`open_menu` on its header button)"
 
 [[run]]
 scenario = "new-folder-collision-dialog"
@@ -67,7 +67,7 @@ run = "columns"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A7"
+blocker = "A8: the Appearance popover at line 2 (`open_menu` on its header button)"
 
 [[run]]
 scenario = "new-folder-with-selection-groups"
@@ -75,7 +75,7 @@ run = "columns"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A7"
+blocker = "A8: the Appearance popover at line 2; then New Folder with Selection, whose move into the new folder is a transfer (A12's), and for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
 
 [[run]]
 scenario = "new-folder-with-selection-groups"
@@ -83,7 +83,7 @@ run = "icons"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A7"
+blocker = "A8: the Appearance popover at line 2; then New Folder with Selection, whose move into the new folder is a transfer (A12's), and for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
 
 [[run]]
 scenario = "new-folder-with-selection-groups"
@@ -91,7 +91,7 @@ run = "list"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A7"
+blocker = "A8: the Appearance popover at line 2; then New Folder with Selection, whose move into the new folder is a transfer (A12's), and for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
@@ -258,17 +258,15 @@ host = "offscreen"
 scenario = "rename-shortcuts-leave-location"
 run = "columns-F2"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "rename-shortcuts-leave-location"
 run = "columns-ctrl-r"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-d-without-trash-confirms"
@@ -329,4 +327,4 @@ run = "columns"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A7"
+blocker = "A12: Cut and Paste (Ctrl+X, Ctrl+V), whose move does not happen at line 9; the undo after it is in"

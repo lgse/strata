@@ -107,9 +107,8 @@ scenario = "columns-return-selects-source-folder"
 run = "columns"
 package = "A5"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "A5: the location bar's crumbs (lgse/strata#2286), at `click` on the `documents` breadcrumb button on line 16; BackSpace after them is ported"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "focus-usable-after-view-change"

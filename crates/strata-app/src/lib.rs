@@ -60,6 +60,7 @@ mod list;
 mod sidebar;
 // A4 Tabs
 // A5 Location bar
+mod location;
 // A6 Menus, dialogs and keymap
 // A7 Entry management and undo
 mod new_item;
@@ -97,6 +98,7 @@ slots::parts! {
     sidebar: sidebar::Sidebar,
     // A4 Tabs
     // A5 Location bar
+    location: location::Bar,
     // A6 Menus, dialogs and keymap
     // A7 Entry management and undo
     undo: undo::Undo,
