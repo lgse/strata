@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use strata_core::{
-    i18n::tr,
-    model::{EntryKind, Location},
+    i18n::{file_size, tr},
+    model::{EntryKind, FileEntry, Location, MetadataValue},
+    util::{DateFormat, set_date_format},
 };
-use strata_fs::services::EntryType;
+use strata_fs::services::{EntryType, entry_type};
 
 use super::{duration, icons_line, mode_cell, modified_cell, permissions, size_cell, type_cell};
 use crate::listing::Facts;
@@ -114,25 +115,63 @@ fn the_size_and_mode_cells_show_what_the_browser_knows() {
         mode: Some(0o100_644),
         ..Facts::default()
     };
-    let folder = Facts {
+    let empty_folder = Facts {
         child_count: Some(0),
         ..Facts::default()
     };
-    assert_eq!(size_cell(false, &file), strata_core::i18n::file_size(1_500));
-    assert_eq!(size_cell(true, &folder), "No items");
-    assert_eq!(size_cell(false, &Facts::default()), "");
-    assert_eq!(mode_cell(&file), "-rw-r--r--  644");
-    assert_eq!(mode_cell(&Facts::default()), "");
-    assert_eq!(modified_cell(&Facts::default()), "—");
+    let size = file_size(1_500);
+    let cases: [(&str, bool, &Facts, &str, &str); 4] = [
+        ("a file", false, &file, &size, "-rw-r--r--  644"),
+        ("an empty folder", true, &empty_folder, "No items", ""),
+        (
+            "a folder whose count is unknown",
+            true,
+            &Facts::default(),
+            "",
+            "",
+        ),
+        (
+            "a file the browser knows nothing of",
+            false,
+            &Facts::default(),
+            "",
+            "",
+        ),
+    ];
+    for (case, folder, facts, size, mode) in cases {
+        assert_eq!(size_cell(folder, facts), size, "{case}: size");
+        assert_eq!(mode_cell(facts), mode, "{case}: mode");
+    }
 }
 
-/// GTK's `entry_type`: a folder and an entry of no known kind read their kind's name from the
-/// catalogs, not a MIME description.
+/// `strata_core::util::modified_date`: a dash for a date the browser does not know, else the
+/// date in the saved format, here ISO 8601 for a fixed output (in the local time zone, so
+/// only the day can differ).
 #[test]
-fn the_type_cell_names_a_folder_and_an_unknown_kind_from_the_catalogs() {
+fn the_modified_cell_shows_the_date_in_the_saved_format() {
+    assert_eq!(modified_cell(&Facts::default()), "—");
+    set_date_format(DateFormat::Iso8601);
+    // 2001-09-09 01:46:40 UTC.
+    let known = Facts {
+        modified: Some(1_000_000_000),
+        ..Facts::default()
+    };
+    let shown = modified_cell(&known);
+    assert!(
+        shown.starts_with("2001-09-0") && shown.len() == 16 && shown.as_bytes()[10] == b' ',
+        "{shown}"
+    );
+}
+
+/// GTK's `entry_type`: a folder, a broken link and an entry of no known kind read their kind's
+/// name from the catalogs; a file the MIME table knows reads its description, as strata-fs's
+/// `entry_type` gives it for the same entry.
+#[test]
+fn the_type_cell_names_a_kind_from_the_catalogs_and_a_file_by_its_mime_type() {
     let folder = Location::local("/root");
     for (kind, name, expected) in [
         (EntryKind::Directory, "docs", EntryType::Folder),
+        (EntryKind::SymbolicLink, "gone", EntryType::BrokenLink),
         (EntryKind::Other, "socket", EntryType::Other),
     ] {
         assert_eq!(
@@ -140,5 +179,35 @@ fn the_type_cell_names_a_folder_and_an_unknown_kind_from_the_catalogs() {
             tr(expected.description()),
             "{name}"
         );
+    }
+    let EntryType::Known(description) = entry_type(&file(&folder, "notes.txt")) else {
+        panic!("the MIME table knows a text file");
+    };
+    assert_eq!(
+        type_cell(&folder, EntryKind::File, "notes.txt"),
+        description
+    );
+}
+
+/// A file named `name` in `folder`, as a listing reads it, with nothing else known.
+fn file(folder: &Location, name: &str) -> FileEntry {
+    let path = folder.native_path().expect("a local folder").join(name);
+    FileEntry {
+        location: Location::local(path),
+        thumbnail_path: None,
+        native_name: name.into(),
+        display_name: name.to_owned(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
+        recent_uri: None,
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
+        is_hidden: false,
     }
 }
