@@ -62,6 +62,13 @@ name = "escape"
 weight = 2
 steps = ['{"key":"Escape"}']
 
+# A dialog closed: the failed rename's, after a name that is taken, or a confirmation left
+# open. Without it one collision would hold the keyboard for the rest of a sequence.
+[[action]]
+name = "dismiss"
+weight = 3
+steps = ['{"key":"Escape","when":{"dialog":true}}']
+
 [[action]]
 name = "click"
 weight = 5
@@ -82,8 +89,8 @@ weight = 4
 steps = [
   '{"key":"ctrl+shift+n","when":{"not":{"field":{"name":"Rename"}}}}',
   '{"wait":{"field":{"name":"Rename","focused":true}},"message":"the new folder’s name editor"}',
-  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
-  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
+  '{"type":"<text>","when":{"field":{"name":"Rename","focused":true}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename","focused":true}}}',
 ]
 choose.end = ["Return", "Return", "Escape"]
 choose.text = ["plans", "made", "a/b/"]
@@ -96,8 +103,8 @@ steps = [
   '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}',
   '{"click":{"menu_item":"New File"},"when":{"present":{"menu_item":"New File"}}}',
 '{"wait":{"field":{"name":"Rename","focused":true}},"when":{"present":{"entry":"<entry>"}},"message":"the new file\u2019s name editor"}',
-  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
-  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
+  '{"type":"<text>","when":{"field":{"name":"Rename","focused":true}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename","focused":true}}}',
 ]
 choose.end = ["Return", "Return", "Escape"]
 choose.entry = ["readme.md", "todo.txt", "notes.txt", "photo.txt"]
@@ -110,8 +117,8 @@ name = "rename"
 weight = 5
 steps = [
   '{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}',
-  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
-  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
+  '{"type":"<text>","when":{"field":{"name":"Rename","focused":true}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename","focused":true}}}',
 ]
 choose.end = ["Return", "Return", "Escape"]
 choose.text = ["x", "-2", "kept/one"]
@@ -123,8 +130,8 @@ weight = 2
 steps = [
   '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}',
   '{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}',
-  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
-  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
+  '{"type":"<text>","when":{"field":{"name":"Rename","focused":true}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename","focused":true}}}',
 ]
 choose.end = ["Return", "Escape"]
 choose.entry = ["readme.md", "todo.txt", "notes.txt", "photo.txt"]
