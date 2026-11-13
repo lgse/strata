@@ -177,3 +177,5 @@ fn a_mirror_waiting_when_another_view_shows_opens_no_column() {
         },
     );
 }
+
+mod text_size;
