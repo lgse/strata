@@ -7,7 +7,7 @@ use rune::Tx;
 
 #[cfg(feature = "qa")]
 use super::Load;
-use super::{Columns, Hands, VIEW, intents, view};
+use super::{Columns, Hands, VIEW, intents, thumbs, view};
 #[cfg(feature = "qa")]
 use crate::slots::Probe;
 use crate::{
@@ -20,7 +20,10 @@ const MODE: &str = "columns";
 
 impl Part for Columns {
     const PLACE: Place<App> = Place::View(View {
-        build: |app, _| Some(view(app).build(app)),
+        build: |app, frame| {
+            app.columns.thumbs.set_scale(frame.cx.env().scale);
+            Some(view(app).build(app))
+        },
         shows: |mode| mode == MODE,
         focus: VIEW,
         supports_type_grouping: false,
@@ -52,7 +55,7 @@ impl Part for Columns {
     });
 
     fn new(setup: &Setup<'_>) -> Self {
-        Self::with_settings(setup.settings, setup.ids.clone())
+        Self::with_settings(setup.settings, setup.ids.clone(), setup.later.clone())
     }
 
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {
@@ -84,6 +87,7 @@ impl Part for Columns {
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = app.columns.watch_surface(clock, tx);
-        view(app).tick(app, clock, tx) | said
+        let pruned = thumbs::poll(app, clock);
+        view(app).tick(app, clock, tx) | said | pruned
     }
 }

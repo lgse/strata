@@ -23,6 +23,7 @@ mod keys;
 mod letters;
 mod rename;
 mod saved;
+mod thumbs;
 
 const MODULE: &str = "columns::tests";
 

@@ -66,7 +66,14 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     )
     .labels(app.columns.labels.0.clone())
     .collection(|app, depth, collection| {
-        let collection = collection.empty(move |app: &App| shown_status(app, depth));
+        let collection = collection
+            .empty(move |app: &App| shown_status(app, depth))
+            .icon(app.columns.thumbs.icon(&app.look))
+            .on_visible(move |app: &mut App, range| {
+                // Recorded only: the part syncs the store once a poll.
+                app.columns.thumbs.see(depth, range);
+                false
+            });
         // A column with no rows is described as GTK's directory surface is then.
         let collection = match status(app, depth) {
             Some((said, _)) => collection.description(said.to_owned()),
