@@ -210,6 +210,12 @@ path = "tests/qa.rs"
 required-features = ["qa"]
 harness = false
 
+# Holds the Rune interface's key library to GDK. It reads a test-only item of strata-desktop.
+[[test]]
+name = "key_lookups"
+path = "tests/key_lookups.rs"
+required-features = ["test-support"]
+
 [build-dependencies]
 glib-build-tools.workspace = true
 
