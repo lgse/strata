@@ -9,6 +9,7 @@
 //! The table has GTK's five columns ([`columns`]): Name, Mode, Size, Type and Modified, in the
 //! saved order and visibility, at the saved widths. What a row does not know yet (a size, a
 //! date, a mode) is asked for while it is near the viewport ([`crate::fills`]).
+//! An image's row draws its thumbnail at 18 points, from the window's store ([`thumbs`]).
 
 use strata_components::{
     collection::keyboard::{KeySettings, Letters},
