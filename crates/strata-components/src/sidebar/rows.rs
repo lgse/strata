@@ -23,7 +23,7 @@ pub const PENDING_RELEASE: &str = "Writing data to the drive. Do not unplug it."
 
 /// A rail row: the icon alone, where the full row has it, so a step moves no icon. rune-kit's
 /// `SidebarRow` keeps a label slot and its gap even with an empty label, which don't fit the
-/// rail (U18), so the rail builds its own row: a list item that takes focus, selects and
+/// rail (U18), so the rail builds its own row: one that takes focus, selects and
 /// hovers as `SidebarRow` does, without its reorder drag.
 fn rail_row(look: &Look, icon: El, selected: bool) -> El {
     let size = slot::ICON_BOX;
@@ -44,7 +44,7 @@ fn rail_row(look: &Look, icon: El, selected: bool) -> El {
                 .child(icon)
                 .a11y_hidden(),
         );
-    look.kit.interactive(r).role("listitem")
+    look.kit.interactive(r)
 }
 
 /// What every row builder shares.
@@ -71,6 +71,8 @@ pub(crate) struct Spec<'a> {
     /// A middle click opens a new tab.
     pub new_tab: bool,
     pub keycap: Option<&'a str>,
+    /// The row's accessible description, if the host gave one.
+    pub description: Option<&'a str>,
     /// The row's place in its reorderable list: index and count.
     pub reorder: Option<(usize, usize)>,
     /// The row is lifted by its reorder drag.
@@ -273,7 +275,14 @@ fn dress<S>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
         ctx.state.drop_over(),
         Some((DropSite::Item(i), DropHover::Accepting)) if *i == spec.item
     );
-    let mut el = el.key(spec.item.key(ctx.key)).label(spec.label);
+    // A button, as Strata's rows are, so assistive technology reads what Strata's does.
+    let mut el = el
+        .key(spec.item.key(ctx.key))
+        .role("button")
+        .label(spec.label);
+    if let Some(description) = spec.description {
+        el = el.description(description);
+    }
     if spec.selected && spec.lifted {
         // Lifted, the row keeps rune-kit's opaque lift fill under the tint, so the rows it
         // passes don't show through.
@@ -374,6 +383,7 @@ pub(crate) fn device_row<S: 'static>(ctx: &Ctx<'_, S>, d: &Device, selected: boo
         accepts_drops: d.accepts_drops && d.mounted && !d.pending,
         new_tab: ctx.new_tabs && d.mounted,
         keycap: None,
+        description: None,
         reorder: None,
         lifted: false,
     };

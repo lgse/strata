@@ -346,10 +346,6 @@ pub(crate) enum Place<S: 'static> {
         expect(dead_code, reason = "no part fills the location slot yet")
     )]
     Location(Build<S>),
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no part fills the sidebar slot yet")
-    )]
     Sidebar(Sidebar<S>),
     View(View<S>),
     #[cfg_attr(

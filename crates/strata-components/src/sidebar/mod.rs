@@ -78,6 +78,10 @@
 //! - **The open-gap animation.** Strata draws a 2 px line in the gap. Here a gap taking a drag
 //!   opens to `sidebar.gap.open` (half a row) on the kit's disclosure spring, and draws the
 //!   line inside; with animations off it opens at once.
+//! - **Rows are buttons.** Every place, pin and device row, in both widths, is a `button`
+//!   named by its label, with the host's description where it gives one
+//!   ([`Place::description`], [`Pin::description`]), as Strata's rows are, so assistive
+//!   technology hears what it hears in Strata although the rows sit in a list.
 //! - **Gaps are hidden from assistive technology.** Strata's gaps are each an empty group
 //!   named "PINNED" (a known gap of `browser/sidebar/pins/drag-to-pin`); here they are drop
 //!   targets only, out of the tree.

@@ -233,6 +233,7 @@ fn places<S: 'static>(
             accepts_drops: p.accepts_drops,
             new_tab: ctx.new_tabs,
             keycap: p.keycap.as_deref(),
+            description: p.description.as_deref(),
             reorder: Some((i, n)),
             lifted: !ctx.rail && ctx.state.places_reorder.dragging() == Some(i),
         };
@@ -292,6 +293,7 @@ fn pinned<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
             accepts_drops: p.accepts_drops,
             new_tab: ctx.new_tabs,
             keycap: p.keycap.as_deref(),
+            description: p.description.as_deref(),
             reorder: Some((i, n)),
             lifted: !ctx.rail && !collapsed && ctx.state.pins_reorder.dragging() == Some(i),
         };
