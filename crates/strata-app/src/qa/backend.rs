@@ -172,10 +172,13 @@ impl Backend for Rune {
     async fn ready(&self) -> Result<(), String> {
         let deadline = Instant::now() + READY_TIMEOUT;
         let stage = &mut *self.stage.borrow_mut();
+        // The view is chosen when the window is built, so a fallback is named at once rather
+        // than waited on until it lists.
+        Self::shows_saved_mode(stage)?;
         loop {
             stage.settle();
             if Self::listed(stage) {
-                return Self::shows_saved_mode(stage);
+                return Ok(());
             }
             if Instant::now() >= deadline {
                 return Err("the Strata window never showed an entry list".to_owned());
