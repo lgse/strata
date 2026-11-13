@@ -108,8 +108,8 @@ fn own_size(host: &Offscreen, folder: &Path) -> Option<i32> {
 }
 
 /// The button is named as GTK's, its slider too, and a step of the slider sizes the tiles
-/// and is kept as the remembered folder's own; the slider follows the window's keys while it is
-/// open; Escape closes it and gives the button the keyboard back.
+/// and is kept as the remembered folder's own; Escape closes it and gives the button the
+/// keyboard back.
 #[test]
 fn the_slider_sizes_the_tiles_and_escape_closes_it() {
     let name = "the_slider_sizes_the_tiles_and_escape_closes_it";
@@ -140,30 +140,6 @@ fn the_slider_sizes_the_tiles_and_escape_closes_it() {
             "the remembered folder keeps its own"
         );
         assert_eq!(own_size(&host, folder.path()), Some(80));
-
-        let larger = Mods {
-            ctrl: true,
-            cmd: true,
-            alt: true,
-            ..Mods::default()
-        };
-        send_key(
-            &mut host,
-            KeyEvent {
-                key: Key::Command('='),
-                mods: larger,
-            },
-        );
-        let followed = host.run_until(PATIENCE, |host| {
-            let tree = host.tree();
-            let slider = node(&tree, SLIDER).map(|node| view::text(node, "value"));
-            slider.as_deref() == Some("96 px")
-        });
-        assert!(
-            followed,
-            "the slider follows Ctrl+Alt+=: {:?}",
-            node(&host.tree(), SLIDER)
-        );
 
         press(&mut host, Key::Escape);
         assert!(!drawn(&host, SLIDER), "Escape closed the popover");
@@ -219,49 +195,29 @@ fn make_default_and_reset_follow_the_remembered_folder() {
     });
 }
 
-/// The window's commands run while the popover is open, as under GTK's plain popover: Alt+Up
-/// on the slider goes to the parent folder, and the popover goes, as GTK's goes with its pane,
-/// leaving the keyboard to the new listing.
+/// Another folder showing closes the popover, as GTK's goes with the pane a navigation
+/// rebuilds.
 #[test]
-fn alt_up_goes_to_the_parent_and_closes_the_popover() {
-    let name = "alt_up_goes_to_the_parent_and_closes_the_popover";
+fn another_folder_closes_the_popover() {
+    let name = "another_folder_closes_the_popover";
     hosted_in(MODULE, "icons", name, |mut host| {
         let folder = fixture();
         let root = Location::local(folder.path());
         open(&mut host, ICONS, &folder.path().join("documents"));
         open_popover(&mut host);
 
-        let alt = Mods {
-            alt: true,
-            ..Mods::default()
-        };
-        send_key(
-            &mut host,
-            KeyEvent {
-                key: Key::Up,
-                mods: alt,
-            },
-        );
+        host.app().open(root.clone());
         let up = host.run_until(PATIENCE, |host| {
             host.app().browser().active_location().as_ref() == Some(&root)
         });
-        assert!(up, "Alt+Up went to the parent");
+        assert!(up, "the parent shows");
         let closed = host.run_until(PATIENCE, |host| !drawn(host, SLIDER));
         assert!(closed, "the popover closed with the folder");
-        let view = host.run_until(PATIENCE, |host| {
-            shell::view_focus(host.app()).is_some_and(|view| view == crate::icons::VIEW)
-        });
-        assert!(view, "the Icons view shows");
-        assert_eq!(
-            focused(&mut host).as_deref(),
-            Some(crate::icons::VIEW),
-            "the new listing takes the keyboard, as GTK's does from inside the pane"
-        );
     });
 }
 
-/// A key without Ctrl or Alt on the slider ends GTK's chain at `popover_navigation`: Delete
-/// there trashes nothing, though the view holds a selection.
+/// The popover takes every key, as GTK's does (driven): Delete on its slider trashes nothing,
+/// though the view holds a selection.
 #[test]
 fn delete_on_the_slider_trashes_nothing() {
     let name = "delete_on_the_slider_trashes_nothing";

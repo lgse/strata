@@ -247,17 +247,8 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
             ]),
             false,
         ),
-        // A plain popover keeps the whole chain but the default Tab navigation
-        // (`focus_in_popover`, `focus.rs:44`).
-        (
-            Some(Holds::Popover),
-            chain(&[
-                "inline editing",
-                "text input",
-                "file commands, outside text",
-            ]),
-            false,
-        ),
+        // A plain popover takes every key: no stage hears it (GTK, driven).
+        (Some(Holds::Popover), vec![], false),
         (
             Some(Holds::Field),
             chain(&["default tab", "inline editing", "text input"]),
@@ -330,40 +321,32 @@ fn f9_held(press: &KeyPress) -> bool {
 }
 
 says! {
-    focus_navigation: "focus navigation" => Outcome::Declined;
-    dismissal: "dismissal" => Outcome::Declined;
+    window_command: "window command" => Outcome::Declined;
     item_navigation: "item navigation" => Outcome::Declined;
     left_unclaimed: "unclaimed" => Outcome::Declined;
 }
 
-const LATE: &[Action<App>] = &[
-    Action::new("focus-navigation", focus_navigation).keys(&[at(Stage::FocusNavigation, f9_held)]),
-    Action::new("dismissal", dismissal).keys(&[at(Stage::Dismissal, f9_held)]),
+const HELD: &[Action<App>] = &[
+    Action::new("window-command", window_command).keys(&[at(Stage::WindowCommands, f9_held)]),
     Action::new("item-navigation", item_navigation).keys(&[at(Stage::ItemNavigation, f9_held)]),
     Action::new("unclaimed", left_unclaimed).keys(&[at(Stage::Unclaimed, f9_held)]),
 ];
 
-fn an_owner_and_the_late_stages() -> Vec<Entry<App>> {
+fn an_owner_and_held_keys() -> Vec<Entry<App>> {
     struct Owner;
-    struct Late;
+    struct Held;
     vec![
         view(),
         part::<Owner>("owner", &[], |_| HOLDS.get()),
-        part::<Late>("late", LATE, |_| None),
+        part::<Held>("held", HELD, |_| None),
     ]
 }
 
-/// `popover_navigation` (`focus.rs:112`) ends GTK's chain for a key without Ctrl or Alt while
-/// focus is in a popover: focus navigation, dismissal and item navigation never hear it, and
-/// with Ctrl or Alt held they do.
+/// GTK's plain popover takes every key while focus is in it, with Ctrl or Alt held as
+/// without (driven: Alt+Up and Ctrl+Alt+= do nothing there): no stage hears one.
 #[test]
-fn a_popover_ends_the_chain_at_focus_navigation_for_a_key_without_ctrl_or_alt() {
-    const ALL: [&str; 4] = [
-        "focus navigation",
-        "dismissal",
-        "item navigation",
-        "unclaimed",
-    ];
+fn a_popover_takes_every_key_with_or_without_modifiers() {
+    const ALL: [&str; 3] = ["window command", "item navigation", "unclaimed"];
     let ctrl = Mods {
         ctrl: true,
         cmd: true,
@@ -374,15 +357,15 @@ fn a_popover_ends_the_chain_at_focus_navigation_for_a_key_without_ctrl_or_alt() 
         ..Mods::default()
     };
     let cases: [(Option<Holds>, Mods, &[&str]); 4] = [
-        (None, Mods::default(), &ALL),
-        (Some(Holds::Popover), Mods::default(), &["unclaimed"]),
-        (Some(Holds::Popover), ctrl, &ALL),
-        (Some(Holds::Popover), alt, &ALL),
+        (None, alt, &ALL),
+        (Some(Holds::Popover), Mods::default(), &[]),
+        (Some(Holds::Popover), ctrl, &[]),
+        (Some(Holds::Popover), alt, &[]),
     ];
     hosted_over(
         MODULE,
-        "routing::a_popover_ends_the_chain_at_focus_navigation_for_a_key_without_ctrl_or_alt",
-        an_owner_and_the_late_stages,
+        "routing::a_popover_takes_every_key_with_or_without_modifiers",
+        an_owner_and_held_keys,
         move |mut host| {
             for (holds, mods, asked) in cases {
                 HOLDS.set(holds);

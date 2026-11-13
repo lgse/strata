@@ -13,10 +13,11 @@
 //! - **"Make this the default size" and "Reset to default size"** show only while the shown
 //!   folder is remembered at a size other than the default, and each closes the popover
 //!   (`closing_menu_action`).
-//! - While it is open, the slider follows a size the window's keys change.
-//! - Escape or a press outside closes it, and the keyboard goes back to the button; so does
-//!   another folder or view showing. While it is open the window's commands run, as under
-//!   GTK's plain popover ([`crate::commands::Holds::Popover`]): Alt+Up goes to the parent.
+//! - While it is open it takes every key, as GTK's plain popover does
+//!   ([`crate::commands::Holds::Popover`]): no window command runs, Delete on the slider
+//!   trashes nothing. Its slider follows a size changed from elsewhere.
+//! - Escape or a press outside closes it, and the keyboard goes back to the button; another
+//!   folder or view showing closes it too, as GTK's goes with its pane.
 
 use rune::{El, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant, Placement, popover};
@@ -102,22 +103,18 @@ fn toggle(app: &mut App) {
     state.open = true;
 }
 
-/// While the popover is open its slider follows a size the window's keys changed, as GTK's
-/// scale does (`icons_thumbnail_scale` in `src/ui/browser/view_modes.rs`), unless a drag holds
-/// it; and it closes when another folder or another view shows, as GTK's goes with its pane
-/// (`rebuild_icons` on `ColumnAdded`). True when anything changed.
-pub(crate) fn follow(app: &mut App, tx: &mut Tx) -> bool {
+/// While the popover is open its slider follows a size changed from elsewhere (another
+/// process's saved folder view, say), as GTK's scale does (`icons_thumbnail_scale` in
+/// `src/ui/browser/view_modes.rs`), unless a drag holds it; and it closes when another folder
+/// or another view shows, as GTK's goes with its pane (`rebuild_icons` on `ColumnAdded`). True
+/// when anything changed.
+pub(crate) fn follow(app: &mut App) -> bool {
     if !app.pane_header.thumbnails.open {
         return false;
     }
     let icons = shell::view_focus(app) == Some(crate::icons::VIEW);
     if !icons || size::shown_location(app) != app.pane_header.thumbnails.over.as_ref() {
         close(app);
-        // Focus inside GTK's popover is inside the pane, so the new listing takes it
-        // (`on_navigation_starting` in `src/ui/browser_modes/events.rs`).
-        if let Some(view) = shell::view_focus(app) {
-            tx.focus(view, true);
-        }
         return true;
     }
     let shown = f64::from(size::shown(app));

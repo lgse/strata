@@ -412,7 +412,7 @@ fn walk(app: &mut App, offer: &Offer<'_>, tx: &mut Tx) -> Outcome {
     };
     for stage in Stage::ALL.iter().filter(|stage| span.has(**stage)) {
         for (part, action) in reading(app, press, at, *stage) {
-            let outcome = match reach(at, *stage, part, press) {
+            let outcome = match reach(at, *stage, part) {
                 Reach::Cut => Outcome::Declined,
                 Reach::Taken => Outcome::Ran,
                 Reach::Runs => call(app, action, &key, tx),
