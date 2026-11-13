@@ -9,7 +9,7 @@ use std::{
 };
 
 use rune::{El, Key as Logical, KeyEvent, Mods, Tx, el};
-use strata_desktop::keys::{Binding, Key, KeyPress, Map, bindings::TAB_NUMBERS};
+use strata_desktop::keys::{Binding, Key, KeyPress, Map, Modifiers, bindings::TAB_NUMBERS};
 
 use super::super::{
     Action, Call, Holds, Keys, On, Outcome, Reads, Situation, Stage, always, on_key, read, run,
@@ -187,6 +187,7 @@ says! {
     tab_strip: "tab strip" => Outcome::Declined;
     entry: "entry" => Outcome::Declined;
     zoom: "zoom" => Outcome::Declined;
+    default_tab: "default tab" => Outcome::Declined;
     inline_editing: "inline editing" => Outcome::Declined;
     text_input: "text input" => Outcome::Declined;
     outside_text: "file commands, outside text" => Outcome::Declined;
@@ -204,6 +205,7 @@ const STAGES: &[Action<App>] = &[
     Action::new("tab-strip", tab_strip).keys(&[at(Stage::TabStrip, f9)]),
     Action::new("entry", entry).keys(&[at(Stage::Entry, f9)]),
     Action::new("zoom", zoom).keys(&[at(Stage::ZoomShortcut, f9)]),
+    Action::new("default-tab", default_tab).keys(&[at(Stage::DefaultTabNavigation, f9)]),
     Action::new("inline-editing", inline_editing).keys(&[at(Stage::InlineEditing, f9)]),
     Action::new("text-input", text_input).keys(&[at(Stage::TextInput, f9)]),
     Action::new("outside-text", outside_text)
@@ -234,24 +236,28 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
     const TAIL: [&str; 3] = ["after yield, the owner's", "after yield", "unclaimed"];
     let chain =
         |stages: &[&'static str]| -> Vec<&'static str> { [&HEAD[..], stages, &TAIL[..]].concat() };
-    let cases: [(Option<Holds>, Vec<&str>, bool); 8] = [
+    let cases: [(Option<Holds>, Vec<&str>, bool); 9] = [
         (
             None,
             chain(&[
+                "default tab",
                 "inline editing",
                 "text input",
                 "file commands, outside text",
             ]),
             false,
         ),
+        // A plain popover takes every key: no stage hears it (GTK, driven).
+        (Some(Holds::Popover), vec![], false),
         (
             Some(Holds::Field),
-            chain(&["inline editing", "text input"]),
+            chain(&["default tab", "inline editing", "text input"]),
             false,
         ),
         (
             Some(Holds::Filter),
             chain(&[
+                "default tab",
                 "inline editing",
                 "text input",
                 "file commands, in the filter",
@@ -260,13 +266,19 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
         ),
         (
             Some(Holds::Location),
-            chain(&["inline editing", "text input"]),
+            chain(&["default tab", "inline editing", "text input"]),
             false,
         ),
         // The first window action takes the key, and nothing after it is asked.
         (
             Some(Holds::Edit),
-            vec!["tab strip", "entry", "zoom", "inline editing"],
+            vec![
+                "tab strip",
+                "entry",
+                "zoom",
+                "default tab",
+                "inline editing",
+            ],
             true,
         ),
         (Some(Holds::Menu), chain(&[]), false),
@@ -303,6 +315,73 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
     );
 }
 
+/// F9 with or without Ctrl or Alt.
+fn f9_held(press: &KeyPress) -> bool {
+    press.is(Binding::plain(Key::F9).ignoring(Modifiers::CONTROL_MASK.union(Modifiers::ALT_MASK)))
+}
+
+says! {
+    window_command: "window command" => Outcome::Declined;
+    item_navigation: "item navigation" => Outcome::Declined;
+    left_unclaimed: "unclaimed" => Outcome::Declined;
+}
+
+const HELD: &[Action<App>] = &[
+    Action::new("window-command", window_command).keys(&[at(Stage::WindowCommands, f9_held)]),
+    Action::new("item-navigation", item_navigation).keys(&[at(Stage::ItemNavigation, f9_held)]),
+    Action::new("unclaimed", left_unclaimed).keys(&[at(Stage::Unclaimed, f9_held)]),
+];
+
+fn an_owner_and_held_keys() -> Vec<Entry<App>> {
+    struct Owner;
+    struct Held;
+    vec![
+        view(),
+        part::<Owner>("owner", &[], |_| HOLDS.get()),
+        part::<Held>("held", HELD, |_| None),
+    ]
+}
+
+/// GTK's plain popover takes every key while focus is in it, with Ctrl or Alt held as
+/// without (driven: Alt+Up and Ctrl+Alt+= do nothing there): no stage hears one.
+#[test]
+fn a_popover_takes_every_key_with_or_without_modifiers() {
+    const ALL: [&str; 3] = ["window command", "item navigation", "unclaimed"];
+    let ctrl = Mods {
+        ctrl: true,
+        cmd: true,
+        ..Mods::default()
+    };
+    let alt = Mods {
+        alt: true,
+        ..Mods::default()
+    };
+    let cases: [(Option<Holds>, Mods, &[&str]); 4] = [
+        (None, alt, &ALL),
+        (Some(Holds::Popover), Mods::default(), &[]),
+        (Some(Holds::Popover), ctrl, &[]),
+        (Some(Holds::Popover), alt, &[]),
+    ];
+    hosted_over(
+        MODULE,
+        "routing::a_popover_takes_every_key_with_or_without_modifiers",
+        an_owner_and_held_keys,
+        move |mut host| {
+            for (holds, mods, asked) in cases {
+                HOLDS.set(holds);
+                let event = KeyEvent {
+                    key: Logical::Function(9),
+                    mods,
+                };
+
+                act(&mut host, move |app, tx| on_key(app, &event, tx));
+
+                assert_eq!(noted(), asked, "{holds:?}, {mods:?}");
+            }
+        },
+    );
+}
+
 fn made_button(_: &App, _: &mut Frame<'_, App>) -> Option<El> {
     Some(el().key("made-button").w(40.0).h(20.0).focusable(true))
 }
@@ -324,10 +403,11 @@ fn an_owner_every_stage_and_a_button() -> Vec<Entry<App>> {
 /// stage, since the root then asks them all.
 #[test]
 fn a_press_is_offered_once_from_wherever_the_keyboard_is() {
-    const WHOLE: [&str; 9] = [
+    const WHOLE: [&str; 10] = [
         "tab strip",
         "entry",
         "zoom",
+        "default tab",
         "inline editing",
         "text input",
         "file commands, outside text",
@@ -336,7 +416,7 @@ fn a_press_is_offered_once_from_wherever_the_keyboard_is() {
         "unclaimed",
     ];
     // A field's part holds the keyboard: the window asks, with what a field leaves.
-    let under_a_field = [&WHOLE[..5], &WHOLE[6..]].concat();
+    let under_a_field = [&WHOLE[..6], &WHOLE[7..]].concat();
     let cases: [(Option<&str>, Option<Holds>, &[&str]); 4] = [
         (None, None, &WHOLE),
         (Some("made-button"), None, &WHOLE),
@@ -370,6 +450,8 @@ fn a_letter_is_text_in_any_field_and_an_arrow_elsewhere() {
     let cases = [
         (None, true),
         (Some(Holds::Field), false),
+        // In a popover, as `in_popover` in `context_of` has it.
+        (Some(Holds::Popover), false),
         (Some(Holds::Modal { field: false }), true),
         (Some(Holds::Modal { field: true }), false),
     ];

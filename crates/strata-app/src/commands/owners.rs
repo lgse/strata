@@ -40,12 +40,25 @@ pub(crate) enum Holds {
     /// the layer has the keyboard (a palette's query, a dialog's name): typing is then the
     /// field's, as under any focused editable (`context_of` in `src/ui/keys/alias.rs`).
     Modal { field: bool },
+    /// A plain popover, such as the Icons header's thumbnail size: GTK's `gtk::Popover` takes
+    /// every key while focus is in it, with or without modifiers, so no stage of the window's
+    /// chain hears one ([`reach`]). Driven on GTK (`./scripts/qa-drive.sh`, XTest input, focus on
+    /// the popover's slider, 2026-11-14): Alt+Up, Ctrl+Alt+=, Delete with a selection and F5
+    /// did nothing, and Escape closed the popover, giving the button the keyboard. GTK's code
+    /// suggests otherwise (`popover_navigation` and `focus_in_popover` in
+    /// `src/ui/window/keyboard/`); the driven run settles it: no key from inside the popover
+    /// reached the window's dispatcher. Typing is the popover's for the aliases ([`Situation::typing`],
+    /// `in_popover` in `context_of`). A part answers it while its popover is open, and closes
+    /// the popover where GTK's goes away with its pane: another folder or view.
+    Popover,
 }
 
 impl Holds {
     /// The last stage of the chain that still runs: after it the key is the owner's.
     const fn last(self) -> Stage {
         match self {
+            // Never read: `reach` cuts every stage for a popover first.
+            Self::Popover => Stage::TabStrip,
             Self::Modal { .. } | Self::Menu => Stage::ZoomShortcut,
             Self::Edit => Stage::InlineEditing,
             Self::Location => Stage::TextInput,
@@ -131,7 +144,7 @@ impl Situation {
     /// What owns typing where the press lands, for the aliases (`context_of` in
     /// `src/ui/keys/alias.rs`): a text field, a modal layer's among them, or a popover.
     pub(super) fn typing(&self) -> bool {
-        self.text() || self.holds() == Some(Holds::Menu)
+        self.text() || matches!(self.holds(), Some(Holds::Menu | Holds::Popover))
     }
 }
 
@@ -153,6 +166,10 @@ pub(super) fn reach(at: &Situation, stage: Stage, part: &str) -> Reach {
     let Some((holds, owner)) = at.holds else {
         return Reach::Runs;
     };
+    // A popover takes every key: no stage hears it ([`Holds::Popover`]).
+    if holds == Holds::Popover {
+        return Reach::Cut;
+    }
     let runs = match stage {
         // What the dispatcher does on every press, and what the focused widget left.
         Stage::Entry | Stage::Unclaimed => true,
