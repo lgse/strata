@@ -139,14 +139,21 @@ fn outside_entries(node: &Value, shape: Shape) -> Vec<&Value> {
     found
 }
 
+/// The view's pane, described as the view, and its list: the pane's, since another list can
+/// come before it in the tree (the sidebar's places, which share the List view's `list` role).
+fn pane_and_list(tree: &Value, shape: Shape) -> Option<(&Value, &Value)> {
+    let pane = all(tree, &|node| node["description"] == shape.described)
+        .into_iter()
+        .next()?;
+    let list = all(pane, &|node| node["role"] == shape.list)
+        .into_iter()
+        .next()?;
+    Some((pane, list))
+}
+
 pub(crate) fn seen(host: &Offscreen, shape: Shape) -> Seen {
     let tree = host.tree();
-    let pane = all(&tree, &|node| node["description"] == shape.described);
-    let Some(pane) = pane.first() else {
-        return Seen::default();
-    };
-    let list = all(pane, &|node| node["role"] == shape.list);
-    let Some(list) = list.first() else {
+    let Some((pane, list)) = pane_and_list(&tree, shape) else {
         return Seen::default();
     };
     let entries = all(list, &|node| {
@@ -273,8 +280,8 @@ fn middle_of(host: &Offscreen, shape: Shape, name: &str) -> (f32, f32) {
 /// A point of the view's list below its entries, in window points.
 fn blank_of(host: &Offscreen, shape: Shape) -> (f32, f32) {
     let tree = host.tree();
-    let lists = all(&tree, &|node| node["role"] == shape.list);
-    let bounds = &lists.first().expect("the list")["bounds"];
+    let (_, list) = pane_and_list(&tree, shape).expect("the view's list");
+    let bounds = &list["bounds"];
     let at = |index: usize| bounds[index].as_f64().expect("a bound");
     #[expect(clippy::cast_possible_truncation, reason = "window points")]
     let blank = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) - 8.0) as f32);
