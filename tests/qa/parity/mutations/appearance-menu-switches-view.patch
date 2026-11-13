@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/appearance/popover.rs b/crates/strata-app/src/appearance/popover.rs
+index f38d4d2cd..d4f559942 100644
+--- a/crates/strata-app/src/appearance/popover.rs
++++ b/crates/strata-app/src/appearance/popover.rs
+@@ -308,7 +308,7 @@ fn view_rows(app: &App) -> Vec<El> {
+ /// A view row: the view shows as the keys show it, the popover closes, and the view has the
+ /// keyboard (`connect_mode_buttons`, then `focus_switched_view`).
+ fn chosen_view(app: &mut App, mode: &'static str, tx: &mut Tx) {
+-    super::views::switch(app, mode, tx);
++    let _ = mode;
+     close(app);
+     if let Some(view) = shell::view_focus(app) {
+         tx.focus(view, true);

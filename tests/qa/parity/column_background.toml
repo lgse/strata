@@ -6,9 +6,8 @@
 scenario = "column-background-click-focuses-parent"
 run = "columns-content"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "column-background-click-focuses-parent"
@@ -16,7 +15,7 @@ run = "columns-header"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A8: a Columns column header's title as GTK's `label`, named for its folder and described by its path, a contract change in `columns/` (line 16)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -24,7 +23,7 @@ run = "columns-root-item"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -32,7 +31,7 @@ run = "columns-root-background"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -40,7 +39,7 @@ run = "columns-nested-item"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -48,7 +47,7 @@ run = "columns-nested-background"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -56,7 +55,7 @@ run = "columns-root-header"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A8: a Columns column header's title as GTK's `label`, named for its folder and described by its path, a contract change in `columns/` (line 27)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -64,4 +63,4 @@ run = "columns-nested-header"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A8: a Columns column header's title as GTK's `label`, named for its folder and described by its path, a contract change in `columns/` (line 27)"

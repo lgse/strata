@@ -380,12 +380,7 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
         .and_then(|_| app.browser.follow_selection_on_return());
     app.window.parts = parts;
     app.window.shown.follow(parts);
-    let grouping = preferences(app).group_by_type && view.supports_type_grouping;
-    app.browser.set_type_grouping(grouping);
-    let rebuilt = events::replay(&app.browser, &app.window.ids);
-    for change in rebuilt.changes {
-        (view.apply)(app, change, tx);
-    }
+    rebuild(app, view, tx);
     let opens = view.returns.is_some_and(|mirrors| mirrors(app));
     if let Some((depth, location)) = child.filter(|_| opens) {
         app.browser.show_child(depth, location);
@@ -395,6 +390,32 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
         (part.switched)(app, tx);
     }
     true
+}
+
+/// The browser groups by file type for `view` as the saved setting asks, and `view` is
+/// rebuilt from the browser ([`events::replay`]) through its own [`View::apply`].
+fn rebuild(app: &mut App, view: &View<App>, tx: &mut Tx) {
+    let grouping = preferences(app).group_by_type && view.supports_type_grouping;
+    app.browser.set_type_grouping(grouping);
+    let rebuilt = events::replay(&app.browser, &app.window.ids);
+    for change in rebuilt.changes {
+        (view.apply)(app, change, tx);
+    }
+}
+
+/// The saved "Group by file type" changed: the view shown follows it, as GTK's List view
+/// rebuilds its pane when the setting changes (`sync_type_grouping` in
+/// `src/ui/browser_modes/rebuild.rs`). The browser groups for it, and it is rebuilt from the
+/// browser.
+pub(crate) fn regroup(app: &mut App, tx: &mut Tx) {
+    let Some(view) = shown_view(app) else {
+        return;
+    };
+    // The view shown goes on hearing the browser here, unlike in `show_view`: what is queued
+    // lands first, so none of it lands again over the rebuild.
+    settle(app, tx);
+    rebuild(app, view, tx);
+    settle(app, tx);
 }
 
 /// The id the components know the entry at `location` by.
@@ -519,7 +540,7 @@ const TRAILING: [Button; 4] = [
     Button {
         key: "appearance",
         icon: IconName::Menu,
-        face: |_| Face::named(tr("Appearance")),
+        face: crate::appearance::face,
         command: "appearance",
     },
     Button {
