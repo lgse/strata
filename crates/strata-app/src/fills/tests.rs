@@ -179,3 +179,28 @@ fn a_row_is_asked_again_only_after_its_fill_landed() {
     fills.request(&browser, 1, &column);
     assert_eq!(browser.take(), vec![0, 2, 3], "another folder starts over");
 }
+
+/// A row that left the range and came back is asked for again, its fill never having
+/// landed, as GTK asks again for an item it binds again.
+#[test]
+fn a_row_scrolled_out_and_back_is_asked_again() {
+    let browser = Recorder::of(200);
+    let ids = Ids::default();
+    let column = listing(&browser, &ids);
+    let mut fills = Fills::new(true);
+    fills.see(0..20);
+    fills.request(&browser, 0, &column);
+    assert!(browser.take().contains(&3));
+
+    fills.see(100..120);
+    fills.request(&browser, 0, &column);
+    assert!(!browser.take().contains(&3));
+
+    fills.see(0..20);
+    fills.request(&browser, 0, &column);
+    assert_eq!(
+        browser.take(),
+        (0..25).collect::<Vec<_>>(),
+        "every row back in the range"
+    );
+}

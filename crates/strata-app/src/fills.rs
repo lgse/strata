@@ -15,13 +15,19 @@
 //! - **Each row once while its fill is out.** GTK's browser drops a request already in
 //!   flight (`fill_in_flight`). A row here is asked for again only once what the browser
 //!   knows of it changed since it was asked for (its fill landed) and it still lacks
-//!   something.
+//!   something, or once it left the range and came back, as GTK asks again for an item it
+//!   binds again.
 //! - **Visible first.** One `prioritize_metadata_fills` puts the rows near the viewport at
 //!   the head of the browser's queue.
 //! - **Not under an operation.** A folder a copy or move touches is not asked for
 //!   (`Browser::operation_touches`).
 
-use std::{collections::HashMap, ops::Range, path::Path, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::Range,
+    path::Path,
+    rc::Rc,
+};
 
 use strata_components::contract::{EntryId, EntrySource};
 use strata_core::model::{FileEntry, Location, MetadataValue};
@@ -124,8 +130,10 @@ impl Fills {
             return;
         }
         let shown = Shown { depth, listing };
+        let range = widened(&self.range, listing.len());
+        self.forget_beyond(listing, range.clone());
         let mut near = Vec::new();
-        for index in widened(&self.range, listing.len()) {
+        for index in range {
             if let Some(location) = self.consider(browser, &shown, index) {
                 near.push(location);
             }
@@ -133,6 +141,14 @@ impl Fills {
         if !near.is_empty() {
             browser.prioritize(depth, &near);
         }
+    }
+
+    /// Forgets the rows asked for outside `range`, as GTK forgets an item it unbinds
+    /// (`cancel_metadata`): a row asked for again when it comes back, if its fill never
+    /// landed. The browser has no public way to cancel a queued fill, and GTK cancels none.
+    fn forget_beyond(&mut self, listing: &Column, range: Range<usize>) {
+        let near: HashSet<EntryId> = range.map(|index| listing.id_at(index)).collect();
+        self.asked.retain(|id, _| near.contains(id));
     }
 
     /// Whether the range or the listing changed since the last poll asked; a new folder
