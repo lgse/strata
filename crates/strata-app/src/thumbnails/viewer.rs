@@ -32,8 +32,7 @@ pub(crate) struct Viewer {
     /// The view's viewers in the store: one for a single grid or list, one for each open
     /// column in Columns ([`Viewer::fit`]). Every request they make comes back here.
     ids: Vec<ViewerId>,
-    /// The requests out, each with the switch that drops its job: one not started is never
-    /// handed to a worker, and one already rendering runs to its end, its result dropped here.
+    /// The requests out, each with the switch that stops its render.
     pub(super) pending: HashMap<Ticket, Cancellation>,
     later: Later<App>,
     locate: Locate,
@@ -81,7 +80,7 @@ impl Viewer {
         }
     }
 
-    /// Drops what the store no longer wants, and asks for what the pool has room for. An
+    /// Stops what the store no longer wants, and asks for what the pool has room for. An
     /// entry with no local file fails its request. Call it from the view's `poll`.
     pub(crate) fn pump(app: &mut App, parts: Parts, now: f64) {
         let (requests, locate) = {
