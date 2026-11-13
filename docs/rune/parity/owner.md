@@ -449,6 +449,18 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    area and the contract's `details.rs` and `fills.rs`, and A2 has closed. Meanwhile: the two
    runs stay `pending`, unplaced. Found by A7's closing survey, 2026-11-13.
 
+### A5: Location bar
+
+1. **The window's own buttons and the keyboard.** Rune draws the client-side window buttons
+   (minimise, maximise, close: C5's `window_buttons`, `crates/strata-components/src/header/bar.rs`)
+   as Tab stops that Return does not press; Space does (finding
+   [#2310](https://github.com/lgse/strata/issues/2310)). GTK's window controls most likely take
+   no focus at all. Should Rune's stop being Tab stops, as GTK's, or stay and take Return like
+   every other button? Meanwhile: they stay as they are, named on the exceptions list of
+   `crates/strata-app/src/buttons/tests.rs`, the check that every other focusable button takes
+   Return. Source: the review of A5's [#2311](https://github.com/lgse/strata/pull/2311),
+   2026-11-14.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

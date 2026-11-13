@@ -14,10 +14,21 @@
 
 use rune::{El, Key, KeyEvent, Mods, Tx};
 
-/// The button `button`, pressed by a plain Return while it has the keyboard; a held Return
-/// presses it once.
-pub(crate) fn on_return(button: El) -> El {
-    button.on_key(|_: &mut crate::App, event: &KeyEvent, tx: &mut Tx| pressed(event, tx))
+/// The button `button`, keyed `key`, pressed by a plain Return while it has the keyboard; a
+/// held Return presses it once.
+pub(crate) fn on_return(key: impl Into<String>, button: El) -> El {
+    taking_return(key, button)
+        .on_key(|_: &mut crate::App, event: &KeyEvent, tx: &mut Tx| pressed(event, tx))
+}
+
+/// The button `button`, keyed `key`, for a caller whose own `on_key` calls [`pressed`]
+/// (Back, whose keys also list its history). `buttons::tests` checks that every focusable
+/// button of the window comes through here or [`on_return`], so the key is set here.
+pub(crate) fn taking_return(key: impl Into<String>, button: El) -> El {
+    let key = key.into();
+    #[cfg(test)]
+    tests::taking_return(&key);
+    button.key(key)
 }
 
 /// What a button's key handler does with `event`: true when it took it.
