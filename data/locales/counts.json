@@ -257,7 +257,7 @@
   },
   "counts.more_items.one": {
     "en": "… and %{count} more item",
-    "hu": "… és még %{count} elem",
+    "hu": "… és további %{count} elem",
     "fr": "… et %{count} autre élément",
     "de": "… und %{count} weiteres Element",
     "es": "… y %{count} elemento más",
@@ -272,7 +272,7 @@
   },
   "counts.more_items.other": {
     "en": "… and %{count} more items",
-    "hu": "… és még %{count} elem",
+    "hu": "… és további %{count} elem",
     "fr": "… et %{count} autres éléments",
     "de": "… und %{count} weitere Elemente",
     "es": "… y %{count} elementos más",
@@ -287,7 +287,7 @@
   },
   "counts.more_items.few": {
     "en": "… and %{count} more items",
-    "hu": "… és még %{count} elem",
+    "hu": "… és további %{count} elem",
     "fr": "… et %{count} autres éléments",
     "de": "… und %{count} weitere Elemente",
     "es": "… y %{count} elementos más",
@@ -302,7 +302,7 @@
   },
   "counts.more_items.many": {
     "en": "… and %{count} more items",
-    "hu": "… és még %{count} elem",
+    "hu": "… és további %{count} elem",
     "fr": "… et %{count} autres éléments",
     "de": "… und %{count} weitere Elemente",
     "es": "… y %{count} elementos más",
@@ -437,7 +437,7 @@
   },
   "counts.items_kept_in_trash.one": {
     "en": "%{count} item was left in the Trash",
-    "hu": "%{count} elem a Kukában maradt",
+    "hu": "%{count} elem a kukában maradt",
     "fr": "%{count} élément est resté dans la corbeille",
     "de": "%{count} Element ist im Papierkorb geblieben",
     "es": "%{count} elemento se quedó en la papelera",
@@ -452,7 +452,7 @@
   },
   "counts.items_kept_in_trash.other": {
     "en": "%{count} items were left in the Trash",
-    "hu": "%{count} elem a Kukában maradt",
+    "hu": "%{count} elem a kukában maradt",
     "fr": "%{count} éléments sont restés dans la corbeille",
     "de": "%{count} Elemente sind im Papierkorb geblieben",
     "es": "%{count} elementos se quedaron en la papelera",
@@ -467,7 +467,7 @@
   },
   "counts.items_kept_in_trash.few": {
     "en": "%{count} items were left in the Trash",
-    "hu": "%{count} elem a Kukában maradt",
+    "hu": "%{count} elem a kukában maradt",
     "fr": "%{count} éléments sont restés dans la corbeille",
     "de": "%{count} Elemente sind im Papierkorb geblieben",
     "es": "%{count} elementos se quedaron en la papelera",
@@ -482,7 +482,7 @@
   },
   "counts.items_kept_in_trash.many": {
     "en": "%{count} items were left in the Trash",
-    "hu": "%{count} elem a Kukában maradt",
+    "hu": "%{count} elem a kukában maradt",
     "fr": "%{count} éléments sont restés dans la corbeille",
     "de": "%{count} Elemente sind im Papierkorb geblieben",
     "es": "%{count} elementos se quedaron en la papelera",
@@ -737,7 +737,7 @@
   },
   "counts.chars_remaining.one": {
     "en": "%{count} char remaining",
-    "hu": "Még %{count} karakter",
+    "hu": "További %{count} karakter",
     "fr": "%{count} caractère restant",
     "de": "%{count} Zeichen übrig",
     "es": "Queda %{count} carácter",
@@ -752,7 +752,7 @@
   },
   "counts.chars_remaining.other": {
     "en": "%{count} chars remaining",
-    "hu": "Még %{count} karakter",
+    "hu": "További %{count} karakter",
     "fr": "%{count} caractères restants",
     "de": "%{count} Zeichen übrig",
     "es": "Quedan %{count} caracteres",
@@ -767,7 +767,7 @@
   },
   "counts.chars_remaining.few": {
     "en": "%{count} chars remaining",
-    "hu": "Még %{count} karakter",
+    "hu": "További %{count} karakter",
     "fr": "%{count} caractères restants",
     "de": "%{count} Zeichen übrig",
     "es": "Quedan %{count} caracteres",
@@ -782,7 +782,7 @@
   },
   "counts.chars_remaining.many": {
     "en": "%{count} chars remaining",
-    "hu": "Még %{count} karakter",
+    "hu": "További %{count} karakter",
     "fr": "%{count} caractères restants",
     "de": "%{count} Zeichen übrig",
     "es": "Quedan %{count} caracteres",
@@ -1037,7 +1037,7 @@
   },
   "counts.rendering_triangles.one": {
     "en": "Rendering %{count} triangle…",
-    "hu": "%{count} háromszög renderelése…",
+    "hu": "%{count} háromszög megjelenítése…",
     "fr": "Rendu de %{count} triangle…",
     "de": "%{count} Dreieck wird gerendert…",
     "es": "Renderizando %{count} triángulo…",
@@ -1052,7 +1052,7 @@
   },
   "counts.rendering_triangles.other": {
     "en": "Rendering %{count} triangles…",
-    "hu": "%{count} háromszög renderelése…",
+    "hu": "%{count} háromszög megjelenítése…",
     "fr": "Rendu de %{count} triangles…",
     "de": "%{count} Dreiecke werden gerendert…",
     "es": "Renderizando %{count} triángulos…",
@@ -1067,7 +1067,7 @@
   },
   "counts.rendering_triangles.few": {
     "en": "Rendering %{count} triangles…",
-    "hu": "%{count} háromszög renderelése…",
+    "hu": "%{count} háromszög megjelenítése…",
     "fr": "Rendu de %{count} triangles…",
     "de": "%{count} Dreiecke werden gerendert…",
     "es": "Renderizando %{count} triángulos…",
@@ -1082,7 +1082,7 @@
   },
   "counts.rendering_triangles.many": {
     "en": "Rendering %{count} triangles…",
-    "hu": "%{count} háromszög renderelése…",
+    "hu": "%{count} háromszög megjelenítése…",
     "fr": "Rendu de %{count} triangles…",
     "de": "%{count} Dreiecke werden gerendert…",
     "es": "Renderizando %{count} triángulos…",
