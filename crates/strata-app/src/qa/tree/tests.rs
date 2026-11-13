@@ -55,6 +55,7 @@ fn a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else() {
         lists: vec!["columns-col-1".to_owned()],
         columns: Vec::new(),
         labels: labels.to_vec(),
+        ..Drawn::default()
     };
     let snapshot = Snapshot::read(&tree, &drawn);
 
@@ -112,6 +113,7 @@ fn drawn_folder() -> Drawn {
         lists: vec![column.list.clone()],
         columns: vec![column],
         labels: Vec::new(),
+        ..Drawn::default()
     }
 }
 
@@ -195,6 +197,7 @@ fn entries_of(tree: &serde_json::Value, list: &str) -> Vec<String> {
         lists: vec![list.to_owned()],
         columns: Vec::new(),
         labels: Vec::new(),
+        ..Drawn::default()
     };
     let snapshot = Snapshot::read(tree, &drawn);
     (0..)

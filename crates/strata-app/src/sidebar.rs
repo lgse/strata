@@ -43,6 +43,7 @@ use crate::{
 };
 
 mod places;
+mod reorder;
 
 use places::{Environment, Listed, Navigation};
 
@@ -91,7 +92,12 @@ impl Part for Sidebar {
         }))
     }
 
-    fn poll(app: &mut App, _clock: f64, _tx: &mut Tx) -> bool {
+    fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
+        // A reorder whose drop no press followed (C8's U21): heard here, in its turn.
+        if let Some(intent) = app.sidebar.state.take_reordered() {
+            heard(app, intent, tx);
+            return true;
+        }
         if app.sidebar.started {
             return false;
         }
@@ -178,11 +184,17 @@ fn relist(app: &mut App) {
 
 impl Sidebar {
     /// Where the keyboard comes in from the view: the open place's row, else the list's first
-    /// row (`focus_active_place` in `src/ui/window/sidebar_places.rs`).
-    fn focus_key(&self) -> String {
-        self.current
+    /// row (`focus_active_place` in `src/ui/window/sidebar_places.rs`). None while the sidebar
+    /// is hidden: GTK's `grab_focus` fails there, and the keyboard stays in the view.
+    fn focus_key(&self) -> Option<String> {
+        if self.state.width.shown() == Step::Hidden {
+            return None;
+        }
+        let key = self
+            .current
             .as_ref()
-            .map_or_else(|| LIST.to_owned(), |item| item.key(KEY))
+            .map_or_else(|| LIST.to_owned(), |item| item.key(KEY));
+        Some(key)
     }
 
     fn location_of(&self, item: &ItemId) -> Option<&places::Row> {
@@ -231,6 +243,10 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
         data,
     )
     .key(KEY)
+    .reorder(
+        |app: &mut App| &mut app.sidebar.state.places_reorder,
+        |app: &mut App| &mut app.sidebar.state.pins_reorder,
+    )
     // Tabs are not on this interface yet.
     .open_in_new_tab(false)
     .tenxer(shell::preferences(app).tenxer_mode)
@@ -247,6 +263,8 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
                 tx.focus(view, true);
             }
         }
+        SidebarIntent::MovePlace { from, to } => reorder::move_place(app, from, to),
+        SidebarIntent::MovePin { from, to, .. } => reorder::move_pin(app, from, to),
         SidebarIntent::SectionToggled { section, collapsed } => {
             shell::saved(app).change(|settings| match section {
                 Section::Pinned => settings.sidebar_pinned_collapsed = collapsed,

@@ -328,7 +328,8 @@ pub(crate) struct Sidebar<S: 'static> {
     /// The key of the element that takes the keyboard when it leaves the view at its start,
     /// as Left in the first column asks, as the sidebar is now: GTK's sidebar takes it on the
     /// open place's row (`focus_active_place`).
-    pub(crate) focus: fn(&S) -> String,
+    /// None while it can take none, as a hidden sidebar: the keyboard stays in the view.
+    pub(crate) focus: fn(&S) -> Option<String>,
 }
 
 /// Tells a view the pointer moved over the body, to this place in window points.

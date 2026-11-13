@@ -100,6 +100,7 @@ fn drawn(host: &Offscreen) -> Drawn {
             .filter_map(|list| drawn_column(&elements, list))
             .collect(),
         labels: name_labels(&elements),
+        sidebar: super::sidebar::Gaps::drawn(&elements),
         lists,
     }
 }

@@ -82,6 +82,7 @@ pub(super) struct Drawn {
     pub(super) lists: Vec<String>,
     pub(super) columns: Vec<DrawnColumn>,
     pub(super) labels: Vec<NameLabel>,
+    pub(super) sidebar: super::sidebar::Gaps,
 }
 
 /// One node as Rune reports it.
@@ -203,7 +204,15 @@ impl Snapshot {
         for label in &drawn.labels {
             snapshot.add_label(label);
         }
+        drawn.sidebar.present(&mut snapshot);
         snapshot
+    }
+
+    /// Presents `seen` under the window: a node a part draws and the tree leaves out.
+    pub(super) fn push_under_window(&mut self, segment: &str, seen: Seen) {
+        if !self.nodes.is_empty() {
+            self.push(0, segment, seen);
+        }
     }
 
     fn push(&mut self, parent: usize, segment: &str, seen: Seen) -> usize {
