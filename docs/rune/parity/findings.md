@@ -388,3 +388,25 @@ sequence only together with the alphabet's version, so the version is part of th
   holds the thread in the waker for the previous lookup, and the held one never runs.
 - **State:** open, not taken up. Rerun it alone once if it fails again; do not chase it in a
   package's gate.
+
+### #2277: an inline rename ends on Rune when an entry is listed above its row
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2277), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in a hosted test written for [A7](packages/A7.md)'s
+  [#2276](https://github.com/lgse/strata/pull/2276) (`new_item/tests.rs`): a new folder listed
+  above the entry being renamed ended that edit about 120 ms later, as
+  `RenameIntent::Keep { why: Cancelled, by: Scrolled }`, and what was typed was lost. GTK, by
+  reading, keeps the edit: the insertion is a positional `items_changed`
+  (`src/ui/browser/events/listing.rs`, `src/ui/entry_list_model.rs`), the edit is a lease on
+  its bound entry (`src/ui/collection_edit.rs`), and the cursor restore skips a focused editor
+  (`src/ui/browser/columns/cursor.rs`). No run confirms it yet.
+- **Cause, by reading:** `RenameState::tick` (`crates/strata-components/src/rename/state.rs`)
+  cancels by `Scrolled` once the edited row's index leaves `visible_range()`, the range last
+  reported and so a frame old (`crates/strata-components/src/collection/element/state.rs`): an
+  insertion above pushes the row's index past its end while the row stays on screen.
+- **Concerns:** the C5 rename editor in every view; no scenario creates an entry above a row
+  being renamed.
+- **State:** open, A7's. The fix is a `contract` pull request to `strata-components` after
+  decision 25, with a scenario and its run on GTK: start a rename, create a file that sorts
+  above it, and see the editor keep its text.
