@@ -16,17 +16,6 @@ use crate::{App, shell};
 /// of the chain it keeps the later.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Holds {
-    /// A plain popover, such as the Icons header's thumbnail size: GTK's `gtk::Popover` takes
-    /// every key while focus is in it, with or without modifiers, so no stage of the window's
-    /// chain hears one ([`reach`]). Driven on GTK (`./scripts/qa-drive.sh`, XTest input, focus on
-    /// the popover's slider, 2026-11-14): Alt+Up, Ctrl+Alt+=, Delete with a selection and F5
-    /// did nothing, and Escape closed the popover, giving the button the keyboard. GTK's code
-    /// suggests otherwise (`popover_navigation` and `focus_in_popover` in
-    /// `src/ui/window/keyboard/`); the driven run settles it: no key from inside the popover
-    /// reached the window's dispatcher. Typing is the popover's for the aliases ([`Situation::typing`],
-    /// `in_popover` in `context_of`). A part answers it while its popover is open, and closes
-    /// the popover where GTK's goes away with its pane: another folder or view.
-    Popover,
     /// A text field none of the others is. Every stage runs, and each command's guard asks
     /// [`Situation::text`], as GTK's stages ask `text_has_focus()`.
     #[cfg_attr(
@@ -51,6 +40,17 @@ pub(crate) enum Holds {
     /// the layer has the keyboard (a palette's query, a dialog's name): typing is then the
     /// field's, as under any focused editable (`context_of` in `src/ui/keys/alias.rs`).
     Modal { field: bool },
+    /// A plain popover, such as the Icons header's thumbnail size: GTK's `gtk::Popover` takes
+    /// every key while focus is in it, with or without modifiers, so no stage of the window's
+    /// chain hears one ([`reach`]). Driven on GTK (`./scripts/qa-drive.sh`, XTest input, focus on
+    /// the popover's slider, 2026-11-14): Alt+Up, Ctrl+Alt+=, Delete with a selection and F5
+    /// did nothing, and Escape closed the popover, giving the button the keyboard. GTK's code
+    /// suggests otherwise (`popover_navigation` and `focus_in_popover` in
+    /// `src/ui/window/keyboard/`); the driven run settles it: no key from inside the popover
+    /// reached the window's dispatcher. Typing is the popover's for the aliases ([`Situation::typing`],
+    /// `in_popover` in `context_of`). A part answers it while its popover is open, and closes
+    /// the popover where GTK's goes away with its pane: another folder or view.
+    Popover,
 }
 
 impl Holds {

@@ -619,6 +619,10 @@ sequence only together with the alphabet's version, so the version is part of th
   popover that is not modal can do both, as the reviewer's probe showed: a full-window scrim
   whose `on_wheel` closes it and returns false lets Rune's fallback scroll the viewport under
   the point (`scroll_at_axis`, `runtime/input/pointer.rs`, which ignores what covers the point).
+  GTK scrolls only when the wheel is over the listing; over the sidebar or other chrome it only
+  closes the popover (`listing_ancestor` in `src/ui/scrolling/popover.rs`). So the scrim's
+  `on_wheel` takes the wheel (returns true) away from the listing. The sort popover
+  (`src/ui/browser/pane_header/sort_menu.rs:61`) is affected the same way.
 - **Concerns:** the "Thumbnail size" popover ([A5](packages/A5.md)), and every popover GTK
   dismisses on an outside scroll, the sort popover among them.
 - **State:** open, narrowed. [A5](packages/A5.md)'s next pull request builds the plain popover
