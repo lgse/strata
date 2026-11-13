@@ -236,6 +236,124 @@ fn a_groups_header_is_not_an_entry() {
     assert_eq!(entries_of(&tree, "list"), ["archive", "todo.txt"]);
 }
 
+/// A scroll view as Rune's tree reports it: its box, its offsets and how far it scrolls down,
+/// the actions it offers, and its content's box.
+fn scroll_view(
+    scroll: [f64; 3],
+    own: [f64; 4],
+    actions: &[&str],
+    content: [f64; 4],
+) -> serde_json::Value {
+    json!({
+        "role": "window",
+        "children": [{
+            "role": "scroll-view",
+            "scroll": scroll,
+            "bounds": own,
+            "actions": actions,
+            "children": [{ "role": "group", "bounds": content }],
+        }],
+    })
+}
+
+/// What Rune offers on a scroll view: up and down always, left and right when it scrolls
+/// sideways (it lists `scroll-left` and not `scroll-right`).
+const DOWN: &[&str] = &["scroll-up", "scroll-down", "set-scroll-offset"];
+const SIDEWAYS: &[&str] = &[
+    "scroll-up",
+    "scroll-down",
+    "scroll-left",
+    "set-scroll-offset",
+];
+
+#[test]
+fn a_scroll_views_offsets_limits_and_bar_are_read_from_the_tree() {
+    use strata_qa::{Orientation::Horizontal, Orientation::Vertical, Scroll};
+    let scroll = |value: f64, page: f64, scrollable: bool| Scroll {
+        value,
+        page,
+        scrollable,
+    };
+    // What Rune reports, then the scroll along x and along y, and the bar's position.
+    let cases = [
+        (
+            "the Columns strip, scrolled to its end",
+            scroll_view(
+                [1401.0, 0.0, 0.0],
+                [201.0, 36.0, 999.0, 724.0],
+                SIDEWAYS,
+                [-1200.0, 36.0, 2400.0, 724.0],
+            ),
+            (scroll(1401.0, 999.0, true), scroll(0.0, 724.0, false)),
+            Some(1401.0),
+        ),
+        (
+            "a column's rows, scrolled down: the content's box is only the mounted rows",
+            scroll_view(
+                [0.0, 1397.0, 1397.0],
+                [900.0, 77.0, 300.0, 683.0],
+                DOWN,
+                [900.0, -1294.0, 300.0, 2054.0],
+            ),
+            (scroll(0.0, 300.0, false), scroll(1397.0, 683.0, true)),
+            Some(1397.0),
+        ),
+        (
+            "a strip at its start",
+            scroll_view(
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 400.0, 300.0],
+                SIDEWAYS,
+                [0.0, 0.0, 900.0, 300.0],
+            ),
+            (scroll(0.0, 400.0, true), scroll(0.0, 300.0, false)),
+            Some(0.0),
+        ),
+        (
+            "a view that scrolls only down, with a child wider than it",
+            scroll_view(
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 400.0, 300.0],
+                DOWN,
+                [0.0, 0.0, 900.0, 200.0],
+            ),
+            (scroll(0.0, 400.0, false), scroll(0.0, 300.0, false)),
+            None,
+        ),
+        (
+            "the sidebar, whose places fit",
+            scroll_view(
+                [0.0, 0.0, 0.0],
+                [0.0, 36.0, 201.0, 724.0],
+                DOWN,
+                [0.0, 36.0, 201.0, 136.0],
+            ),
+            (scroll(0.0, 201.0, false), scroll(0.0, 724.0, false)),
+            None,
+        ),
+    ];
+    for (case, tree, (across, down), bar) in cases {
+        let snapshot = Snapshot::read(&tree, &Drawn::default());
+        let view = snapshot.at(1).expect("the scroll view");
+        let scrolled = view.scroll.expect("a scroll view's offsets");
+        assert_eq!(
+            (scrolled.along(Horizontal), scrolled.along(Vertical)),
+            (across, down),
+            "{case}"
+        );
+        assert_eq!(scrolled.bar(), bar, "{case}");
+    }
+
+    let plain =
+        json!({ "role": "window", "children": [{ "role": "group", "bounds": [0, 0, 10, 10] }] });
+    let snapshot = Snapshot::read(&plain, &Drawn::default());
+    assert_eq!(
+        snapshot.at(1).map(|seen| seen.scroll),
+        Some(None),
+        "a group scrolls nothing"
+    );
+}
+
 /// `keyboard_navigation/back-history-dropdown` lets go of a press held on Back after its
 /// history opened, when Rune's tree holds the menu alone: the button is presented from what
 /// is drawn, once, and a button the tree has is not presented again. With no menu open,
