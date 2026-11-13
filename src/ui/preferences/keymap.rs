@@ -54,7 +54,10 @@ impl PreferenceManager {
             return keymap.clone();
         }
         let file = settings_path();
-        let keymap = Rc::new(resolve_keymap(&self.preferences.borrow().keymap, Some(&file)));
+        let keymap = Rc::new(resolve_keymap(
+            &self.preferences.borrow().keymap,
+            Some(&file),
+        ));
         report_findings(
             &keymap,
             &file,

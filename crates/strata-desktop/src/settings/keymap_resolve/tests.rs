@@ -21,10 +21,13 @@ fn every_binding_fires(_: Map, _: Command, _: Binding, _: bool) -> bool {
 }
 
 fn with_xkb(test: &str, run: impl FnOnce()) {
-    crate::test_support::in_own_process(&format!("settings::keymap_resolve::tests::{test}"), || {
-        assert!(install(&Xkb, every_binding_fires));
-        run();
-    });
+    crate::test_support::in_own_process(
+        &format!("settings::keymap_resolve::tests::{test}"),
+        || {
+            assert!(install(&Xkb, every_binding_fires));
+            run();
+        },
+    );
 }
 
 fn overrides(file: &str) -> KeymapOverrides {
@@ -47,21 +50,27 @@ rename = ["<Shift>r"]
 
 #[test]
 fn a_saved_keymap_resolves_through_the_xkbcommon_backend() {
-    with_xkb("a_saved_keymap_resolves_through_the_xkbcommon_backend", || {
-        let keymap = resolve_keymap(&overrides(SAVED), None);
-        assert_eq!(
-            keymap.bindings(Map::Default, RENAME),
-            [Binding::ctrl(Key::e), Binding::plain(Key::F2)]
-        );
-        assert_eq!(keymap.bindings(Map::Tenxer, RENAME), [Binding::shift(Key::r)]);
-        assert_eq!(keymap.bindings(Map::Default, MOVE_TO_TRASH), []);
-        // An accelerator it cannot read keeps the command's shipped keys.
-        assert_eq!(
-            keymap.bindings(Map::Default, COPY),
-            COPY.defaults(Map::Default)
-        );
-        assert!(!keymap.overrides(Map::Tenxer, MOVE_TO_TRASH));
-    });
+    with_xkb(
+        "a_saved_keymap_resolves_through_the_xkbcommon_backend",
+        || {
+            let keymap = resolve_keymap(&overrides(SAVED), None);
+            assert_eq!(
+                keymap.bindings(Map::Default, RENAME),
+                [Binding::ctrl(Key::e), Binding::plain(Key::F2)]
+            );
+            assert_eq!(
+                keymap.bindings(Map::Tenxer, RENAME),
+                [Binding::shift(Key::r)]
+            );
+            assert_eq!(keymap.bindings(Map::Default, MOVE_TO_TRASH), []);
+            // An accelerator it cannot read keeps the command's shipped keys.
+            assert_eq!(
+                keymap.bindings(Map::Default, COPY),
+                COPY.defaults(Map::Default)
+            );
+            assert!(!keymap.overrides(Map::Tenxer, MOVE_TO_TRASH));
+        },
+    );
 }
 
 #[test]
