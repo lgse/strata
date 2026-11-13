@@ -159,8 +159,9 @@ restored or found deleted.
 
 **The Rune side's store** is `crates/strata-app/src/folder_views.rs`: the process's one
 `FolderViewStore`, held by the window and loaded with it, its timer on the poll's clock, the
-three-step settling of a write, the write at exit from `on_close`, and a file monitor that
-rereads and adopts what another process saved. The notices are logged only, since that
+three-step settling of a write, the write at exit, once, from `on_close` or `on_quit` (a quit
+runs no `on_close`), and a file monitor that rereads and adopts what another process saved,
+once more when it is live. The notices are logged only, since that
 interface has none yet.
 
 Six tests in `settings/folder_view_store/tests.rs` hold the protocol, each in a process of
@@ -679,6 +680,7 @@ Where each file is:
 | New code from `main` in that file, or in `src/ui/preferences.rs`, that uses an import the moves dropped: `fs`, `io`, `PathBuf`, `file_stamp`, `lock_saves`, `read_state_file`, `FolderViewsSave`, `load_folder_views`, `save_folder_views`, `libc` | It merges clean and does not build. Code that reads or writes the file belongs in `folder_view_file.rs`, and code that keeps the values or settles a write in `folder_view_store.rs`: apply it there. Code that is GTK's own stays, with its import put back |
 | New code from `main` that reads `store.views` or `store.load_failure` | It merges clean and does not build: read through the store, as the row above says |
 | In that file on `main`: `FILE_NAME`, `EXIT_LOCK_WAIT`, `folder_views_path`, the read in `FolderViewStore::load`, `FolderViewsSave`, `save_folder_views` | `crates/strata-desktop/src/settings/folder_view_file.rs`. A change from `main` to one of them conflicts in `folder_view_settings.rs`, against lines that are gone, and is applied to the new file by hand |
+| In that file on `main`: the bodies of `remembered_key`, `icons_size_for`, `set_folder_icons_size`, `set_default_icons_size` and `set_remember_folder_views` | Their policy is `crates/strata-desktop/src/settings/folder_view_policy.rs` (`remembered_key`, `icons_size_for`, `keep_icons_size`, `set_default_icons_size`, `set_remember_folder_views`, `Prune`), which both interfaces call; the five methods now call it. A change from `main` to one of them conflicts in `folder_view_settings.rs`. A change to the policy (the gate, the clamp, a size equal to the default, what is pruned) is applied to the new file by hand; a change to what GTK does around it (loading the store, saving `settings.toml`, `change_folder_views` and what it publishes, the timer) stays in the wrapper |
 | `src/ui/preferences/trashed.rs` | The same file as on `main` |
 | `src/ui/tabs_session.rs`, `tabs_session/tests.rs` | The file of the same name under `crates/strata-desktop/src/` |
 | `mod tabs_session;` in `src/ui/mod.rs` | `use strata_desktop::tabs_session;` in the same file |

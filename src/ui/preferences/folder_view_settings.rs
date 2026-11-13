@@ -201,6 +201,8 @@ impl PreferenceManager {
     }
 
     pub(in crate::ui) fn icons_size_for(&self, location: Option<&Location>) -> i32 {
+        // `preferences` stays borrowed while the closure may load the store, which borrows
+        // only the store and starts its monitors.
         policy::icons_size_for(&self.preferences.borrow(), location, |key| {
             self.folder_view_store()
                 .shared

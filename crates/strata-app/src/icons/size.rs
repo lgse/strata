@@ -136,21 +136,27 @@ fn reset_to(app: &mut App, location: Option<&Location>, tx: &mut Tx) -> f32 {
 }
 
 /// Another folder shows at the size it follows, and a shown folder follows a change of the
-/// values (another process's, say). Call it from the part's poll; C3's poll then lays the grid
-/// out at it.
+/// values (another process's, say) only when the size it resolves to changes, as GTK's
+/// `apply_resolved_icons_size` does: a size kept only while its folder shows stays. Call it
+/// from the part's poll; C3's poll then lays the grid out at it.
 pub(super) fn follow_folder(app: &mut App) {
     let revision = folder_views::revision(app);
     let icons = &app.icons;
     let shown = shown_folder(app);
-    if icons.sized_for.as_ref() == shown && icons.sized_at == revision {
+    let moved = icons.sized_for.as_ref() != shown;
+    if !moved && icons.sized_at == revision {
         return;
     }
     let shown = shown.cloned();
     let size = folder_size(app, shown.as_ref());
     let icons = &mut app.icons;
+    let resolved_anew = moved || icons.resolved != size;
     icons.sized_for = shown;
     icons.sized_at = revision;
-    icons.size = size;
+    icons.resolved = size;
+    if resolved_anew {
+        icons.size = size;
+    }
 }
 
 fn shown_folder(app: &App) -> Option<&Location> {

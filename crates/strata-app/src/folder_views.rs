@@ -10,15 +10,16 @@
 //!
 //! - **Loaded at start-up,** once, with the window.
 //! - **One timer.** A change asks for a write [`SAVE_DELAY`] later; a pending write keeps its
-//!   time unless a shorter wait is asked for. The poll's clock times it, so it follows Rune's
-//!   clock, virtual in tests.
+//!   time unless a shorter wait is asked for. It is stamped with the window's clock when it is
+//!   asked (`Tx::clock`) and fired from the poll, so it follows Rune's clock, virtual in tests.
 //! - **A write's result** comes back through the window's queue: `Busy` asks again
 //!   [`SAVE_DELAY`] later; a write that reached the file adopts what another process had saved,
 //!   publishes it and then counts its own changes as saved, in that order.
 //! - **At exit** a store with unsaved changes writes once more, with `exit` set
-//!   ([`flush_at_exit`]), before the settings writer is flushed.
-//! - **What another process saves** is read again when the file changes, and adopted under
-//!   this process's unsaved changes.
+//!   ([`flush_at_exit`], from the window's `on_close` and `on_quit`), before the settings
+//!   writer is flushed.
+//! - **What another process saves** is read again when the file changes, and once when the
+//!   monitor is live, and adopted under this process's unsaved changes.
 //!
 //! The GTK notices (saving off for a file that could not be read, a write that failed, and the
 //! notice cleared by the next write that succeeds) are only logged: this interface has no
@@ -37,11 +38,9 @@ use strata_fs::adapters::{Watched, watch};
 
 use crate::{App, slots::Later};
 
-/// The one timer a write waits on, on the poll's clock.
+/// The one timer a write waits on, on the window's clock (`Tx::clock`).
 #[derive(Debug, Default)]
 struct Timer {
-    /// A write asked for that the next poll times: its delay.
-    asked: Option<Duration>,
     /// When the write is due, and the delay it was asked with.
     due: Option<(f64, Duration)>,
 }
@@ -55,22 +54,18 @@ enum Tick {
 }
 
 impl Timer {
-    /// Asks for a write `delay` from now: a pending write keeps its time unless this wait is
-    /// shorter. Whether the timer took it, so the caller wakes the loop then.
-    fn ask(&mut self, delay: Duration) -> bool {
-        let held = self.due.map(|(_, held)| held).or(self.asked);
-        if held.is_some_and(|held| held <= delay) {
-            return false;
+    /// Asks at `clock` for a write `delay` later: a pending write keeps its time unless this
+    /// wait is shorter. When the timer took it, the time it is due, for the caller to wake at.
+    fn ask(&mut self, clock: f64, delay: Duration) -> Option<f64> {
+        if self.due.is_some_and(|(_, held)| held <= delay) {
+            return None;
         }
-        self.due = None;
-        self.asked = Some(delay);
-        true
+        let due = clock + delay.as_secs_f64();
+        self.due = Some((due, delay));
+        Some(due)
     }
 
     fn tick(&mut self, clock: f64) -> Tick {
-        if let Some(delay) = self.asked.take() {
-            self.due = Some((clock + delay.as_secs_f64(), delay));
-        }
         match self.due {
             None => Tick::Idle,
             Some((due, _)) if clock >= due => {
@@ -93,6 +88,9 @@ pub(crate) struct Kept {
     /// Moves whenever the values change, here or from another process.
     revision: u64,
     later: Later<App>,
+    /// Whether the last write before the process ends has started: closing the window and
+    /// quitting may both ask for it.
+    exiting: bool,
     /// Follows what another Strata process, such as the portal chooser, saves.
     _monitor: LoadHandle,
 }
@@ -105,6 +103,7 @@ impl Kept {
             store: FolderViewStore::load(),
             timer: Timer::default(),
             revision: 0,
+            exiting: false,
             later,
             _monitor: monitor,
         }
@@ -116,8 +115,8 @@ impl Kept {
             self.write(false);
             return;
         }
-        if self.timer.ask(delay) {
-            tx.wake_after(delay);
+        if let Some(due) = self.timer.ask(tx.clock(), delay) {
+            tx.wake_at(due);
         }
     }
 
@@ -159,7 +158,7 @@ pub(crate) fn change(app: &mut App, change: impl FnOnce(&mut FolderViews) -> boo
     }
 }
 
-/// From the window's poll: times an asked-for write, and starts it when it is due.
+/// From the window's poll: starts the write when it is due.
 pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
     let kept = app.window.folder_views_mut();
     match kept.timer.tick(clock) {
@@ -170,9 +169,12 @@ pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
 }
 
 /// The last write, before the process ends, when anything is unsaved (`flush_folder_views`).
+/// Once: the window's `on_close` and `on_quit` both call it, since a quit runs no `on_close`
+/// and the last window closing may run both.
 pub(crate) fn flush_at_exit(app: &mut App) {
     let kept = app.window.folder_views_mut();
-    if kept.store.views().has_unsaved() {
+    if !kept.exiting && kept.store.views().has_unsaved() {
+        kept.exiting = true;
         kept.write(true);
     }
 }
@@ -209,25 +211,26 @@ impl Kept {
     }
 }
 
-/// Reads the file again whenever it changes, and adopts what another process saved
-/// (`merge_folder_views_saved_elsewhere`).
+/// Reads the file again whenever it changes, and once when the monitor is live, which covers
+/// a save made between the load and the monitor starting; adopts what another process saved
+/// (`merge_folder_views_saved_elsewhere`, which GTK's monitor calls both ways).
 fn follow_file(later: Later<App>) -> LoadHandle {
-    let changed = move || {
-        let later = later.clone();
-        glib::MainContext::default().spawn_local(async move {
-            if let Some(saved) = FolderViewStore::reread().await {
-                later.then(move |app: &mut App, _: &mut Tx| {
-                    app.window.folder_views_mut().adopt(saved)
-                });
-            }
-        });
-    };
+    let live = later.clone();
     watch(
         &Location::local(folder_views_path()),
         Watched::File,
-        move |_, _| changed(),
-        || {},
+        move |_, _| reread(&later),
+        move || reread(&live),
     )
+}
+
+fn reread(later: &Later<App>) {
+    let later = later.clone();
+    glib::MainContext::default().spawn_local(async move {
+        if let Some(saved) = FolderViewStore::reread().await {
+            later.then(move |app: &mut App, _: &mut Tx| app.window.folder_views_mut().adopt(saved));
+        }
+    });
 }
 
 #[cfg(test)]
