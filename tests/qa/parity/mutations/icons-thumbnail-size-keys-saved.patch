@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/icons/size.rs b/crates/strata-app/src/icons/size.rs
+index b19914d09..55716b362 100644
+--- a/crates/strata-app/src/icons/size.rs
++++ b/crates/strata-app/src/icons/size.rs
+@@ -100,7 +100,7 @@ pub(super) fn resized(app: &mut App, request: SizeRequest, tx: &mut Tx) {
+ fn keep(app: &mut App, location: Option<&Location>, size: i32, tx: &mut Tx) {
+     match policy::keep_icons_size(shell::preferences(app), location, size) {
+         IconsSizeKept::Default(size) => {
+-            shell::saved(app).change(|settings| settings.icons_thumbnail_size = size);
++            let _ = size;
+         }
+         IconsSizeKept::Folder(key, size) => folder_views::change(
+             app,

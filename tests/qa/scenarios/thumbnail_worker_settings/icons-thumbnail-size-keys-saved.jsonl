@@ -1,0 +1,16 @@
+{"scenario":"icons-thumbnail-size-keys-saved","modes":["icons"],"prefs":{"icons_thumbnail_size":64},"layout":"us","mutation":null,"known_bug":null,"variants":[{"id":"default","prefs":{"remember_folder_views":false}},{"id":"remembered","prefs":{"remember_folder_views":true}}]}
+{"wait":{"entries":{"contains":["todo.txt"]},"dir":"$root"},"message":"the fixture listed"}
+{"key":"ctrl+alt+="}
+{"wait":{"pref":{"key":"icons_thumbnail_size","value":72}},"message":"Ctrl+Alt+= to save the default size a step larger","variants":["default"]}
+{"fs":{"path":"$environment/state/strata/folder-views.toml","has":{"contains":["path = \"$fixture\"","icons_size = 72"]}},"message":"Ctrl+Alt+= to save the folder's own size a step larger","variants":["remembered"]}
+{"key":"ctrl+alt+-"}
+{"key":"ctrl+alt+-"}
+{"wait":{"pref":{"key":"icons_thumbnail_size","value":56}},"message":"Ctrl+Alt+- twice to save the default two steps smaller","variants":["default"]}
+{"fs":{"path":"$environment/state/strata/folder-views.toml","has":{"contains":["path = \"$fixture\"","icons_size = 56"]}},"message":"Ctrl+Alt+- twice to save the folder's own size two steps smaller","variants":["remembered"]}
+{"expect":{"pref":{"key":"icons_thumbnail_size","value":64}},"message":"a remembered folder's size to leave the default alone","variants":["remembered"]}
+{"restart":true}
+{"wait":{"entries":{"contains":["todo.txt"]},"dir":"$root"},"message":"the fixture listed after a restart"}
+{"key":"ctrl+alt+0"}
+{"wait":{"pref":{"key":"icons_thumbnail_size","value":64}},"message":"Ctrl+Alt+0 to save GTK's shipped default size","variants":["default"]}
+{"fs":{"path":"$environment/state/strata/folder-views.toml","has":{"lacks":["icons_size"]}},"message":"Ctrl+Alt+0 to forget the folder's own size","variants":["remembered"]}
+{"expect":{"pref":{"key":"icons_thumbnail_size","value":64}},"message":"the default still left alone","variants":["remembered"]}
