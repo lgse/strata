@@ -1,12 +1,14 @@
 # The List view's alphabet (A2): what a user does in the List table on the canonical
 # fixture, by the keys and pointer GTK's List view and the Rune List view both take today.
 #
-# Type to search is off (the header's `prefs`), so h, j, k and l are the arrows, as GTK reads
+# Type to search is off (the header's `prefs`), so j and k are Down and Up, as GTK reads
 # them then (`Context::of` in `src/ui/keys/alias.rs`).
 #
 # Left out, with why:
-# - Right and Left: List rows have no sideways neighbour, Left leaves the pane for the
-#   sidebar, and Right with no cursor is an owner's question (`owner.md`, A2 item 1).
+# - Right and Left, and h and l, which are them with type to search off: List rows have no
+#   sideways neighbour, Left leaves the pane for the sidebar (on GTK `h` took the keyboard
+#   out of the pane 5 times in 5), and Right with no cursor is an owner's question
+#   (`owner.md`, A2 item 1).
 # - The preview (A15's), typed search (A10's filter), view switches (A8's), the sort (A10's).
 # - Grouping by type: a saved preference (`group_by_type`) that one header holds for a whole
 #   alphabet; a grouped alphabet is a second one, when grouped runs need it.
@@ -18,8 +20,8 @@
 # The actions are the single-pane views' own, so the Icons view's alphabet (A1) can take the
 # same list with its own header and Right and Left, which an Icons grid has.
 area = "list"
-version = 2
-about = "List on the canonical fixture, type to search off: keyboard navigation and selection with arrows and hjkl, clicks, Ctrl and Shift clicks and background clicks by name, opening folders in place, Back and the parent, the context menu by pointer and by the Menu key, rename by F2 and by the menu, hidden files, and files made and removed behind the application's back"
+version = 3
+about = "List on the canonical fixture, type to search off: keyboard navigation and selection with arrows, j and k, clicks, Ctrl and Shift clicks and background clicks by name, opening folders in place, Back and the parent, the context menu by pointer and by the Menu key, rename by F2 and by the menu, hidden files, and files made and removed behind the application's back"
 header = '{"modes":["list"],"prefs":{"type_to_search":false}}'
 
 [[action]]
@@ -36,7 +38,7 @@ steps = ['{"key":"Up"}']
 name = "letters"
 weight = 4
 steps = ['{"key":"<key>"}']
-choose.key = ["j", "k", "h", "l"]
+choose.key = ["j", "k"]
 
 [[action]]
 name = "edge"
@@ -61,15 +63,15 @@ weight = 3
 steps = ['{"key":"Escape"}']
 
 # Return only on the two folders the walk visits, and in the rename editor. On a file it
-# asks for the file's default application, which the QA environment has none of; on GTK the
-# keyboard then leaves the pane for the rest of the walk (27 of 34 skipped renames in the
-# first draft followed one). Not on `archive`: the fixture's one empty folder leaves the
-# keyboard on no row, where GTK lost Back every time and the parent key four times in five.
-# And not off the rows: on GTK, Up off the first row takes the keyboard to the pane header,
-# where Return leaves the fixture.
+# asks for the file's default application, which the QA image has none of: GTK then opens
+# Strata's Open With chooser, which takes the keyboard (reproduced), and Rune opens nothing,
+# so the keys after it go to different places. Not on `archive`, the fixture's one empty
+# folder, where GTK lost Back and the parent key in the walk (observed in the walk, not
+# reproduced: both work there by hand). And not off the rows: on GTK, Up off the first row
+# takes the keyboard to the pane header, where Return leaves the fixture.
 [[action]]
 name = "open"
-weight = 5
+weight = 2
 steps = ['{"key":"Return","when":{"any":[{"focused":"documents"},{"focused":"pictures"},{"field":{"name":"Rename"}}]}}']
 
 # A folder opened by the pointer, as a double click opens it in a List view, wherever the

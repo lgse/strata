@@ -419,6 +419,12 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    outlasts its grace period; Rune has no loading skeleton yet, so the Icons and List views
    draw nothing then, though they say "Loading" as GTK does. Meanwhile: nothing drawn; no
    run pins it.
+4. **No entry under the keyboard after a rename, an open or a menu, on GTK.** In the List
+   fuzz walk, after F2, Return on a folder or the Menu key, GTK's snapshot named no entry
+   under the keyboard (`app.focused` null) until a key moved it; Rune names the entry the
+   keyboard is on. Beside A1's items 3 and 4 (Up from the first row; focus after Back,
+   Forward and Up). Found by the List alphabet (#2258), whose renames start with a Down for
+   it; a differential run will compare `app.focused` there. Meanwhile: Rune keeps the entry.
 
 ### Packages added later
 
