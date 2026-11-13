@@ -200,6 +200,8 @@ wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = 
 xkbcommon = { version = "0.9.0", default-features = false, optional = true }
 
 [dev-dependencies]
+# The key library of the Rune interface, for the test that holds it to GDK.
+strata-desktop = { workspace = true, features = ["xkb-keys"] }
 strata-test-support.workspace = true
 
 [[test]]

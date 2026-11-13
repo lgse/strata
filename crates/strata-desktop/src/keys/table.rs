@@ -14,9 +14,10 @@
 //! - **Case:** the ASCII letters. Every other key is its own lower and upper case.
 //! - **Accelerator strings:** not read and not written. See [`Table`].
 //!
-//! It is the table the `xkbcommon` backend will sit behind: that backend asks the library
-//! only for what this table does not answer, so every key the catalog binds reads and writes
-//! the same whatever library a user has installed.
+//! It is the table the `xkbcommon` backend sits behind ([`Xkb`](super::Xkb), with the
+//! `xkb-keys` feature): that backend asks the library only for what this table does not
+//! answer, so every key the catalog binds reads and writes the same whatever library a user
+//! has installed.
 
 use super::{Backend, Key, Modifiers};
 
