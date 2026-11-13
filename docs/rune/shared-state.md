@@ -244,24 +244,24 @@ are GTK's accelerator strings, which `settings.toml` saves: reading one and writ
   mistake in another backend cannot reach. `main` installs it first. A test binary installs
   it as it loads, from `.init_array`, because a `#[test]` has no start-up and one that
   forgot would fail only for what it happened to read.
-- **The Rune interface installs `keys::Table`,** a backend in `strata-desktop` that needs
-  no library (`keys/table.rs`). `strata-app` installs it when the UI thread is claimed,
-  which every host and every hosted test does, and refuses the claim if another library
-  was installed first. What the table answers, and what it does not, is below.
-- **`keys::Xkb` is the backend that takes its place** (`keys/xkb.rs`, behind the cargo
-  feature `xkb-keys`): the table for every key the code declares, and libxkbcommon for the
-  rest, corrected to GDK's answers. No interface installs it yet. What it answers is below,
-  after the table's.
+- **The Rune interface installs `keys::Xkb`** (`keys/xkb.rs`, behind the cargo feature
+  `xkb-keys`, which `strata-app` enables): Strata's own table for every key the code
+  declares, and libxkbcommon for the rest, corrected to GDK's answers. `strata-app` installs
+  it when the UI thread is claimed, which every host and every hosted test does, refuses
+  the claim if another library was installed first, and logs at debug which libxkbcommon
+  the process runs on. What it answers is below, after the table's.
+- **`keys::Table`** (`keys/table.rs`) is the part of that backend that needs no library. It
+  is a backend of its own too, which `strata-desktop`'s tests install where they need one.
 - A lookup with no backend installed panics, with a message that says so. That is why the
   tests of the moved code stayed in the GTK lane: they ask GDK.
 - The seam is one process-wide value, and it goes when GTK does. `install` answers whether
   its call was the one that installed.
 
-**What `Table` answers.** It is the first piece of the Rune side's key library, and the
-table the `xkbcommon` backend sits behind, so that a key the code declares reads and
-writes the same whatever library a user has installed:
+**What `Table` answers.** It is the table the `xkbcommon` backend sits behind, so that a
+key the code declares reads and writes the same whatever library a user has installed. The
+right column is what the table alone does not answer and `Xkb` does:
 
-| | The table | Not yet |
+| | The table | Beyond it |
 | --- | --- | --- |
 | Names | Every declared constant, read by its own name. Three keys are written by the other X name GDK writes them by, and read by both: `dead_perispomeni` for `dead_tilde`, `Arabic_switch` for `Mode_switch`, `KP_Next` for `KP_Page_Down`. `VoidSymbol` has no name, and its name reads as no key | Any key the code does not declare has no name, where GDK names it or writes a number |
 | Characters | A printable Latin-1 character is its own key, and any other character its Unicode keysym (`0x0100_0000` plus the code point), as the X protocol defines both. The eighteen keypad keys that type a character (the digits, space, `=`, `*`, `+`, `,`, `-`, `.`, `/`) type it, so a keypad digit's text is its digit, as on GTK | No other named key types anything, such as a Cyrillic or Greek key given by its legacy keysym. So `normalize` and `KeyPress::from_signal`, which read a non-Latin key's character to find its Latin fallback, find none: an interface on the table gives what was typed as a character (`Typed::Character`, or `Key::from_char`), never as such a keysym |
@@ -276,8 +276,18 @@ GDK's. That test ties the three written names to the GDK of the test image: a GT
 writes one of those keys by another name fails it, and the table follows the image.
 
 **What `Xkb` answers.** Everything the table does, and for every other key what GDK
-answers, for the libraries of the test image. It links libxkbcommon, which the loader finds
-at run time; the GTK application does not link it, and only its tests enable the feature.
+answers, for the libraries of the test image.
+
+It links libxkbcommon the ordinary way: the loader resolves it when the process starts,
+with no `dlopen` and no fallback, so the library is a start-up requirement of
+`strata-rune` in every mode, the sandbox's thumbnail worker included. It was one already:
+Rune itself depends on the same binding, and `strata-rune` listed `libxkbcommon.so.0`
+among the libraries it needs before this backend existed. The package that provides it is
+`libxkbcommon` on Arch and Fedora and `libxkbcommon0` on Debian and Ubuntu; a build needs
+its development files too, which Arch ships in the same package and the others as
+`libxkbcommon-devel` and `libxkbcommon-dev`. GTK depends on the library as well, so a
+machine that runs the GTK application has it. The GTK application's own build does not
+link it for this: only its tests enable the feature.
 
 | | `Xkb` | How it follows GDK |
 | --- | --- | --- |
@@ -340,9 +350,9 @@ the only place that does). A named key and a keypad key go through `from_parts`.
 character goes through `KeyPress::from_signal(Key::from_char(c), keycode, held)`, the
 reading `ui::keys` uses for a press with no GDK event: it holds the US table, the digit
 row by position and the Shift a symbol consumes, so the Rune side writes no layout table of
-its own. That is right on the table backend because the character is always given as
-`Key::from_char` gives it, never as a legacy keysym, which is the one key the table has no
-character for. The keycode is the X keycode of the physical key Rune reports, from a map
+its own. The character is given as `Key::from_char` gives it, which on the `xkbcommon`
+backend is the key GDK has for that character: for a Cyrillic or Greek letter the keysym a
+layout delivers, so the press records the key the GTK application would record. The keycode is the X keycode of the physical key Rune reports, from a map
 of positions in that file; Caps Lock and a level above Shift's, which Rune's modifiers do
 not carry, are worked out from the character and the key's base character. Where that
 cannot read a press as GDK does is in
