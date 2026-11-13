@@ -15,9 +15,13 @@
 //! library: the table answers first, so every key the catalog binds reads and writes the
 //! same whatever libxkbcommon a user has installed. The key of a character and a key's
 //! other case do go through the rules and the library, for a declared key as for any.
+//!
+//! Accelerator strings, which a saved keymap holds, are read and written in [`accelerator`]
+//! on top of those lookups.
 
 use super::{Backend, Key, Modifiers, Table};
 
+mod accelerator;
 mod rules;
 mod tables;
 
@@ -47,8 +51,8 @@ pub fn library_name(keysym: u32) -> Option<String> {
 
 /// The backend over [`Table`] and libxkbcommon.
 ///
-/// Like the table, it reads and writes no accelerator string yet:
-/// [`Backend::accelerator_parse`] answers `None` and [`Backend::accelerator_name`] panics.
+/// It reads and writes accelerator strings in GTK's format, through its own key lookups
+/// ([`accelerator`]), so a saved keymap reads and writes as it does in the GTK application.
 pub struct Xkb;
 
 impl Backend for Xkb {
@@ -86,22 +90,6 @@ impl Backend for Xkb {
 
     fn accelerator_name(&self, key: Key, modifiers: Modifiers) -> String {
         accelerator::name(key, modifiers)
-    }
-}
-
-/// Where the reader and the writer of accelerator strings go. Neither is written yet.
-mod accelerator {
-    use super::{Key, Modifiers};
-
-    pub(super) fn parse(_accelerator: &str) -> Option<(Key, Modifiers)> {
-        None
-    }
-
-    pub(super) fn name(key: Key, modifiers: Modifiers) -> String {
-        panic!(
-            "the xkbcommon key backend writes no accelerator strings yet, asked for {key:?} \
-             with {modifiers:?}"
-        )
     }
 }
 

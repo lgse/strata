@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 //! Holds `strata_desktop::keys::Xkb`, the key library of the Rune interface, to GDK over
-//! every keysym.
+//! every keysym, and its accelerator strings to GTK's (`accelerators`).
 //!
 //! `Xkb` asks libxkbcommon and corrects its answers by rule wherever GDK answers differently.
 //! This test is what keeps those rules complete: it fails on any difference they do not
@@ -17,6 +17,9 @@ use gtk::{
     glib::translate::{FromGlib, IntoGlib},
 };
 use strata_desktop::keys::{Backend, Key, Xkb, library_name};
+
+#[path = "key_lookups/accelerators.rs"]
+mod accelerators;
 
 #[expect(
     unsafe_code,
@@ -208,7 +211,8 @@ const NUMBERS: [&str; 10] = [
 
 /// Every name either library writes or reads: what GDK writes, what libxkbcommon writes
 /// (for a direct-Unicode keysym that is a number, `U0100`), the header's names, each
-/// without the vendor prefix, with it and with it twice, and the numbers.
+/// without the vendor prefix, with it, with it twice, with it and an underscore and with an
+/// underscore alone, and the numbers.
 fn names() -> Vec<String> {
     let written = keysyms().flat_map(|keysym| {
         [
@@ -222,7 +226,13 @@ fn names() -> Vec<String> {
         .filter(|name| !name.starts_with("0x") && !name.starts_with("U+"))
         .flat_map(|name| {
             let plain = name.strip_prefix("XF86").unwrap_or(&name).to_owned();
-            [format!("XF86XF86{plain}"), format!("XF86{plain}"), plain]
+            [
+                format!("XF86XF86{plain}"),
+                format!("XF86{plain}"),
+                format!("XF86_{plain}"),
+                format!("_{plain}"),
+                plain,
+            ]
         })
         .collect();
     names.extend(NUMBERS.iter().map(|number| (*number).to_owned()));
@@ -231,8 +241,18 @@ fn names() -> Vec<String> {
     names
 }
 
+/// Held by each test for its whole run. With both running at once, GDK named some keys it
+/// writes as numbers wrongly in the other test: what it returns for one is not the caller's
+/// own.
+static GDK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn gdk_alone() -> std::sync::MutexGuard<'static, ()> {
+    GDK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[test]
 fn every_key_lookup_answers_as_gdk_does() {
+    let _alone = gdk_alone();
     let started = std::time::Instant::now();
     let header = header_names().len();
     // The names libxkbcommon reads and never writes come from its header alone, and the
@@ -313,10 +333,16 @@ fn every_key_lookup_answers_as_gdk_does() {
             keysyms(),
         ),
     ];
+    finish(&compared, &format!("{header} header names"), started);
+}
+
+/// Prints what was compared and fails on any difference that was not tolerated.
+fn finish(compared: &[Compared], domain: &str, started: std::time::Instant) {
     let report: String = compared.iter().filter_map(Compared::report).collect();
     let tolerated: Vec<String> = compared.iter().map(Compared::tolerance).collect();
+    let cases: usize = compared.iter().map(|compared| compared.compared).sum();
     let run = format!(
-        "GTK {}.{}.{}, {header} header names, compared in {:?}; {}: {}",
+        "GTK {}.{}.{}, {domain}, {cases} cases compared in {:?}; {}: {}",
         gtk::major_version(),
         gtk::minor_version(),
         gtk::micro_version(),
@@ -330,4 +356,26 @@ fn every_key_lookup_answers_as_gdk_does() {
     );
     println!("{run}");
     assert!(report.is_empty(), "{run}{report}");
+}
+
+/// GTK's two accelerator calls want GTK started on the calling thread, which wants a display:
+/// the test runners give it a private one and require that GTK starts.
+#[test]
+fn every_accelerator_reads_and_writes_as_gtk_does() {
+    let _alone = gdk_alone();
+    if let Err(error) = gtk::init() {
+        assert!(
+            std::env::var_os("STRATA_REQUIRE_GTK_TESTS").is_none(),
+            "GTK did not start, and its accelerator calls need it: {error}"
+        );
+        eprintln!("skipped: GTK did not start, and its accelerator calls need it: {error}");
+        return;
+    }
+    let started = std::time::Instant::now();
+    let compared = accelerators::compared();
+    let counts: Vec<String> = compared
+        .iter()
+        .map(|compared| format!("{} {}", compared.lookup, compared.compared))
+        .collect();
+    finish(&compared, &counts.join(", "), started);
 }

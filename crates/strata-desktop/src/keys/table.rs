@@ -82,7 +82,8 @@ fn printable_latin_1(code: u32) -> bool {
 /// It reads and writes no accelerator string: [`Backend::accelerator_parse`] answers `None`
 /// for every string, so a saved keymap entry is reported as one that cannot be read and the
 /// shipped keys apply, and [`Backend::accelerator_name`] panics, because a string it made up
-/// would be saved over a user's binding. Both arrive with the backend that sits on this one.
+/// would be saved over a user's binding. The backend that sits on this one, `Xkb`, reads and
+/// writes them.
 pub struct Table;
 
 impl Backend for Table {
