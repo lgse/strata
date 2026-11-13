@@ -24,12 +24,12 @@ use crate::{
 
 /// GTK's dispatcher reads `SIDEBAR` at its `sidebar_commands` stage, wherever the press lands
 /// (`src/ui/window/keyboard/commands.rs`).
-pub(super) const COMMANDS: &[Action<App>] = &[Action::new("toggle-sidebar", stepped)
+pub(super) const TOGGLE: Action<App> = Action::new("toggle-sidebar", stepped)
     .command(SIDEBAR)
     .keys(&[Keys::at(
         Stage::SidebarCommands,
         &[SIDEBAR.ignoring(Modifiers::empty())],
-    )])];
+    )]);
 
 /// One press of the toggle, from what shows: GTK's `SidebarMode::next`.
 fn stepped(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {

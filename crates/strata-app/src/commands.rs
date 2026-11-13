@@ -169,10 +169,6 @@ pub(crate) struct Call<'a> {
     pub(crate) on: On,
     /// The press, when a key made the call: its digit and what it typed are the command's
     /// to read.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no registered command reads its press yet")
-    )]
     pub(crate) press: Option<&'a KeyPress>,
 }
 

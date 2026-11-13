@@ -13,8 +13,8 @@
 //!   of two rows for one location the marked one stays marked (`sync_active_place`).
 //! - **The keyboard.** Left at the start of the view comes here (`shell::leave_view_at_start`),
 //!   onto the open place's row, else the first (`focus_active_place`). In 10xer mode the
-//!   component's `h`, Left and Backspace give it back to the view; the default map's arrows
-//!   out of the sidebar (GTK's `sidebar_navigation`) are not here yet.
+//!   component's `h`, Left and Backspace give it back to the view; in the default map the
+//!   arrows move it as GTK's `sidebar_navigation` does ([`keys`]).
 //! - **The pins** come from GTK's bookmarks file, through the store both interfaces share
 //!   (`strata_fs::adapters::bookmarks`), read when the sidebar starts and again whenever the
 //!   store hears that the file changed.
@@ -44,6 +44,7 @@ use crate::{
     slots::{self, Frame, Later, Listener, Part, Place, Setup},
 };
 
+mod keys;
 mod places;
 mod reorder;
 mod width;
@@ -77,7 +78,13 @@ impl Part for Sidebar {
         focus: |app| app.sidebar.focus_key(),
     });
 
-    const COMMANDS: &'static [Action<App>] = width::COMMANDS;
+    const COMMANDS: &'static [Action<App>] = &[
+        width::TOGGLE,
+        keys::TO_LEFT,
+        keys::TO_DOWN,
+        keys::TO_UP,
+        keys::TO_RIGHT,
+    ];
 
     fn new(setup: &Setup<'_>) -> Self {
         Self {
