@@ -4,6 +4,8 @@
 
 use std::time::Duration;
 
+use strata_components::columns::ColumnsIntent;
+
 use super::{MODULE, PATIENCE, fixture, open, press, save_settings, seen, settings_file, wait};
 use crate::test_support::hosted_after;
 
@@ -141,6 +143,39 @@ fn a_saved_key_is_left_to_another_process_once_its_save_has_succeeded() {
             let saved = host.run_until(PATIENCE, |_| peeking() == Some(true));
             assert!(saved, "the part's change was not saved");
             assert_eq!(saved_show_hidden(), Some(false));
+        },
+    );
+}
+
+fn saved_column_width() -> Option<i64> {
+    let saved = std::fs::read_to_string(settings_file()).ok()?;
+    saved
+        .parse::<toml::Table>()
+        .ok()?
+        .get("browser_column_width")?
+        .as_integer()
+}
+
+/// `view_switching/column-autofit-stays-inside`: the width a resize or an autofit ends at is
+/// saved in whole base points, never narrower than a standard column, as GTK's
+/// `remember_column_width` saves it.
+#[test]
+fn a_resized_columns_width_is_saved_whole_and_never_below_a_standard_column() {
+    hosted_after(
+        MODULE,
+        "saved::a_resized_columns_width_is_saved_whole_and_never_below_a_standard_column",
+        || save_settings("mode = \"theme\"\ntheme = \"azure-glow\"\n"),
+        |mut host| {
+            let folder = fixture();
+            open(&mut host, folder.path());
+
+            for (width, kept) in [(437.6, 438), (120.0, 300)] {
+                host.runtime().update(|app, tx| {
+                    crate::columns::intents::heard(app, ColumnsIntent::Width(width), tx);
+                });
+                let saved = host.run_until(PATIENCE, |_| saved_column_width() == Some(kept));
+                assert!(saved, "{width} was saved as {:?}", saved_column_width());
+            }
         },
     );
 }
