@@ -1,0 +1,190 @@
+# The Columns pilot's alphabet (F2): what a user does to move, select and rename in GTK's
+# Columns view and the Rune Columns view on the canonical fixture, the differential mode's
+# first alphabet (`docs/rune/parity/README.md`, "Differential fuzzing").
+#
+# Type to search is off (the header's `prefs`), so h, j, k and l are the arrows, as GTK reads
+# them then (`Context::of` in `src/ui/keys/alias.rs`), and a letter typed outside an editor
+# is not a search.
+#
+# The rename editor is in scope, keys and all: F2 and the entry menu's Rename open it, and
+# while it is open the walk types, moves the caret and selects in it, and ends it by Return or
+# Escape. A step that only makes sense in the editor waits for it or is skipped with it.
+#
+# Up and k only from an entry that is not the first of its column, by name: on GTK, Up from a
+# column's first entry takes the keyboard to the column's header actions
+# (`focus_header_from_top_item` in `src/ui/browser/view_navigation.rs`), where Rune keeps the
+# entry (`owner.md`, A1 item 3). The names are the ones first in their column on the fixture
+# and after the walk's own writes; a rename that moves another entry to the front leaves a
+# gap, which a differential run reports where it is met.
+#
+# Left out, with why:
+# - Left and h from the fixture's own column: its parent is /tmp, outside the fixture.
+# - Return on a file: it asks for the file's default application, which the QA image has
+#   none of, and GTK then opens its Open With chooser (`list.toml` says more).
+# - A click, Ctrl+click or Shift+click on any entry while a name is edited: where the caret
+#   goes is by pixel, and GTK does not answer a Shift+click on the entry being renamed the
+#   same way twice (lgse/strata#2173).
+# - Space and the preview (A15's), typed search and the filter (A10's), new items, the Trash,
+#   delete and undo (`entries.toml`, A7's), the clipboard (A12's), view switches (A8's).
+area = "columns"
+version = 1
+about = "Columns on the canonical fixture, type to search off: keyboard navigation with the arrows, h, j, k and l, Home, End and the page keys, selection by Shift, Ctrl+A, clicks and Ctrl and Shift clicks by name, folders opened by Return, renames by F2, by the menu and by the Menu key with the editor's own keys, hidden files, and files made and removed behind the application's back"
+header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
+
+[[action]]
+name = "down"
+weight = 8
+steps = ['{"key":"<key>","when":{"not":{"field":{"name":"Rename"}}}}']
+choose.key = ["Down", "Down", "j"]
+
+[[action]]
+name = "up"
+weight = 6
+steps = ['{"key":"<key>","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}']
+choose.key = ["Up", "Up", "k"]
+
+[[action]]
+name = "right"
+weight = 5
+steps = ['{"key":"<key>","when":{"not":{"field":{"name":"Rename"}}}}']
+choose.key = ["Right", "l"]
+
+[[action]]
+name = "left"
+weight = 5
+steps = ['{"key":"<key>","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.key = ["Left", "h"]
+
+[[action]]
+name = "edge"
+weight = 4
+steps = ['{"key":"<key>","when":{"not":{"field":{"name":"Rename"}}}}']
+choose.key = ["Home", "End", "Page_Down", "Page_Up"]
+
+[[action]]
+name = "extend"
+weight = 5
+steps = ['{"key":"shift+<key>","when":{"not":{"field":{"name":"Rename"}}}}']
+choose.key = ["Down", "Up", "Home", "End"]
+
+[[action]]
+name = "select-all"
+weight = 1
+steps = ['{"key":"ctrl+a","when":{"not":{"field":{"name":"Rename"}}}}']
+
+[[action]]
+name = "escape"
+weight = 3
+steps = ['{"key":"Escape"}']
+
+# Return on the folders the walk opens, so the keyboard goes into them.
+[[action]]
+name = "open"
+weight = 2
+steps = ['{"key":"Return","when":{"any":[{"focused":"archive"},{"focused":"documents"},{"focused":"pictures"}]}}']
+
+[[action]]
+name = "click"
+weight = 5
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.entry = ["archive", "documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv", "diagram.txt", "photo.txt"]
+
+[[action]]
+name = "click-with"
+weight = 3
+steps = ['{"click":{"entry":"<entry>"},"mods":["<modifier>"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.entry = ["documents", "readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv", "photo.txt"]
+choose.modifier = ["ctrl", "shift"]
+
+# F2 on the entry the keyboard is on, a name typed over the selected stem, then committed or
+# cancelled, or left open for the editor's own keys below.
+[[action]]
+name = "rename"
+weight = 5
+steps = [
+  '{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"type":"<text>","when":{"field":{"name":"Rename","focused":true}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename","focused":true}}}',
+]
+choose.end = ["Return", "Escape", "Right"]
+choose.text = ["x", "-2", "renamed"]
+
+# The entry menu's Rename, by the pointer or by the Menu key, then a name or nothing.
+[[action]]
+name = "menu-rename"
+weight = 3
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}',
+  '{"type":"<text>","when":{"field":{"name":"Rename","focused":true}}}',
+]
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "photo.txt", "documents"]
+choose.text = ["y", "-3"]
+
+[[action]]
+name = "menu-key-rename"
+weight = 2
+steps = [
+  '{"key":"Menu","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}',
+]
+
+# The editor's own keys: the caret, a selection, and the arrows and page keys GTK's list
+# takes while a name is edited.
+[[action]]
+name = "editor-key"
+weight = 5
+steps = ['{"key":"<key>","when":{"field":{"name":"Rename","focused":true}}}']
+choose.key = ["Left", "Right", "Home", "End", "shift+Home", "shift+End", "shift+Left", "BackSpace", "Delete", "Up", "Down", "Page_Down", "Page_Up"]
+
+[[action]]
+name = "editor-type"
+weight = 3
+steps = ['{"type":"<text>","when":{"field":{"name":"Rename","focused":true}}}']
+choose.text = ["a", "-4", "z"]
+
+[[action]]
+name = "editor-end"
+weight = 4
+steps = ['{"key":"<key>","when":{"field":{"name":"Rename","focused":true}}}']
+choose.key = ["Return", "Escape"]
+
+# The entry menu dismissed: one left open would take every key after it.
+[[action]]
+name = "menu-dismiss"
+weight = 2
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"key":"Escape","when":{"present":{"menu_item":"Rename"}}}',
+]
+choose.entry = ["documents", "readme.md", "todo.txt", "report.md", "diagram.txt"]
+
+# A failed rename's dialog, after a name that is taken: closed, so that one collision does
+# not hold the keyboard for the rest of a sequence.
+[[action]]
+name = "dismiss"
+weight = 2
+steps = ['{"key":"Escape","when":{"dialog":true}}']
+
+[[action]]
+name = "refresh"
+weight = 1
+steps = ['{"key":"F5","when":{"not":{"field":{"name":"Rename"}}}}']
+
+# The one action here that writes settings.toml.
+[[action]]
+name = "hidden"
+weight = 1
+steps = ['{"key":"ctrl+period","when":{"not":{"field":{"name":"Rename"}}}}']
+
+[[action]]
+name = "write"
+weight = 2
+steps = ['{"fs":{"path":"<path>","write":"fuzz\n"}}']
+choose.path = ["fuzz-a.txt", "documents/fuzz-b.txt", "pictures/fuzz-c.txt"]
+
+[[action]]
+name = "remove"
+weight = 1
+steps = ['{"fs":{"path":"<path>","remove":true}}']
+choose.path = ["fuzz-a.txt", "documents/fuzz-b.txt", "pictures/fuzz-c.txt"]
