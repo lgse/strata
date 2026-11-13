@@ -1959,6 +1959,36 @@ other, or a differential run, kept:
 | `divergence.json` | The first divergence; then each comparison (`between`), its first differing step and fields outside the map and the mask and with nothing left out, and its issue title; and `perturbed`. |
 | `shrunk.jsonl` | After `shrink`: the shortest sequence. |
 
+#### Tiers and budgets
+
+The plan's three fuzz tiers (`docs/rune/parity/README.md`, "Differential
+fuzzing"), with the budgets the Columns pilot (package F2) set from its own
+timings: warm caches, the pinned image, under the machine lock.
+
+| Tier | Commands | Clean when | Budget |
+| --- | --- | --- | --- |
+| Smoke, before an area's pull request merges | `./scripts/qa-fuzz.sh run --alphabet <area> --seeds 1..20 --target gtk,rune`, then `./scripts/qa-fuzz.sh replay --alphabet <area> --target gtk,rune` when the area's corpus holds a sequence that is not parked | Both exit 0: every sequence not parked agrees with itself on each target and across them, nothing is unsettled, no finding; both "fields that differed first" lines read `none`; the map has no rule the owner did not rule | About 1 to 3 minutes: 20 seeds of 40 actions, 2 replays on each target, 12 sequences at once, took 58 to 97 s for `columns` and 143 s for `entries`, about what the two one-target runs of the same seeds took together |
+| Long run, by an agent the owner delegates it to | `run --alphabet <area> --seeds 1..1000 --target gtk,rune` for every merged alphabet, and `--length 120 --seeds 2001..2100` | As smoke; a difference is triaged, not fixed in the run | About an hour for 1,000 seeds of one alphabet, by the smoke tier's rate |
+| Soak, at the exit | The long run's commands, repeated | No new divergence for the hours the owner sets | The owner's |
+
+What the budgets rest on:
+
+- **The smoke tier is the differential run.** It replaces the two one-target
+  runs an area made before (F1's `run … --target gtk` and `--target rune`):
+  each target is still compared with itself, so it costs the same and
+  compares GTK with Rune besides. The alphabets merged before it (`list`,
+  `icons`, `entries`, `sidebar`) were smoke-tested one target at a time; each
+  is held to the differential tier the next time it changes, and the long run
+  compares them meanwhile. `entries v1`, run across targets, parts at Up on a
+  column's first row in 12 of 20 seeds (`owner.md`, A1 item 3): it needs the
+  Up guard `columns` has before its tier can be clean.
+- **A parked sequence is not run by the smoke tier**, and its line names its
+  finding. `replay --parked --alphabet <area> --target gtk,rune` is the survey
+  of what each still does; it is no gate.
+- **Twenty seeds is a sample, not a proof.** In the pilot, a class met by one
+  seed in 20 was met again by others in the next version's 20; a class met
+  once in a thousand is the long run's to find.
+
 #### Calibration
 
 The projection and the rest rule were fixed by measuring two GTK replays of one
