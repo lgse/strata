@@ -7,7 +7,8 @@
 //! This test is what keeps those rules complete: it fails on any difference they do not
 //! cover, and writes every one of them to `key-lookups/` under the test's target directory,
 //! in the form the rule tables take. It needs no display. `docs/testing.md`, "The key
-//! lookups and the test image", says what a change of GTK, GLib or libxkbcommon does to it.
+//! lookups and the test image", says what a change of GTK, GLib, libxkbcommon or the Rust
+//! toolchain does to it, and how to run it on a machine whose libraries are not the image's.
 
 use std::{fmt::Debug, fs, path::PathBuf};
 
@@ -45,10 +46,12 @@ fn characters() -> impl Iterator<Item = char> {
     (1..0x3_0000).filter_map(char::from_u32)
 }
 
-/// The names in the installed header of libxkbcommon, when it is installed: the ones the
-/// library reads, among them the names it never writes.
+const HEADER: &str = "/usr/include/xkbcommon/xkbcommon-keysyms.h";
+
+/// The names in the installed header of libxkbcommon: the ones the library reads, among
+/// them the names it never writes. None when the header is not installed.
 fn header_names() -> Vec<String> {
-    let Ok(header) = fs::read_to_string("/usr/include/xkbcommon/xkbcommon-keysyms.h") else {
+    let Ok(header) = fs::read_to_string(HEADER) else {
         return Vec::new();
     };
     header
@@ -81,17 +84,20 @@ struct Lookup<I, T> {
     tolerated: fn(&I, &T, &T) -> bool,
 }
 
-/// Whether this is the pinned test image, where the rules are exact and nothing is
-/// tolerated. `./scripts/quality.sh` names the commit it tests there.
-fn in_the_test_image() -> bool {
-    std::env::var_os("STRATA_QUALITY_COMMIT").is_some()
+/// Set to run the comparison on a machine whose GTK, GLib or libxkbcommon are not the test
+/// image's: differences that follow the installed libraries are then counted and not
+/// failed. Such a run checks less; `docs/testing.md` says how much.
+const TOLERATE: &str = "STRATA_KEY_LOOKUPS_TOLERATE_OTHER_LIBRARIES";
+
+fn tolerant() -> bool {
+    std::env::var_os(TOLERATE).is_some()
 }
 
 fn compare<I, T: PartialEq + Debug>(
     lookup: Lookup<I, T>,
     domain: impl Iterator<Item = I>,
 ) -> Compared {
-    let strict = in_the_test_image();
+    let tolerant = tolerant();
     let mut compared = Compared {
         lookup: lookup.name,
         compared: 0,
@@ -105,7 +111,7 @@ fn compare<I, T: PartialEq + Debug>(
             continue;
         }
         let row = format!("{} // xkb: {xkb:x?}", (lookup.row)(&input, &gdk));
-        if !strict && (lookup.tolerated)(&input, &xkb, &gdk) {
+        if tolerant && (lookup.tolerated)(&input, &xkb, &gdk) {
             compared.tolerated.push(row);
         } else {
             compared.differences.push(row);
@@ -201,8 +207,8 @@ const NUMBERS: [&str; 10] = [
 ];
 
 /// Every name either library writes or reads: what GDK writes, what libxkbcommon writes
-/// (for a direct-Unicode keysym that is a number, `U0100`), the header's names, each with
-/// and without the vendor prefix, and the numbers.
+/// (for a direct-Unicode keysym that is a number, `U0100`), the header's names, each
+/// without the vendor prefix, with it and with it twice, and the numbers.
 fn names() -> Vec<String> {
     let written = keysyms().flat_map(|keysym| {
         [
@@ -216,7 +222,7 @@ fn names() -> Vec<String> {
         .filter(|name| !name.starts_with("0x") && !name.starts_with("U+"))
         .flat_map(|name| {
             let plain = name.strip_prefix("XF86").unwrap_or(&name).to_owned();
-            [format!("XF86{plain}"), plain]
+            [format!("XF86XF86{plain}"), format!("XF86{plain}"), plain]
         })
         .collect();
     names.extend(NUMBERS.iter().map(|number| (*number).to_owned()));
@@ -228,6 +234,14 @@ fn names() -> Vec<String> {
 #[test]
 fn every_key_lookup_answers_as_gdk_does() {
     let started = std::time::Instant::now();
+    let header = header_names().len();
+    // The names libxkbcommon reads and never writes come from its header alone, and the
+    // rows that refuse them are checked by nothing else.
+    assert!(
+        header > 2000 || tolerant(),
+        "{header} names read from {HEADER}: install libxkbcommon's development files, or set \
+         {TOLERATE} to compare without them"
+    );
     let compared = [
         compare(
             Lookup {
@@ -302,12 +316,16 @@ fn every_key_lookup_answers_as_gdk_does() {
     let report: String = compared.iter().filter_map(Compared::report).collect();
     let tolerated: Vec<String> = compared.iter().map(Compared::tolerance).collect();
     let run = format!(
-        "GTK {}.{}.{}, {} header names, compared in {:?}; tolerated as the libraries' own: {}",
+        "GTK {}.{}.{}, {header} header names, compared in {:?}; {}: {}",
         gtk::major_version(),
         gtk::minor_version(),
         gtk::micro_version(),
-        header_names().len(),
         started.elapsed(),
+        if tolerant() {
+            "counted and not failed, as the installed libraries' own"
+        } else {
+            "nothing tolerated"
+        },
         tolerated.join(", ")
     );
     println!("{run}");

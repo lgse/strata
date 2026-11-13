@@ -4,8 +4,9 @@
 //!
 //! Each row is what GDK answers, as the GTK application's test `key_lookups` printed it when
 //! it ran this backend beside GDK without the row. The rows are exact for the libraries of
-//! the test image, and the test fails when one is missing or no longer needed there. Every
-//! table is sorted by its first column, which the lookups rely on.
+//! the test image: the test fails when one is missing or no longer true. It does not fail
+//! for a row the rules would now give without it, which is only redundant. Every table is
+//! sorted by its first column, which the lookups rely on.
 
 /// Keys GDK writes by another name than libxkbcommon does.
 pub(super) const WRITTEN: &[(u32, &str)] = &[

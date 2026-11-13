@@ -69,6 +69,7 @@ fn a_name_gdk_does_not_read_is_refused_here() {
         "0x61",
         "0x0061",
         "XF86U20AC",
+        "XF86XF86AudioPlay",
         "VoidSymbol",
         "guillemetleft",
         "dead_lowline",
@@ -134,6 +135,17 @@ fn case_goes_through_the_character_and_a_few_keys_pair_by_position() {
         assert_eq!(Xkb.key_to_lower(unchanged), unchanged);
         assert_eq!(Xkb.key_to_upper(unchanged), unchanged);
     }
+}
+
+#[test]
+fn the_library_in_use_is_the_one_the_loader_mapped() {
+    let library = super::library_in_use().expect("this test links libxkbcommon");
+    let name = library.file_name().and_then(|name| name.to_str());
+    assert!(
+        name.is_some_and(|name| name.starts_with("libxkbcommon.so")),
+        "{library:?}"
+    );
+    assert!(library.is_absolute() && library.exists(), "{library:?}");
 }
 
 #[test]

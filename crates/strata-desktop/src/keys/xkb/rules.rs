@@ -62,6 +62,10 @@ pub(super) fn name(keysym: u32) -> Option<String> {
     })
 }
 
+fn is_refused(name: &str) -> bool {
+    tables::REFUSED.binary_search(&name).is_ok()
+}
+
 /// A keysym or a code point spelled as a number, which libxkbcommon reads as that key and
 /// GDK does not read: `0x61`, `U20AC`.
 fn is_number(name: &str) -> bool {
@@ -79,9 +83,9 @@ pub(super) fn from_name(name: &str) -> Option<u32> {
     if name.contains('\0') {
         return None;
     }
-    // GDK reads a vendor key with its prefix or without.
+    // GDK reads a vendor key with its prefix or without, and not with the prefix twice.
     let plain = name.strip_prefix("XF86").unwrap_or(name);
-    if is_number(plain) || tables::REFUSED.binary_search(&plain).is_ok() {
+    if plain.starts_with("XF86") || is_number(plain) || is_refused(plain) {
         return None;
     }
     if let Some(keysym) = found(tables::READ, plain) {
