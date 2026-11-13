@@ -152,13 +152,13 @@ fn click(host: &mut Offscreen, key: &str) {
 }
 
 /// A press anywhere on the strip but a crumb opens the entry, as on GTK, whose strip takes any
-/// release a crumb button does not: between two crumbs, on a separator, and on the current
-/// crumb. Copy path, inside the current crumb, takes its own.
+/// release a crumb button does not: between two crumbs, on a separator, on the current crumb
+/// and on the empty space after it. Copy path, inside the current crumb, takes its own.
 #[test]
-fn a_press_between_crumbs_on_a_separator_or_the_current_crumb_opens_the_entry() {
+fn a_press_on_the_strip_but_on_a_crumb_opens_the_entry() {
     hosted(
         MODULE,
-        "a_press_between_crumbs_on_a_separator_or_the_current_crumb_opens_the_entry",
+        "a_press_on_the_strip_but_on_a_crumb_opens_the_entry",
         |mut host| {
             let _folder = open(&mut host);
             let tree = host.tree();
@@ -166,7 +166,13 @@ fn a_press_between_crumbs_on_a_separator_or_the_current_crumb_opens_the_entry() 
                 view::text(node, "key").starts_with("location-crumb-")
             });
             let current = format!("location-item-{}", ancestors.len());
-            for key in ["location-gap-1", "location-sep-1", current.as_str()] {
+            let keys = [
+                "location-gap-1",
+                "location-sep-1",
+                current.as_str(),
+                "location-crumbs-space",
+            ];
+            for key in keys {
                 click(&mut host, key);
                 let state = &host.app().location.state;
                 assert!(state.entry_focused(), "a press on {key} opened the entry");
