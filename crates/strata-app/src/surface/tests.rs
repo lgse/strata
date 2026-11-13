@@ -30,7 +30,8 @@ fn loading() -> Option<(String, bool)> {
 }
 
 /// A folder being read says nothing for GTK's grace period, then "Loading", and nothing is
-/// drawn either way; once read empty, it says so and draws it.
+/// drawn either way; once read empty, it says so and draws it. The poll asks the view to run
+/// for the announcement only, which the clock alone brings.
 #[test]
 fn a_read_is_announced_only_once_it_outlasts_the_grace_period() {
     let mut surface = Surface::translated();
@@ -49,7 +50,8 @@ fn a_read_is_announced_only_once_it_outlasts_the_grace_period() {
 
     listing.set_load(Load::Listed);
     listing.apply(Edit::Replace(Vec::new()));
-    assert!(surface.watch(one(&listing), 11.0, &mut tx));
+    // The change that ended the read runs the view; the poll asks for nothing more.
+    assert!(!surface.watch(one(&listing), 11.0, &mut tx));
     let empty = ("This directory is empty".to_owned(), true);
     assert_eq!(read(&surface, 0, &listing), Some(empty));
 }

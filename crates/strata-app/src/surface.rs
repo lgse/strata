@@ -50,10 +50,14 @@ fn reading(listing: &Column) -> bool {
 }
 
 impl Reading {
-    /// One poll of `listing` at `clock`. True when what it says changed.
+    /// One poll of `listing` at `clock`. True when what it says changed by the clock alone:
+    /// a read that outlasted the grace period. A read ends by a change the browser sent (its
+    /// rows, its load, its column closed), which runs the view itself, so its end is false:
+    /// the poll returns true only for what the view would not run for otherwise.
     fn watch(&mut self, listing: Option<&Column>, clock: f64, tx: &mut Tx) -> bool {
         let Some(listing) = listing.filter(|listing| reading(listing)) else {
-            return std::mem::take(self).announced;
+            *self = Self::default();
+            return false;
         };
         if self.of.as_ref() != Some(listing.location()) {
             *self = Self {

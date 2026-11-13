@@ -47,6 +47,10 @@ use crate::{
     listing::{Column, Edit, Load},
 };
 
+mod restore;
+
+use restore::Restore;
+
 /// What a pane shows before the browser has opened a folder: nothing.
 struct Nothing;
 
@@ -75,6 +79,9 @@ pub(crate) enum Applied {
     Within,
     /// Another folder shows, or none does.
     Entered,
+    /// Another folder shows, at the position remembered for it when it was left
+    /// ([`restore`]): a first visit does not arm for it, as GTK's waits for no saved visit.
+    Returned,
 }
 
 pub(crate) struct Pane {
@@ -91,6 +98,8 @@ pub(crate) struct Pane {
     moving: Moving,
     /// The collection has groups: the folder shown was grouped when they were last given.
     grouped: bool,
+    /// Where each folder was left, for when it shows again.
+    restore: Restore,
 }
 
 /// The groups of `column`'s rows as it shows them: one for each run of a file type, headed by
@@ -125,7 +134,14 @@ impl Pane {
             collection,
             moving: Moving::default(),
             grouped: false,
+            restore: Restore::default(),
         }
+    }
+
+    /// The view's layout, as C1e keys a scroll offset: an offset comes back only in the
+    /// layout it was measured in. The view sets it before each change applies.
+    pub(crate) fn set_layout_key(&mut self, layout: u64) {
+        self.collection.set_layout_key(layout);
     }
 
     /// The browser's column shown.
@@ -193,10 +209,17 @@ impl Pane {
     /// follows before the change applies.
     pub(crate) fn apply(&mut self, change: Change, tx: &mut rune::Tx) -> Applied {
         let before = (self.shown, self.generation);
+        if matches!(
+            change,
+            Change::Reset | Change::Truncated { .. } | Change::Added(_)
+        ) {
+            let shown = self.shown.and_then(|depth| self.columns.get(depth));
+            self.restore.leave(shown, &self.collection);
+        }
         match change {
             Change::Reset => {
                 self.columns.clear();
-                self.show(None, tx);
+                self.show(None, false, tx);
             }
             Change::Truncated { len, active, .. } => self.truncate(len, active, tx),
             Change::Added(added) => self.add(added, tx),
@@ -213,6 +236,7 @@ impl Pane {
         }
         match before == (self.shown, self.generation) {
             true => Applied::Within,
+            false if self.restore.returned() => Applied::Returned,
             false => Applied::Entered,
         }
     }
@@ -277,18 +301,23 @@ impl Pane {
         }
     }
 
-    /// Shows column `depth`, or nothing.
-    fn show(&mut self, depth: Option<usize>, tx: &mut rune::Tx) {
+    /// Shows column `depth`, or nothing, at the position remembered for it unless the
+    /// browser `reveal`s an entry there.
+    fn show(&mut self, depth: Option<usize>, reveal: bool, tx: &mut rune::Tx) {
         let depth = depth.filter(|depth| *depth < self.columns.len());
         self.shown = depth;
         self.generation += 1;
         self.regroup();
-        let (source, listing) = match depth.and_then(|depth| self.columns.get(depth)) {
+        let column = depth.and_then(|depth| self.columns.get(depth));
+        let position = self.restore.arrive(column, reveal);
+        let (source, listing) = match column {
             Some(column) if column.is_loading() => (column as &dyn EntrySource, Listing::Loading),
             Some(column) => (column as &dyn EntrySource, Listing::Complete),
             None => (&Nothing as &dyn EntrySource, Listing::Complete),
         };
-        let _ = self.collection.enter(self.scope, source, None, listing, tx);
+        let _ = self
+            .collection
+            .enter(self.scope, source, position.as_ref(), listing, tx);
         self.held = Held::of(&self.collection);
     }
 
@@ -299,9 +328,9 @@ impl Pane {
     fn truncate(&mut self, len: usize, active: Option<usize>, tx: &mut rune::Tx) {
         self.columns.truncate(len);
         match active.filter(|active| *active < len) {
-            Some(active) if self.shown != Some(active) => self.show(Some(active), tx),
+            Some(active) if self.shown != Some(active) => self.show(Some(active), false, tx),
             Some(_) => {}
-            None if self.shown.is_some_and(|shown| shown >= len) => self.show(None, tx),
+            None if self.shown.is_some_and(|shown| shown >= len) => self.show(None, false, tx),
             None => {}
         }
     }
@@ -313,6 +342,7 @@ impl Pane {
             show_hidden,
             active,
             grouping,
+            reveal,
         } = added;
         self.columns.truncate(depth);
         // The browser adds columns in order, each after the last.
@@ -328,7 +358,7 @@ impl Pane {
         // already left a shown column of this depth; should it not have, the new folder
         // shows in its place rather than the old one's rows under the new listing.
         if active || self.shown == Some(depth) {
-            self.show(Some(depth), tx);
+            self.show(Some(depth), reveal, tx);
         }
     }
 
@@ -420,11 +450,19 @@ impl Pane {
 
     /// After the rows changed: the collection catches up with them, and then the browser's
     /// cursor and selection stand, but for a cursor the collection placed itself
-    /// ([`handover::placed`]).
+    /// ([`handover::placed`]) and a remembered position that came back ([`restore`]).
     fn settle(&mut self, marks: &Marks, tx: &mut rune::Tx) {
         let before = self.collection.selection.cursor();
+        let restoring = self.collection.restore_pending();
         self.sync(tx);
-        if !handover::placed(before, &self.collection) {
+        // A remembered position that came back with the listing is the pane's, as GTK's
+        // restore sets the browser's selection to it: the browser's marks don't replace it.
+        let restored = restoring && !self.collection.restore_pending();
+        if restored {
+            if let Some(column) = self.shown.and_then(|depth| self.columns.get(depth)) {
+                restore::fall_back(column, &mut self.collection, marks.cursor);
+            }
+        } else if !handover::placed(before, &self.collection) {
             self.adopt(marks);
         }
     }

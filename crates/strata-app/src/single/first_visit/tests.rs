@@ -93,6 +93,7 @@ impl Visit {
             show_hidden: false,
             active: true,
             grouping: None,
+            reveal: false,
         }));
         visit
     }
