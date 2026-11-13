@@ -237,18 +237,34 @@ fn a_groups_header_is_not_an_entry() {
 }
 
 /// A scroll view as Rune's tree reports it: its box, its offsets and how far it scrolls down,
-/// and its content's box.
-fn scroll_view(scroll: [f64; 3], own: [f64; 4], content: [f64; 4]) -> serde_json::Value {
+/// the actions it offers, and its content's box.
+fn scroll_view(
+    scroll: [f64; 3],
+    own: [f64; 4],
+    actions: &[&str],
+    content: [f64; 4],
+) -> serde_json::Value {
     json!({
         "role": "window",
         "children": [{
             "role": "scroll-view",
             "scroll": scroll,
             "bounds": own,
+            "actions": actions,
             "children": [{ "role": "group", "bounds": content }],
         }],
     })
 }
+
+/// What Rune offers on a scroll view: up and down always, left and right when it scrolls
+/// sideways (it lists `scroll-left` and not `scroll-right`).
+const DOWN: &[&str] = &["scroll-up", "scroll-down", "set-scroll-offset"];
+const SIDEWAYS: &[&str] = &[
+    "scroll-up",
+    "scroll-down",
+    "scroll-left",
+    "set-scroll-offset",
+];
 
 #[test]
 fn a_scroll_views_offsets_limits_and_bar_are_read_from_the_tree() {
@@ -265,6 +281,7 @@ fn a_scroll_views_offsets_limits_and_bar_are_read_from_the_tree() {
             scroll_view(
                 [1401.0, 0.0, 0.0],
                 [201.0, 36.0, 999.0, 724.0],
+                SIDEWAYS,
                 [-1200.0, 36.0, 2400.0, 724.0],
             ),
             (scroll(1401.0, 999.0, true), scroll(0.0, 724.0, false)),
@@ -275,26 +292,40 @@ fn a_scroll_views_offsets_limits_and_bar_are_read_from_the_tree() {
             scroll_view(
                 [0.0, 1397.0, 1397.0],
                 [900.0, 77.0, 300.0, 683.0],
+                DOWN,
                 [900.0, -1294.0, 300.0, 2054.0],
             ),
             (scroll(0.0, 300.0, false), scroll(1397.0, 683.0, true)),
             Some(1397.0),
         ),
         (
-            "a strip at its start, wider than it shows",
+            "a strip at its start",
             scroll_view(
                 [0.0, 0.0, 0.0],
                 [0.0, 0.0, 400.0, 300.0],
+                SIDEWAYS,
                 [0.0, 0.0, 900.0, 300.0],
             ),
             (scroll(0.0, 400.0, true), scroll(0.0, 300.0, false)),
             Some(0.0),
         ),
         (
+            "a view that scrolls only down, with a child wider than it",
+            scroll_view(
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 400.0, 300.0],
+                DOWN,
+                [0.0, 0.0, 900.0, 200.0],
+            ),
+            (scroll(0.0, 400.0, false), scroll(0.0, 300.0, false)),
+            None,
+        ),
+        (
             "the sidebar, whose places fit",
             scroll_view(
                 [0.0, 0.0, 0.0],
                 [0.0, 36.0, 201.0, 724.0],
+                DOWN,
                 [0.0, 36.0, 201.0, 136.0],
             ),
             (scroll(0.0, 201.0, false), scroll(0.0, 724.0, false)),

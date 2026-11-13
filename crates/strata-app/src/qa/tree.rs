@@ -102,12 +102,12 @@ pub(super) struct Drawn {
     pub(super) buttons: Vec<DrawnButton>,
 }
 
-/// How far a scroll view has scrolled, how far it can, and how much it shows: along x, then
+/// How far a scroll view has scrolled, whether it can, and how much it shows: along x, then
 /// y, in points.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct Scrolled {
     pub(super) offset: [f64; 2],
-    pub(super) max: [f64; 2],
+    pub(super) scrolls: [bool; 2],
     pub(super) page: [f64; 2],
 }
 
@@ -122,16 +122,12 @@ impl Scrolled {
         }
     }
 
-    fn scrolls(&self, axis: usize) -> bool {
-        self.max[axis] >= SCROLLS_AT_LEAST
-    }
-
     pub(super) fn along(&self, along: Orientation) -> Scroll {
         let axis = Self::axis(along);
         Scroll {
             value: self.offset[axis],
             page: self.page[axis],
-            scrollable: self.scrolls(axis),
+            scrollable: self.scrolls[axis],
         }
     }
 
@@ -141,7 +137,7 @@ impl Scrolled {
     pub(super) fn bar(&self) -> Option<f64> {
         [1, 0]
             .into_iter()
-            .find(|axis| self.scrolls(*axis))
+            .find(|axis| self.scrolls[*axis])
             .map(|axis| self.offset[axis])
     }
 }
@@ -240,25 +236,20 @@ fn bounds(node: &Value) -> Option<Rect> {
 }
 
 /// What a scroll view reports. Rune's tree gives its offsets and how far it scrolls down
-/// (`"scroll": [x, y, y_max]`), and no horizontal limit: that is how far its content's box,
-/// the union of its children's, reaches past its own. The content is laid out whole, only its
-/// rows are mounted lazily, and those scroll down.
+/// (`"scroll": [x, y, y_max]`), and no horizontal limit. It offers `scroll-left` exactly when
+/// it can scroll sideways and input may reach it (`a11y/node.rs` at the pinned rev), which is
+/// whether it scrolls sideways for a user.
 fn scrolled(node: &Value) -> Option<Scrolled> {
     let [x, y, down] = node["scroll"].as_array()?.as_slice() else {
         return None;
     };
     let own = bounds(node)?;
-    let children = node["children"].as_array().map_or(&[][..], Vec::as_slice);
-    let boxes = children.iter().filter_map(bounds);
-    let (left, right) = boxes.fold(
-        (f64::INFINITY, f64::NEG_INFINITY),
-        |(left, right), child| (left.min(child.x), right.max(child.x + child.width)),
-    );
-    let across = (right - left - own.width).max(0.0);
-    let x = x.as_f64()?;
+    let sideways = texts(node, "actions")
+        .iter()
+        .any(|action| action == "scroll-left");
     Some(Scrolled {
-        offset: [x, y.as_f64()?],
-        max: [across.max(x), down.as_f64()?],
+        offset: [x.as_f64()?, y.as_f64()?],
+        scrolls: [sideways, down.as_f64()? >= SCROLLS_AT_LEAST],
         page: [own.width, own.height],
     })
 }
