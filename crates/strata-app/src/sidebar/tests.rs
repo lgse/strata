@@ -1078,3 +1078,33 @@ fn the_trash_menu_offers_empty_trash_once_the_trash_holds_something() {
         },
     );
 }
+
+/// The PINNED heading is named, and its count described, in the user's language, as GTK's
+/// `append_section_header` and `set_item_count` give them, and the sidebar's list has no name
+/// of its own, as GTK's has none.
+#[test]
+fn the_headings_speak_the_users_language_and_the_list_has_no_name() {
+    hosted_after(
+        MODULE,
+        "the_headings_speak_the_users_language_and_the_list_has_no_name",
+        || {
+            let file = settings_file();
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = "mode = \"theme\"\ntheme = \"azure-glow\"\nlanguage = \"fr\"\n";
+            std::fs::write(file, saved).expect("settings");
+            seed_pins(&pin(Path::new("/srv/work"), "Work"));
+        },
+        |mut host| {
+            let heading = shown(&mut host, "sidebar-heading-pinned");
+            let french = rust_i18n::t!("PINNED", locale = "fr");
+            assert_ne!(french, "PINNED", "the catalogs translate the heading");
+            assert_eq!(text(&heading, "name"), french);
+            let one = rust_i18n::t!("counts.items.one", locale = "fr", count = 1);
+            assert_eq!(text(&heading, "description"), one);
+            let list = keyed(&host.tree(), "sidebar-list")
+                .expect("the list")
+                .clone();
+            assert_eq!(text(&list, "name"), "", "the list is unnamed");
+        },
+    );
+}

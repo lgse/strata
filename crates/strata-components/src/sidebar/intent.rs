@@ -26,14 +26,6 @@ pub enum Section {
 }
 
 impl Section {
-    /// Its heading, which is also its accessible name and its rail tooltip.
-    pub fn title(self) -> &'static str {
-        match self {
-            Section::Pinned => "PINNED",
-            Section::Devices => "DEVICES",
-        }
-    }
-
     pub(crate) fn id(self) -> &'static str {
         match self {
             Section::Pinned => "pinned",

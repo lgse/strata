@@ -13,7 +13,7 @@ use strata_kit::icons::IconName;
 use strata_kit::look::Look;
 use strata_kit::slots::sidebar as slot;
 
-use super::data::{Device, ItemId, LockState, PlaceKind, RowIcon};
+use super::data::{Device, ItemId, LockState, PlaceKind, RowIcon, SidebarLabels};
 use super::drag::{self, Block, Landing, RowDrag};
 use super::intent::{DropSite, SidebarIntent, Via};
 use super::state::SidebarState;
@@ -62,6 +62,7 @@ pub(crate) struct Ctx<'a, S> {
     pub rail: bool,
     pub new_tabs: bool,
     pub tenxer: bool,
+    pub labels: SidebarLabels<'a>,
 }
 
 /// What one row shows and does.
