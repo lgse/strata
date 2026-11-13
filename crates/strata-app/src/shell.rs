@@ -320,12 +320,18 @@ pub(crate) fn id_of(app: &App, location: &Location) -> EntryId {
 }
 
 /// The keyboard leaves the shown view at its start, as Left in the first column asks: the
-/// sidebar takes it. False when there is no sidebar, and the keyboard stays where it is.
+/// sidebar takes it. False when there is no sidebar, or none that can take it, and the
+/// keyboard stays where it is.
 pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
-    let Some(sidebar) = app.window.parts.sidebar() else {
+    let Some(key) = app
+        .window
+        .parts
+        .sidebar()
+        .and_then(|sidebar| (sidebar.focus)(app))
+    else {
         return false;
     };
-    tx.focus((sidebar.focus)(app), true);
+    tx.focus(key, true);
     true
 }
 

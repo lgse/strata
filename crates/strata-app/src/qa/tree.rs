@@ -100,6 +100,7 @@ pub(super) struct Drawn {
     pub(super) columns: Vec<DrawnColumn>,
     pub(super) labels: Vec<NameLabel>,
     pub(super) buttons: Vec<DrawnButton>,
+    pub(super) sidebar: super::sidebar::Gaps,
 }
 
 /// How far a scroll view has scrolled, whether it can, and how much it shows: along x, then
@@ -285,7 +286,15 @@ impl Snapshot {
         for button in &drawn.buttons {
             snapshot.add_hidden_button(button);
         }
+        drawn.sidebar.present(&mut snapshot);
         snapshot
+    }
+
+    /// Presents `seen` under the window: a node a part draws and the tree leaves out.
+    pub(super) fn push_under_window(&mut self, segment: &str, seen: Seen) {
+        if !self.nodes.is_empty() {
+            self.push(0, segment, seen);
+        }
     }
 
     /// Presents a button an open menu keeps out of the tree, under the window. Not behind a

@@ -6,46 +6,40 @@
 scenario = "builtin-places-reorder-survive-restart"
 run = "columns-row-before"
 package = "A3"
-status = "pending"
-reason = "scope"
-blocker = "A3"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "builtin-places-reorder-survive-restart"
 run = "columns-row-after"
 package = "A3"
-status = "pending"
-reason = "scope"
-blocker = "A3"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "builtin-places-reorder-survive-restart"
 run = "columns-gap-before"
 package = "A3"
-status = "pending"
-reason = "scope"
-blocker = "A3"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "builtin-places-reorder-survive-restart"
 run = "columns-gap-after"
 package = "A3"
-status = "pending"
-reason = "scope"
-blocker = "A3"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "pin-insertion-keeps-one-destination"
 run = "columns-expanded"
 package = "A3"
-status = "pending"
-reason = "scope"
-blocker = "A3"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "pin-insertion-keeps-one-destination"
 run = "columns-compact"
 package = "A3"
-status = "pending"
-reason = "scope"
-blocker = "A3"
+status = "required"
+host = "offscreen"
