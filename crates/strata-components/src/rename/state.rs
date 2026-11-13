@@ -214,11 +214,15 @@ impl RenameState {
             Some(_) => {}
         }
         // Rune keeps a focused row mounted out of view, so the field may still have the
-        // keyboard: the viewport decides, by the row's place now rather than the range Rune
-        // reported a frame ago, which an entry listed above would push the row out of
-        // (lgse/strata#2277). The check comes before the blur's, as the row also loses the
-        // keyboard once Rune unmounts it.
-        if coll.shows_entry(index, source.len()) {
+        // keyboard: the viewport decides, read two ways, each of which goes stale for a frame
+        // on its own. The range Rune reported lags a frame, so an entry listed above pushes the
+        // row's index past its end (lgse/strata#2277). The row's place by the last layout,
+        // against the scroll now, is off after the lines flow anew (a tile size) until the
+        // cursor's reveal lands. The row has left only when both say so, which ends a real
+        // scroll-out a frame later at most. The check comes before the blur's, as the row also
+        // loses the keyboard once Rune unmounts it.
+        let shown = coll.shows_entry(index, source.len()) || coll.visible_range().contains(&index);
+        if shown {
             self.seen_shown = true;
         } else if self.seen_shown {
             return self.cancel(By::Scrolled);
