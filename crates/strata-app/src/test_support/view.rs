@@ -139,8 +139,8 @@ fn outside_entries(node: &Value, shape: Shape) -> Vec<&Value> {
     found
 }
 
-/// The view's pane, described as the view, and its list: the pane's, since other lists (the
-/// sidebar's places, the List view's own `list` role among them) come before it in the tree.
+/// The view's pane, described as the view, and its list: the pane's, since another list can
+/// come before it in the tree (the sidebar's places, which share the List view's `list` role).
 fn pane_and_list(tree: &Value, shape: Shape) -> Option<(&Value, &Value)> {
     let pane = all(tree, &|node| node["description"] == shape.described)
         .into_iter()
