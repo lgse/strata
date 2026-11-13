@@ -29,8 +29,8 @@ const ICONS: Shape = Shape {
 
 const LIST: Shape = Shape {
     described: "List view",
-    list: "grid",
-    entry: "row",
+    list: "list",
+    entry: "list-item",
 };
 
 fn idle(host: &mut Offscreen) {
