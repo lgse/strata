@@ -120,13 +120,6 @@ impl Situation {
     /// Whether an element of the part whose keys start with `part` has it (`slots`, "Rules
     /// for a part"): GTK's `sidebar.contains(focused)`. `part` is the name alone, and the key
     /// is that name or goes on from it at a separator: `tabs-strip` is not within `tab`.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "no registered command asks where the keyboard is yet"
-        )
-    )]
     pub(crate) fn within(&self, part: &str) -> bool {
         let rest = self
             .focused

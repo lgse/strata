@@ -422,3 +422,53 @@ fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
         "nothing is presented behind a dialog, to stay cautious"
     );
 }
+
+#[test]
+fn an_entry_has_a_panel_with_its_own_box_and_nothing_else_does() {
+    let row = [0.0, 80.0, 300.0, 26.0];
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "button", "key": "row-9", "name": "not an entry", "bounds": [0, 0, 20, 20] },
+            { "role": "group", "name": "folder", "children": [
+                { "role": "list-box", "key": "columns-col-1", "children": [
+                    { "role": "list-box-option", "key": "row-1", "name": "archive", "bounds": row },
+                ] },
+            ] },
+        ],
+    });
+    let drawn = Drawn {
+        view: Some(COLUMNS),
+        lists: vec!["columns-col-1".to_owned()],
+        ..Drawn::default()
+    };
+    let snapshot = Snapshot::read(&tree, &drawn);
+
+    let panels: Vec<_> = (0..)
+        .map_while(|index| snapshot.at(index))
+        .filter(|seen| {
+            seen.node
+                .as_ref()
+                .is_some_and(|node| node.0.ends_with("/@panel"))
+        })
+        .collect();
+    assert_eq!(panels.len(), 1, "{panels:?}");
+    let panel = panels[0];
+    assert_eq!(panel.role(), "panel");
+    assert_eq!(
+        panel.bounds,
+        Some(Rect {
+            x: row[0],
+            y: row[1],
+            width: row[2],
+            height: row[3],
+        })
+    );
+    let entry = snapshot
+        .at(panel.parent.expect("its row"))
+        .expect("the row");
+    assert_eq!(
+        (entry.mark, entry.name.as_str()),
+        (Some(Mark::Entry), "archive")
+    );
+}

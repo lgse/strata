@@ -279,6 +279,9 @@ fn scrolled(node: &Value) -> Option<Scrolled> {
     })
 }
 
+/// Rune's role of an unnamed box, which the role map presents as GTK's `panel`.
+const PANEL: &str = "group";
+
 /// Whether `key` is the collection's key for an entry's row ([`row_key`]). A list holds
 /// other nodes of an entry's role: the List table's headings are a `row` of its grid too.
 fn is_entry_key(key: &str) -> bool {
@@ -303,6 +306,7 @@ impl Snapshot {
             for list in &drawn.lists {
                 snapshot.mark_column(list, view);
             }
+            snapshot.add_row_panels();
         }
         for label in &drawn.labels {
             snapshot.add_label(label);
@@ -398,6 +402,26 @@ impl Snapshot {
                 ..Seen::default()
             };
             self.push(list, &row.key, seen);
+        }
+    }
+
+    /// Presents under each entry the box its content is drawn in, as a `panel`. A GTK row is a
+    /// `list item` with such a box inside, which a scenario aims at to check the row's content
+    /// is shown (`rename_visibility/committed-rename-stays-visible`, line 14). A Rune row is one
+    /// element that draws its content in its own box, so the panel's box is the row's: read,
+    /// not guessed (slice decision 20).
+    fn add_row_panels(&mut self) {
+        let rows: Vec<(usize, Rect)> = (0..self.nodes.len())
+            .filter(|index| self.nodes[*index].mark == Some(Mark::Entry))
+            .filter_map(|index| Some((index, self.nodes[index].bounds?)))
+            .collect();
+        for (row, bounds) in rows {
+            let panel = Seen {
+                role: PANEL.to_owned(),
+                bounds: Some(bounds),
+                ..Seen::default()
+            };
+            self.push(row, "@panel", panel);
         }
     }
 
