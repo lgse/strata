@@ -867,7 +867,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `location v1`'s seed `0x7`, shrunk to 5 steps, confirmed 3 of 3, the same in
   24 of 24 GTK replays; with `location v2`'s seeds `0x7` and `0xd`, in
   `tests/qa/fuzz/corpus/location/`.
-- **State:** fixed by [A5](packages/A5.md)'s #NNNN: the bar keeps the text Enter opened
+- **State:** fixed by [A5](packages/A5.md)'s [#2383](https://github.com/lgse/strata/pull/2383): the bar keeps the text Enter opened
   (`Bar::typed`, `crates/strata-app/src/location/`) for the next Ctrl+L, and forgets it as
   GTK's entry does: when the columns are truncated, added to or relocated, when the view
   switches, and when an edit is cancelled; a location refused at once is not kept. A hosted
