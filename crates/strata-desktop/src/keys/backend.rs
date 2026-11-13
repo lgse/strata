@@ -6,8 +6,8 @@
 //! The GTK application installs a backend that asks GDK and GTK, so everything it reads,
 //! writes, labels and matches is what it always was. The Rune interface installs
 //! [`Table`](super::Table), which answers for the keys Strata declares and needs no library;
-//! a backend that asks `xkbcommon` for the rest, corrected to GDK's answers, is to sit on
-//! it. The seam is process-wide, set once at start-up, and exists only while there are two
+//! `Xkb`, behind the `xkb-keys` feature, sits on it and asks libxkbcommon for the rest,
+//! corrected to GDK's answers. The seam is process-wide, set once at start-up, and exists only while there are two
 //! interfaces: it goes when GTK does.
 //!
 //! One more answer is installed with it, because it too is an interface's own: which

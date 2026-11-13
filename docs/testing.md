@@ -617,6 +617,84 @@ the runner sends it the manifest's layout as a `keymap` request of its own, and
 the application reads key names by their US positions under that layout itself
 ("The Rune target and the parity ledger" below).
 
+### The key lookups and the test image
+
+The GTK application asks GDK what a key's name, character and case are. The Rune
+interface's key library, `strata_desktop::keys::Xkb`, asks its own table and then
+libxkbcommon, and corrects the library to GDK's answers by rules and exception
+tables (`crates/strata-desktop/src/keys/xkb/`). Two tests hold that to GDK, and
+both are tied to the libraries of the pinned test image:
+
+- **`tests/key_lookups.rs`** compares `Xkb` with GDK for every legacy keysym,
+  every direct-Unicode keysym, every vendor's keys and `VoidSymbol`: the name
+  written, the name read (every name either library writes and the names in the
+  installed `xkbcommon-keysyms.h`, each without `XF86`, with it and with it
+  twice, and the numeric forms GDK refuses), the character a key types, the key
+  of a character, and both cases. It needs no display and takes about fifteen
+  seconds. A difference is written to `key-lookups/<lookup>.txt` under the
+  test's target directory (`CARGO_TARGET_TMPDIR`), as the table of
+  `xkb/tables.rs` it belongs in and the row that table would hold, with GDK's
+  answer in it.
+- **`ui::keys::tests::table`** holds `keys::Table`, which answers for the keys the
+  code declares, to GDK, the three names GDK writes by another X name among them.
+
+**The comparison tolerates nothing, wherever it runs.** A row that is missing,
+and a row that is there and no longer true, both fail it. It also fails when it
+cannot read the names of `/usr/include/xkbcommon/xkbcommon-keysyms.h`: the names
+libxkbcommon reads and never writes come from that header alone, and without them
+the rows that refuse those names are checked by nothing.
+
+**Four things outside the repository decide its answers,** and the tables are
+exact for the test image's:
+
+- **GTK**, whose GDK names keys, and **GLib**, whose Unicode tables give GDK a
+  letter's other case. The image's GTK is checked by version in
+  `tests/container/Dockerfile`.
+- **libxkbcommon**, which GTK brings into the image as a dependency. The image
+  names no version of it: the dated package snapshot does
+  (`STRATA_TEST_ARCH_SNAPSHOT` in `tests/container/Dockerfile`). The image must
+  carry the library and its development files for the build as well: a test
+  build of the GTK application compiles `strata-desktop` with its `xkb-keys`
+  feature, for this comparison, and so links against libxkbcommon, as the `qa`
+  feature's input clients already do. A release build does not: the feature is
+  a dev-dependency's, and the dependency guards hold that.
+- **The Rust toolchain**, whose own Unicode tables give `Xkb` a letter's other
+  case (`char::to_lowercase`). A toolchain that learns a cased letter GLib does
+  not know fails the comparison for that letter's keysym.
+
+So a change of any of the four can fail the comparison, in the image or on a
+developer's machine, and the remedy is the same: the test prints the row; add
+it, in its table's order, or put it in the place of the row there for the same
+key, name or character; and say in the commit which of the four moved. A row is
+never written from a source file, only from what the test printed.
+
+**On a machine whose libraries are not the image's,** set
+`STRATA_KEY_LOOKUPS_TOLERATE_OTHER_LIBRARIES=1` to run it tolerant:
+
+```bash
+STRATA_KEY_LOOKUPS_TOLERATE_OTHER_LIBRARIES=1 \
+  cargo test --locked -p strata --all-features --test key_lookups -- --nocapture
+```
+
+Three classes of difference are then counted and not failed, their counts
+printed (libtest shows them only with `--nocapture`) and their rows written to
+`key-lookups/tolerated-<lookup>.txt`: a key that one library names and the other
+writes as a number, a name that one library reads and the other refuses, and a
+direct-Unicode keysym whose character has another case in only one side's
+Unicode tables. The header may be missing. **A tolerant run checks less:** it
+does not notice a row taken out of the tables of refused names or of keys
+written as numbers, nor a fault that refused every name. It is for telling
+whether a failure on that machine is the machine's libraries; the image's run,
+`./scripts/quality.sh test`, is the one that counts. When the rules were written,
+the host's GTK 4.24 and the image's GTK 4.22 gave the same rows for every
+lookup.
+
+After GTK is deleted nothing checks the rules against GDK: they stay as the
+record of how the 1.x application read and wrote keys. `strata-desktop`'s own
+tests of `Xkb` (`keys/xkb/tests.rs`) need no GDK and stay: a declared key is named
+by the table whatever the library says, a key without a name is written by its
+range and not read back, and the refusals.
+
 ### Scheduling and run costs
 
 `tests/qa.rs` makes every run of every scenario a test of its own, named

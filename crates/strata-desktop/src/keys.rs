@@ -18,6 +18,8 @@ mod key_constants;
 mod label;
 mod parts;
 mod table;
+#[cfg(feature = "xkb-keys")]
+mod xkb;
 
 pub use active::{Active, Fixed, set_active};
 pub use alias::{Context, FALLBACK, rewrite};
@@ -35,6 +37,10 @@ pub use label::{
 };
 pub use parts::{KeyPressParts, Typed};
 pub use table::Table;
+#[cfg(all(feature = "xkb-keys", any(test, feature = "test-support")))]
+pub use xkb::library_name;
+#[cfg(feature = "xkb-keys")]
+pub use xkb::{Xkb, library_in_use};
 
 /// The modifiers shortcuts compare. Locks, AltGr, Hyper and Meta never count.
 pub const SHORTCUT_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
