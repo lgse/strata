@@ -550,7 +550,7 @@ The edits did not move with this package, for three reasons:
   for the owner.
 
 **The Rune interface reads a saved keymap** since B2's pull request
-[#NUMBER](https://github.com/lgse/strata/pull/NUMBER), through `keys::Xkb`'s accelerator reader:
+[#2279](https://github.com/lgse/strata/pull/2279), through `keys::Xkb`'s accelerator reader:
 
 - **The warnings moved with `resolve`,** `report_capital_letters`'s among them: GTK's
   reader takes `G` as plain `g`, without Shift and without a word, and `Xkb`'s does the
