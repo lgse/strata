@@ -159,10 +159,25 @@ impl Viewer {
 
 impl ThumbnailStore {
     /// A new viewer. Drop it with [`ThumbnailStore::drop_viewer`] when its view goes.
+    ///
+    /// It takes the slot of a viewer dropped before, if any, fresh, so the list is never
+    /// longer than the most viewers alive at once: `pop`, `rewant` and the settings walk it,
+    /// and a host that opens and closes views all session (Strata's Columns, a viewer per
+    /// column) would otherwise grow it without end. A dropped viewer's id may so name a new
+    /// viewer: a host forgets an id once it drops it. A late result for the dropped viewer's
+    /// request lands by its ticket, never by viewer: its request was cancelled with the
+    /// viewer unless another viewer still wants the key.
     pub fn viewer(&mut self) -> ViewerId {
         let viewers = &mut self.inner.get_mut().viewers;
-        viewers.push(Some(Viewer::default()));
-        ViewerId((viewers.len() - 1) as u32)
+        let slot = match viewers.iter().position(Option::is_none) {
+            Some(free) => free,
+            None => {
+                viewers.push(None);
+                viewers.len() - 1
+            }
+        };
+        viewers[slot] = Some(Viewer::default());
+        ViewerId(slot as u32)
     }
 
     /// Forgets a viewer: what only it showed is no longer protected or asked for.
