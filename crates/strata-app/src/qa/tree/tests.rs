@@ -33,8 +33,8 @@ fn a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else() {
             { "role": "button", "key": "row-9", "name": "not an entry" },
             { "role": "group", "name": "folder", "children": [
                 { "role": "list-box", "key": "columns-col-1", "children": [
-                    { "role": "list-item", "key": "row-1", "name": "archive" },
-                    { "role": "list-item", "key": "row-2", "name": "pictures" },
+                    { "role": "list-box-option", "key": "row-1", "name": "archive" },
+                    { "role": "list-box-option", "key": "row-2", "name": "pictures" },
                 ] },
             ] },
         ],
@@ -432,7 +432,7 @@ fn an_entry_has_a_panel_with_its_own_box_and_nothing_else_does() {
             { "role": "button", "key": "row-9", "name": "not an entry", "bounds": [0, 0, 20, 20] },
             { "role": "group", "name": "folder", "children": [
                 { "role": "list-box", "key": "columns-col-1", "children": [
-                    { "role": "list-item", "key": "row-1", "name": "archive", "bounds": row },
+                    { "role": "list-box-option", "key": "row-1", "name": "archive", "bounds": row },
                 ] },
             ] },
         ],
@@ -481,7 +481,7 @@ fn a_drawn_icon_is_an_image_under_its_entry_and_under_nothing_else() {
             { "role": "button", "key": "row-9", "name": "not an entry" },
             { "role": "group", "name": "folder", "children": [
                 { "role": "list-box", "key": "columns-col-1", "children": [
-                    { "role": "list-item", "key": "row-1", "name": "archive" },
+                    { "role": "list-box-option", "key": "row-1", "name": "archive" },
                 ] },
             ] },
         ],
