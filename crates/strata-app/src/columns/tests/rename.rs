@@ -507,11 +507,12 @@ fn the_windows_keys_wait_while_the_field_has_the_keyboard() {
 }
 
 /// A name half typed survives the folder being read again under it: a change on disk that the
-/// folder's monitor reports, and then a re-list of the whole column, as the browser's
-/// revalidation does in the background. The field keeps its text, its caret and the keyboard,
-/// and the entry it edits stays under it. GTK holds the browser's re-lists while an edit is
-/// open (`set_freshness_hold` in `src/ui/browser/view_setup.rs`), since its re-list rebinds
-/// the rows an edit leases.
+/// folder's monitor reports, and then a re-list of the whole column by
+/// `Browser::refresh_operation_columns` (`refresh_preserving`, the path the background
+/// revalidation's `refresh_keeping_listing` takes too). The field keeps its text, its caret
+/// and the keyboard, and the entry it edits stays under it. GTK holds the browser's re-lists
+/// while an edit is open (`set_freshness_hold` in `src/ui/browser/view_setup.rs`), since its
+/// re-list rebinds the rows an edit leases.
 #[test]
 fn a_name_half_typed_survives_the_folder_being_read_again() {
     hosted(
