@@ -13,7 +13,7 @@ use crate::{
     shell,
     test_support::{
         PATIENCE, fixture,
-        view::{field, hosted_with, open, press},
+        view::{field, hosted_with, open, open_menu, press, right_click},
     },
 };
 
@@ -119,6 +119,27 @@ fn the_text_size_keys_work_while_a_rename_is_open() {
 
             step(&mut host, '=', 14);
             assert_eq!(field(&host), editing, "the editor after Ctrl+=");
+        },
+    );
+}
+
+/// The keys are read ahead of the window's owners of input, as GTK's `zoom_shortcut` runs
+/// before `input_owner`: with a context menu open, Ctrl+= changes the size and the menu stays.
+#[test]
+fn the_text_size_keys_work_while_a_menu_is_open() {
+    hosted_with(
+        MODULE,
+        "list",
+        String::new(),
+        "text_size::the_text_size_keys_work_while_a_menu_is_open",
+        |mut host| {
+            let folder = fixture();
+            open(&mut host, super::LIST, folder.path());
+            let menu = right_click(&mut host, super::LIST, "readme.md");
+            assert_eq!(menu.as_deref(), Some("readme.md"), "the context menu");
+
+            step(&mut host, '=', 14);
+            assert_eq!(open_menu(&host), menu, "the menu after Ctrl+=");
         },
     );
 }

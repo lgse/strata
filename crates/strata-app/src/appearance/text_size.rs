@@ -4,11 +4,15 @@
 //! `src/ui/window/keyboard.rs`, `TextSizeShortcut::for_shortcut` in
 //! `src/ui/preferences/text_size.rs`):
 //!
-//! - **The keys** are read at the dispatcher's `zoom_shortcut` stage, ahead of every owner of
-//!   input but a modal layer or a popover, so they work while a rename is open: Ctrl+plus and
-//!   Ctrl+= one pixel larger, Ctrl+minus one smaller, Ctrl+0 back to the default. Each is the
+//! - **The keys** are read at the dispatcher's `zoom_shortcut` stage, which runs before
+//!   `input_owner`: they work while a rename, a menu or a modal layer has the keyboard, and
+//!   only a plain popover keeps them (`commands::Holds::Popover`). Ctrl+plus and Ctrl+= make
+//!   the text one pixel larger, Ctrl+minus one smaller, Ctrl+0 the default again. Each is the
 //!   active map's binding with its own modifiers, as `press.is` reads it, so Ctrl+Alt+= is
 //!   the Icons view's tile size and not this.
+//! - **GTK's Ctrl+0 first resets a focused PDF's zoom** (`preview.reset_pdf_zoom`, ahead of
+//!   the text size at the same stage). No preview shows a PDF on this interface yet; whoever
+//!   mounts one registers its reset ahead of `text-reset` (`docs/rune/parity/packages/A15.md`).
 //! - **The size** steps by the shared rule (`strata_desktop::settings::TextSize`): 8 to 48 px,
 //!   13 by default. It is saved at once, and the look follows it (`shell::follow_look`).
 //!
