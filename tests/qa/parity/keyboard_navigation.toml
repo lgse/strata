@@ -110,7 +110,7 @@ package = "A5"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "C6: the location bar's crumbs, at `click` on the `documents` breadcrumb button"
+blocker = "A5: the location bar's crumbs (lgse/strata#2286), at `click` on the `documents` breadcrumb button on line 16; BackSpace after them is ported"
 
 [[run]]
 scenario = "focus-usable-after-view-change"

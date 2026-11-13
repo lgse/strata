@@ -29,7 +29,8 @@
 //! - **A pointer press or a scroll anywhere in the window gives up the naming on GTK**
 //!   (`install_inline_edit_dismissal` in `src/ui/browser/inline_edit.rs`). Parts have no
 //!   pointer hook, so here a click elsewhere during the wait is overridden by the next poll,
-//!   which opens the editor; a hook is a `contract` change.
+//!   which opens the editor; a hook is a `contract` change, which would also let a renamed
+//!   row's reveal yield to a scroll (`rename/shown.rs`).
 //! - **Scrolling the item into view** before the editor opens: the editor shows its row
 //!   when it begins.
 //!
