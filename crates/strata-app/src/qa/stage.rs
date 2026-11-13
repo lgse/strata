@@ -83,17 +83,59 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
     })
 }
 
-/// The keyed, named buttons drawn, as the snapshot presents those the tree leaves out.
-fn drawn_buttons(elements: &[ElementInfo]) -> Vec<DrawnButton> {
-    let shown = |element: &&ElementInfo| !element.exiting && element.role == "button";
-    let button = |element: &ElementInfo| {
+/// What [`drawn_buttons`] reads of one drawn element.
+struct Candidate<'a> {
+    role: &'a str,
+    key: Option<&'a str>,
+    label: Option<&'a str>,
+    rect: [f32; 4],
+    /// The part of `rect` its ancestors' clips leave visible.
+    visible: [f32; 4],
+    inert: bool,
+    exiting: bool,
+}
+
+impl<'a> Candidate<'a> {
+    fn of(element: &'a ElementInfo) -> Self {
+        Self {
+            role: element.role,
+            key: element.key.as_deref(),
+            label: element.label.as_deref(),
+            rect: element.rect,
+            visible: element.visible,
+            inert: element.inert,
+            exiting: element.exiting,
+        }
+    }
+
+    /// A button a user could press: keyed and named, not leaving, not inert, and with some
+    /// of it in view (a crumb scrolled out of its strip is not).
+    fn button(&self) -> Option<DrawnButton> {
+        let [_, _, width, height] = self.visible;
+        let shown = width > 0.0 && height > 0.0;
+        let pressable = self.role == "button" && !self.exiting && !self.inert && shown;
+        if !pressable {
+            return None;
+        }
+        let [x, y, width, height] = self.rect.map(f64::from);
         Some(DrawnButton {
-            key: element.key.clone()?,
-            name: element.label.clone()?,
-            bounds: rect(element),
+            key: self.key?.to_owned(),
+            name: self.label?.to_owned(),
+            bounds: Rect {
+                x,
+                y,
+                width,
+                height,
+            },
         })
-    };
-    elements.iter().filter(shown).filter_map(button).collect()
+    }
+}
+
+/// The keyed, named buttons drawn and in reach, as the snapshot presents those the tree
+/// leaves out.
+fn drawn_buttons(elements: &[ElementInfo]) -> Vec<DrawnButton> {
+    let button = |element| Candidate::of(element).button();
+    elements.iter().filter_map(button).collect()
 }
 
 /// What the snapshot reads beside the accessibility tree.
@@ -187,3 +229,6 @@ impl Stage {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -53,9 +53,8 @@ fn a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else() {
     let drawn = Drawn {
         view: Some(COLUMNS),
         lists: vec!["columns-col-1".to_owned()],
-        columns: Vec::new(),
         labels: labels.to_vec(),
-        buttons: Vec::new(),
+        ..Drawn::default()
     };
     let snapshot = Snapshot::read(&tree, &drawn);
 
@@ -112,8 +111,7 @@ fn drawn_folder() -> Drawn {
         view: Some(COLUMNS),
         lists: vec![column.list.clone()],
         columns: vec![column],
-        labels: Vec::new(),
-        buttons: Vec::new(),
+        ..Drawn::default()
     }
 }
 
@@ -195,9 +193,7 @@ fn entries_of(tree: &serde_json::Value, list: &str) -> Vec<String> {
     let drawn = Drawn {
         view: Some(LIST),
         lists: vec![list.to_owned()],
-        columns: Vec::new(),
-        labels: Vec::new(),
-        buttons: Vec::new(),
+        ..Drawn::default()
     };
     let snapshot = Snapshot::read(tree, &drawn);
     (0..)
@@ -242,8 +238,8 @@ fn a_groups_header_is_not_an_entry() {
 
 /// `keyboard_navigation/back-history-dropdown` lets go of a press held on Back after its
 /// history opened, when Rune's tree holds the menu alone: the button is presented from what
-/// is drawn, once, and a button the tree has is not presented again. With no modal open
-/// nothing is added.
+/// is drawn, once, and a button the tree has is not presented again. With no menu open,
+/// a dialog's modal included, nothing is added.
 #[test]
 fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
     let tree = json!({
@@ -294,4 +290,14 @@ fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
         .map(|seen| seen.name.as_str())
         .collect();
     assert_eq!(named, ["Search"], "nothing is added with no modal open");
+
+    let dialog = json!({
+        "role": "window",
+        "children": [{ "role": "dialog", "name": "Unable to open location", "states": ["modal"] }],
+    });
+    let snapshot = Snapshot::read(&dialog, &drawn);
+    let behind = (0..)
+        .map_while(|index| snapshot.at(index))
+        .any(|seen| seen.role() == "button");
+    assert!(!behind, "a dialog's modal hides the window, as GTK's does");
 }

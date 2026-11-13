@@ -77,7 +77,12 @@ pub(super) struct Shape {
 /// only the menu, where GTK's keeps the window's buttons, and a scenario presses one with
 /// a menu open (`keyboard_navigation/back-history-dropdown` lets go of a press held on
 /// Back after its history opened). The snapshot then presents each keyed, named button the
-/// tree left out, from what is drawn.
+/// tree left out, from what is drawn, if any of it is in view and it is not inert.
+///
+/// It is presented with nothing else: it reads `sensitive` whatever it is (Rune's drawn
+/// elements say nothing of being disabled), it is not focusable and offers no click action,
+/// so a run that asserts a state of a button behind a menu needs an `a11y` twin. It hangs
+/// off the window's root: a target `within` a pane misses it, and `nth: -1` finds it first.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct DrawnButton {
     pub(super) key: String,
@@ -222,10 +227,12 @@ impl Snapshot {
         snapshot
     }
 
-    /// Presents a button a modal menu keeps out of the tree, under the window.
+    /// Presents a button an open menu keeps out of the tree, under the window. A dialog's
+    /// modal does not: GTK's dialogs hide the window too.
     fn add_hidden_button(&mut self, button: &DrawnButton) {
         let listed = |seen: &Seen| seen.key.as_deref() == Some(button.key.as_str());
-        let modal = self.nodes.iter().any(|seen| seen.has_state("modal"));
+        let menu = |seen: &Seen| seen.role == "menu" && seen.has_state("modal");
+        let modal = self.nodes.iter().any(menu);
         if !modal || self.nodes.iter().any(listed) {
             return;
         }
