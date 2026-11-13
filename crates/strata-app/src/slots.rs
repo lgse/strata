@@ -189,6 +189,7 @@
 use rune::{Cx, El, Tx};
 use strata_components::{contract::EntryId, rename::Polled};
 use strata_desktop::settings::Preferences;
+use strata_fs::app::VisibleDepths;
 
 use crate::{
     App,
@@ -268,6 +269,11 @@ pub(crate) struct View<S: 'static> {
     /// view alone). The one source of it: the shell tells the browser
     /// (`Browser::set_type_grouping`), and a view's pane follows the browser.
     pub(crate) supports_type_grouping: bool,
+    /// Which of the browser's columns its background revalidation rechecks while the view is
+    /// shown: every column for Columns, the active one for a view that shows one folder, as
+    /// GTK's `enter_mode` sets it (`src/ui/browser/view_state.rs`). The shell tells the
+    /// browser at start and on each switch (`Browser::set_freshness`).
+    pub(crate) rechecks: VisibleDepths,
     /// Applies one change its listener read out of the browser ([`crate::events`]), as the
     /// listener's queued update does. The view that becomes shown is rebuilt through it from
     /// [`crate::events::replay`]. True when the view has to run.

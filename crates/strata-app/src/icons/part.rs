@@ -3,6 +3,7 @@
 //! The Icons view as a part of the window: the second of the view slot.
 
 use rune::Tx;
+use strata_fs::app::VisibleDepths;
 
 use strata_components::{contract::EntryId, icons_grid::IconsGrid, thumbnails::ThumbnailStore};
 
@@ -72,6 +73,7 @@ impl Part for Icons {
         shows,
         focus: VIEW,
         supports_type_grouping: false,
+        rechecks: VisibleDepths::Active,
         apply: single::apply::<Self>,
         returns: None,
         pointer_at: None,

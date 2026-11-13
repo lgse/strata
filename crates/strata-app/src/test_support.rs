@@ -11,6 +11,7 @@ use std::{
 
 use rune::{KeyEvent, Mods, PhysicalInput};
 use strata_components::rename::Polled;
+use strata_fs::app::VisibleDepths;
 
 #[cfg(feature = "qa")]
 use crate::slots::Probe;
@@ -116,6 +117,7 @@ pub(crate) fn idle_view<S>(
         shows,
         focus: name,
         supports_type_grouping: false,
+        rechecks: VisibleDepths::All,
         apply: |_, _, _| false,
         returns: None,
         pointer_at: None,
