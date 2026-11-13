@@ -92,7 +92,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         commands::in_view(collection)
     })
     .pointer_settings(|app: &App| PointerSettings::default().modes(app.columns.clicks))
-    // GTK's column header actions; only the Trash's Empty Trash is on Rune yet.
-    .header_actions(|app: &App, cx| pane_header::empty_trash::column_button(app, &cx))
+    // GTK's column header actions, in its order (`pane_header::actions`).
+    .header_actions(|app: &App, cx| pane_header::actions::column(app, &cx))
     .on_intent(intents::heard)
 }
