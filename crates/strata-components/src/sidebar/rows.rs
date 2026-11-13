@@ -157,7 +157,12 @@ fn activate<S: 'static>(ctx: &Ctx<'_, S>, el: El, item: ItemId, new_tab: bool) -
     let menu_emit = ctx.emit.clone();
     let press_item = item.clone();
     let key_item = item.clone();
+    let laid_out = item.clone();
     let mut el = el
+        .on_layout_tx(move |s: &mut S, rect, tx: &mut Tx| {
+            access(s).boxes.insert(laid_out.clone(), rect);
+            tx.live_only();
+        })
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
             // The press on the release that ended this row's drag (U21) opens nothing.
             if access(s).dropped.take().as_ref() == Some(&press_item) {
