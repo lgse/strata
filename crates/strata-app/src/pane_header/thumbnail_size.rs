@@ -122,40 +122,16 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) {
     let kit = &look.kit;
     let labels = &state.labels;
     let value = format!("{} px", state.slider.value().round());
-    let heading = row()
-        .w_full()
-        .gap(look.space.lg)
-        .items_center()
-        .child(
-            text(labels.title.clone())
-                .font(kit.ty.ui_medium)
-                .color(kit.c.text_base)
-                .grow(1.0),
-        )
-        .child(text(value.clone()).font(kit.ty.ui).color(kit.c.text_muted));
     let slider = Slider::new(
         SLIDER,
         |app: &App| &app.pane_header.thumbnails.slider,
         |app: &mut App| &mut app.pane_header.thumbnails.slider,
     )
     .label(labels.title.clone())
-    .value_text(value)
+    .value_text(value.clone())
     .wheel(Some(1.0))
     .on_change(slid)
     .build(app, look);
-    let extremes = row()
-        .w_full()
-        .child(
-            text(labels.small.clone())
-                .font(kit.ty.small)
-                .color(kit.c.text_muted)
-                .grow(1.0),
-        )
-        .child(
-            text(labels.large.clone())
-                .font(kit.ty.small)
-                .color(kit.c.text_muted),
-        );
     let mut body = col()
         .key("icons-thumbnail-popover")
         .role("dialog")
@@ -163,9 +139,9 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) {
         .w(220.0 + 2.0 * look.space.lg)
         .padding(look.space.lg)
         .gap(look.space.md)
-        .child(heading)
+        .child(heading(app, value))
         .child(slider)
-        .child(extremes);
+        .child(extremes(app));
     if size::differs_from_default(app) {
         body = body.child(actions(app, labels));
     }
@@ -189,6 +165,39 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) {
         Placement::BottomEnd,
         look.space.xs,
     ));
+}
+
+/// "Thumbnail size" with the size in px beside it.
+fn heading(app: &App, value: String) -> El {
+    let look = &app.look;
+    let kit = &look.kit;
+    let title = &app.pane_header.thumbnails.labels.title;
+    row()
+        .w_full()
+        .gap(look.space.lg)
+        .items_center()
+        .child(
+            text(title.clone())
+                .font(kit.ty.ui_medium)
+                .color(kit.c.text_base)
+                .grow(1.0),
+        )
+        .child(text(value).font(kit.ty.ui).color(kit.c.text_muted))
+}
+
+/// "Small" and "Large" under the slider's ends.
+fn extremes(app: &App) -> El {
+    let kit = &app.look.kit;
+    let labels = &app.pane_header.thumbnails.labels;
+    let end = |label: &str| {
+        text(label.to_owned())
+            .font(kit.ty.small)
+            .color(kit.c.text_muted)
+    };
+    row()
+        .w_full()
+        .child(end(&labels.small).grow(1.0))
+        .child(end(&labels.large))
 }
 
 /// "Make this the default size" and "Reset to default size", each closing the popover.
