@@ -2,36 +2,54 @@
 
 //! A view's side of thumbnails: its viewer in the window's store, the requests it has sent
 //! to the pool, and the way their results come back. Every view that draws thumbnails keeps
-//! one, and finds the file of an entry its own way ([`Viewer::pump`]'s `resolve`).
+//! one, and says where an entry is in the browser its own way ([`Locate`]).
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use rune::Tx;
 use strata_components::{
     contract::EntryId,
     thumbnails::{Outcome, Request, ThumbnailStore, Ticket, ViewerId},
 };
-use strata_preview::sandbox::Cancellation;
+use strata_core::model::{Location, MetadataValue};
+use strata_fs::services::MetadataUpdate;
+use strata_preview::sandbox::{Cancellation, metadata::MediaMetadata};
 
-use super::{Job, room, submit};
+use super::{Job, Made, room, submit};
 use crate::{App, slots::Later};
 
 /// What a view's own state and the window's store are, borrowed together.
 pub(crate) type Parts = fn(&mut App) -> (&mut Viewer, &mut ThumbnailStore);
+
+/// Where entry `id` of what the view shows is in the browser: its column's depth and its
+/// position there.
+pub(crate) type Locate = fn(&App, EntryId) -> Option<(usize, usize)>;
 
 pub(crate) struct Viewer {
     id: Option<ViewerId>,
     /// The requests out, each with the switch that stops its render.
     pub(super) pending: HashMap<Ticket, Cancellation>,
     later: Later<App>,
+    locate: Locate,
+}
+
+/// A request sent to the pool: what its result is for.
+struct Sent {
+    ticket: Ticket,
+    entry: EntryId,
+    path: PathBuf,
 }
 
 impl Viewer {
-    pub(crate) fn new(later: Later<App>) -> Self {
+    pub(crate) fn new(later: Later<App>, locate: Locate) -> Self {
         Self {
             id: None,
             pending: HashMap::new(),
             later,
+            locate,
         }
     }
 
@@ -40,21 +58,15 @@ impl Viewer {
         self.id
     }
 
-    /// Stops what the store no longer wants, and asks for what the pool has room for:
-    /// `resolve` finds an entry's file, or nothing, which fails the request. Call it from the
-    /// view's `poll`.
-    pub(crate) fn pump(
-        app: &mut App,
-        parts: Parts,
-        resolve: impl Fn(&App, EntryId) -> Option<PathBuf>,
-        now: f64,
-    ) {
-        let requests = {
+    /// Stops what the store no longer wants, and asks for what the pool has room for. An
+    /// entry with no local file fails its request. Call it from the view's `poll`.
+    pub(crate) fn pump(app: &mut App, parts: Parts, now: f64) {
+        let (requests, locate) = {
             let (viewer, store) = parts(app);
-            viewer.take_requests(store, now)
+            (viewer.take_requests(store, now), viewer.locate)
         };
         for request in requests {
-            match resolve(app, request.entry) {
+            match file(app, locate, request.entry) {
                 Some(path) => {
                     let (viewer, _) = parts(app);
                     viewer.send(parts, request, path);
@@ -80,19 +92,28 @@ impl Viewer {
     }
 
     fn send(&mut self, parts: Parts, request: Request, path: PathBuf) {
-        let ticket = request.ticket;
+        let sent = Sent {
+            ticket: request.ticket,
+            entry: request.entry,
+            path: path.clone(),
+        };
         let cancellation = Cancellation::default();
-        self.pending.insert(ticket, cancellation.clone());
+        self.pending.insert(sent.ticket, cancellation.clone());
         let later = self.later.clone();
         submit(Job {
             path,
             edge: request.step.px(),
             cancellation,
-            done: Box::new(move |outcome| {
+            done: Box::new(move |made: Made| {
                 later.then(move |app: &mut App, tx: &mut Tx| {
                     let (viewer, store) = parts(app);
-                    viewer.finish(store, (ticket, outcome), tx.clock());
-                    // The image lands in its handle: nothing the view reads changed.
+                    let locate = viewer.locate;
+                    let landed = viewer.finish(store, (sent.ticket, made.outcome), tx.clock());
+                    if let (true, Some(metadata)) = (landed, made.metadata) {
+                        publish(app, locate, &sent, &metadata);
+                    }
+                    // The image lands in its handle, and published metadata comes back as
+                    // the browser's event: nothing the view reads changed here.
                     false
                 });
             }),
@@ -112,5 +133,50 @@ impl Viewer {
         }
         let _ = store.complete(ticket, outcome, now);
         true
+    }
+}
+
+/// The local file of entry `id`, through the browser.
+fn file(app: &App, locate: Locate, id: EntryId) -> Option<PathBuf> {
+    let (depth, position) = locate(app, id)?;
+    let entry = app.browser.entry_at(depth, position)?;
+    entry.location.native_path().map(Path::to_path_buf)
+}
+
+/// Hands the browser what the worker read of the file while it rendered, if the entry is
+/// still the file it rendered: GTK's `publish_thumbnail_metadata`
+/// (`src/ui/thumbnail/viewport.rs`). The browser announces it as a metadata fill.
+fn publish(app: &App, locate: Locate, sent: &Sent, metadata: &MediaMetadata) {
+    let Some((depth, position)) = locate(app, sent.entry) else {
+        return;
+    };
+    let Some(entry) = app.browser.entry_at(depth, position) else {
+        return;
+    };
+    if entry.location.native_path() != Some(sent.path.as_path()) {
+        return;
+    }
+    let update = update_of(entry.location, metadata);
+    app.browser
+        .apply_thumbnail_metadata(depth, position, update);
+}
+
+/// The fill a render's metadata makes: the dimensions and the length, rounded to a second;
+/// nothing else is known by it.
+fn update_of(location: Location, metadata: &MediaMetadata) -> MetadataUpdate {
+    MetadataUpdate {
+        location,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
+        mode: MetadataValue::Unknown,
+        image_dimensions: metadata
+            .dimensions
+            .map_or(MetadataValue::Unknown, MetadataValue::Known),
+        child_count: MetadataValue::Unknown,
+        duration_seconds: metadata.duration.map_or(MetadataValue::Unknown, |seconds| {
+            MetadataValue::Known(seconds.round() as u64)
+        }),
+        listable: MetadataValue::Unknown,
     }
 }

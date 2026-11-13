@@ -57,6 +57,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1 item",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Folder",
                               "key": "row-1",
                               "name": "Holidays",
@@ -66,6 +76,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "14 items",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Folder",
                               "key": "row-2",
@@ -77,6 +97,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "21 items",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Folder",
                               "key": "row-3",
                               "name": "Wallpapers",
@@ -86,6 +116,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "28 items",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Folder",
                               "key": "row-4",
@@ -97,6 +137,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "No items",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Folder",
                               "key": "row-5",
                               "name": "Scans",
@@ -106,6 +156,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1 item",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Folder",
                               "key": "row-6",
@@ -117,6 +177,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2240×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-7",
                               "name": "beach.jpg",
@@ -126,6 +196,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×900",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-8",
@@ -149,6 +229,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×180",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-9",
                               "name": "cat.png",
@@ -158,6 +248,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1600×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-10",
@@ -169,6 +269,17 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "2026-10-07-release-candidate-build-final-v3-with-a-very-long-tail.tar.gz",
+                                  "key": "details",
+                                  "name": "3.8 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Archive",
                               "key": "row-11",
                               "name": "2026-10-07-release-candidate-build-final-v3-with-a-very-long-tail.tar.gz",
@@ -178,6 +289,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "4:12",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Video",
                               "key": "row-12",
@@ -189,6 +310,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2:13",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Audio",
                               "key": "row-13",
                               "name": "song.flac",
@@ -198,6 +329,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.1 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Text document",
                               "key": "row-14",
@@ -209,6 +350,17 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "Quarterly report for the infrastructure committee, final revision.pdf",
+                                  "key": "details",
+                                  "name": "1.5 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "File",
                               "key": "row-15",
                               "name": "Quarterly report for the infrastructure committee, final revision.pdf",
@@ -218,6 +370,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "972.2 kB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Text document",
                               "key": "row-16",
@@ -241,6 +403,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-100",
                               "name": "photo-001.jpg",
@@ -250,6 +422,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×900",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-101",
@@ -261,6 +443,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "4:42",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Video",
                               "key": "row-102",
                               "name": "photo-003.mkv",
@@ -270,6 +462,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "1.9 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-103",
@@ -281,6 +483,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×900",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-104",
                               "name": "photo-005.jpg",
@@ -290,6 +502,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×180",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-105",
@@ -301,6 +523,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "5:46",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Video",
                               "key": "row-106",
                               "name": "photo-007.mkv",
@@ -310,6 +542,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "4.6 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-107",
@@ -333,6 +575,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×180",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-108",
                               "name": "photo-009.jpg",
@@ -342,6 +594,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-109",
@@ -356,6 +618,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "6:50",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Video",
                               "key": "row-110",
                               "name": "photo-011.mkv",
@@ -365,6 +637,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.4 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-111",
@@ -376,6 +658,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×540",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-112",
                               "name": "photo-013.jpg",
@@ -385,6 +677,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×900",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-113",
@@ -396,6 +698,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "7:54",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Video",
                               "key": "row-114",
                               "name": "photo-015.mkv",
@@ -405,6 +717,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "112.5 kB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-115",
@@ -428,6 +750,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×900",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-116",
                               "name": "photo-017.jpg",
@@ -437,6 +769,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×180",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-117",
@@ -448,6 +790,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "8:58",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Video",
                               "key": "row-118",
                               "name": "photo-019.mkv",
@@ -457,6 +809,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.9 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-119",
@@ -468,6 +830,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "320×180",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Image",
                               "key": "row-120",
                               "name": "photo-021.jpg",
@@ -477,6 +849,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "960×540",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Image",
                               "key": "row-121",
@@ -488,6 +870,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "9:02",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Video",
                               "key": "row-122",
                               "name": "photo-023.mkv",
@@ -497,6 +889,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "598.6 kB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-123",

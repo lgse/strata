@@ -56,6 +56,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "728.3 kB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Text document",
                               "key": "row-300",
                               "name": "a",
@@ -65,6 +75,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "164.1 kB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Text document",
                               "key": "row-301",
@@ -76,6 +96,16 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "4.6 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Text document",
                               "key": "row-302",
                               "name": "two words.txt",
@@ -85,6 +115,17 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "a-name-without-any-spaces-that-wraps-inside-its-word-and-is-cut.tar.gz",
+                                  "key": "details",
+                                  "name": "4.0 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "Archive",
                               "key": "row-303",
@@ -96,6 +137,17 @@
                               "actions": [
                                 "scroll-into-view"
                               ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "description": "Meeting notes from the planning session about the next release.odt",
+                                  "key": "details",
+                                  "name": "3.5 MB",
+                                  "role": "label"
+                                }
+                              ],
                               "description": "Text document",
                               "key": "row-304",
                               "name": "Meeting notes from the planning session about the next release.odt",
@@ -105,6 +157,16 @@
                             {
                               "actions": [
                                 "scroll-into-view"
+                              ],
+                              "children": [
+                                {
+                                  "actions": [
+                                    "scroll-into-view"
+                                  ],
+                                  "key": "details",
+                                  "name": "2.9 MB",
+                                  "role": "label"
+                                }
                               ],
                               "description": "File",
                               "key": "row-305",

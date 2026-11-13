@@ -4,8 +4,6 @@
 
 use rune::Tx;
 
-use std::path::{Path, PathBuf};
-
 use strata_components::{contract::EntryId, thumbnails::ThumbnailStore};
 
 use super::{Icons, VIEW, view};
@@ -23,13 +21,20 @@ fn thumbnail_parts(app: &mut App) -> (&mut Viewer, &mut ThumbnailStore) {
     (&mut app.icons.thumbs, app.window.thumbnails_mut())
 }
 
-/// The file of entry `id` of the folder shown, through the browser.
-fn entry_file(app: &App, id: EntryId) -> Option<PathBuf> {
+/// Where entry `id` of the folder shown is in the browser.
+pub(super) fn locate(app: &App, id: EntryId) -> Option<(usize, usize)> {
     let pane = &app.icons.single.pane;
     let depth = pane.depth()?;
-    let position = pane.position(depth, id)?;
-    let entry = app.browser.entry_at(depth, position)?;
-    entry.location.native_path().map(Path::to_path_buf)
+    Some((depth, pane.position(depth, id)?))
+}
+
+/// Asks for the fills the rows near the viewport lack, once a poll.
+fn fill(app: &mut App) {
+    let icons = &mut app.icons;
+    let pane = &icons.single.pane;
+    if let (Some(depth), Some(listing)) = (pane.depth(), pane.listing()) {
+        icons.fills.request(&app.browser, depth, listing);
+    }
 }
 
 /// Whether the saved `browser_mode` names this view: `icons`, or `grid`, which the GTK
@@ -90,7 +95,8 @@ impl Part for Icons {
         let grid = view::grid();
         let ticked = grid.collection(app).tick(app, tx);
         grid.poll(app, tx);
-        Viewer::pump(app, thumbnail_parts, entry_file, clock);
+        Viewer::pump(app, thumbnail_parts, clock);
+        fill(app);
         ticked | said
     }
 }

@@ -28,7 +28,7 @@ fn red(width: u32) -> Outcome {
 #[test]
 fn a_result_for_a_folder_left_is_dropped_without_touching_the_store() {
     let inbox = Inbox::new();
-    let mut viewer = Viewer::new(inbox.later());
+    let mut viewer = Viewer::new(inbox.later(), |_, _| None);
     let mut store = ThumbnailStore::new(Settings::default());
     let shown = photo();
     let step = Step::new(64);
@@ -79,7 +79,7 @@ fn a_render_is_decoded_down_to_its_step() {
 #[test]
 fn a_failed_render_leaves_the_icon_and_is_not_asked_again() {
     let inbox = Inbox::new();
-    let mut viewer = Viewer::new(inbox.later());
+    let mut viewer = Viewer::new(inbox.later(), |_, _| None);
     let mut store = ThumbnailStore::new(Settings::default());
     let _ = viewer.take_requests(&mut store, 0.0);
     let id = viewer.id().expect("a viewer");
@@ -87,7 +87,9 @@ fn a_failed_render_leaves_the_icon_and_is_not_asked_again() {
     let ticket = viewer.take_requests(&mut store, 0.0)[0].ticket;
     viewer.pending.insert(ticket, Cancellation::default());
 
-    let outcome = made(Err("Browser input changed while rendering".into()), 64);
+    let made = made(Err("Browser input changed while rendering".into()), 64);
+    assert!(made.metadata.is_none());
+    let outcome = made.outcome;
     assert_eq!(outcome, Outcome::Failed);
     assert!(viewer.finish(&mut store, (ticket, outcome), 0.0));
 
