@@ -74,17 +74,15 @@ blocker = "C1c: 10xer mode (`tenxer_mode`), from the first `j`. Then rune: a pla
 scenario = "back-history-dropdown"
 run = "icons"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A5: the pane header's Back button, at `drag` on line 13 (placed with A5 by the coordinator, 2026-11-12)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "back-history-dropdown"
 run = "list"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A5: the pane header's Back button, at `drag` on line 13 (placed with A5 by the coordinator, 2026-11-12)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "back-then-file-keys-target-focused-folder"
