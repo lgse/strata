@@ -23,7 +23,7 @@ run = "columns-root-item"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "the Columns column header's own actions, `Refresh (F5)` among them, which no package has placed (line 29)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -31,7 +31,7 @@ run = "columns-root-background"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "the Columns column header's own actions, `Refresh (F5)` among them, which no package has placed (line 29)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -39,7 +39,7 @@ run = "columns-nested-item"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "the Columns column header's own actions, `Refresh (F5)` among them, which no package has placed (line 29)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"
@@ -47,7 +47,7 @@ run = "columns-nested-background"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "the Columns column header's own actions, `Refresh (F5)` among them, which no package has placed (line 29)"
+blocker = "A5: the Columns column header's own actions, `Refresh (F5)` among them, after path completion (line 29)"
 
 [[run]]
 scenario = "context-menu-keeps-column-target"

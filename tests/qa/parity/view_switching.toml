@@ -44,7 +44,7 @@ run = "columns"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "H3: a List heading's parent is the heading strip, where GTK's is the heading's cell, so the drag at its edge (line 8) misses the column's edge; C4's tree or the QA backend's (line 9)"
+blocker = "A8: a List heading's parent is the heading strip, where GTK's is the heading's cell, so the drag at its edge (line 8) misses the column's edge: C4's tree or the QA backend's locator (line 9)"
 
 [[run]]
 scenario = "returning-to-columns-follows-selection"
