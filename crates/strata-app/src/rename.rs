@@ -43,7 +43,7 @@ use strata_fs::{
 use crate::{
     App,
     commands::{Action, Call, Holds, Keys, On, Outcome, Stage},
-    shell,
+    new_item, shell,
     slots::{Frame, Listener, Part, Place, Setup, View},
 };
 
@@ -267,11 +267,13 @@ fn open(app: &mut App, depth: usize, entry: FileEntry, naming: Naming, tx: &mut 
 }
 
 /// F2 and Ctrl+R: the focused item, or the folder the keyboard has entered. False when no
-/// editor opened.
+/// editor opened. A new item still waiting for its editor gives way, whether or not one
+/// opens (`begin_rename` in `src/ui/browser/inline_edit.rs`).
 fn begin_focused(app: &mut App, tx: &mut Tx) -> bool {
     if app.rename.pending() {
         return false;
     }
+    new_item::cancel(app);
     match app.browser.rename_item() {
         Some((depth, _, entry)) => {
             let naming = naming_of(&entry);
@@ -281,11 +283,13 @@ fn begin_focused(app: &mut App, tx: &mut Tx) -> bool {
     }
 }
 
-/// The view's slow second click and the menu's Rename row: entry `id` of column `depth`.
+/// The view's slow second click and the menu's Rename row: entry `id` of column `depth`. A
+/// new item still waiting for its editor gives way, as to F2.
 pub(crate) fn begin_on(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
     if app.rename.pending() {
         return;
     }
+    new_item::cancel(app);
     let position = host(app).and_then(|view| (view.rows.position)(app, (depth, id)));
     if let Some(entry) = position.and_then(|position| app.browser.entry_at(depth, position)) {
         let naming = naming_of(&entry);

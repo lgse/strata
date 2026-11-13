@@ -4,7 +4,7 @@
 //! item is made, the editor opens on it, and the name typed there is the one it keeps. What
 //! `undo-created-folder-trashes` and `new-item-named-with-path` do, by the key and the row.
 
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
@@ -148,6 +148,42 @@ fn a_new_file_named_with_a_trailing_slash_becomes_a_folder() {
             wait_on_disk(&mut host, &docs, true);
             assert!(docs.is_dir());
             assert!(!folder.path().join("new file").exists());
+        },
+    );
+}
+
+/// `begin_rename` gives up a naming that waits: a rename of another entry asked before the
+/// new folder's editor opens keeps its editor and what is typed in it, and the folder keeps
+/// its free name.
+#[test]
+fn a_rename_begun_while_a_new_item_waits_gives_the_naming_up() {
+    hosted(
+        MODULE,
+        "a_rename_begun_while_a_new_item_waits_gives_the_naming_up",
+        |mut host| {
+            let folder = listed(&mut host);
+            // Listed above where the new folder lands, so its row stays where it is.
+            let archive = Location::local(folder.path().join("archive"));
+            host.runtime().update(|app: &mut App, tx| {
+                assert_eq!(run(app, "new-folder", On::Focus, tx), Outcome::Ran);
+                let row = On::Row((0, crate::shell::id_of(app, &archive)));
+                assert_eq!(run(app, "rename", row, tx), Outcome::Ran);
+            });
+            while host.turn() {}
+            wait_for_field(&mut host, "archive");
+            key(&mut host, Key::End, Mods::default());
+            type_text(&mut host, ".kept");
+
+            let new_folder = folder.path().join("new folder");
+            wait_on_disk(&mut host, &new_folder, true);
+            // Long enough for a naming that still waited to open its editor.
+            host.run_until(Duration::from_millis(500), |_| false);
+            assert_eq!(focused_field(&host).as_deref(), Some("archive.kept"));
+            assert!(host.app().new_item.pending.is_none());
+
+            key(&mut host, Key::Enter, Mods::default());
+            wait_on_disk(&mut host, &folder.path().join("archive.kept"), true);
+            assert!(new_folder.is_dir());
         },
     );
 }

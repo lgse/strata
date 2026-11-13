@@ -19,13 +19,24 @@
 //!
 //! - **New Folder with Selection** (Ctrl+Alt+N): the folder takes the selection in by a move,
 //!   which is a transfer, and `new-folder-with-selection-groups/columns` waits on finding
-//!   lgse/strata#2162 and an owner ruling. The key is not bound yet.
+//!   lgse/strata#2162 and an owner ruling. The key is not bound yet, so GTK's fallback to a
+//!   plain New Folder when nothing is selected (`file_commands`) is missing too.
 //! - **Clearing the column's filter** before the item is made (`clear_filter`): the filter
 //!   bar is A10's.
-//! - **F2 taking over a naming whose editor has not opened yet** (`begin_rename`): F2 opens a
-//!   plain rename then.
+//! - **F2 on the created item itself while it waits** (`begin_rename`): GTK takes the naming
+//!   over and opens the editor with `Naming::NewItem`; here the naming is given up and a plain
+//!   rename opens. F2 or the menu's Rename on any other entry gives the naming up, as on GTK.
+//! - **A pointer press or a scroll anywhere in the window gives up the naming on GTK**
+//!   (`install_inline_edit_dismissal` in `src/ui/browser/inline_edit.rs`). Parts have no
+//!   pointer hook, so here a click elsewhere during the wait is overridden by the next poll,
+//!   which opens the editor; a hook is a `contract` change.
 //! - **Scrolling the item into view** before the editor opens: the editor shows its row
 //!   when it begins.
+//!
+//! The column of Ctrl+Shift+N is the browser's active one. GTK takes the focused column
+//! first, so a resting pointer cannot redirect it (`new_folder_destination_depth`); here the
+//! active column is the one the view's keyboard and selection are in, never the pointer's,
+//! so the two are the same.
 
 use std::time::{Duration, Instant};
 
@@ -146,8 +157,9 @@ fn cancelled(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     }
 }
 
-/// Gives up a naming that waits. False when none did.
-fn cancel(app: &mut App) -> bool {
+/// Gives up a naming that waits (`cancel_new_entry`), as a rename that begins elsewhere
+/// does. False when none did.
+pub(crate) fn cancel(app: &mut App) -> bool {
     let Some(pending) = app.new_item.pending.take() else {
         return false;
     };
