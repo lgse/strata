@@ -364,14 +364,19 @@ sequence only together with the alphabet's version, so the version is part of th
   Rune List `middle_visible`, `visible` and `visible_top` read the horizontal pane. That is
   close enough for the middle-entry note; a `scroll_value` check would read the sideways
   position.
-- **Reach:** of the scenarios that read the viewport, the only Icons one is this run, and none
-  of the List ones is `required`: no required run passes for the wrong reason.
+- **Reach:** of the scenarios that read the viewport, the only Icons one is this run. One List
+  run is `required`, `return-restores-nested-scroll/list` (A2's), whose `middle_visible` note
+  read the sideways strip; its position checks read the entry's own box on screen, not the
+  viewport, so it did not pass for the wrong reason, and it passes on the corrected node too.
+  No `required` Columns run reads the viewport.
 - **State:** fixed by [H3](packages/H3.md)'s first pull request, a `contract` change to the
   engine: a pane's viewport is the scroll pane inside its entry list nearest it, not looking
   inside an entry, and only when there is none the nearest one around it. GTK's lists hold
-  none and read as before; Rune's Icons grid has its viewport, and List reads its rows'
-  vertical viewport instead of the sideways strip. `return-restores-nested-scroll/icons`
-  flips when the coordinator asks.
+  none and read as before; an entry is skipped as the backend lists the container's entries,
+  since a GTK row widget carries no mark of its own. On Rune the Icons grid has its viewport,
+  List reads its rows' vertical viewport instead of C4's sideways strip, and Columns reads
+  each column's own viewport instead of C2's sideways strip, as GTK reads a column's.
+  `return-restores-nested-scroll/icons` flips when the coordinator asks.
 
 ### #2269: a `strata-platform` icon loader test failed once under load
 

@@ -96,9 +96,18 @@ enum Scroller {
     InsideEntry,
 }
 
-/// A pane `home` whose entry `notes` is under scroll panes placed as `scrollers` say, the
-/// outermost first; and those scroll panes, in the same order.
-fn scrolled_listing(fake: &mut Fake, scrollers: &[Scroller]) -> Vec<usize> {
+/// How the toolkit tells an entry's row.
+#[derive(Clone, Copy, Debug)]
+enum Row {
+    /// The row is the node marked as an entry, as on Rune.
+    Marked,
+    /// The row is no marked node and the toolkit lists it as an entry, as GTK's row widget.
+    Listed,
+}
+
+/// A pane `home` whose entry `notes`, a row as `row` says, is under scroll panes placed as
+/// `scrollers` say, the outermost first; and those scroll panes, in the same order.
+fn scrolled_listing(fake: &mut Fake, scrollers: &[Scroller], row: Row) -> Vec<usize> {
     let frame = [0.0, 40.0, 400.0, 560.0];
     let mut panes = Vec::new();
     let mut wrap = |fake: &mut Fake, mut parent: usize, at: Scroller| {
@@ -121,46 +130,74 @@ fn scrolled_listing(fake: &mut Fake, scrollers: &[Scroller]) -> Vec<usize> {
     let list = fake.add(around, list);
     fake.add(list, drawn("label", "Loading", [0.0, 40.0, 400.0, 20.0]));
     let inside = wrap(fake, list, Scroller::InsideList);
-    let entry = Node {
-        mark: Some(Mark::Entry),
-        ..drawn("list item", "notes", [0.0, 40.0, 400.0, 30.0])
+    let entry = drawn("list item", "notes", [0.0, 40.0, 400.0, 30.0]);
+    let entry = match row {
+        Row::Marked => fake.add(
+            inside,
+            Node {
+                mark: Some(Mark::Entry),
+                ..entry
+            },
+        ),
+        Row::Listed => {
+            let entry = fake.add(inside, entry);
+            fake.rows.push(entry);
+            entry
+        }
     };
-    let entry = fake.add(inside, entry);
     wrap(fake, entry, Scroller::InsideEntry);
     panes
 }
 
 #[test]
 fn a_panes_viewport_is_the_scroll_pane_nearest_inside_its_list_else_around_it() {
+    use Row::{Listed, Marked};
     use Scroller::{AroundList, InsideEntry, InsideList};
-    // The scroll panes, outermost first, and which of them is the pane's viewport.
-    let cases: [(&str, &[Scroller], Option<usize>); 6] = [
+    // The scroll panes, outermost first, how the row is told, and which of the panes is the
+    // pane's viewport.
+    let cases: [(&str, &[Scroller], Row, Option<usize>); 8] = [
         (
             "GTK's scrolled window around the list",
             &[AroundList],
+            Listed,
             Some(0),
         ),
-        ("a Rune collection's, inside it", &[InsideList], Some(0)),
+        (
+            "a Rune collection's, inside it",
+            &[InsideList],
+            Marked,
+            Some(0),
+        ),
         (
             "Rune's List: rows inside, a strip around",
             &[AroundList, InsideList],
+            Marked,
             Some(1),
         ),
         (
             "of two inside, the nearer",
             &[InsideList, InsideList],
+            Marked,
             Some(0),
         ),
         (
-            "not the one inside an entry",
+            "not the one inside a Rune row",
             &[AroundList, InsideEntry],
+            Marked,
             Some(0),
         ),
-        ("none of the list's", &[InsideEntry], None),
+        (
+            "not the one inside a GTK row",
+            &[AroundList, InsideEntry],
+            Listed,
+            Some(0),
+        ),
+        ("none of a Rune list's", &[InsideEntry], Marked, None),
+        ("none of a GTK list's", &[InsideEntry], Listed, None),
     ];
-    for (case, scrollers, wanted) in cases {
+    for (case, scrollers, row, wanted) in cases {
         let mut fake = Fake::new();
-        let panes = scrolled_listing(&mut fake, scrollers);
+        let panes = scrolled_listing(&mut fake, scrollers, row);
         let kept = Remembered::default();
         let found = scope(&fake, &kept)
             .locate_now(&target(json!({ "viewport": null })), None, Aim::Point)

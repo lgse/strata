@@ -14,7 +14,7 @@ use super::{
     wanted::{Wanted, pick},
 };
 use crate::{
-    Aim, At, Axis, Backend, Boxes, EntryPart, FieldRef, LookupError, Mark, Memory, Rect, Target,
+    Aim, At, Axis, Backend, Boxes, EntryPart, FieldRef, LookupError, Memory, Rect, Target,
 };
 
 #[derive(Clone, Debug)]
@@ -75,15 +75,21 @@ pub(crate) fn viewport<B: Backend>(backend: &B, container: &B::Node) -> Option<B
 }
 
 /// The node under `container` nearest it that `wanted` takes, the first in order among
-/// those as near, without looking inside an entry.
+/// those as near, without looking inside an entry. The entries are the ones the backend lists
+/// for the container: a GTK row widget carries no mark of its own.
 fn inside_list<B: Backend>(
     backend: &B,
     container: &B::Node,
     wanted: impl Fn(&B::Node) -> bool,
 ) -> Option<B::Node> {
+    let entries: Vec<B::Node> = backend
+        .entries(container)
+        .into_iter()
+        .map(|row| row.node)
+        .collect();
     let mut queue: VecDeque<B::Node> = backend.children(container).into();
     while let Some(node) = queue.pop_front() {
-        if backend.mark(&node) == Some(Mark::Entry) {
+        if entries.contains(&node) {
             continue;
         }
         if wanted(&node) {
