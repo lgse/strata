@@ -193,4 +193,34 @@ pub(crate) fn a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_o
             .any(|line| line == "FUZZ artifacts: target/qa-fuzz/sample/gtk-rune/"),
         "{summary:?}"
     );
+
+    // A difference between the targets is never counted with a target's own, which is
+    // what calibration reads to grow the mask.
+    examined.streams[3] = on("rune", &["archive", "pictures"]);
+    examined.comparisons = comparisons(
+        &examined.streams,
+        &options.targets,
+        &Left {
+            same: &none,
+            across: &none,
+        },
+    );
+    let mut run = Run::new(&options, &none);
+    run.judge(&examined);
+    let summary = run.summary();
+    let line = |starts: &str| {
+        summary
+            .iter()
+            .find(|line| line.starts_with(starts))
+            .unwrap_or_else(|| panic!("{starts}: {summary:?}"))
+            .clone()
+    };
+    assert_eq!(
+        line("FUZZ fields that differed first, with nothing masked,"),
+        "FUZZ fields that differed first, with nothing masked, by sequence: none"
+    );
+    assert!(
+        line("FUZZ fields that differed first between the targets").contains("app.focused 1"),
+        "{summary:?}"
+    );
 }

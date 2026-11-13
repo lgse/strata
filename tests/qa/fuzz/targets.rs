@@ -90,6 +90,9 @@ impl Targets {
 pub(crate) struct Comparison {
     /// `on gtk`, `on rune`, or `gtk against rune`.
     pub(crate) between: String,
+    /// Whether it holds one target's replays to the other's: a difference then is a
+    /// divergence to triage, never noise for the calibration mask.
+    pub(crate) across: bool,
     pub(crate) divergence: Option<Divergence>,
     pub(crate) unmasked: Option<Divergence>,
     /// Pairs of observations the comparison could read: the shorter stream of each pair.
@@ -120,9 +123,9 @@ pub(crate) fn comparisons(streams: &[Stream], targets: &Targets, left: &Left) ->
             let (first, others) = replays.split_first()?;
             Some(held_to(
                 between(target.name(), target.name()),
-                first,
-                others,
+                (first, others),
                 left.same,
+                false,
             ))
         })
         .collect();
@@ -132,9 +135,9 @@ pub(crate) fn comparisons(streams: &[Stream], targets: &Targets, left: &Left) ->
     {
         comparisons.push(held_to(
             between(reference.name(), other.name()),
-            first,
-            &of(other),
+            (first, &of(other)),
             left.across,
+            true,
         ));
     }
     comparisons
@@ -151,7 +154,12 @@ pub(crate) fn between(reference: &str, other: &str) -> String {
 }
 
 /// Every stream of `others` compared with `first`, the first that differs reported.
-fn held_to(between: String, first: &Stream, others: &[&Stream], ignored: &Ignored) -> Comparison {
+fn held_to(
+    between: String,
+    (first, others): (&Stream, &[&Stream]),
+    ignored: &Ignored,
+    across: bool,
+) -> Comparison {
     let against = |ignored: &Ignored| {
         others
             .iter()
@@ -159,6 +167,7 @@ fn held_to(between: String, first: &Stream, others: &[&Stream], ignored: &Ignore
     };
     Comparison {
         between,
+        across,
         divergence: against(ignored),
         unmasked: against(&Ignored::default()),
         compared: others

@@ -1559,7 +1559,7 @@ ruling that parity and fuzzing are run by the agent before merging.
 | `--alphabet <area>` | An alphabet of `tests/qa/fuzz/alphabets`. `run`, `shrink` and `generate` need one; `replay` takes one to replay that area's corpus only. |
 | `--seeds <seeds>` | `7`, `1..200` with both ends, or `3,9,0x2a`. A seed is a 64-bit number, and names a sequence only together with the alphabet's version. |
 | `--length <n>` | Actions in a generated sequence; 40 by default. An action can be several steps. |
-| `--repeats <n>` | Replays of each sequence; 2 by default. Every replay is compared with the first. |
+| `--repeats <n>` | Replays of each sequence on each target; 2 by default. Each target's replays are compared with its first, and on two targets every Rune replay with the first GTK one too. |
 | `--jobs <n>` | Sequences replayed at once; one per CPU by default, half that on two targets. A sequence's own replays on a target run one after another, its two targets' side by side, so on two targets a sequence holds two displays, and at most 256 replays run at once. |
 | `--target gtk\|rune\|gtk,rune` | The target every replay starts; `gtk` by default. `rune` builds `strata-rune` first, as `qa-parity.sh` does. `gtk,rune` is the differential mode, for `run`, `replay` and `shrink`: `--repeats` replays on each target. |
 | `--keep` | Keep the artifacts of sequences that agree too. |
@@ -1808,7 +1808,11 @@ itself in the same way, then every Rune replay with the first GTK one, with
 the map and the mask. A difference within a target is noise or a race of that
 target and goes to calibration or an `oracle` issue; only one between the
 targets is a divergence to triage, and it is replayed GTK against GTK many
-times before Rune is blamed for it ("What the next packages build on").
+times before Rune is blamed for it ("What the next packages build on"). The
+first GTK replay is the reference, so a `gtk against rune` line at the same
+step and field as an `on gtk` or `on rune` line is that target's noise, not a
+divergence: a target that does not agree with itself there cannot be held to
+the other.
 
 `compare` takes two kept streams. Each stream's first line says what it is a
 stream of: the target, the sequence, the alphabet and its version, the rest
@@ -1920,12 +1924,18 @@ FUZZ replays: targets gtk and rune, 2 of each sequence on each side by side, 12 
 DIFFER fuzz-entries-v1-0000000000000008 gtk against rune at step 1 {"key":"Up","when":{"not":{"field":{"name":"Rename"}}}}: app.focused (null | "archive"); kept target/qa-fuzz/entries/gtk-rune/fuzz-entries-v1-0000000000000008
 FUZZ steps on gtk: 34 refused, 692 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse
 FUZZ steps on rune: 28 refused, 688 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse
+FUZZ fields that differed first between the targets, a divergence and never noise, by sequence: app.focused 12, app.matches 5, app.panes 5, app.panes[].focused 7
 ```
+
+The first "fields that differed first" line counts the comparisons of a target
+with itself only, since it is what calibration reads to grow the mask; the
+fields between the targets have a line of their own, and a mask never answers
+one.
 
 | Line | Is |
 | --- | --- |
 | `AGREE` | A sequence whose replays agree on every field. |
-| `MASKED` | One whose replays differ only on masked fields. It counts as agreeing under a mask, and the "fields that differed first" line counts it with nothing masked, which is how calibration sees what a mask is hiding. |
+| `MASKED` | One whose replays differ only on fields the mask leaves out, or, between two targets, the map; the line names the comparison, as a `DIFFER` line does. It counts as agreeing under a mask, and the "fields that differed first" lines count it with nothing left out, which is how calibration sees what a mask is hiding. |
 | `DIFFER` | One whose replays differ: which replays (`on gtk`, `on rune`, `gtk against rune`), the step, the action, the first field and its two values. |
 | `UNSETTLED` | One with a step that did not come to rest within the budget. |
 | `FINDING` | A crash or a GLib warning. It comes with a `DIFFER` line that names its step. |

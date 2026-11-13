@@ -185,6 +185,7 @@ fn examined(streams: &[&[&str]]) -> Examined {
 fn on_gtk(found: Option<Divergence>, unmasked: Option<Divergence>) -> Vec<Comparison> {
     vec![Comparison {
         between: "on gtk".to_owned(),
+        across: false,
         divergence: found,
         unmasked,
         compared: 2,

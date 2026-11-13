@@ -315,6 +315,7 @@ impl<'a> Bench<'a> {
             rest: self.options.rest,
             perturbation: self.options.perturbation.as_ref().filter(|_| perturbed),
         })
+        .map_err(|error| on(target, &error))
     }
 
     /// `--repeats` replays on one target, one after another. Only the last replay of the
@@ -346,14 +347,19 @@ impl<'a> Bench<'a> {
         });
         let mut replays = Vec::new();
         let mut error = None;
-        for one in series {
+        for (&target, one) in self.targets().all().iter().zip(series) {
             let (done, failed) =
-                one.unwrap_or_else(|_| (Vec::new(), Some("a replay panicked".to_owned())));
+                one.unwrap_or_else(|_| (Vec::new(), Some(on(target, "a replay panicked"))));
             replays.extend(done);
             error = error.or(failed);
         }
         (replays, error)
     }
+}
+
+/// A replay's error, with the target it was met on: `on rune: …`.
+fn on(target: Target, error: &str) -> String {
+    format!("on {}: {error}", target.name())
 }
 
 fn examine_all(options: &Options) -> Result<(), String> {
@@ -448,7 +454,7 @@ fn diverges(
         let right = bench.replay(&loaded, other, true);
         (left.join(), right)
     });
-    let left = left.map_err(|_| "a replay panicked".to_owned())??;
+    let left = left.map_err(|_| on(reference, "a replay panicked"))??;
     let right = right?;
     let ignored = if reference == other {
         &bench.same
@@ -497,9 +503,14 @@ fn shrink_one(options: &Options) -> Result<(), String> {
     };
     report::shrunk(&area, bench.targets(), &shrunk, &shortest, &evidence);
     if !shrunk.is_confirmed() {
+        let what = if bench.targets().is_differential() {
+            "noise or a race of one target, not a divergence to file: replay it on each \
+             target alone, with --repeats 24, to tell which"
+        } else {
+            "noise for calibration, not a divergence to file"
+        };
         return Err(format!(
-            "{}: the shortest sequence diverged {} times out of {CONFIRMATIONS}: this is \
-             noise for calibration, not a divergence to file",
+            "{}: the shortest sequence diverged {} times out of {CONFIRMATIONS}: this is {what}",
             sequence.name, shrunk.confirmed
         ));
     }

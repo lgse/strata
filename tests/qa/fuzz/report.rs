@@ -135,7 +135,9 @@ impl Examined {
         }
     }
 
-    /// The first divergence outside the map and the mask, the one a shrink would take.
+    /// The first divergence outside the map and the mask, a target's with itself before the
+    /// targets' with each other: what `divergence.json` leads with. A shrink on two targets
+    /// takes GTK against Rune, whatever this is.
     fn divergence(&self) -> Option<&Divergence> {
         self.comparisons
             .iter()
@@ -190,6 +192,7 @@ pub(crate) struct Run {
     command: &'static str,
     /// The folder under an area's artifacts that the run's sequences are kept in.
     targets: String,
+    differential: bool,
     header: Vec<String>,
     perturbed: bool,
     /// `replay --parked`: a survey of parked sequences, which fails only when it cannot run.
@@ -202,7 +205,10 @@ pub(crate) struct Run {
     compared: usize,
     /// Each outcome's count, by the target that answered it.
     counts: BTreeMap<(String, &'static str), usize>,
+    /// The fields that differed first within a target, which is what calibration reads, and
+    /// apart from them those between two targets, which no mask may answer.
     fields: BTreeMap<String, usize>,
+    fields_across: BTreeMap<String, usize>,
     areas: BTreeSet<String>,
     /// Observations that changed after their step's reply, and how long each such change
     /// was in coming after the read before it.
@@ -253,6 +259,7 @@ impl Run {
                 _ => "",
             },
             targets: options.targets.label(),
+            differential: options.targets.is_differential(),
             header,
             perturbed: options.perturbation.is_some(),
             survey: options.parked,
@@ -264,6 +271,7 @@ impl Run {
             compared: 0,
             counts: BTreeMap::new(),
             fields: BTreeMap::new(),
+            fields_across: BTreeMap::new(),
             areas: BTreeSet::new(),
             late: 0,
             quiet: Vec::new(),
@@ -427,15 +435,23 @@ impl Run {
         for stream in &examined.streams {
             self.count_stream(stream);
         }
-        let fields: BTreeSet<String> = examined
-            .comparisons
-            .iter()
-            .flat_map(|comparison| &comparison.unmasked)
-            .flat_map(|unmasked| &unmasked.fields)
-            .map(|difference| pattern_of(&difference.field))
-            .collect();
-        for field in fields {
-            *self.fields.entry(field).or_default() += 1;
+        for across in [false, true] {
+            let fields: BTreeSet<String> = examined
+                .comparisons
+                .iter()
+                .filter(|comparison| comparison.across == across)
+                .flat_map(|comparison| &comparison.unmasked)
+                .flat_map(|unmasked| &unmasked.fields)
+                .map(|difference| pattern_of(&difference.field))
+                .collect();
+            let counted = if across {
+                &mut self.fields_across
+            } else {
+                &mut self.fields
+            };
+            for field in fields {
+                *counted.entry(field).or_default() += 1;
+            }
         }
         self.count_late_changes(examined);
     }
@@ -516,13 +532,23 @@ impl Run {
         lines.extend(self.outcomes_by_target());
         lines.extend([
             self.late_changes(),
-            self.first_fields(),
-            format!(
-                "FUZZ load average: {} at the start, {} at the end",
-                self.load,
-                load_average()
+            first_fields(
+                "FUZZ fields that differed first, with nothing masked, by sequence",
+                &self.fields,
             ),
         ]);
+        if self.differential {
+            lines.push(first_fields(
+                "FUZZ fields that differed first between the targets, a divergence and never \
+                 noise, by sequence",
+                &self.fields_across,
+            ));
+        }
+        lines.extend([format!(
+            "FUZZ load average: {} at the start, {} at the end",
+            self.load,
+            load_average()
+        )]);
         lines.extend(self.header[2..].iter().cloned());
         lines.extend(
             self.areas
@@ -556,22 +582,6 @@ impl Run {
             .into_iter()
             .map(|on| format!("FUZZ steps on {on}: {}", self.outcomes(Some(on))))
             .collect()
-    }
-
-    fn first_fields(&self) -> String {
-        let fields: Vec<String> = self
-            .fields
-            .iter()
-            .map(|(field, count)| format!("{field} {count}"))
-            .collect();
-        format!(
-            "FUZZ fields that differed first, with nothing masked, by sequence: {}",
-            if fields.is_empty() {
-                "none".to_owned()
-            } else {
-                fields.join(", ")
-            }
-        )
     }
 
     /// How long the target went on changing after its replies, which is what the quiet
@@ -680,6 +690,20 @@ fn replays_line(options: &Options) -> String {
             options.jobs
         )
     }
+}
+
+/// `<what>: <field> <sequences>, …`, or `none`.
+fn first_fields(what: &str, fields: &BTreeMap<String, usize>) -> String {
+    let fields: Vec<String> = fields
+        .iter()
+        .map(|(field, count)| format!("{field} {count}"))
+        .collect();
+    let fields = if fields.is_empty() {
+        "none".to_owned()
+    } else {
+        fields.join(", ")
+    };
+    format!("{what}: {fields}")
 }
 
 fn relative(path: &Path) -> PathBuf {
