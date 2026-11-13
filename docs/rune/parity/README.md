@@ -599,6 +599,7 @@ check skipped is named with its reason. This list is the orchestrating session's
 | Always | `typos`, and `mise run scripts`: the Python tests under `scripts/`, which hold the ledger, the mutation patches' rules and the fuzz files, and read `.github/workflows/`, `tests/container/`, the manifests and `packaging/`. CI ran them on every pull request; they take seconds |
 | `src/`, a shared crate, `tests/` or a manifest changed | `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` |
 | A Rune-side crate changed | The Rune lane's `cargo fmt --all --check`, and `cargo clippy $(python3 scripts/lanes.py rune) --all-targets --all-features --locked -- -D warnings` |
+| Any Rune crate changed | The plain binary builds: `cargo build --locked -p strata-rune`, with default features and no `qa`. The coordinator's addition, below |
 | `src/` or a shared crate changed | `./scripts/quality.sh test`. With CI off it is the only run of the GTK unit tests, so it is required there |
 | `src/` or a shared crate changed | The build without UnRAR: the GTK lane checked with `--no-default-features --features test-support`, and four tests under it, below |
 | A manifest, `Cargo.lock` or `deny.toml` changed | `cargo deny check`, the two `cargo tree` guards of `ci.yml`'s "Quality build and lint", and the same UnRAR guard for `strata-rune`, below |
@@ -633,6 +634,13 @@ xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session 
   env -u WAYLAND_DISPLAY GDK_BACKEND=x11 GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
   cargo test --locked $gtk --all-targets --no-default-features --features test-support archive_extraction_actions_follow_build_support
 ```
+
+**The plain binary**, the coordinator's addition of 2026-11-12, not the owner's words. Tests,
+clippy and the QA runs all build with `--all-features`, so none of them builds `strata-rune` as
+a user runs it. On 2026-11-12 `strata-next` at `67578bfbc` did not compile that way
+(`crates/strata-app/src/single/first_visit.rs:53` called `Pane::load`, which is compiled only
+for tests and the `qa` feature), every gate had passed, and the owner found it by running the
+window by hand. `ci.yml` does not build the Rune side at all.
 
 Where the loss is largest:
 

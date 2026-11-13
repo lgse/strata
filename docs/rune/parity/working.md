@@ -77,6 +77,11 @@ The checkpoint a package feeds is its wave's, in the plan's
   sleep. A Rune-lane run started about 1,900 of them (514 PNG goldens, 514 accessibility
   goldens, 897 scripts), 24 at a time, and with three package agents running lanes at once
   the load average passed 40.
+- **The plain binary builds.** For any change to a Rune crate, `cargo build --locked -p
+  strata-rune`, with default features and no `qa`; every other gate builds with
+  `--all-features` and so cannot see a missing default-features build. The coordinator's
+  addition of 2026-11-12, after `strata-next` at `67578bfbc` failed it unnoticed (the plan's
+  [Checks in place of CI](README.md#checks-in-place-of-ci)).
 - **The compositor tests on a loaded machine.** `mise run test-platform` starts a sway and
   an Xwayland for each test, as many at once as the machine has cores, and with other
   packages building on the machine its waits ran out in `strata-platform`'s own session
