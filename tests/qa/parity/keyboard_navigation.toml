@@ -110,7 +110,7 @@ package = "A5"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "C6: the location bar's crumbs, at `click` on the `documents` breadcrumb button"
+blocker = "A5: BackSpace in Columns (`navigate_up` at the `item_navigation` stage), on line 23; the crumb steps before it pass"
 
 [[run]]
 scenario = "focus-usable-after-view-change"
