@@ -7,6 +7,11 @@
 //! row keeps its node, since the collection keys a row by its entry's id and an id is the
 //! entry's location. So the backend counts the replacements and tells a row of a column
 //! replaced since it was remembered from the row it was, as GTK's `replaced` and recall do.
+//!
+//! Only `EntriesReplaced` is modelled. GTK also gives a row a new widget when the view is
+//! rebuilt (`rebuild_icons`, `rebuild_list`), when a filter hides the row and shows it again,
+//! and when the row is scrolled out and back, where Rune keeps the row. A run that relies on
+//! one of those needs this extended first.
 
 use std::{
     cell::{Cell, RefCell},
