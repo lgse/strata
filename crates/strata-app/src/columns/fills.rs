@@ -6,8 +6,11 @@
 //! show (`columns_show_sizes`).
 //!
 //! - **Not while the column scrolls.** GTK asks for no fill while the column scrolled in the
-//!   last 150 ms (`track_listing_scrolling`). Here a column's range that changed less than
-//!   [`SETTLE`] ago is not asked for; the part wakes again once it has settled.
+//!   last 150 ms (`track_listing_scrolling` in `src/ui/browser/columns/append/surface.rs`).
+//!   Here a column's range that changed less than [`SETTLE`] ago is not asked for; the part
+//!   wakes again once it has settled. GTK asks when a row is bound, so a row bound while the
+//!   column scrolls is not asked until it is bound again; here the rows near the settled range
+//!   are asked, those included.
 //! - **Once a poll**, as [`crate::fills`] asks for every view.
 
 use std::{ops::Range, time::Duration};
@@ -54,20 +57,25 @@ impl ColumnFills {
         }
     }
 
-    /// Column `depth`'s view shows `range` now; it is asked for once it settles.
+    /// Column `depth`'s view shows `range` now; it is asked for once it settles. A range
+    /// reported before the poll that counts the column open is kept.
     pub(super) fn see(&mut self, depth: usize, range: Range<usize>) {
-        if let Some(column) = self.columns.get_mut(depth) {
-            let scrolled = !column.last.is_empty() && column.last.start != range.start;
-            column.moved |= scrolled;
-            column.last = range.clone();
-            column.fills.see(range);
-        }
+        self.grow(depth + 1);
+        let column = &mut self.columns[depth];
+        let scrolled = !column.last.is_empty() && column.last.start != range.start;
+        column.moved |= scrolled;
+        column.last = range.clone();
+        column.fills.see(range);
     }
 
     fn fit(&mut self, open: usize) {
-        let details = self.details;
         self.columns.truncate(open);
-        while self.columns.len() < open {
+        self.grow(open);
+    }
+
+    fn grow(&mut self, len: usize) {
+        let details = self.details;
+        while self.columns.len() < len {
             self.columns.push(Column {
                 fills: Fills::new(details),
                 folder: None,

@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: MIT
 
-//! The rows' metadata fills: a column asks the browser for what its rows lack, and a folder's
-//! item count only while sizes show, as GTK's Columns rows ask (`request_metadata` in
+//! The rows' metadata fills: each column asks the browser for what its rows lack, and a
+//! folder's item count only while sizes show, as GTK's Columns rows ask (`request_metadata` in
 //! `src/ui/browser/columns/rows/bind.rs`).
 
 use strata_core::model::{FileEntry, MetadataValue};
 
-use super::{MODULE, fixture, open, rest, save_settings};
+use super::{MODULE, click, fixture, folder_name, open, rest, save_settings};
 use crate::{
     host::offscreen::Offscreen,
     test_support::{PATIENCE, hosted_after},
 };
 
-/// The first column's entry named `name`, as the browser holds it.
-fn entry(host: &Offscreen, name: &str) -> Option<FileEntry> {
+/// Column `depth`'s entry named `name`, as the browser holds it.
+fn entry(host: &Offscreen, depth: usize, name: &str) -> Option<FileEntry> {
     host.app()
         .browser()
-        .with_column_entries(0, |entries| {
+        .with_column_entries(depth, |entries| {
             entries
                 .iter()
                 .find(|entry| entry.display_name == name)
@@ -25,8 +25,8 @@ fn entry(host: &Offscreen, name: &str) -> Option<FileEntry> {
         .flatten()
 }
 
-fn filled(host: &Offscreen, name: &str) -> bool {
-    entry(host, name).is_some_and(|entry| {
+fn filled(host: &Offscreen, depth: usize, name: &str) -> bool {
+    entry(host, depth, name).is_some_and(|entry| {
         entry.modified_unix_seconds != MetadataValue::Unknown
             && entry.mode != MetadataValue::Unknown
     })
@@ -42,14 +42,17 @@ fn sizes_follow_the_setting(name: &str, show_sizes: bool) {
             let folder = fixture();
             open(&mut host, folder.path());
             let reached = host.run_until(PATIENCE, |host| {
-                filled(host, "readme.md") && filled(host, "documents")
+                filled(host, 0, "readme.md") && filled(host, 0, "documents")
             });
-            assert!(reached, "the column's rows were never filled");
+            assert!(reached, "the first column's rows were never filled");
+            click(&mut host, &folder_name(folder.path()), "documents");
+            let reached = host.run_until(PATIENCE, |host| filled(host, 1, "notes.txt"));
+            assert!(reached, "an opened column's rows were never filled");
             rest(&mut host);
 
-            let file = entry(&host, "readme.md").expect("readme.md");
+            let file = entry(&host, 0, "readme.md").expect("readme.md");
             assert_ne!(file.size, MetadataValue::Unknown, "a file's size");
-            let count = entry(&host, "documents").expect("documents").child_count;
+            let count = entry(&host, 0, "documents").expect("documents").child_count;
             assert_eq!(
                 count != MetadataValue::Unknown,
                 show_sizes,
