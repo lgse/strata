@@ -29,6 +29,7 @@ use strata_components::{
         marquee::Marquee,
         pointer::{ClickCount, ClickModes, PointerIntent, PointerSettings},
     },
+    context_menu::AnchorEdge,
     contract::{Direction, EntryId, EntrySource},
     rename::{By, Initial, Polled},
 };
@@ -79,17 +80,33 @@ fn controlled() -> CollectionState {
     collection
 }
 
+/// What a single-pane view is made with.
+pub(crate) struct Made {
+    /// The view's collection's key ([`SinglePane::KEY`]).
+    pub(crate) key: &'static str,
+    /// How many clicks open a file and a folder.
+    pub(crate) clicks: (u8, u8),
+    pub(crate) keys: KeySettings,
+    /// The view's translated `view_name`.
+    pub(crate) described: String,
+    /// Where on the cursor's entry the Menu key opens its menu (`item_menu_target` in
+    /// `src/ui/browser_modes/context_menu.rs`): the centre in List, the right edge elsewhere.
+    pub(crate) menu_at: AnchorEdge,
+}
+
 impl Single {
-    /// The state of the view keyed `key`, opening a file and a folder with `(file, folder)`
-    /// clicks, reading `keys`, and described as `described`, its translated `view_name`.
-    pub(crate) fn new(
-        key: &'static str,
-        (file, folder): (u8, u8),
-        keys: KeySettings,
-        described: String,
-    ) -> Self {
+    pub(crate) fn new(made: Made) -> Self {
+        let Made {
+            key,
+            clicks: (file, folder),
+            keys,
+            described,
+            menu_at,
+        } = made;
+        let mut collection = controlled();
+        commands::view_keys(&mut collection, menu_at);
         Self {
-            pane: Pane::new(key, controlled()),
+            pane: Pane::new(key, collection),
             clicks: ClickModes::new(clicks(file), clicks(folder)),
             keys,
             words: Words::translated(),

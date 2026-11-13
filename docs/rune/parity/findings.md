@@ -217,6 +217,16 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, not taken up. Until the harness checks that the child ran its test, a
   move or rename of a test file, module or function takes the name strings with it; in a
   log the only sign is a GTK test printed once and not twice. A fix lands on `main`.
+  `strata-app`'s own tests are guarded since [#2237](https://github.com/lgse/strata/pull/2237), where the fault was met again in a test
+  inside a nested module: `test_support::in_own_process` has the child leave a marker and
+  fails without one. The whole Rune lane ran with the guard and no existing test failed it.
+  That guard is the small form. The fix proper is in the shared helper,
+  `strata_test_support::isolated_test`, checking that the child ran one test; it is a shared
+  crate's and lands on `main` first. Until then the tests that call it directly are not
+  guarded: the GTK application's (`gtk_test` under `src/`), and those of `strata-fs`,
+  `strata-desktop` and `strata-core`. No other crate of the Rune side runs a test in a
+  child. The guard has one gap left: a test that gives the whole path of another test that
+  exists passes, because the child runs that other test, which leaves the marker.
 
 ### The updater shows "Interrupted system call" when a signal arrives during a download
 
@@ -298,3 +308,32 @@ sequence only together with the alphabet's version, so the version is part of th
   does not remove the cause: three tests still failed with it under load (above). The thing to fix is the number of sessions started at once: a
   limit on concurrent sway sessions in the harness, or on the test threads the task asks
   for. [`working.md`](working.md#while-building) has how to run the window tests alone.
+
+### #2235: the Menu key with the cursor's entry scrolled out of view
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2235), filed on 2026-11-12 as the finding's reference and
+  closed at once: its state is kept here. Its title and first statement were written from
+  reading, before the run below, and say only that nothing opens.
+- **By run**, on the GTK target in the pinned container (`./scripts/qa-drive.sh`), with 400
+  files, the cursor on the first and selected, and the wheel turned until that row was out
+  of view; each key from a fresh launch:
+  - Columns and Icons: the Menu key and Shift+F10 open nothing, and nothing scrolls.
+  - List: both keys open the menu of `file-154.txt`, the entry drawn at the top of the list
+    where the cursor's row was last placed, and that entry becomes the only selection. The
+    menu's rows (Move to Trash, Rename, Cut) then act on a file the user did not choose.
+- **By reading:** `open_focused_context_menu` finds the place from the cursor's row. The
+  Columns view asks for a mapped row (`shown_row_at`) and has none. The mode views take the
+  row's widget "mapped or not" (`item_widget`) and its last bounds, and hand that point to
+  the trigger a right-click uses, which acts on whatever is drawn there. Why Icons then
+  opens nothing was not traced. A row partly in view was not run: by reading it is mapped
+  in every view, so its own menu opens at it.
+- **Concerns:** `src/ui/browser/view_filter.rs:78`, `src/ui/browser/columns.rs:137`,
+  `src/ui/browser_modes/context_menu.rs:70` and `src/ui/browser_modes/pane.rs:75`. No
+  scenario presses the Menu key with the cursor out of view.
+- **State:** open, not taken up. List's behaviour is a defect to fix on `main`: a menu with
+  destructive rows opens for an entry the user did not choose. The bug issue there is the
+  owner's to file and schedule; this entry and its reference are not that issue. The Rune
+  interface's List view deliberately does not reproduce it: it opens nothing, as Columns
+  and Icons do, by the orchestrating session's ruling of 2026-11-12
+  ([`owner.md`](owner.md#b3-commands-and-key-dispatch)). A difference between the targets
+  here is therefore not a Rune fault.

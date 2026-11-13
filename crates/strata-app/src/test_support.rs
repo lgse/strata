@@ -3,7 +3,11 @@
 //! What the crate's tests share: the offscreen host in a process of its own, and folders to
 //! open in it.
 
-use std::{path::Path, time::Duration};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use rune::{KeyEvent, Mods, PhysicalInput};
 use strata_components::rename::Polled;
@@ -18,10 +22,44 @@ use crate::{
     startup::{self, UiThread},
 };
 
+#[cfg(test)]
+mod tests;
 pub(crate) mod view;
 
 /// How long a test waits for the browser before it fails.
 pub(crate) const PATIENCE: Duration = Duration::from_secs(30);
+
+/// Where a test run in a process of its own says that it ran.
+const RAN: &str = "STRATA_TEST_RAN";
+
+/// Runs `body` as the test `test` in a process of its own, with `env` set there, and fails
+/// when no test ran there.
+///
+/// The child is this executable started for the one test whose path is `test` exactly
+/// (`strata_test_support::isolated_test`). A path that is no test's starts nothing, and the
+/// child still exits well, so without this check a test moved to another module, or renamed,
+/// passes without running (finding lgse/strata#2193). Every test of this crate that runs in a
+/// process of its own goes through here.
+pub(crate) fn in_own_process(test: &str, env: &[(&str, &OsStr)], body: impl FnOnce()) {
+    let own = tempfile::tempdir().expect("a folder for the marker");
+    // The parent picks the place, and the child is told it.
+    let marker = std::env::var_os(RAN).map_or_else(|| own.path().join("ran"), PathBuf::from);
+    let env = env.iter().copied().chain([(RAN, marker.as_os_str())]);
+    strata_test_support::isolated_test(
+        test,
+        env,
+        || true,
+        || {
+            std::fs::write(&marker, test).expect("the marker");
+            body();
+        },
+    );
+    assert!(
+        marker.exists(),
+        "`{test}` ran nowhere: no test of this executable has that path, so the child ran none \
+         and exited well. Give the test's whole path, with every module it is in."
+    );
+}
 
 /// Runs the test `name` of the test module `module` on the host `host` makes, in a process of
 /// its own: the default GLib context, the start-up sequence and the saved settings belong to
@@ -32,17 +70,12 @@ fn hosted_on(
     host: impl FnOnce(UiThread, Saved) -> Offscreen,
     run: impl FnOnce(Offscreen),
 ) {
-    strata_test_support::isolated_test(
-        &format!("{module}::{name}"),
-        std::iter::empty::<(&str, &str)>(),
-        || true,
-        || {
-            prepare();
-            let settings = startup::load_settings();
-            let ui = UiThread::claim().expect("the UI thread");
-            run(host(ui, settings));
-        },
-    );
+    in_own_process(&format!("{module}::{name}"), &[], || {
+        prepare();
+        let settings = startup::load_settings();
+        let ui = UiThread::claim().expect("the UI thread");
+        run(host(ui, settings));
+    });
 }
 
 /// A test on the window the crate registers, after `prepare` has run in its process.
