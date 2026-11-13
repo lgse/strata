@@ -200,6 +200,8 @@ wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = 
 xkbcommon = { version = "0.9.0", default-features = false, optional = true }
 
 [dev-dependencies]
+# The key library of the Rune interface, for the test that holds it to GDK.
+strata-desktop = { workspace = true, features = ["xkb-keys"] }
 strata-test-support.workspace = true
 
 [[test]]
@@ -207,6 +209,12 @@ name = "qa"
 path = "tests/qa.rs"
 required-features = ["qa"]
 harness = false
+
+# Holds the Rune interface's key library to GDK. It reads a test-only item of strata-desktop.
+[[test]]
+name = "key_lookups"
+path = "tests/key_lookups.rs"
+required-features = ["test-support"]
 
 [build-dependencies]
 glib-build-tools.workspace = true

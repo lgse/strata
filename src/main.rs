@@ -210,7 +210,8 @@ fn run_udiskie_hook(arguments: &[OsString]) -> gtk::glib::ExitCode {
 }
 
 fn main() -> gtk::glib::ExitCode {
-    ui::install_key_backend();
+    let installed = ui::install_key_backend();
+    debug_assert!(installed, "another key library was installed before GDK");
     let arguments: Vec<OsString> = std::env::args_os().collect();
     let mode = launch_mode(&arguments);
     match mode {

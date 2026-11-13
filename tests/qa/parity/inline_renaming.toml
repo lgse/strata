@@ -253,7 +253,7 @@ run = "list-file"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A7: undo, at Ctrl+Z on line 25. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
+blocker = "A7: undo: Ctrl+Z on line 25 does nothing, so its check on line 26 fails. Every step before it passes: the typed path moves the item, and what took its place is selected and focused"
 
 [[run]]
 scenario = "rename-moves-into-path"
@@ -330,7 +330,7 @@ run = "list"
 package = "A2"
 status = "pending"
 reason = "scope"
-blocker = "A8: the view switch, at Ctrl+2 on line 38, whose chord is B3's. Every List step before it passes"
+blocker = "A8: the view switch: Ctrl+2 on line 38, whose chord is B3's, switches nothing, so its check on line 39 fails. Every List step before it passes"
 
 [[run]]
 scenario = "window-accelerators-leave-rename"
