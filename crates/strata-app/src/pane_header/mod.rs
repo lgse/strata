@@ -59,6 +59,9 @@ pub(crate) struct PaneHeader {
     swallow: bool,
     /// Back's box in window points, where the history opens under it.
     back: [f32; 4],
+    /// The listing's box under the header, in window points: a wheel over it scrolls it as
+    /// it closes a popover ([`crate::popover::Plain::listing`]).
+    listing: Option<[f32; 4]>,
     thumbnails: thumbnail_size::ThumbnailSize,
 }
 
@@ -104,6 +107,12 @@ const BUTTONS: [Button; 3] = [
         able: |app| app.browser.can_go_parent(),
     },
 ];
+
+/// Records where the listing under the header is (`single::group`'s box around the
+/// component).
+pub(crate) fn listing_at(app: &mut App, rect: [f32; 4]) {
+    app.pane_header.listing = Some(rect);
+}
 
 /// The header over the listing of the view keyed `view`, for the folder named `title`.
 pub(crate) fn bar(app: &App, view: &str, title: &str) -> El {
@@ -260,6 +269,7 @@ impl Part for PaneHeader {
             held: None,
             swallow: false,
             back: [0.0; 4],
+            listing: None,
             thumbnails: thumbnail_size::ThumbnailSize::new(),
         }
     }
