@@ -15,6 +15,8 @@ rust_i18n::i18n!(
 // The text of a row's facts, as the Icons details line and the List size column show it.
 mod details;
 mod events;
+// The per-folder views the process keeps, `folder-views.toml`, and when they are written.
+mod folder_views;
 // Metadata fills for the rows a view shows, once per poll.
 mod fills;
 // The cursor and selection handover every view shares.

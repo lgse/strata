@@ -19,7 +19,7 @@ use strata_platform::{
 };
 
 use crate::{
-    App, commands,
+    App, commands, folder_views,
     settings::Saved,
     shell,
     startup::{APPLICATION_ID, UiThread},
@@ -67,6 +67,8 @@ pub(crate) fn run(ui: UiThread, settings: Saved, location: Location) -> Result<(
         families: FAMILIES,
         ..AppSpec::new("Strata", SIZE, unused, shell::view)
     })
+    // The last write of the per-folder views, before the writer is flushed below.
+    .on_close(|app: &mut App, _: &mut Tx| folder_views::flush_at_exit(app))
     .init(move || {
         let app = App::new(&ui, Csd::new(frame, Backend::from_env()), settings);
         app.open(location);
