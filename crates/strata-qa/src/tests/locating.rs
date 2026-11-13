@@ -89,7 +89,7 @@ fn an_entry_target_aims_at_its_row_or_at_the_part_it_names() {
 }
 
 /// Where a scroll pane stands against a pane's entry list.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Scroller {
     AroundList,
     InsideList,
@@ -100,67 +100,63 @@ enum Scroller {
 /// outermost first; and those scroll panes, in the same order.
 fn scrolled_listing(fake: &mut Fake, scrollers: &[Scroller]) -> Vec<usize> {
     let frame = [0.0, 40.0, 400.0, 560.0];
-    let mut parent = fake.add(
-        WINDOW,
-        Node {
-            mark: Some(Mark::Pane("List")),
-            ..drawn("grouping", "home", [0.0, 0.0, 400.0, 600.0])
-        },
-    );
     let mut panes = Vec::new();
-    let mut add_pane = |fake: &mut Fake, parent: &mut usize| {
-        *parent = fake.add(*parent, drawn("scroll pane", "", frame));
-        panes.push(*parent);
+    let mut wrap = |fake: &mut Fake, mut parent: usize, at: Scroller| {
+        for _ in scrollers.iter().filter(|placed| **placed == at) {
+            parent = fake.add(parent, drawn("scroll pane", "", frame));
+            panes.push(parent);
+        }
+        parent
     };
-    for _ in scrollers.iter().filter(|at| matches!(at, Scroller::AroundList)) {
-        add_pane(fake, &mut parent);
-    }
-    parent = fake.add(
-        parent,
-        Node {
-            mark: Some(Mark::EntryContainer),
-            ..drawn("list", "home", frame)
-        },
-    );
-    fake.add(parent, drawn("label", "Loading", [0.0, 40.0, 400.0, 20.0]));
-    for _ in scrollers.iter().filter(|at| matches!(at, Scroller::InsideList)) {
-        add_pane(fake, &mut parent);
-    }
-    parent = fake.add(
-        parent,
-        Node {
-            mark: Some(Mark::Entry),
-            ..drawn("list item", "notes", [0.0, 40.0, 400.0, 30.0])
-        },
-    );
-    for _ in scrollers.iter().filter(|at| matches!(at, Scroller::InsideEntry)) {
-        add_pane(fake, &mut parent);
-    }
+    let pane = Node {
+        mark: Some(Mark::Pane("List")),
+        ..drawn("grouping", "home", [0.0, 0.0, 400.0, 600.0])
+    };
+    let pane = fake.add(WINDOW, pane);
+    let around = wrap(fake, pane, Scroller::AroundList);
+    let list = Node {
+        mark: Some(Mark::EntryContainer),
+        ..drawn("list", "home", frame)
+    };
+    let list = fake.add(around, list);
+    fake.add(list, drawn("label", "Loading", [0.0, 40.0, 400.0, 20.0]));
+    let inside = wrap(fake, list, Scroller::InsideList);
+    let entry = Node {
+        mark: Some(Mark::Entry),
+        ..drawn("list item", "notes", [0.0, 40.0, 400.0, 30.0])
+    };
+    let entry = fake.add(inside, entry);
+    wrap(fake, entry, Scroller::InsideEntry);
     panes
 }
 
 #[test]
 fn a_panes_viewport_is_the_scroll_pane_nearest_inside_its_list_else_around_it() {
     use Scroller::{AroundList, InsideEntry, InsideList};
-    // The scroll panes, outermost first, and which of them the pane's viewport is.
-    let cases: [(&str, &[Scroller], usize); 5] = [
-        ("GTK: a scrolled window around the list", &[AroundList], 0),
-        ("a Rune collection: its viewport inside the list", &[InsideList], 0),
+    // The scroll panes, outermost first, and which of them is the pane's viewport.
+    let cases: [(&str, &[Scroller], Option<usize>); 6] = [
         (
-            "Rune's List table: the sideways strip around, the rows' viewport inside",
+            "GTK's scrolled window around the list",
+            &[AroundList],
+            Some(0),
+        ),
+        ("a Rune collection's, inside it", &[InsideList], Some(0)),
+        (
+            "Rune's List: rows inside, a strip around",
             &[AroundList, InsideList],
-            1,
+            Some(1),
         ),
         (
-            "two inside: the one nearest the list",
+            "of two inside, the nearer",
             &[InsideList, InsideList],
-            0,
+            Some(0),
         ),
         (
-            "one inside an entry is the entry's own",
+            "not the one inside an entry",
             &[AroundList, InsideEntry],
-            0,
+            Some(0),
         ),
+        ("none of the list's", &[InsideEntry], None),
     ];
     for (case, scrollers, wanted) in cases {
         let mut fake = Fake::new();
@@ -169,21 +165,11 @@ fn a_panes_viewport_is_the_scroll_pane_nearest_inside_its_list_else_around_it() 
         let found = scope(&fake, &kept)
             .locate_now(&target(json!({ "viewport": null })), None, Aim::Point)
             .map(|located| located.node);
-        assert_eq!(found, Ok(panes[wanted]), "{case}");
+        let wanted = wanted.map(|at| panes[at]).ok_or_else(|| {
+            LookupError::Missing("the entry list has no scroll viewport".to_owned())
+        });
+        assert_eq!(found, wanted, "{case}");
     }
-
-    let mut fake = Fake::new();
-    scrolled_listing(&mut fake, &[InsideEntry]);
-    let kept = Remembered::default();
-    assert_eq!(
-        scope(&fake, &kept)
-            .locate_now(&target(json!({ "viewport": null })), None, Aim::Point)
-            .map(|located| located.node),
-        Err(LookupError::Missing(
-            "the entry list has no scroll viewport".to_owned()
-        )),
-        "a list with no scroll pane of its own or around it has none"
-    );
 }
 
 #[test]
