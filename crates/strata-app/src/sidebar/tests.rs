@@ -838,7 +838,7 @@ fn each_rows_menu_lists_gtks_rows_in_its_order() {
         ),
         (
             row(place("trash"), Location::uri("trash:///")),
-            vec![vec![UNPIN, PROPERTIES]],
+            vec![vec![OPEN_IN_TAB], vec![UNPIN, PROPERTIES]],
         ),
     ] {
         assert_eq!(menu::rows(&row), expected, "{:?}", row.item);
@@ -879,13 +879,7 @@ fn unpin_in_a_places_menu_hides_the_place_and_saves_it() {
         MODULE,
         "unpin_in_a_places_menu_hides_the_place_and_saves_it",
         |mut host| {
-            let [x, y, w, h] = bounds(&mut host, "sidebar-place-home");
-            let (x, y) = (x + w / 2.0, y + h / 2.0);
-            host.runtime().pointer_move(x, y);
-            host.runtime().secondary_down(x, y);
-            host.turn();
-            host.runtime().secondary_up(x, y);
-            idle(&mut host);
+            right_click(&mut host, "sidebar-place-home");
             let unpin = menu_lists(
                 &mut host,
                 &["Open in New Tab", "Unpin", "Customize…", "Properties"],
@@ -942,6 +936,99 @@ fn the_menu_key_on_a_pin_opens_its_menu_and_unpin_takes_it_out_of_the_bookmarks(
             assert!(
                 unpinned,
                 "Unpin takes Work out of the bookmarks and keeps Notes"
+            );
+        },
+    );
+}
+
+/// Opens the menu of the sidebar row keyed `key` by a right-click on it.
+fn right_click(host: &mut Offscreen, key: &str) {
+    let [x, y, w, h] = bounds(host, key);
+    let (x, y) = (x + w / 2.0, y + h / 2.0);
+    host.runtime().pointer_move(x, y);
+    host.runtime().secondary_down(x, y);
+    host.turn();
+    host.runtime().secondary_up(x, y);
+    idle(host);
+}
+
+/// A pin's menu keeps the location it was opened on: a relist while it is open renumbers the
+/// pins, and Unpin still takes that pin out, as GTK's menu holds its row's location.
+#[test]
+fn unpin_takes_the_pin_its_menu_opened_on_after_a_relist() {
+    hosted_after(
+        MODULE,
+        "unpin_takes_the_pin_its_menu_opened_on_after_a_relist",
+        || {
+            for name in ["work", "notes", "new"] {
+                std::fs::create_dir_all(home().join(name)).expect("a pinned folder");
+            }
+            seed_pins(&format!(
+                "{}{}",
+                pin(&home().join("work"), "Work"),
+                pin(&home().join("notes"), "Notes")
+            ));
+        },
+        |mut host| {
+            shown(&mut host, "sidebar-pin-1");
+            right_click(&mut host, "sidebar-pin-1");
+            let unpin = menu_lists(
+                &mut host,
+                &["Open in New Tab", "Unpin", "Customize…", "Properties"],
+                "Unpin",
+            );
+            let renumbered = format!(
+                "{}{}{}",
+                pin(&home().join("new"), "New"),
+                pin(&home().join("work"), "Work"),
+                pin(&home().join("notes"), "Notes")
+            );
+            glib::MainContext::default().spawn_local(async move {
+                let written =
+                    bookmarks::update(move |_| Some(renumbered.clone().into_bytes())).await;
+                written.expect("the bookmarks file written");
+            });
+            let relisted =
+                host.run_until(PATIENCE, |host| host.app().sidebar.listed.pins.len() == 3);
+            assert!(relisted, "the sidebar lists the three pins under its menu");
+            click(&mut host, &unpin);
+            let unpinned = host.run_until(PATIENCE, |_| {
+                let file = std::fs::read_to_string(bookmarks_file()).unwrap_or_default();
+                !file.contains("/notes ") && file.contains("/work ") && file.contains("/new ")
+            });
+            let file = std::fs::read_to_string(bookmarks_file()).unwrap_or_default();
+            assert!(unpinned, "Unpin takes Notes out, and only Notes: {file}");
+        },
+    );
+}
+
+/// Unpinning the open place leaves no row marked: the sidebar marks the active location's row
+/// again at each relist, as GTK's `rebuild` ends with `sync_active_place`, and a standard
+/// folder's pin is never listed beside its place.
+#[test]
+fn unpinning_the_open_place_leaves_no_row_marked() {
+    hosted(
+        MODULE,
+        "unpinning_the_open_place_leaves_no_row_marked",
+        |mut host| {
+            opened(&home(), &mut host);
+            let home_item = ItemId::Place("home".into());
+            let marked = host.run_until(PATIENCE, |host| {
+                host.app().sidebar.current == Some(home_item.clone())
+            });
+            assert!(marked, "Home's row is marked first");
+            right_click(&mut host, "sidebar-place-home");
+            let unpin = menu_lists(
+                &mut host,
+                &["Open in New Tab", "Unpin", "Customize…", "Properties"],
+                "Unpin",
+            );
+            click(&mut host, &unpin);
+            let cleared = host.run_until(PATIENCE, |host| host.app().sidebar.current.is_none());
+            assert!(
+                cleared,
+                "no row is marked: {:?}",
+                host.app().sidebar.current
             );
         },
     );

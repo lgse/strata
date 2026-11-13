@@ -179,7 +179,6 @@ fn start(app: &mut App) {
     }));
     sidebar.pins = bookmarks::current();
     relist(app);
-    app.sidebar.follow(&app.browser);
 }
 
 /// The store read the bookmarks file again, or could not.
@@ -193,7 +192,6 @@ fn heard_pins(later: &Later<App>, pins: Result<&Vec<(Location, String)>, &io::Er
                 }
                 app.sidebar.pins = pins;
                 relist(app);
-                app.sidebar.follow(&app.browser);
                 true
             });
         }
@@ -201,7 +199,8 @@ fn heard_pins(later: &Later<App>, pins: Result<&Vec<(Location, String)>, &io::Er
     }
 }
 
-/// Lists the rows again from the settings and the pins, and lets go of a held row.
+/// Lists the rows again from the settings and the pins, lets go of a held row, and marks the
+/// active location's row again, as GTK's `rebuild` ends with `sync_active_place`.
 fn relist(app: &mut App) {
     let listed = places::listed(
         shell::preferences(app),
@@ -212,6 +211,7 @@ fn relist(app: &mut App) {
     // A drag held across the change would carry a row that may no longer be where it was.
     app.sidebar.state.places_reorder.cancel();
     app.sidebar.state.pins_reorder.cancel();
+    app.sidebar.follow(&app.browser);
 }
 
 impl Sidebar {

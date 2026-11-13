@@ -8,9 +8,12 @@
 //!   Shift+F10 on a focused row open it at the row, which Rune reports as the same secondary
 //!   press (`El::on_secondary_press`), as GTK pops the row's popover up on it
 //!   (`open_sidebar_context_menu`).
-//! - **The rows**, in GTK's order: "Open in New Tab" and a separator, "Connect to server…" on
-//!   Network, "Unpin", "Customize…" on a folder with a local path, and "Properties"; the
-//!   Trash's menu has "Unpin" and "Properties".
+//! - **The rows**, in GTK's order: "Open in New Tab" and a separator, then "Connect to
+//!   server…" on Network, "Unpin", "Customize…" on a folder with a local path, and
+//!   "Properties"; the Trash's menu has "Unpin" and "Properties" after the separator.
+//! - **The target** is the row and its location as the menu opened, as GTK's menu holds its
+//!   row's location: a relist while it is open renumbers the pins, and Unpin still takes the
+//!   one it was opened on.
 //! - **Unpin** is the sidebar's: it hides a built-in place, saving its `sidebar_show_*`
 //!   setting, or takes a pin out of the bookmarks file (`unpin_location`). The other rows'
 //!   commands belong to other packages' parts (tabs, the Connect to server dialog, the
@@ -75,7 +78,7 @@ pub(super) const PROPERTIES: MenuRow = MenuRow {
 /// The rows the menu of `row` shows, by section.
 pub(super) fn rows(row: &Row) -> Vec<Vec<MenuRow>> {
     if matches!(&row.item, ItemId::Place(id) if id == "trash") {
-        return vec![vec![UNPIN, PROPERTIES]];
+        return vec![vec![OPEN_IN_TAB], vec![UNPIN, PROPERTIES]];
     }
     let mut actions = Vec::new();
     if matches!(&row.item, ItemId::Place(id) if id == "network") {
@@ -97,13 +100,22 @@ fn model(row: &Row) -> MenuModel {
         })
 }
 
+/// What a menu was opened on: the row, and its location then.
+struct Target {
+    item: ItemId,
+    location: Location,
+}
+
 /// A row asked for its menu, at `point` in window points.
 pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress) {
     let Some(row) = app.sidebar.location_of(item) else {
         return;
     };
     let model = model(row);
-    let target = MenuTarget::Other(Rc::new(item.clone()));
+    let target = MenuTarget::Other(Rc::new(Target {
+        item: item.clone(),
+        location: row.location.clone(),
+    }));
     app.sidebar
         .menu
         .open(target, Point::new(point.x, point.y), model);
@@ -128,27 +140,23 @@ fn chosen(app: &mut App, intent: MenuIntent, _: &mut Tx) {
     let MenuTarget::Other(target) = target else {
         return;
     };
-    let Some(item) = target.downcast_ref::<ItemId>() else {
+    let Some(target) = target.downcast_ref::<Target>() else {
         return;
     };
     if &*action == UNPIN.id {
-        unpin(app, item);
+        unpin(app, target);
     }
 }
 
 /// GTK's Unpin: a built-in place is hidden, a pin leaves the bookmarks file.
-fn unpin(app: &mut App, item: &ItemId) {
-    match item {
+fn unpin(app: &mut App, target: &Target) {
+    match &target.item {
         ItemId::Place(id) => {
             let id = id.clone();
             shell::saved(app).change(|settings| hide_place(settings, &id));
             relist(app);
         }
-        ItemId::Pin(_) => {
-            if let Some(row) = app.sidebar.location_of(item) {
-                unpin_location(row.location.clone());
-            }
-        }
+        ItemId::Pin(_) => unpin_location(target.location.clone()),
         ItemId::Device(_) => {}
     }
 }
