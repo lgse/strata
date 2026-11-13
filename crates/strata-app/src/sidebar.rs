@@ -291,7 +291,7 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
         SidebarIntent::ContextMenu {
             item: Some(item),
             point,
-        } => menu::open(app, &item, point),
+        } => menu::open(app, &item, point, tx.by_keys()),
         SidebarIntent::LeaveToFiles => {
             if let Some(view) = shell::view_focus(app) {
                 tx.focus(view, true);

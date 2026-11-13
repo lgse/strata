@@ -24,6 +24,12 @@ pub struct MenuModel {
 }
 
 impl MenuModel {
+    /// How wide the menu draws in `look`: what a host that centres the menu under what it
+    /// opened on, as GTK centres a popover on the widget it points at, needs.
+    pub fn width(&self, look: &Look) -> f32 {
+        width(look, &self.header, &self.sections)
+    }
+
     /// A menu with no header and no sections.
     pub fn new() -> Self {
         Self::default()

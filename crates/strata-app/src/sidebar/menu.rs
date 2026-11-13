@@ -5,9 +5,10 @@
 //! `build_trash_menu` in `src/ui/window/sidebar_trash.rs`), drawn by strata-components' C21.
 //!
 //! - **Opening.** A right-click on a row opens its menu at the pointer; the Menu key and
-//!   Shift+F10 on a focused row open it at the row, which Rune reports as the same secondary
-//!   press (`El::on_secondary_press`), as GTK pops the row's popover up on it
-//!   (`open_sidebar_context_menu`).
+//!   Shift+F10 on a focused row open it under the row, centred on it, as GTK pops the row's
+//!   popover up pointing at the row (`open_sidebar_context_menu`). Rune reports both as the
+//!   row's secondary press (`El::on_secondary_press`), the keyboard's at the row's
+//!   bottom-left, and `Tx::by_keys` tells them apart; C8 keeps each row's box.
 //! - **The rows**, in GTK's order: "Open in New Tab" and a separator, then "Connect to
 //!   server…" on Network, "Unpin", "Customize…" on a folder with a local path, and
 //!   "Properties"; the Trash's menu has "Unpin" and "Properties" after the separator.
@@ -106,19 +107,28 @@ struct Target {
     location: Location,
 }
 
-/// A row asked for its menu, at `point` in window points.
-pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress) {
+/// A row asked for its menu, at `point` in window points; `by_keys` when the keyboard asked.
+pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, by_keys: bool) {
     let Some(row) = app.sidebar.location_of(item) else {
         return;
     };
     let model = model(row);
+    let at = by_keys
+        .then(|| app.sidebar.state.row_box(item))
+        .flatten()
+        .map_or(Point::new(point.x, point.y), |rect| {
+            under(rect, model.width(&app.look))
+        });
     let target = MenuTarget::Other(Rc::new(Target {
         item: item.clone(),
         location: row.location.clone(),
     }));
-    app.sidebar
-        .menu
-        .open(target, Point::new(point.x, point.y), model);
+    app.sidebar.menu.open(target, at, model);
+}
+
+/// Where a menu `width` wide opens to sit under the row laid out at `rect`, centred on it.
+fn under([x, y, w, h]: [f32; 4], width: f32) -> Point {
+    Point::new(x + (w - width) / 2.0, y + h)
 }
 
 /// The menu's anchor, with its surfaces in `layer` while it is open.
