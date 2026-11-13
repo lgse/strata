@@ -285,6 +285,9 @@ pub(crate) struct Rows<S: 'static> {
     pub(crate) select_only: fn(&mut S, At, &mut Tx),
     /// Selects every row of one of the browser's columns.
     pub(crate) select_all: fn(&mut S, usize),
+    /// Scrolls a row into view, just far enough: what a committed rename shows of the row it
+    /// renamed, wherever the new name sorts (`reveal_completed_rename`).
+    pub(crate) reveal: fn(&mut S, At, &mut Tx),
 }
 
 /// What the rename editor asks of the view it edits in.

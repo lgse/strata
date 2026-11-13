@@ -34,6 +34,7 @@ impl Part for Columns {
             activate: intents::clicked_open,
             select_only: |app, at, tx| app.columns.select_only(at, &app.look, tx),
             select_all: |app, depth| app.columns.select_all(depth),
+            reveal: |app, at, tx| app.columns.reveal_row(at, tx),
         },
         editing: Editing {
             begin: |app, at, tx| app.columns.begin_rename(&mut app.rename.state, at, tx),
