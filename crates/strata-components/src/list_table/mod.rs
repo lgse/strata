@@ -97,7 +97,8 @@
 //! cells' texts inside it and no cell roles, as GTK's row holds labels; the Name cell takes no
 //! role, so its name is not heard twice. (A `listbox` would be heard as a `list box`.) Above it
 //! the headings are buttons named by their titles, the sorted one with its direction, the
-//! sortable ones pressed to sort. The cursor's item is the list's active descendant (C1e). The
+//! sortable ones pressed to sort, each in an unnamed group as wide as its column, as GTK's
+//! button sits in its column's box. The cursor's item is the list's active descendant (C1e). The
 //! collection is one focus stop that routes its own keys, so Rune's keys for a focus group of
 //! the `list` role do not reach its items.
 //!
