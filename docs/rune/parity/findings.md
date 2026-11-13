@@ -609,4 +609,3 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside. The fix, for whoever meets it: a published-count accessor on
   `Browser`, so that a rebuild copies only what has been published. GTK's fix, if taken up,
   lands on `main`.
-
