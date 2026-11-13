@@ -292,8 +292,19 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
             wait_closed(&mut host, "Group by file type");
             assert!(shell::preferences(host.app()).group_by_type);
             let browser = host.app().browser().clone();
-            let grouped = host.run_until(PATIENCE, |_| browser.shows_type_groups(0));
-            assert!(grouped, "the browser groups the folder List shows");
+            assert!(
+                browser.shows_type_groups(0),
+                "the browser groups the folder"
+            );
+            let headings = |host: &Offscreen| {
+                let tree = host.tree();
+                view::all(&tree, &|node| node["role"] == "heading").len()
+            };
+            idle(&mut host);
+            assert!(
+                headings(&host) > 0,
+                "the List view shows the file-type groups at once"
+            );
 
             open_popover(&mut host);
             assert!(row(&host, "appearance-group").3, "Group is checked");

@@ -411,7 +411,9 @@ pub(crate) fn regroup(app: &mut App, tx: &mut Tx) {
     let Some(view) = shown_view(app) else {
         return;
     };
-    publish(app);
+    // The view shown goes on hearing the browser here, unlike in `show_view`: what is queued
+    // lands first, so none of it lands again over the rebuild.
+    settle(app, tx);
     rebuild(app, view, tx);
     settle(app, tx);
 }
