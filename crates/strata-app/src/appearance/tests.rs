@@ -7,6 +7,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use rune::{Key, Mods};
+use strata_fs::app::VisibleDepths;
 
 use crate::{
     host::offscreen::Offscreen,
@@ -47,6 +48,11 @@ fn shown(host: &Offscreen) -> Option<&'static str> {
     shell::shown_view(host.app()).map(|view| view.probe.name)
 }
 
+/// The columns the browser's background revalidation rechecks.
+fn rechecks(host: &Offscreen) -> VisibleDepths {
+    host.app().browser().freshness_input().scope
+}
+
 fn settings_file() -> PathBuf {
     strata_core::storage::config_directory().join("settings.toml")
 }
@@ -62,7 +68,9 @@ fn wait_saved(host: &mut Offscreen, line: &str) {
 
 /// Each key shows its view of the folder the browser has open, with the browser's cursor and
 /// selection on the same entry and the keyboard in the view, and saves the choice: List
-/// shown again after Columns shows the folder as it is now, not as it last showed it.
+/// shown again after Columns shows the folder as it is now, not as it last showed it. The
+/// browser rechecks the columns the view shows, from the start: every column in Columns, the
+/// active one in Icons and List, as GTK's `enter_mode` sets it.
 #[test]
 fn a_view_key_shows_that_view_of_the_open_folder_and_saves_it() {
     hosted_with(
@@ -76,15 +84,17 @@ fn a_view_key_shows_that_view_of_the_open_folder_and_saves_it() {
             press(&mut host, Key::End, Mods::default());
             let held = browser_holds(&host);
             assert_eq!(held.1.as_deref(), Some("todo.txt"));
+            assert_eq!(rechecks(&host), VisibleDepths::Active, "List at start");
 
-            for (digit, name, mode, shape) in [
-                ('2', "Icons", "icons", Some(ICONS)),
-                ('1', "Columns", "columns", None),
-                ('3', "List", "list", Some(LIST)),
+            for (digit, name, mode, shape, scope) in [
+                ('2', "Icons", "icons", Some(ICONS), VisibleDepths::Active),
+                ('1', "Columns", "columns", None, VisibleDepths::All),
+                ('3', "List", "list", Some(LIST), VisibleDepths::Active),
             ] {
                 press(&mut host, Key::Command(digit), ctrl());
                 assert_eq!(shown(&host), Some(name));
                 assert_eq!(browser_holds(&host), held, "{name}");
+                assert_eq!(rechecks(&host), scope, "{name}");
                 wait_saved(&mut host, &format!("browser_mode = \"{mode}\""));
                 let Some(shape) = shape else {
                     continue;

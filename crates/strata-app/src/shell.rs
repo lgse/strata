@@ -28,7 +28,7 @@ use strata_desktop::{
 };
 use strata_fs::{
     adapters::{LocalFileSource, LocalOperationProvider},
-    app::{Browser, BrowserEvent},
+    app::{Browser, BrowserEvent, FreshnessInput},
 };
 use strata_kit::{
     icons::IconName,
@@ -152,10 +152,9 @@ impl App {
         // Before the first load, so that its cursor lands on the first row a grouped view
         // shows (`rebuild.rs` in `src/ui/browser_modes`). A view shown later is mounted by
         // `show_view`, which does the same.
-        let groups = parts
-            .shown()
-            .is_some_and(|view| view.supports_type_grouping);
-        browser.set_type_grouping(saved.group_by_type && groups);
+        if let Some(view) = parts.shown() {
+            mount(&browser, view, saved);
+        }
         let mut listeners = parts.listeners(&setup);
         listeners.push(Box::new(hear));
         events.observe(&browser, listeners);
@@ -395,12 +394,21 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
 /// The browser groups by file type for `view` as the saved setting asks, and `view` is
 /// rebuilt from the browser ([`events::replay`]) through its own [`View::apply`].
 fn rebuild(app: &mut App, view: &View<App>, tx: &mut Tx) {
-    let grouping = preferences(app).group_by_type && view.supports_type_grouping;
-    app.browser.set_type_grouping(grouping);
+    mount(&app.browser, view, preferences(app));
     let rebuilt = events::replay(&app.browser, &app.window.ids);
     for change in rebuilt.changes {
         (view.apply)(app, change, tx);
     }
+}
+
+/// The browser serves `view`: it groups by file type as the saved setting asks and the view
+/// supports, and rechecks the columns the view shows ([`View::rechecks`]).
+fn mount(browser: &Rc<Browser>, view: &View<App>, saved: &strata_desktop::settings::Preferences) {
+    browser.set_type_grouping(saved.group_by_type && view.supports_type_grouping);
+    browser.set_freshness(FreshnessInput {
+        scope: view.rechecks,
+        ..browser.freshness_input()
+    });
 }
 
 /// The saved "Group by file type" changed: the view shown follows it, as GTK's List view

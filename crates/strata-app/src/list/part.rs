@@ -6,6 +6,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use rune::Tx;
 use strata_components::contract::EntrySource;
+use strata_fs::app::VisibleDepths;
 
 use super::{List, VIEW, view};
 #[cfg(feature = "qa")]
@@ -81,6 +82,7 @@ impl Part for List {
         focus: VIEW,
         // `BrowserMode::supports_type_grouping`: the List view groups by file type.
         supports_type_grouping: true,
+        rechecks: VisibleDepths::Active,
         apply: single::apply::<Self>,
         returns: None,
         pointer_at: None,
