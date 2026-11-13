@@ -115,7 +115,7 @@ package = "A8"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "C4: the List view, at Ctrl+3 (`view_mode`). Then tabs (C7) and the Icons view (C3)"
+blocker = "A4: tabs, a second tab at Ctrl+T on line 13, whose hidden tab follows the saved view (line 31)"
 
 [[run]]
 scenario = "keyboard-only-copy-paste"
