@@ -13,6 +13,7 @@ use crate::{
     App,
     commands::{On, Outcome, run},
     host::offscreen::Offscreen,
+    shell,
     test_support::{PATIENCE, fixture, hosted, send_key},
 };
 
@@ -249,6 +250,58 @@ fn a_failed_undo_of_a_rename_shows_the_dialog() {
                     .as_deref(),
                 Some("in the way")
             );
+        },
+    );
+}
+
+/// What has the keyboard, as an update reads it.
+fn keyboard(host: &mut Offscreen) -> Option<String> {
+    let mut focused = None;
+    host.runtime()
+        .update(|_: &mut App, tx| focused = tx.focused().map(str::to_owned));
+    while host.turn() {}
+    focused
+}
+
+/// A rename Tab moved on from that fails: Tab's editor on the neighbour closes and the dialog
+/// shows in the same handler, and once the dialog closes the keyboard is on the view, where
+/// GTK's falls back to the listing (`fail_pending_rename_from_browser`).
+#[test]
+fn closing_the_dialog_of_a_rename_tab_moved_on_from_leaves_the_keyboard_on_the_view() {
+    hosted(
+        MODULE,
+        "closing_the_dialog_of_a_rename_tab_moved_on_from_leaves_the_keyboard_on_the_view",
+        |mut host| {
+            let folder = listed(&mut host);
+            // `readme.md` has `todo.txt` after it, for Tab to move on to.
+            let readme = Location::local(folder.path().join("readme.md"));
+            host.runtime().update(|app: &mut App, tx| {
+                let row = On::Row((0, crate::shell::id_of(app, &readme)));
+                assert_eq!(run(app, "rename", row, tx), Outcome::Ran);
+            });
+            let opened = host.run_until(PATIENCE, |host| field_text(host).is_some());
+            assert!(opened, "the editor");
+            key(&mut host, Key::Command('a'), ctrl());
+            for character in "todo.txt".chars() {
+                host.runtime().key(KeyEvent {
+                    key: Key::Text(character.to_string()),
+                    mods: Mods::default(),
+                });
+            }
+            while host.turn() {}
+            key(&mut host, Key::Tab, Mods::default());
+
+            let failed = wait_for_dialog(&mut host);
+            assert_eq!(failed.name, "Unable to rename item");
+            close_dialog(&mut host);
+
+            assert_eq!(
+                field_text(&host),
+                None,
+                "Tab's editor closed with the failure"
+            );
+            let view = shell::view_focus(host.app()).map(str::to_owned);
+            assert_eq!(keyboard(&mut host), view, "the keyboard on the view");
         },
     );
 }
