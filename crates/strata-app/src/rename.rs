@@ -16,9 +16,12 @@
 //!   opens the editor again on the entry, with the typed name and the browser's message: the
 //!   GTK view shows a dialog there, which the slice leaves out.
 //!
-//! Left out, with what brings each back: naming a new folder or file (`Naming::NewItem`) and
-//! undo, which are interface the slice has not; the label showing the new name before the
-//! rename lands (`start_pending_rename`); the field's own menu (C21).
+//! - **A new item.** A folder or file just created opens the editor with `Naming::NewItem`
+//!   ([`begin_new_item`], from `new_item.rs`): a file may then be named as a folder, and the
+//!   name goes to `Browser::name_new_item`, whose undo trashes the item under its new name.
+//!
+//! Left out, with what brings each back: the label showing the new name before the rename
+//! lands (`start_pending_rename`); the field's own menu (C21).
 
 use std::ffi::OsStr;
 
@@ -40,7 +43,7 @@ use strata_fs::{
 use crate::{
     App,
     commands::{Action, Call, Holds, Keys, On, Outcome, Stage},
-    shell,
+    new_item, shell,
     slots::{Frame, Listener, Part, Place, Setup, View},
 };
 
@@ -233,8 +236,18 @@ fn hold(app: &App, view: &View<App>, editing: bool) {
     }
 }
 
-/// Opens the editor on `entry`, a row of column `depth`. False when it has no row to open in.
-fn open(app: &mut App, depth: usize, entry: FileEntry, tx: &mut Tx) -> bool {
+/// How `entry` is named when nothing says otherwise: a relative path moves a local item, and
+/// elsewhere a name is a name (`begin` in `src/ui/collection_edit.rs`).
+fn naming_of(entry: &FileEntry) -> Naming {
+    match entry.location.native_path() {
+        Some(_) => Naming::Path,
+        None => Naming::Single,
+    }
+}
+
+/// Opens the editor on `entry`, a row of column `depth`, named as `naming` says. False when
+/// it has no row to open in.
+fn open(app: &mut App, depth: usize, entry: FileEntry, naming: Naming, tx: &mut Tx) -> bool {
     let Some(view) = host(app).filter(|_| can_rename(&entry)) else {
         return false;
     };
@@ -242,12 +255,6 @@ fn open(app: &mut App, depth: usize, entry: FileEntry, tx: &mut Tx) -> bool {
     // An edit still open ends for this one, and keeps its name: nothing to act on.
     let Some(_ended) = (view.editing.begin)(app, (depth, id), tx) else {
         return false;
-    };
-    // A relative path moves a local item; elsewhere a name is a name (`begin` in
-    // `src/ui/collection_edit.rs`).
-    let naming = match entry.location.native_path() {
-        Some(_) => Naming::Path,
-        None => Naming::Single,
     };
     app.rename.editing = Some(Editing {
         depth,
@@ -260,25 +267,55 @@ fn open(app: &mut App, depth: usize, entry: FileEntry, tx: &mut Tx) -> bool {
 }
 
 /// F2 and Ctrl+R: the focused item, or the folder the keyboard has entered. False when no
-/// editor opened.
+/// editor opened. A new item still waiting for its editor gives way, whether or not one
+/// opens (`begin_rename` in `src/ui/browser/inline_edit.rs`).
 fn begin_focused(app: &mut App, tx: &mut Tx) -> bool {
     if app.rename.pending() {
         return false;
     }
+    new_item::cancel(app);
     match app.browser.rename_item() {
-        Some((depth, _, entry)) => open(app, depth, entry, tx),
+        Some((depth, _, entry)) => {
+            let naming = naming_of(&entry);
+            open(app, depth, entry, naming, tx)
+        }
         None => false,
     }
 }
 
-/// The view's slow second click and the menu's Rename row: entry `id` of column `depth`.
+/// The view's slow second click and the menu's Rename row: entry `id` of column `depth`. A
+/// new item still waiting for its editor gives way, as to F2.
 pub(crate) fn begin_on(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
     if app.rename.pending() {
         return;
     }
+    new_item::cancel(app);
     let position = host(app).and_then(|view| (view.rows.position)(app, (depth, id)));
     if let Some(entry) = position.and_then(|position| app.browser.entry_at(depth, position)) {
-        open(app, depth, entry, tx);
+        let naming = naming_of(&entry);
+        open(app, depth, entry, naming, tx);
+    }
+}
+
+/// A folder or file just created, `entry` in column `depth`: the editor opens on it with
+/// `naming`, `Naming::NewItem` unless the folder takes a selection in. False while its row
+/// cannot take the editor yet, or a rename waits for the browser.
+pub(crate) fn begin_new_item(
+    app: &mut App,
+    depth: usize,
+    entry: FileEntry,
+    naming: Naming,
+    tx: &mut Tx,
+) -> bool {
+    !app.rename.pending() && open(app, depth, entry, naming, tx)
+}
+
+/// Ends an open edit without renaming, before a new item takes the editor
+/// (`cancel_rename`).
+pub(crate) fn cancel(app: &mut App, tx: &mut Tx) {
+    let polled = app.rename.state.cancel(By::Host);
+    for intent in polled.intents {
+        heard(app, intent, tx);
     }
 }
 
@@ -287,9 +324,11 @@ pub(crate) fn begin_on(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
 fn wanted(editing: &Editing, typed: &str) -> Option<Wanted> {
     let entry = &editing.entry;
     let directory = entry.is_directory();
+    // `Submission::path` in `src/ui/collection_edit.rs`: a new file may become a folder.
     let path = match editing.naming {
         Naming::Single => None,
-        Naming::Path | Naming::NewItem => TypedPath::parse(typed, directory, false).ok(),
+        Naming::Path => TypedPath::parse(typed, directory, false).ok(),
+        Naming::NewItem => TypedPath::parse(typed, directory, true).ok(),
     };
     let path = path.map(|path| match entry.location.parent() {
         Some(parent) => path.within(&parent),
@@ -311,17 +350,22 @@ fn placed(folder: Option<Location>, path: &TypedPath) -> Option<Location> {
     path.start(&folder?)?.child(OsStr::new(path.first()))
 }
 
-/// Asks the browser for the rename `typed` names, and remembers it until it is answered.
+/// Asks the browser for the rename `typed` names, and remembers it until it is answered
+/// (`submit_rename_entry` in `src/ui/browser/inline_edit.rs`).
 fn ask(app: &mut App, editing: Editing, typed: String) {
     let Some(wanted) = wanted(&editing, &typed) else {
+        // A folder made for a selection keeps the name it was made with.
+        app.browser.clear_group_folder();
         return;
     };
     let entry = editing.entry.clone();
+    let new_item = editing.naming == Naming::NewItem;
     let (request, placed) = match wanted {
+        Wanted::Name(name) if new_item => (app.browser.name_new_item(entry, name), None),
         Wanted::Name(name) => (app.browser.rename(entry, name), None),
         Wanted::Path(path) => {
             let placed = placed(entry.location.parent(), &path);
-            (app.browser.place_entry(entry, path, false), placed)
+            (app.browser.place_entry(entry, path, new_item), placed)
         }
     };
     app.rename.asked = Some(Asked {
@@ -353,7 +397,8 @@ fn advance(app: &mut App, (depth, id): (usize, EntryId), step: isize, tx: &mut T
     }
     let position = (view.rows.position)(app, (depth, next));
     if let Some(entry) = position.and_then(|position| app.browser.entry_at(depth, position)) {
-        open(app, depth, entry, tx);
+        let naming = naming_of(&entry);
+        open(app, depth, entry, naming, tx);
     }
 }
 
@@ -428,7 +473,7 @@ fn completed(app: &mut App, asked: &Asked) {
 /// the browser's message under it. The entry kept its location, and so its id.
 fn failed(app: &mut App, asked: Asked, message: String, tx: &mut Tx) {
     let Asked { editing, typed, .. } = asked;
-    if !open(app, editing.depth, editing.entry, tx) {
+    if !open(app, editing.depth, editing.entry, editing.naming, tx) {
         tracing::warn!(%message, "a rename failed, and its row is gone");
         return;
     }

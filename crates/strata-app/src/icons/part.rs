@@ -6,11 +6,12 @@ use rune::Tx;
 
 use strata_components::{contract::EntryId, icons_grid::IconsGrid, thumbnails::ThumbnailStore};
 
-use super::{Icons, VIEW, view};
+use super::{Icons, VIEW, size, view};
 #[cfg(feature = "qa")]
 use crate::slots::Probe;
 use crate::{
     App,
+    commands::Action,
     rename::Rename,
     single::{self, Single, SinglePane},
     slots::{Listener, Part, Place, Setup, View},
@@ -96,8 +97,11 @@ impl Part for Icons {
         single::publish::<Self>(app);
     }
 
+    const COMMANDS: &'static [Action<App>] = size::COMMANDS;
+
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = single::poll::<Self>(app, clock, tx);
+        size::follow_folder(app);
         let grid = view::grid();
         let ticked = grid.collection(app).tick(app, tx);
         grid.poll(app, tx);

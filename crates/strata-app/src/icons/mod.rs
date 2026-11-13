@@ -11,7 +11,7 @@ use strata_components::{
     context_menu::AnchorEdge,
     icons_grid::IconsGridState,
 };
-use strata_core::i18n::tr;
+use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::Preferences;
 
 use crate::{
@@ -23,6 +23,7 @@ use crate::{
 };
 
 mod part;
+mod size;
 mod view;
 
 /// The grid's key: its collection's, and the element that takes the keyboard. Every element
@@ -32,8 +33,11 @@ pub(crate) const VIEW: &str = "icons";
 pub(crate) struct Icons {
     single: Single,
     grid: IconsGridState,
-    /// The tile size in points, from 32 to 256.
+    /// The tile size in points, from 32 to 256 (`size.rs`).
     size: f32,
+    /// The folder shown when the size was last set, so the part's poll can tell when another
+    /// folder shows and set the size that folder follows.
+    sized_for: Option<Location>,
     /// The grid's viewer in the window's thumbnails.
     thumbs: Viewer,
     /// The metadata fills of the rows near the viewport, with the icon details the tiles show.
@@ -65,9 +69,8 @@ impl Icons {
                 menu_at: AnchorEdge::Right,
             }),
             grid: IconsGridState::new(),
-            // The saved size, which loading holds between 32 and 256 (`stored.rs` in
-            // `strata_desktop::settings`). The size a folder remembers is B2's store's.
-            size: f32::from(u16::try_from(settings.icons_thumbnail_size).unwrap_or(64)),
+            size: size::tile_size(settings.icons_thumbnail_size),
+            sized_for: None,
             thumbs: Viewer::new(later, part::locate),
             fills: Fills::new(Details::All),
         }
