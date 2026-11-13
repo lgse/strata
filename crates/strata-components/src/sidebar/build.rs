@@ -244,7 +244,7 @@ fn places<S: 'static>(
             spec,
             icon,
             ctx.reorder
-                .then(|| (&ctx.state.places_reorder, Block::Places, intent)),
+                .then_some((&ctx.state.places_reorder, Block::Places, intent)),
         ));
     }
     block
@@ -305,7 +305,7 @@ fn pinned<S: 'static>(ctx: &Ctx<'_, S>, data: &SidebarData<'_>) -> Option<El> {
             });
         // Collapsed, the lone open pin has nowhere to move to.
         let reorder =
-            (ctx.reorder && !collapsed).then(|| (&ctx.state.pins_reorder, Block::Pins, intent));
+            (ctx.reorder && !collapsed).then_some((&ctx.state.pins_reorder, Block::Pins, intent));
         let icon = row_icon(look, &p.icon, p.tint, selected);
         section = section.child(folder_row(ctx, spec, icon, reorder));
         section = section.child(gap(ctx, pins, i + 1, verdict));

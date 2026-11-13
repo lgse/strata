@@ -1,12 +1,10 @@
 diff --git a/crates/strata-components/src/sidebar/drag.rs b/crates/strata-components/src/sidebar/drag.rs
 --- a/crates/strata-components/src/sidebar/drag.rs
 +++ b/crates/strata-components/src/sidebar/drag.rs
-@@ -53,7 +53,7 @@ pub fn landing(from: usize, count: usize, along: f32, pitch: f32) -> usize {
-     if count == 0 || pitch <= 0.0 {
+@@ -54,5 +54,5 @@ pub fn landing(from: usize, count: usize, along: f32, pitch: f32) -> usize {
          return from;
      }
 -    let past = (along / pitch).trunc();
 +    let past = (along / pitch).round();
      (from as f32 + past).clamp(0.0, (count - 1) as f32) as usize
  }
- 
