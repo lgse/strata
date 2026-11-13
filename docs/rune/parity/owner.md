@@ -401,6 +401,15 @@ the orchestrating session, 2026-11-12):
    (Location bar), with the header's shell, since the breadcrumbs live in the same header. The
    plan placed them with no package; B3 said so when it closed. Placed by the coordinator,
    2026-11-12. `keyboard_navigation/back-history-dropdown` waits on it.
+9. **The Icons view's thumbnail size is [A1](packages/A1.md)'s, its header button and slider
+   [A5](packages/A5.md)'s.** The coordinator's placing, 2026-11-12, for the owner to confirm. A1
+   owns the commands `thumbnails_larger`, `thumbnails_smaller` and `thumbnails_reset` with their
+   catalog bindings (read at the dispatcher's `zoom_shortcut` stage), Ctrl+Shift+wheel over the
+   grid (GTK's `WheelZoom`), the size each folder keeps through B2's folder-view store, and the
+   grid laying out at the size live. A5 owns the pane header's "Thumbnail size" button and its
+   slider popover (`ThumbnailSizeMenu`, `src/ui/browser_modes/icons_controls.rs`), which call
+   A1's commands. Sources: `src/ui/browser_modes/thumbnail_size.rs`,
+   `src/ui/window/keyboard/wheel_zoom.rs`, `src/ui/preferences/folder_view_settings.rs`.
 
 ### A2: List view
 

@@ -13,7 +13,7 @@ use strata_components::{
     icons_grid::{IconsGrid, IconsParts},
 };
 
-use super::{Icons, VIEW};
+use super::{Icons, VIEW, size};
 use crate::{App, details, listing::Row, shell, single, slots::Frame};
 
 pub(super) fn grid() -> IconsGrid<App> {
@@ -43,6 +43,7 @@ pub(super) fn grid() -> IconsGrid<App> {
         false
     })
     .on_wheel(single::wheeled::<Icons>)
+    .on_size(size::resized)
 }
 
 fn row<'a>(app: &'a App, rcx: &RowCx<'_>) -> Option<&'a Row> {
