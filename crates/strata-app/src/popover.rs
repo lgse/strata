@@ -67,8 +67,16 @@ pub(crate) struct Plain {
     pub(crate) listing: Option<&'static str>,
     /// Closes the popover: the part's own state.
     pub(crate) close: fn(&mut App),
-    /// Closes the popover this one was opened from, if any, on an outside press or wheel.
-    pub(crate) parent: Option<fn(&mut App)>,
+    /// The popover this one was opened from, if any: an outside press or wheel closes it too.
+    pub(crate) parent: Option<Parent>,
+}
+
+/// The popover a nested one was opened from: how to close it, and the button that opened it,
+/// which takes the keyboard when both close (the child's own button goes with the parent).
+#[derive(Clone, Copy)]
+pub(crate) struct Parent {
+    pub(crate) close: fn(&mut App),
+    pub(crate) anchor: &'static str,
 }
 
 impl Plain {
@@ -78,8 +86,8 @@ impl Plain {
         let listing = self.listing.and_then(|key| frame.cx.window_layout(key));
         let closes = Closes {
             own: self.close,
-            parent: self.parent,
-            anchor: self.anchor,
+            parent: self.parent.map(|parent| parent.close),
+            anchor: self.parent.map_or(self.anchor, |parent| parent.anchor),
         };
         frame.layer.push(scrim(self.key, listing, closes));
         let (close, stops, own_arrows) = (self.close, self.stops, self.own_arrows);
@@ -107,7 +115,8 @@ impl Plain {
     }
 }
 
-/// What an outside press or wheel closes, and the button the keyboard goes back to.
+/// What an outside press or wheel closes, and the button the keyboard goes back to: the
+/// outermost popover's.
 #[derive(Clone, Copy)]
 struct Closes {
     own: fn(&mut App),
@@ -116,11 +125,15 @@ struct Closes {
 }
 
 impl Closes {
-    fn close(self, app: &mut App) {
+    /// Closes the popover, and its parent if it has one, and gives the outermost button the
+    /// keyboard: for a nested pair neither `focus_return` would land, the child's button going
+    /// with the parent.
+    fn close(self, app: &mut App, tx: &mut Tx) {
         (self.own)(app);
         if let Some(parent) = self.parent {
             parent(app);
         }
+        tx.focus(self.anchor, true);
     }
 }
 
@@ -133,13 +146,14 @@ fn scrim(key: &str, listing: Option<[f32; 4]>, closes: Closes) -> El {
         .w_full()
         .h_full()
         .a11y_hidden()
-        .on_press(move |app: &mut App| closes.close(app))
-        .on_secondary_press(move |app: &mut App, _: PointerPress, _: &mut Tx| closes.close(app))
+        .on_press_tx(move |app: &mut App, tx: &mut Tx| closes.close(app, tx))
+        .on_secondary_press(move |app: &mut App, _: PointerPress, tx: &mut Tx| {
+            closes.close(app, tx);
+        })
+        // A wheel passed on to the listing leaves the handler's change unseen; the focus
+        // request `close` makes, as GTK's close does, has Rune build the window again.
         .on_wheel(move |app: &mut App, wheel: WheelEvent, tx: &mut Tx| {
-            closes.close(app);
-            // A wheel passed on to the listing leaves the handler's change unseen: the focus
-            // request, which GTK's close makes too, has Rune build the window again.
-            tx.focus(closes.anchor, true);
+            closes.close(app, tx);
             !listing.is_some_and(|rect| inside(rect, wheel.x, wheel.y))
         })
 }

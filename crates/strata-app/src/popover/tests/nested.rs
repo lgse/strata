@@ -13,7 +13,7 @@ use super::{centre, click_at, idle};
 use crate::{
     App,
     commands::Holds,
-    popover::{Plain, focus_left},
+    popover::{Parent, Plain, focus_left},
     slots::{Entry, Frame, Place},
     test_support::{PATIENCE, hosted_over, idle_view},
 };
@@ -75,7 +75,10 @@ fn nest(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
             own_arrows: &[],
             listing: None,
             close: close_child,
-            parent: Some(close_parent),
+            parent: Some(Parent {
+                close: close_parent,
+                anchor: ANCHOR,
+            }),
         };
         child.build(look, body, frame);
     }
@@ -155,5 +158,10 @@ fn the_keyboard_in_the_child_keeps_the_parent_and_a_press_outside_closes_both() 
         click_at(&mut host, on_parent);
         let closed = host.run_until(PATIENCE, |_| !CHILD.get() && !PARENT.get());
         assert!(closed, "a press on the parent's surface closes both");
+        assert_eq!(
+            super::focused(&mut host).as_deref(),
+            Some(ANCHOR),
+            "the keyboard goes to the parent's button"
+        );
     });
 }
