@@ -114,6 +114,11 @@ const ODD: &[&str] = &[
     "<Control>#38",
     "<0x26>",
     "<Release>0x26",
+    "<Option>a",
+    "<Command>a",
+    "<Logo>a",
+    "<Mode_switch>a",
+    "<ISO_Level3_Shift>a",
 ];
 
 /// Characters put at every position of a few accelerators, and around each modifier word.
@@ -328,15 +333,38 @@ fn gdk_parse(accelerator: &str) -> Parsed {
     })
 }
 
+/// A plain key both libraries name alike, put in place of the key to compare the modifiers
+/// alone.
+const PLAIN: u32 = 0x61;
+
+/// The text GTK is handed, cut where its key name starts: what is before it, and the name.
+fn halves(accelerator: &str) -> (&str, &str) {
+    let text = accelerator.split('\0').next().unwrap_or_default();
+    let name = text.rsplit('>').next().unwrap_or(text);
+    (&text[..text.len() - name.len()], name)
+}
+
 /// The key a name reads as, in lower case, in each library.
 fn key_part_differs(accelerator: &str) -> bool {
-    let text = accelerator.split('\0').next().unwrap_or_default();
-    let part = text.rsplit('>').next().unwrap_or(text);
+    let (_, name) = halves(accelerator);
     let xkb = Xkb
-        .key_from_name(part)
+        .key_from_name(name)
         .map(|key| Xkb.key_to_lower(key).keysym());
-    let gdk = gdk::Key::from_name(part).map(|key| key.to_lower().into_glib());
+    let gdk = gdk::Key::from_name(name).map(|key| key.to_lower().into_glib());
     xkb != gdk
+}
+
+/// Whether both sides read the modifiers before the key alike: with a plain key in its
+/// place, each answers the same.
+fn modifiers_agree(accelerator: &str) -> bool {
+    let (modifiers, _) = halves(accelerator);
+    let with_plain = format!("{modifiers}a");
+    xkb_parse(&with_plain) == gdk_parse(&with_plain)
+}
+
+/// A difference in the key alone, which the key lookups of another library explain.
+fn parse_explained(accelerator: &str) -> bool {
+    key_part_differs(accelerator) && modifiers_agree(accelerator)
 }
 
 type Written = (u32, Modifiers);
@@ -356,12 +384,20 @@ fn name_part_differs(keysym: u32) -> bool {
     xkb != gdk
 }
 
-fn name_explained((keysym, _): &Written, _: &String, _: &String) -> bool {
-    name_part_differs(*keysym)
+/// Whether both sides write `modifiers` alike, and read back alike what they wrote.
+fn written_modifiers_agree(modifiers: Modifiers) -> bool {
+    let plain = (PLAIN, modifiers);
+    xkb_name(&plain) == gdk_name(&plain)
+        && xkb_parse(&xkb_name(&plain)) == gdk_parse(&gdk_name(&plain))
+}
+
+fn name_explained(input: &Written, _: &String, _: &String) -> bool {
+    name_part_differs(input.0) && written_modifiers_agree(input.1)
 }
 
 fn round_trip_explained(input: &Written, _: &Parsed, _: &Parsed) -> bool {
-    name_part_differs(input.0) || key_part_differs(&gdk_name(input))
+    let key_differs = name_part_differs(input.0) || key_part_differs(&gdk_name(input));
+    key_differs && written_modifiers_agree(input.1)
 }
 
 /// Every keysym with all seven modifiers, and every declared key with every set of the
@@ -395,7 +431,7 @@ fn parse(name: &'static str) -> Lookup<String, Parsed> {
         xkb: |accelerator| xkb_parse(accelerator),
         gdk: |accelerator| gdk_parse(accelerator),
         row,
-        tolerated: |accelerator, _, _| key_part_differs(accelerator),
+        tolerated: |accelerator, _, _| parse_explained(accelerator),
     }
 }
 

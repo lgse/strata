@@ -52,7 +52,8 @@ pub fn library_name(keysym: u32) -> Option<String> {
 /// The backend over [`Table`] and libxkbcommon.
 ///
 /// It reads and writes accelerator strings in GTK's format, through its own key lookups
-/// ([`accelerator`]), so a saved keymap reads and writes as it does in the GTK application.
+/// ([`accelerator`]), so the accelerator strings of a saved keymap read and write as GTK's
+/// do. Whether an interface reads a saved keymap with it is the interface's.
 pub struct Xkb;
 
 impl Backend for Xkb {
