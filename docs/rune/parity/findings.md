@@ -722,7 +722,7 @@ sequence only together with the alphabet's version, so the version is part of th
   `select_only` (`crates/strata-components/src/collection/pointer/machine.rs`).
 - **Concerns:** seeds `0x12` and `0x07` of `columns v1` (shrunk to 3 and 10 steps) and seed
   `0x0f` of `columns v3`, parked in `tests/qa/fuzz/corpus/columns/`.
-- **State:** fixed by [F2](packages/F2.md)'s pull request in C1e: a secondary press selects an
+- **State:** fixed by [F2](packages/F2.md)'s [#2371](https://github.com/lgse/strata/pull/2371) in C1e: a secondary press selects an
   unselected entry with `Selection::select_only_keeping_anchor`, so the anchor stays where it
   was in Columns, List and Icons, as GTK's shared `focus_context_entry` leaves it in all three
   (checked on GTK's List and Icons with the same three steps). Held by C1e's
