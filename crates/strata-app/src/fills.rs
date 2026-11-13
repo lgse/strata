@@ -2,8 +2,9 @@
 
 //! Metadata fills for the rows a view shows: what the browser does not know of an entry yet
 //! (its size, a folder's count, an image's dimensions, a video's length) is asked for while
-//! the row is on screen or near it. Shared code: the Icons view is its first user, and the
-//! List view asks the same way, without the icon details.
+//! the row is on screen or near it. Shared code: the Icons view asks every row's details
+//! ([`Details::All`]), the List view a folder's only, for its item count ([`Details::Folders`],
+//! as GTK's List asks with `details = entry.is_directory()`).
 //!
 //! GTK's rule (`schedule_refresh` in `src/ui/thumbnail/viewport.rs`, at `62bbb1609`; ported as
 //! new code and listed in `docs/rune/parity/packages/A1.md`, "Ported from GTK"):
@@ -63,11 +64,30 @@ impl Filler for Rc<Browser> {
     }
 }
 
+/// Which rows a view asks the details of: a folder's item count, an image's dimensions and a
+/// video's length, which strata-fs reads only on a fill asked with details.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Details {
+    /// Every row: the Icons view's details line shows all three.
+    All,
+    /// Folders only, for their item count: the List view's Size column. GTK's List asks with
+    /// `details = entry.is_directory()` (`src/ui/browser_modes/list_factory.rs`).
+    Folders,
+}
+
+impl Details {
+    fn of(self, entry: &FileEntry) -> bool {
+        match self {
+            Self::All => true,
+            Self::Folders => entry.is_directory(),
+        }
+    }
+}
+
 /// One view's fills: the range it shows, and the rows whose fills are out.
 pub(crate) struct Fills {
-    /// Whether to ask for an image's dimensions and a video's length too: Icons' details
-    /// line shows them, List's columns do not.
-    details: bool,
+    /// Which rows are asked their details too.
+    details: Details,
     /// The range the view last reported, and whether a poll has asked for it since.
     range: Range<usize>,
     fresh: bool,
@@ -104,7 +124,7 @@ impl Known {
 }
 
 impl Fills {
-    pub(crate) fn new(details: bool) -> Self {
+    pub(crate) fn new(details: Details) -> Self {
         Self {
             details,
             range: 0..0,
@@ -181,7 +201,8 @@ impl Fills {
         let position = shown.listing.position_at(index)?;
         let entry = browser.entry_at(shown.depth, position)?;
         let id = shown.listing.id_at(index);
-        if !needs_fill(&entry, self.details) {
+        let details = self.details.of(&entry);
+        if !needs_fill(&entry, details) {
             self.asked.remove(&id);
             return None;
         }
@@ -189,11 +210,7 @@ impl Fills {
         let known = Known::of(&entry);
         if !held && self.asked.get(&id) != Some(&known) {
             self.asked.insert(id, known);
-            browser.request(
-                (shown.depth, position),
-                entry.location.clone(),
-                self.details,
-            );
+            browser.request((shown.depth, position), entry.location.clone(), details);
         }
         Some(entry.location)
     }

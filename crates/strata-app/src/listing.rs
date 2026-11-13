@@ -178,19 +178,11 @@ impl Row {
         &self.facts
     }
 
-    #[expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )]
     pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// The browser's kind of entry, which with the name says its file type.
-    #[expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )]
     pub(crate) fn entry_kind(&self) -> Kind {
         self.entry_kind
     }
@@ -372,7 +364,11 @@ impl Column {
         let retyped = current.name != row.name || current.entry_kind != row.entry_kind;
         let regroup = self.grouping.is_some() && retyped;
         let moved = current.id != row.id || current.hidden != row.hidden || regroup;
+        // A row read again carries no type (`Row::of` reads none): one whose type did not
+        // change keeps the one its group was found by, which `group_at` reads.
+        let group = current.group.filter(|_| !retyped);
         *current = row;
+        current.group = group;
         if moved {
             self.index();
         }

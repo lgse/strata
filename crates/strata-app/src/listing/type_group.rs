@@ -81,13 +81,6 @@ impl TypeGroup {
 
 /// strata-fs's `entry_type` of the entry of `kind` named `name` in `folder`, from the two
 /// fields it reads, as [`TypeGroup::of_row`] reads it: what the List view's Type column shows.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the List view's columns read it, in the pull request after this one"
-    )
-)]
 pub(crate) fn entry_type_of(folder: &Location, kind: EntryKind, name: &str) -> EntryType {
     entry_type(&entry(&in_folder(folder, name), kind, name))
 }
