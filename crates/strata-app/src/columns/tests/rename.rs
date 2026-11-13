@@ -433,50 +433,6 @@ fn an_open_column_follows_its_folders_rename_when_nothing_mirrors() {
     );
 }
 
-/// What `RenameFailed` does: no scenario of the gate fails a rename the field accepted.
-#[test]
-fn a_rename_the_browser_fails_opens_the_editor_again_with_its_message() {
-    hosted(
-        "rename::a_rename_the_browser_fails_opens_the_editor_again_with_its_message",
-        |mut host| {
-            let folder = fixture();
-            open_on(&mut host, folder.path(), "todo.txt");
-
-            // The name is a good one, and taken.
-            retype(&mut host, "todo.txt", "readme.md");
-            press(&mut host, "Return");
-
-            let reached = host.run_until(PATIENCE, |host| {
-                field(host).is_some_and(|field| field.focused && field.invalid)
-            });
-            let failed = field(&host);
-            assert!(reached, "the editor never came back: {failed:?}");
-            let failed = failed.expect("the field");
-            assert_eq!(failed.text, "readme.md");
-            assert!(!failed.description.is_empty(), "the browser's message");
-            assert_eq!(read(folder.path(), "todo.txt").as_deref(), Some("todo.txt"));
-            assert_eq!(
-                read(folder.path(), "readme.md").as_deref(),
-                Some("readme.md")
-            );
-
-            // Typing asks Strata's rules again, and a free name goes through.
-            select_all(&mut host);
-            type_text(&mut host, "free.txt");
-            let retried = wait_for_field(&mut host, "free.txt");
-            assert!(!retried.invalid, "{retried:?}");
-            press(&mut host, "Return");
-
-            wait_for_no_field(&mut host);
-            wait(&mut host, "the entry under its new name", |seen: &Seen| {
-                seen.focused.as_deref() == Some("free.txt")
-            });
-            assert_eq!(read(folder.path(), "free.txt").as_deref(), Some("todo.txt"));
-            assert_all_agree(&host, folder.path(), "the failed rename and the retry");
-        },
-    );
-}
-
 /// What `ItemRelocated` is for: the renamed entry has another id, and a range that held it
 /// keeps its anchor, so the next Shift key goes on from it.
 #[test]

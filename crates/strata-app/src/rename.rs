@@ -13,8 +13,9 @@
 //!   the item (`submit_rename_entry` in `src/ui/browser/inline_edit.rs`). Tab and Shift+Tab
 //!   then carry the editor to the neighbouring entry (`advance_rename`).
 //! - **The answer.** The browser's events say how the rename ended ([`answered`]). A failure
-//!   opens the editor again on the entry, with the typed name and the browser's message: the
-//!   GTK view shows a dialog there, which the slice leaves out.
+//!   shows GTK's "Unable to rename item" dialog with the browser's message
+//!   ([`crate::rename_failed`]); the entry keeps its name, and the editor stays closed
+//!   (`on_rename_failed` in `src/ui/browser/events.rs`).
 //!
 //! - **A new item.** A folder or file just created opens the editor with `Naming::NewItem`
 //!   ([`begin_new_item`], from `new_item.rs`): a file may then be named as a folder, and the
@@ -43,7 +44,7 @@ use strata_fs::{
 use crate::{
     App,
     commands::{Action, Call, Holds, Keys, On, Outcome, Stage},
-    new_item, shell,
+    new_item, rename_failed, shell,
     slots::{Frame, Listener, Part, Place, Setup, View},
 };
 
@@ -91,7 +92,6 @@ struct Asked {
     /// `None` when the browser started no operation.
     request: Option<OperationRequestId>,
     editing: Editing,
-    typed: String,
     /// What takes the item's row when a typed path moves it: the first folder of the path,
     /// or the item itself in the folder above.
     placed: Option<Location>,
@@ -371,7 +371,6 @@ fn ask(app: &mut App, editing: Editing, typed: String) {
     app.rename.asked = Some(Asked {
         request,
         editing,
-        typed,
         placed,
         advanced: false,
     });
@@ -469,18 +468,23 @@ fn completed(app: &mut App, asked: &Asked) {
     }
 }
 
-/// The rename failed: the editor opens on the entry again, with the name that was typed and
-/// the browser's message under it. The entry kept its location, and so its id.
-fn failed(app: &mut App, asked: Asked, message: String, tx: &mut Tx) {
-    let Asked { editing, typed, .. } = asked;
-    if !open(app, editing.depth, editing.entry, editing.naming, tx) {
-        tracing::warn!(%message, "a rename failed, and its row is gone");
-        return;
+/// The rename failed: GTK's dialog says why (`on_rename_failed`). The entry kept its
+/// location and its name. One that Tab moved on from takes the cursor back, and the editor
+/// Tab opened on its neighbour closes (`fail_pending_rename_from_browser` in
+/// `src/ui/browser/inline_edit/pending.rs`).
+fn failed(app: &mut App, asked: &Asked, message: String, tx: &mut Tx) {
+    if asked.advanced {
+        cancel(app, tx);
+        let location = &asked.editing.entry.location;
+        if let Some(depth) = location
+            .parent()
+            .and_then(|parent| app.browser.open_depth(&parent))
+        {
+            app.browser
+                .select_entries_by_location_at(depth, std::slice::from_ref(location));
+        }
     }
-    let state = &mut app.rename.state;
-    state.edit.replace_text(typed.as_str());
-    state.edit.set_caret(typed.len());
-    state.validated(Some(message));
+    rename_failed::show(app, message);
 }
 
 /// How the browser's rename ended.
@@ -496,7 +500,7 @@ fn answered(app: &mut App, answer: Answer, tx: &mut Tx) {
         }
         Answer::Failed { request, message } => {
             if let Some(asked) = asked_for(app, request) {
-                failed(app, asked, message, tx);
+                failed(app, &asked, message, tx);
             }
         }
     }
