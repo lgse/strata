@@ -42,6 +42,7 @@ pub(super) fn grid() -> IconsGrid<App> {
         app.icons.fills.see(range);
         false
     })
+    .on_wheel(single::wheeled::<Icons>)
 }
 
 fn row<'a>(app: &'a App, rcx: &RowCx<'_>) -> Option<&'a Row> {
