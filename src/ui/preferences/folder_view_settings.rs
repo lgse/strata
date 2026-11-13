@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, io, path::Path, time::Duration};
+use std::{cell::RefCell, path::Path, time::Duration};
 
 use gtk::glib;
 
@@ -10,7 +10,10 @@ use crate::{
     services::{ItemIdentity, LoadHandle},
 };
 
-use strata_desktop::settings::{FolderViewsSave, load_folder_views, save_folder_views};
+use strata_desktop::settings::{
+    FOLDER_VIEWS_SAVE_DELAY as SAVE_DELAY, FOLDER_VIEWS_USE_SAVE_DELAY as USE_SAVE_DELAY,
+    FolderViewStore as SharedStore, UnreadableAtStartup, Written,
+};
 // The tests name the path here.
 pub(in crate::ui) use strata_desktop::settings::folder_views_path;
 
@@ -22,12 +25,6 @@ use super::{
 };
 use crate::storage::writer;
 
-/// Coalesces bursts of changes, such as a thumbnail-size drag, into one write
-/// that stays off the click that made them.
-const SAVE_DELAY: Duration = Duration::from_millis(500);
-/// Opening folders only refreshes use times, which can wait for other changes.
-const USE_SAVE_DELAY: Duration = Duration::from_secs(60);
-
 /// Whether a change can reach saved sorts, which re-sort open columns.
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Affects {
@@ -35,10 +32,10 @@ enum Affects {
     IconsSizesOnly,
 }
 
+/// The shared store, with what GTK adds to it: the timer a write waits on, the values of
+/// folders in the trash, and the two monitors.
 pub(super) struct FolderViewStore {
-    views: RefCell<FolderViews>,
-    /// Why saving is off for this session: the file existed but could not be read.
-    load_failure: Option<io::Error>,
+    shared: RefCell<SharedStore>,
     save_timer: RefCell<Option<(glib::SourceId, Duration)>>,
     trashed: RefCell<TrashedValues<TakenViews>>,
     /// Follow what another Strata process, such as the portal chooser, saves.
@@ -61,11 +58,10 @@ fn watch(path: &Path, changed: fn(&PreferenceManager)) -> LoadHandle {
 
 impl FolderViewStore {
     fn load() -> Self {
-        let (views, load_failure) = load_folder_views();
+        let shared = SharedStore::load();
         let path = folder_views_path();
         Self {
-            views: RefCell::new(views),
-            load_failure,
+            shared: RefCell::new(shared),
             save_timer: RefCell::new(None),
             trashed: RefCell::default(),
             _monitors: [
@@ -135,7 +131,8 @@ impl PreferenceManager {
         };
         let store = self.folder_view_store();
         let (touched, sort) = {
-            let mut views = store.views.borrow_mut();
+            let mut shared = store.shared.borrow_mut();
+            let views = shared.views_mut();
             (opened && views.touch(&key), views.view(&key).sort)
         };
         if touched {
@@ -213,8 +210,9 @@ impl PreferenceManager {
             .and_then(|location| self.remembered_key(location))
             .and_then(|key| {
                 self.folder_view_store()
-                    .views
+                    .shared
                     .borrow()
+                    .views()
                     .view(&key)
                     .icons_size
             })
@@ -257,7 +255,7 @@ impl PreferenceManager {
     }
 
     pub(in crate::ui) fn has_folder_views(&self) -> bool {
-        !self.folder_view_store().views.borrow().is_empty()
+        !self.folder_view_store().shared.borrow().views().is_empty()
     }
 
     /// Also clears what another Strata process saved and this one has not merged yet.
@@ -301,7 +299,7 @@ impl PreferenceManager {
         if let Some(identity) = trash_identity {
             store.trashed.borrow_mut().forget_identity(identity);
         }
-        let taken = store.views.borrow_mut().take_within(&key);
+        let taken = store.shared.borrow_mut().views_mut().take_within(&key);
         let keys = taken.len();
         if keys == 0 {
             return;
@@ -337,7 +335,8 @@ impl PreferenceManager {
         let (Some(path), Some(key)) = (location.native_path(), key_for_location(location)) else {
             return;
         };
-        if !self.folder_view_store().views.borrow().may_forget(&key) {
+        let store = self.folder_view_store();
+        if !store.shared.borrow().views().may_forget(&key) {
             return;
         }
         let path = path.to_owned();
@@ -416,12 +415,10 @@ impl PreferenceManager {
         if self.folder_views.get().is_none() {
             return;
         }
-        let saved = writer::reread(folder_views_path(), |contents| {
-            FolderViews::parse(contents).map(|(views, _)| views)
-        });
+        let saved = SharedStore::reread();
         let this = self.this.clone();
         glib::MainContext::default().spawn_local(async move {
-            if let (Ok(Ok(Some(saved))), Some(manager)) = (saved.await, this.upgrade()) {
+            if let (Some(saved), Some(manager)) = (saved.await, this.upgrade()) {
                 manager.adopt_folder_views(saved);
             }
         });
@@ -437,9 +434,7 @@ impl PreferenceManager {
         let Some(store) = self.folder_views.get() else {
             return;
         };
-        let merged = store.views.borrow().merged_over(saved);
-        let changed = !merged.same_views(&store.views.borrow());
-        store.views.replace(merged);
+        let changed = store.shared.borrow_mut().adopt(saved);
         if changed {
             self.publish_folder_views(Affects::Sorts);
         }
@@ -447,7 +442,7 @@ impl PreferenceManager {
 
     pub(in crate::ui) fn flush_folder_views(&self) {
         if let Some(store) = self.folder_views.get()
-            && store.views.borrow().has_unsaved()
+            && store.shared.borrow().views().has_unsaved()
         {
             self.write_folder_views(store, true);
         }
@@ -455,7 +450,7 @@ impl PreferenceManager {
 
     fn change_folder_views(&self, affects: Affects, change: impl FnOnce(&mut FolderViews) -> bool) {
         let store = self.folder_view_store();
-        if change(&mut store.views.borrow_mut()) {
+        if change(store.shared.borrow_mut().views_mut()) {
             self.folder_views_changed(store, affects);
         }
     }
@@ -475,7 +470,7 @@ impl PreferenceManager {
 
     /// A pending write keeps its time unless a shorter wait is asked for.
     fn schedule_folder_views_write(&self, store: &FolderViewStore, delay: Duration) {
-        if store.load_failure.is_some() {
+        if store.shared.borrow().load_failure().is_some() {
             self.write_folder_views(store, false);
             return;
         }
@@ -508,39 +503,39 @@ impl PreferenceManager {
         if let Some((timer, _)) = store.save_timer.borrow_mut().take() {
             timer.remove();
         }
-        let path = folder_views_path();
-        if let Some(error) = &store.load_failure {
-            self.folder_save_notices.unreadable_at_startup(&path, error);
-            return;
-        }
-        let snapshot = store.views.borrow().clone();
-        let edits = snapshot.edits();
-        let saving = path.clone();
-        let saved = writer::run(move || save_folder_views(&saving, snapshot, exit));
+        let begun = store.shared.borrow().begin_write(exit);
+        let write = match begun {
+            Ok(write) => write,
+            Err(UnreadableAtStartup { path, error }) => {
+                self.folder_save_notices
+                    .unreadable_at_startup(&path, &error);
+                return;
+            }
+        };
         let this = self.this.clone();
         glib::MainContext::default().spawn_local(async move {
-            let saved = saved.await.unwrap_or_else(|_| {
-                FolderViewsSave::Failed(io::Error::from_raw_os_error(libc::ECANCELED))
-            });
+            let written = write.finished().await;
             if let Some(manager) = this.upgrade() {
-                manager.folder_views_saved(&path, edits, saved);
+                manager.folder_views_saved(written);
             }
         });
     }
 
-    fn folder_views_saved(&self, path: &Path, edits: u64, saved: FolderViewsSave) {
+    fn folder_views_saved(&self, written: Written) {
         let Some(store) = self.folder_views.get() else {
             return;
         };
-        match saved {
-            FolderViewsSave::Busy => self.schedule_folder_views_write(store, SAVE_DELAY),
-            FolderViewsSave::Failed(error) => self.folder_save_notices.write_failed(path, &error),
-            FolderViewsSave::Saved(merged) => {
+        match written {
+            Written::Busy => self.schedule_folder_views_write(store, SAVE_DELAY),
+            Written::Failed { path, error } => {
+                self.folder_save_notices.write_failed(&path, &error);
+            }
+            Written::Saved { merged, write } => {
                 self.folder_save_notices.saved();
                 if let Some(merged) = merged {
                     self.adopt_folder_views(merged);
                 }
-                store.views.borrow_mut().mark_saved_through(edits);
+                store.shared.borrow_mut().finish_write(write);
             }
         }
     }
