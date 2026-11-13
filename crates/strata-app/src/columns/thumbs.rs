@@ -77,10 +77,10 @@ impl Synced {
     /// column recorded as told.
     ///
     /// A range reported empty while the listing has `entries` is passed over: Rune reports a
-    /// list it measured at no height as showing no rows (Rune packet entry 101), as it does a
-    /// folder just opened before its first layout, and the rows report again once laid out.
-    /// Synced, it would cancel the renders the rows had asked for, running ones included,
-    /// which GTK's rows keep while they stay bound.
+    /// folder's rows as none before its list has laid them out, and again once they show
+    /// (Rune packet entry 101 is the case where no second report comes, which the
+    /// collection's catch-up makes). Synced, it would cancel what the rows had asked for,
+    /// renders running included, which GTK's rows keep while they stay bound.
     pub(crate) fn next(
         &mut self,
         location: &Location,

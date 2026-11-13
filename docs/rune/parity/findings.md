@@ -459,11 +459,32 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `browser_workers/browser-workers-reuse-processes/list`, `required` since
   [#2263](https://github.com/lgse/strata/pull/2263); the render pool in
   `crates/strata-app/src/thumbnails/`.
-- **What it suggests:** a candidate, not verified. After the scenario kills the worker (lines
-  41 to 48), a cancel of a render a worker is already running still discards that worker
-  (`Lease::execute`), and the next job starts another. [#2260](https://github.com/lgse/strata/pull/2260)
-  fixed the cancel-on-refill A2 traced for this run; this would be the same shape on a later
-  path.
-- **State:** open, unowned: [A1](packages/A1.md) is closed, and the coordinator places it.
-  The flaky allowance may not name a `required` run ([`owner.md`](owner.md#h1-whole-corpus-ledger), H1 item 11), so a
-  failure of it in a gate is read against this entry.
+- **Cause, traced:** with log lines in the viewer, the pool and `Lease::execute` (a scratch
+  build, since removed), and reproduced alone with the machine's cores kept busy: 2 of 6
+  runs failed at line 49, one with 5 counted. Rune reports a folder's rows as none before
+  its list has laid them out, and reports them again once they show. Opening `photos-c`,
+  the List poll usually hears that empty report before the listing has entries, and asks
+  for nothing until the rows show. Under load the listing could come first: the poll then
+  resynced the store with the last viewport and asked for four rows, and the empty report,
+  heard next, made the store drop them, so the viewer cancelled all four, two of them
+  already rendering. A cancelled render errors, `Lease::execute` discards its worker, and
+  each discard costs a sandbox start: 2 extra, 5 counted. The cancel rule is GTK's, so the
+  difference is what Rune cancels on: GTK cancels a running render only when the last row
+  waiting for it is unbound (`install_edit_unbind` in `src/ui/browser_modes/pane.rs`,
+  `cancel_thumbnail_request` in `src/ui/thumbnail.rs`; `demote_offscreen` drops queued
+  jobs only), and a GTK row is not unbound while its folder loads. Not the worker kill: it
+  adds the one start line 49 expects, and the extra starts are the cancels'. Every folder
+  the run opens is opened from its parent, whose viewport the poll resyncs with, so the race
+  can come at any of the three: in H3's gate (2026-11-13) a full Rune run failed at line 31
+  instead, 4 counted where at most 2 may be, in `photos-b`, before the kill; alone it then
+  passed three rounds. Nor
+  [#2294](https://github.com/lgse/strata/pull/2294): the empty report is Rune's, and #2294
+  changes only how the collection's catch-up after one is heard.
+- **Fix:** [#NNNN](https://github.com/lgse/strata/pull/NNNN). The poll rule List and Columns
+  share (`Synced::next` in `crates/strata-app/src/columns/thumbs.rs`) passes over an empty
+  range while the listing has entries; an empty folder's still syncs. Both polls tell the
+  store through one `Sync::tell`. `a_report_of_no_rows_in_a_listed_folder_cancels_no_render`
+  (`thumbnails/tests.rs`) fails without it. The Icons grid syncs only on Rune's report and
+  never asked early, so it did not race.
+- **State:** fixed by [#NNNN](https://github.com/lgse/strata/pull/NNNN). A failure of the
+  run in a gate after it is a new sighting, not this one.

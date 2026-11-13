@@ -397,10 +397,10 @@ fn a_fill_landing_after_the_first_poll_asks_nothing_again() {
 }
 
 /// A folder's rows are asked for, and then Rune reports the list as showing none, as it does
-/// for a list it measured at no height (Rune packet entry 101): the poll that hears it, List's
-/// and Columns' (`Synced`), cancels no request, since a render running then would lose its
-/// worker, and GTK's rows keep theirs while they stay bound. Seen as a sandbox started too
-/// many in `browser-workers-reuse-processes/list` (lgse/strata#2296).
+/// before the list has laid them out: the poll that hears it, List's and Columns'
+/// (`Synced`), cancels no request, since a render running then would lose its worker, and
+/// GTK's rows keep theirs while they stay bound. Seen as sandboxes started too many in
+/// `browser-workers-reuse-processes/list` (lgse/strata#2296).
 #[test]
 fn a_report_of_no_rows_in_a_listed_folder_cancels_no_render() {
     use crate::{
