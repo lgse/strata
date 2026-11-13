@@ -72,18 +72,26 @@ fn matched_bytes(text: &str, chars: usize) -> Option<Range<usize>> {
     Some(0..end)
 }
 
-/// The listing in flight, if any.
+/// The listing in flight, if any, with the generation it answers.
 #[derive(Default)]
 pub(super) struct Completing {
-    task: Option<JoinHandle<()>>,
+    task: Option<(u64, JoinHandle<()>)>,
 }
 
 impl Completing {
     /// Stops the listing in flight: a newer request supersedes it, or the bar has stopped
     /// listing.
     pub(super) fn cancel(&mut self) {
-        if let Some(task) = self.task.take() {
+        if let Some((_, task)) = self.task.take() {
             task.abort();
+        }
+    }
+
+    /// The listing for `generation` finished. A newer one may have started meanwhile, its
+    /// answer queued behind this one's: it stays in flight, so a cancel still stops it.
+    fn finished(&mut self, generation: u64) {
+        if self.task.as_ref().is_some_and(|(of, _)| *of == generation) {
+            self.task = None;
         }
     }
 }
@@ -106,12 +114,12 @@ pub(super) fn complete(app: &mut App, query: CompletionQuery, later: &Later<App>
             let task = glib::MainContext::default().spawn_local(async move {
                 let suggestions = listing.candidates().await;
                 later.then(move |app: &mut App, tx: &mut Tx| {
-                    app.location.completing.task = None;
+                    app.location.completing.finished(generation);
                     answer(app, generation, suggestions, tx);
                     true
                 });
             });
-            app.location.completing.task = Some(task);
+            app.location.completing.task = Some((generation, task));
         }
     }
 }

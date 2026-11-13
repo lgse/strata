@@ -11,7 +11,7 @@ use strata_core::model::Location;
 use strata_test_support::PrivateContext;
 use tempfile::tempdir;
 
-use super::{Plan, Suggestion, matched_bytes, plan_completions};
+use super::{Completing, Plan, Suggestion, matched_bytes, plan_completions};
 use crate::{
     App,
     commands::{self, On},
@@ -145,6 +145,26 @@ fn suggest_completions_handles_empty_and_nonexistent_gracefully() {
 fn the_matched_characters_are_whole_bytes() {
     assert_eq!(matched_bytes("Écoles/", 2), Some(0..3));
     assert_eq!(matched_bytes("docs/", 0), None);
+}
+
+/// A listing that finished after a newer one started leaves the newer one in flight, so a
+/// cancel still stops it.
+#[test]
+fn a_superseded_listing_finishing_keeps_the_newer_one_cancellable() {
+    let context = PrivateContext::new();
+    context.block_on(async {
+        let newer = glib::MainContext::default().spawn_local(std::future::pending::<()>());
+        let mut completing = Completing {
+            task: Some((2, newer)),
+        };
+        completing.finished(1);
+        assert!(
+            completing.task.is_some(),
+            "the newer listing is still in flight"
+        );
+        completing.finished(2);
+        assert!(completing.task.is_none(), "its own answer clears it");
+    });
 }
 
 fn idle(host: &mut Offscreen) {
