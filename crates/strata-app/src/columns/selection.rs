@@ -55,8 +55,12 @@ impl Columns {
     }
 
     /// Writes the browser's cursor and selection for column `depth` to the view, unless the
-    /// view shows them already ([`handover::adopt`]).
+    /// view shows them already ([`handover::adopt`]). Not while a filter's results show
+    /// there: their selection is the filter's, which the browser does not hold.
     pub(super) fn adopt(&mut self, depth: usize, marks: &Marks) {
+        if self.listings.hits_at(depth) {
+            return;
+        }
         let (Some(column), Some(state)) = (
             self.listings.columns.get(depth),
             self.state.column_mut(depth),
@@ -86,7 +90,12 @@ impl Columns {
         self.follow(browser, input);
     }
 
+    /// Not while a filter's results show in column `depth`: GTK's hits only tell the preview
+    /// and the footer (`search_hits_changed`), never the browser.
     fn hand_over(&mut self, depth: usize, browser: &Browser) {
+        if self.listings.hits_at(depth) {
+            return;
+        }
         let (Some(column), Some(state), Some(held)) = (
             self.listings.columns.get(depth),
             self.state.column(depth),
@@ -116,6 +125,10 @@ impl Columns {
         let Some((depth, id)) = focused.filter(|_| again || focused != before) else {
             return;
         };
+        // A filter's result opens no column under it.
+        if self.listings.hits_at(depth) {
+            return;
+        }
         // Shift says a range moved. Without it (a key fed in with no modifier held), a range
         // still shows: its anchor stays behind the cursor, in the column the cursor was in.
         let same_column = before.is_some_and(|(earlier, _)| earlier == depth);
@@ -142,7 +155,7 @@ impl Columns {
     /// `src/ui/browser/view_state.rs`, through GTK's selection model).
     pub(crate) fn select_all(&mut self, depth: usize) {
         let (Some(column), Some(state)) = (
-            self.listings.columns.get(depth),
+            self.listings.shown(depth),
             self.state.column_mut(depth),
         ) else {
             return;

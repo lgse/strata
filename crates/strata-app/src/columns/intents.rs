@@ -11,7 +11,7 @@ use strata_components::{
 
 use super::Input;
 use crate::{
-    App,
+    App, filter,
     menus::{self, Request},
     rename, shell,
     slots::At,
@@ -69,6 +69,10 @@ impl App {
     }
 
     fn collection(&mut self, depth: usize, intent: Intent, tx: &mut Tx) {
+        // A filter's results open as GTK's hits do, and are renamed nowhere yet.
+        if self.columns.shows_hits(depth) && filter::hit_intent(self, depth, &intent) {
+            return;
+        }
         match intent {
             Intent::Activate { id, how } => self.activate(depth, id, how),
             Intent::Clicked { id } => self.clicked(depth, id),
@@ -103,8 +107,17 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
     app.columns.publish(&app.browser, Some(input));
     match intent {
         ColumnsIntent::Collection { depth, intent } => app.collection(depth, intent, tx),
+        ColumnsIntent::EnterFolder { depth, id } if app.columns.shows_hits(depth) => {
+            filter::open_hit(app, depth, id);
+        }
         ColumnsIntent::EnterFolder { depth, id } => app.enter(depth, id),
         ColumnsIntent::CloseFrom(depth) => app.browser.close_column(depth),
+        // The user picked among a filter's results: Enter follows the pick from now on.
+        ColumnsIntent::Cursor { depth, .. } | ColumnsIntent::Selection { depth }
+            if app.columns.shows_hits(depth) =>
+        {
+            filter::picked(app);
+        }
         // Published above, and with it the active column a key moved the keyboard to.
         ColumnsIntent::Cursor { .. }
         | ColumnsIntent::Selection { .. }

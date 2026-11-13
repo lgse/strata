@@ -78,7 +78,7 @@ impl Columns {
 
     /// The entry `step` rows after `id` in column `depth`, as the view lists them.
     pub(crate) fn neighbour(&self, depth: usize, id: EntryId, step: isize) -> Option<EntryId> {
-        let column = self.listings.columns.get(depth)?;
+        let column = self.listings.shown(depth)?;
         let index = column.index_of(id)?.checked_add_signed(step)?;
         (index < column.len()).then(|| column.id_at(index))
     }
@@ -87,7 +87,7 @@ impl Columns {
     /// what `Browser::select` does for the GTK views.
     pub(crate) fn select_only(&mut self, (depth, id): (usize, EntryId), look: &Look, tx: &mut Tx) {
         let (Some(column), Some(state)) = (
-            self.listings.columns.get(depth),
+            self.listings.shown(depth),
             self.state.column_mut(depth),
         ) else {
             return;
@@ -136,6 +136,10 @@ impl Columns {
         let Some(column) = self.listings.columns.get(depth) else {
             return;
         };
+        // The collection holds a filter's results, by their own ids.
+        if self.listings.hits_at(depth) {
+            return;
+        }
         let arrived = match self.state.column_mut(depth) {
             Some(state) => self.moving.arrived(column, &mut state.collection),
             None => self.moving.arriving(column),

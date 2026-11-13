@@ -40,6 +40,7 @@ use crate::{
 
 mod editing;
 mod fills;
+mod filtered;
 mod intents;
 mod listings;
 mod mirror;
@@ -161,6 +162,7 @@ impl Columns {
         match change {
             // The first column's `Added` follows, and replaces the strip.
             Change::Reset => {
+                self.listings.drop_hits();
                 self.listings.columns.clear();
                 self.held.clear();
             }
@@ -228,6 +230,7 @@ impl Columns {
     }
 
     fn truncate(&mut self, len: usize, replacing: bool, hands: &mut Hands<'_>) {
+        self.listings.drop_hits_from(len);
         self.listings.columns.truncate(len);
         self.held.truncate(len);
         // A sibling takes the place of the column at `len` when it is added, with no exit.
@@ -244,6 +247,7 @@ impl Columns {
             active,
             ..
         } = added;
+        self.listings.drop_hits_from(depth);
         self.listings.columns.truncate(depth);
         self.held.truncate(depth);
         // The browser adds columns in order, each after the last.
@@ -283,6 +287,7 @@ impl Columns {
     /// Folders that moved keep their columns, under their new names and with every row read
     /// again: a row's id comes from its location, which changed.
     fn relocate(&mut self, from_depth: usize, moved: Vec<Moved>, hands: &mut Hands<'_>) {
+        self.listings.drop_hits_from(from_depth);
         for (depth, moved) in (from_depth..).zip(moved) {
             let Some(column) = self.listings.columns.get_mut(depth) else {
                 return;
@@ -306,9 +311,10 @@ impl Columns {
         }
     }
 
-    /// Brings column `depth`'s view state in step with its rows after they changed.
+    /// Brings column `depth`'s view state in step with what it shows after that changed: its
+    /// rows, or a filter's results in their place.
     fn sync(&mut self, depth: usize, tx: &mut Tx) {
-        let Some(column) = self.listings.columns.get(depth) else {
+        let Some(column) = self.listings.shown(depth) else {
             return;
         };
         self.state
@@ -349,7 +355,7 @@ impl Columns {
 
     fn reveal_cursor(&self, depth: usize, tx: &mut Tx) {
         let (Some(column), Some(state), Some(key)) = (
-            self.listings.columns.get(depth),
+            self.listings.shown(depth),
             self.state.column(depth),
             self.state.column_key(depth),
         ) else {

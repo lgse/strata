@@ -77,6 +77,7 @@ mod undo;
 mod appearance;
 // A9 Pointer and click modes
 // A10 Search, filter and sort
+mod filter;
 // A11 10xer mode
 // A12 Clipboard and conflicts
 // A13 Archives and providers
@@ -118,6 +119,7 @@ slots::parts! {
     appearance: appearance::Appearance,
     // A9 Pointer and click modes
     // A10 Search, filter and sort
+    filter: filter::Filter,
     // A11 10xer mode
     // A12 Clipboard and conflicts
     // A13 Archives and providers

@@ -54,5 +54,7 @@ pub(crate) fn column(app: &App, cx: &HeaderCx) -> Option<El> {
         actions = actions.child(button.key(key).focusable(false));
     }
     let refresh = refresh::built(app, depth).key(format!("columns-refresh-{depth}"));
-    Some(actions.child(refresh.focusable(false)))
+    actions = actions.child(refresh.focusable(false));
+    // The sort direction and Sort by go here (A10).
+    Some(actions.children(crate::filter::column_actions(app, depth)))
 }
