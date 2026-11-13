@@ -148,11 +148,11 @@ fn unreadable(message: &str) -> String {
     .into_owned()
 }
 
-/// What a view's listing for the browser's column `depth` draws in place of entries:
-/// `said`, from [`Surface::status`], and under it, for a folder that could not be read,
-/// Retry and, where the browser offers it, Open as Administrator, as GTK's status page
-/// stacks them.
-pub(crate) fn drawn(app: &App, surface: &Surface, depth: usize, said: &str, listing: &Column) -> El {
+/// What a view's listing draws in place of entries: `said`, from [`Surface::status`], and
+/// under it, when `failed` names the browser's column of a folder that could not be read
+/// ([`failed`]), Retry and, where the browser offers it, Open as Administrator, as GTK's status
+/// page stacks them.
+pub(crate) fn drawn(app: &App, surface: &Surface, said: &str, failed: Option<usize>) -> El {
     let look = &app.look;
     let message = text(said.to_owned())
         .font(look.kit.ty.ui)
@@ -163,9 +163,9 @@ pub(crate) fn drawn(app: &App, surface: &Surface, depth: usize, said: &str, list
         .py(look.space.lg)
         .gap(look.space.sm)
         .child(message);
-    if !matches!(listing.load(), Load::Failed(_)) {
+    let Some(depth) = failed else {
         return page;
-    }
+    };
     let button = |label: &str, key: String, act: fn(&mut App, usize, &mut Tx)| {
         Button::new(label.to_owned())
             .variant(ButtonVariant::Neutral)
@@ -181,7 +181,17 @@ pub(crate) fn drawn(app: &App, surface: &Surface, depth: usize, said: &str, list
         )),
         None => page,
     };
-    page.child(button(&surface.retry, format!("surface-retry-{depth}"), retry))
+    page.child(button(
+        &surface.retry,
+        format!("surface-retry-{depth}"),
+        retry,
+    ))
+}
+
+/// `depth`, when `listing`, the browser's column `depth`, could not be read: what
+/// [`drawn`] takes to offer Retry.
+pub(crate) fn failed(listing: &Column, depth: usize) -> Option<usize> {
+    matches!(listing.load(), Load::Failed(_)).then_some(depth)
 }
 
 /// The `admin://` form the browser offers for column `depth`'s folder, when only

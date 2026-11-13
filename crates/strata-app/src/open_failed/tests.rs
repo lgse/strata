@@ -44,9 +44,8 @@ fn with_blocked(host: &mut Offscreen) -> (tempfile::TempDir, Location) {
     std::fs::create_dir(&blocked).expect("the folder");
     std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
     host.app().open(Location::local(folder.path()));
-    let listed = |host: &Offscreen| {
-        host.app().browser().with_column_entries(0, <[_]>::len) == Some(2)
-    };
+    let listed =
+        |host: &Offscreen| host.app().browser().with_column_entries(0, <[_]>::len) == Some(2);
     assert!(host.run_until(PATIENCE, listed), "the folder's listing");
     while host.turn() {}
     (folder, Location::local(blocked))
@@ -89,13 +88,19 @@ fn a_folder_refused_from_the_listing_and_a_path_refused_are_reported() {
                 });
                 entries.flatten()
             };
-            assert!(host.run_until(PATIENCE, |host| locked(host).is_some()), "the fill");
+            assert!(
+                host.run_until(PATIENCE, |host| locked(host).is_some()),
+                "the fill"
+            );
             let position = locked(&host).expect("the locked folder");
-            host.runtime().update(move |app: &mut App, _| app.browser.activate(0, position));
+            host.runtime()
+                .update(move |app: &mut App, _| app.browser.activate(0, position));
             let (title, labels) = shown(&mut host);
             assert_eq!(title, "Unable to open directory");
             assert!(
-                labels.iter().any(|label| label.contains("do not have permission")),
+                labels
+                    .iter()
+                    .any(|label| label.contains("do not have permission")),
                 "the browser's reason: {labels:?}"
             );
             closes_on_return(&mut host);

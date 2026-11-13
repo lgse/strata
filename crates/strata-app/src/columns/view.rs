@@ -44,7 +44,8 @@ fn status(app: &App, depth: usize) -> Option<(Cow<'_, str>, bool)> {
 fn shown_status(app: &App, depth: usize) -> Option<El> {
     let (said, _) = status(app, depth).filter(|(_, drawn)| *drawn)?;
     let listing = app.columns.listings.columns.get(depth)?;
-    Some(surface::drawn(app, &app.columns.surface, depth, &said, listing))
+    let failed = surface::failed(listing, depth);
+    Some(surface::drawn(app, &app.columns.surface, &said, failed))
 }
 
 pub(crate) fn view(app: &App) -> ColumnsView<App> {

@@ -174,7 +174,8 @@ fn shown_status<V: SinglePane>(app: &App) -> Option<El> {
     let (said, _) = status::<V>(app).filter(|(_, shown)| *shown)?;
     let single = V::single(app);
     let (listing, depth) = (single.pane.listing()?, single.pane.depth()?);
-    Some(surface::drawn(app, &single.surface, depth, &said, listing))
+    let failed = surface::failed(listing, depth);
+    Some(surface::drawn(app, &single.surface, &said, failed))
 }
 
 fn source<V: SinglePane>(app: &App) -> (&dyn EntrySource, &CollectionState) {
