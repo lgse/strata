@@ -467,3 +467,21 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, unowned: [A1](packages/A1.md) is closed, and the coordinator places it.
   The flaky allowance may not name a `required` run ([`owner.md`](owner.md#h1-whole-corpus-ledger), H1 item 11), so a
   failure of it in a gate is read against this entry.
+
+### #2310: Return does not press a focused button on the Rune interface
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2310), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A5](packages/A5.md) while testing the pane header (#2307): Return on a focused
+  Back did nothing where Space pressed it. GTK's buttons take Return and Space alike; on Rune it
+  holds for every button.
+- **Cause, by reading Rune at `2a44156`:** Rune follows AppKit. Return goes to the window's
+  default button and presses only a focused row, link or `focus_highlight` element (`takes_return`
+  in `crates/rune/src/runtime/input/focus.rs`); Space presses a focused control. C15's dialogs
+  already turn Return into Space (`crates/strata-components/src/dialog/keys.rs`).
+- **Concerns:** every button of the Rune interface.
+- **State:** worked around by A5's pull request for it: `crates/strata-app/src/buttons.rs` gives
+  the pane header's buttons, an unreadable folder's Retry and Open as Administrator, and the
+  window header's actions an `on_key` that sends Space for a plain Return. Rune packet entry
+  [103](../upstream/rune/103-return-presses-a-button.md) asks for an opt-in. A button another
+  part adds takes `buttons::on_return` too.

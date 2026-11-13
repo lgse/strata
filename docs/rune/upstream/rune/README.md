@@ -205,6 +205,7 @@ gaps"), by number. The owner ranks each at the filing pass.
 | 99 | [A key handler cannot learn what a key types in the other configured layouts](99-configured-layouts.md) | New issue | `strata-app`'s press builder (B3) | The US position standing in for the user's other Latin layout, a deviation recorded in `docs/rune/parity/owner.md` | Drafted, checked by source only; to run in a window before filing |
 | 100 | [A chord's handler gets the US key in place of the character typed, and the character is gone](100-chord-typed-character.md) | New issue | `strata-app`'s press builder (B3) | The builder's guess from `key_base` at whether the character was replaced, and the US key it reads where it cannot tell | Drafted, checked by source only; to run in a window before filing |
 | 101 | [A virtual list's `on_visible_rows` reports no rows, and never again, though rows show](101-stale-visible-rows.md) | New issue | strata-components' collections (C1e): every view's fills, thumbnails and rename scroll check | The collection's catch-up from its own layout (`catch_up_visible`, U-C1f-7) | Drafted from `strata-app`'s hosted tests; no Rune-only repro yet |
+| 103 | [Return can't press a focused button, and the only switch for it is `Cx::web_focus`](103-return-presses-a-button.md) | New issue | Every button of Strata's Rune interface; C15's dialogs route around it | `strata-app`'s `buttons::on_return`, and C15's Return-as-Space | Drafted, checked by reading and `strata-app`'s hosted tests |
 
 ## Owner decisions (2026-11-10)
 
