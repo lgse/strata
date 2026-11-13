@@ -141,11 +141,15 @@ pub fn icon_opacity(rcx: &RowCx<'_>, dim_files: bool) -> f32 {
 
 /// [`icon_opacity`]'s rule, for an entry of `kind`, `cut` or not.
 pub(crate) fn file_icon_opacity(look: &Look, kind: EntryKind, cut: bool, dim_files: bool) -> f32 {
-    if dim_files && !kind.is_folder_like() && !cut {
-        strata_kit::slots::collection::file_icon_opacity(look)
-    } else {
-        1.0
+    match dim_files && dims(kind, cut) {
+        true => strata_kit::slots::collection::file_icon_opacity(look),
+        false => 1.0,
     }
+}
+
+/// Whether an entry of `kind` draws a dimmed icon where its view dims files: a file not cut.
+fn dims(kind: EntryKind, cut: bool) -> bool {
+    !kind.is_folder_like() && !cut
 }
 
 /// The entry's catalog icon, else the Folder or File icon, as C1e's default icon draws it, at

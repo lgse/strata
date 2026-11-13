@@ -225,29 +225,28 @@ fn a_dimmed_slot_dims_file_icons_but_no_folder_cut_entry_or_thumbnail() {
     // Ids are indices + 1: entries 5 and 6 are folders, ids 6 and 7.
     host.cut = vec![3];
     let mut rt = runtime_of(host);
-    let look = &rt.state.look;
-    let dimmed = strata_kit::slots::collection::file_icon_opacity(look);
+    let dimmed = strata_kit::slots::collection::file_icon_opacity(&rt.state.look);
     // The cut row fades as a whole; its icon adds no dimming of its own (the mark wins).
-    let cut = strata_kit::slots::collection::cut_opacity(look);
-    let glyphs = opacities(&rt, GLYPH);
-    assert!(!glyphs.is_empty());
-    for (id, opacity) in glyphs {
-        let expected = match id {
-            3 => cut,
-            6 | 7 => 1.0,
-            _ => dimmed,
-        };
-        assert_eq!(opacity, expected, "entry {id}'s icon, drawn");
-    }
+    let cut = strata_kit::slots::collection::cut_opacity(&rt.state.look);
+    let icon = |id: u64| match id {
+        3 => cut,
+        6 | 7 => 1.0,
+        _ => dimmed,
+    };
+    assert_drawn(&opacities(&rt, GLYPH), icon, "icon");
 
     rt.state.serve();
     rt.frame(DT);
     rt.frame(DT);
-    let thumbs = opacities(&rt, THUMB);
-    assert!(!thumbs.is_empty(), "thumbnails landed");
-    for (id, opacity) in thumbs {
-        let expected = if id == 3 { cut } else { 1.0 };
-        assert_eq!(opacity, expected, "entry {id}'s thumbnail, drawn");
+    let thumbnail = |id: u64| if id == 3 { cut } else { 1.0 };
+    assert_drawn(&opacities(&rt, THUMB), thumbnail, "thumbnail");
+}
+
+/// Each drawn element has the opacity `expected` gives its row, and there is at least one.
+fn assert_drawn(drawn: &[(u64, f32)], expected: impl Fn(u64) -> f32, what: &str) {
+    assert!(!drawn.is_empty(), "no {what} drawn");
+    for &(id, opacity) in drawn {
+        assert_eq!(opacity, expected(id), "entry {id}'s {what}, drawn");
     }
 }
 
