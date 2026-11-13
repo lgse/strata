@@ -5,11 +5,14 @@
 //!
 //! - **The view switch** ([`views`]): Ctrl+1, Ctrl+2 and Ctrl+3 show Columns, Icons and List
 //!   while the window is open, and the choice is saved as `browser_mode`.
+//! - **The text size** ([`text_size`]): Ctrl+plus, Ctrl+=, Ctrl+minus and Ctrl+0, saved as
+//!   `text_size`, which the look follows.
 //!
-//! Nothing of it is drawn yet, and it is no part of the window yet: the view switch's
-//! commands are the window's own (`commands::own`), and the part comes with the Appearance
-//! popover and its state.
+//! Nothing of it is drawn yet, and it is no part of the window yet: the view switch's and
+//! the text size's commands are the window's own (`commands::own`), and the part comes with
+//! the Appearance popover and its state.
 
+pub(crate) mod text_size;
 pub(crate) mod views;
 
 #[cfg(test)]
