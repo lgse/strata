@@ -57,17 +57,15 @@ host = "offscreen"
 scenario = "new-file-collision-dialog"
 run = "columns"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A8: the Appearance popover at line 2 (`open_menu` on its header button)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-folder-collision-dialog"
 run = "columns"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A8: the Appearance popover at line 2 (`open_menu` on its header button)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-folder-with-selection-groups"
@@ -75,7 +73,7 @@ run = "columns"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A8: the Appearance popover at line 2; then New Folder with Selection, whose move into the new folder is a transfer (A12's), and for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
+blocker = "A12: New Folder with Selection, whose move into the new folder is a transfer, at its name field on line 20; for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
 
 [[run]]
 scenario = "new-folder-with-selection-groups"
@@ -83,7 +81,7 @@ run = "icons"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A8: the Appearance popover at line 2; then New Folder with Selection, whose move into the new folder is a transfer (A12's), and for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
+blocker = "A12: New Folder with Selection, whose move into the new folder is a transfer, at its name field on line 20; for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
 
 [[run]]
 scenario = "new-folder-with-selection-groups"
@@ -91,7 +89,7 @@ run = "list"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A8: the Appearance popover at line 2; then New Folder with Selection, whose move into the new folder is a transfer (A12's), and for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
+blocker = "A12: New Folder with Selection, whose move into the new folder is a transfer, at its name field on line 20; for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
 
 [[run]]
 scenario = "new-items-from-entry-menu"

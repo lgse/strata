@@ -1,0 +1,15 @@
+diff --git a/crates/strata-app/src/appearance/popover.rs b/crates/strata-app/src/appearance/popover.rs
+index 472043d6f..ce61db7d0 100644
+--- a/crates/strata-app/src/appearance/popover.rs
++++ b/crates/strata-app/src/appearance/popover.rs
+@@ -110,9 +110,7 @@ pub(super) const TOGGLE: Action<App> = Action::new("appearance", toggle);
+ fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+     let state = &mut app.appearance.popover;
+     state.open = !state.open;
+-    if state.open {
+-        tx.focus(SHOW_COLUMNS, true);
+-    }
++    let _ = tx;
+     Outcome::Ran
+ }
+ 
