@@ -462,8 +462,11 @@ pub(crate) fn in_view(collection: Collection<App>) -> Collection<App> {
 }
 
 /// [`in_view`], telling `first` of each key before the registry reads it, for a view that has
-/// to know the keyboard reached it: a single pane's first visit ends on any key, as GTK's
-/// ends on any key press in the pane.
+/// to know the keyboard reached it: a single pane's first visit ends on any key, a bare
+/// modifier or a repeat included, as GTK's `is_user_input` counts every key press in the pane.
+///
+/// `first` runs even when nothing then takes the key, and Rune then commits nothing, so
+/// `first` must change nothing the view draws (ending the visit draws nothing).
 pub(crate) fn in_view_with(
     collection: Collection<App>,
     first: impl Fn(&mut App) + 'static,

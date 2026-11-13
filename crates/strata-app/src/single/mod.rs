@@ -21,7 +21,7 @@
 //! - **What both build:** the base [`collection`] a view's component adds its parts to, and
 //!   the [`group`] around it, named by the folder and described as the view.
 
-use rune::{El, Tx, col, text};
+use rune::{El, Tx, WheelEvent, col, text};
 use strata_components::{
     collection::{
         element::{Activation, Collection, CollectionState, Describe, Intent},
@@ -192,10 +192,8 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     }))
     .empty(shown_status::<V>)
     .on_press(|app: &mut App, _, _| interrupted::<V>(app))
-    .on_wheel(|app: &mut App, _, _| {
-        interrupted::<V>(app);
-        false
-    })
+    // C3 replaces this with its own, which asks the Icons view's `IconsGrid::on_wheel` first.
+    .on_wheel(wheeled::<V>)
     .on_intent(heard::<V>)
     .on_cursor(|app: &mut App, _, tx| moved(app, tx))
     .on_selection(moved);
@@ -238,6 +236,12 @@ fn interrupted<V: SinglePane>(app: &mut App) {
     V::single_mut(app).first_visit.interrupt();
 }
 
+/// A wheel over the view's entries: it ends a first visit, and scrolls as ever.
+pub(crate) fn wheeled<V: SinglePane>(app: &mut App, _: WheelEvent, _: &mut Tx) -> bool {
+    interrupted::<V>(app);
+    false
+}
+
 /// What reads the view's share of each event out of the browser.
 pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> {
     let ids = setup.ids.clone();
@@ -247,9 +251,10 @@ pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> 
         for change in read.changes {
             heard.then(move |app: &mut App, tx: &mut Tx| {
                 let single = V::single_mut(app);
-                if single.pane.apply(change, tx) == Applied::Entered {
+                let applied = single.pane.apply(change, tx);
+                single.first_visit.follow(applied);
+                if applied == Applied::Entered {
                     // The GTK window gives a new listing the keyboard.
-                    single.first_visit.arm();
                     tx.focus(V::KEY, false);
                 }
                 true

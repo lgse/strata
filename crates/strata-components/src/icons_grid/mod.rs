@@ -31,9 +31,11 @@
 //! items (C1e draws no row chrome; the tile lights its own frame and name), the row height
 //! (a tile's), the [`GridLines`] packing with the grid's side padding, the icon, label and
 //! content slots, the hit regions, `on_visible` (the thumbnail sync, then the host's
-//! [`IconsGrid::on_visible`]) and `on_wheel` (Ctrl+Shift+wheel). The host sets none of those on
-//! its own builder; everything else is the host's as for any view: the clock, controllers and
-//! their settings, intents, drops, rename, marks and the description.
+//! [`IconsGrid::on_visible`]) and `on_wheel` (the host's [`IconsGrid::on_wheel`], then
+//! Ctrl+Shift+wheel). The host sets none of those on its own builder: C1e's `on_visible` and
+//! `on_wheel` hold one handler each, so the grid's replaces the host's, and the host hears them
+//! through the grid instead. Everything else is the host's as for any view: the clock,
+//! controllers and their settings, intents, drops, rename, marks and the description.
 //!
 //! # Layout
 //!
@@ -358,6 +360,7 @@ type VersionFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> u64>;
 type DetailsFn<S> = Rc<dyn Fn(&S, &RowCx<'_>) -> Option<Arc<str>>>;
 type SizeFn<S> = Rc<dyn Fn(&mut S, SizeRequest, &mut Tx)>;
 type VisibleFn<S> = Rc<dyn Fn(&mut S, Range<usize>) -> bool>;
+type WheelFn<S> = Rc<dyn Fn(&mut S, WheelEvent, &mut Tx) -> bool>;
 
 /// What the grid was built with, shared by its parts' handlers.
 pub(crate) struct Shared<S> {
@@ -370,6 +373,7 @@ pub(crate) struct Shared<S> {
     lines: usize,
     on_size: Option<SizeFn<S>>,
     on_visible: Option<VisibleFn<S>>,
+    on_wheel: Option<WheelFn<S>>,
     scale: Option<f32>,
 }
 
@@ -385,6 +389,7 @@ impl<S> Clone for Shared<S> {
             lines: self.lines,
             on_size: self.on_size.clone(),
             on_visible: self.on_visible.clone(),
+            on_wheel: self.on_wheel.clone(),
             scale: self.scale,
         }
     }
@@ -449,6 +454,7 @@ impl<S: 'static> IconsGrid<S> {
                 lines: 2,
                 on_size: None,
                 on_visible: None,
+                on_wheel: None,
                 scale: None,
             },
         }
@@ -498,6 +504,15 @@ impl<S: 'static> IconsGrid<S> {
     /// recount, say). Return true only if the view reads what it changed.
     pub fn on_visible(mut self, f: impl Fn(&mut S, Range<usize>) -> bool + 'static) -> Self {
         self.shared.on_visible = Some(Rc::new(f));
+        self
+    }
+
+    /// Hears each wheel and trackpad delta over the grid before its size wheel does: true
+    /// takes it, and the grid neither resizes nor scrolls for it. The grid sets the base
+    /// collection's `on_wheel`, which replaces one the host set there, so a host that has to
+    /// know of a wheel (Strata's first visit ends on one) asks here.
+    pub fn on_wheel(mut self, f: impl Fn(&mut S, WheelEvent, &mut Tx) -> bool + 'static) -> Self {
+        self.shared.on_wheel = Some(Rc::new(f));
         self
     }
 
@@ -778,6 +793,9 @@ fn apply_size<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, command: SizeComman
 }
 
 fn on_wheel<S: 'static>(shared: &Rc<Shared<S>>, s: &mut S, e: WheelEvent, tx: &mut Tx) -> bool {
+    if shared.on_wheel.as_ref().is_some_and(|f| f(s, e, tx)) {
+        return true;
+    }
     let grid = (shared.grid_mut)(s);
     let mut wheel = grid.wheel.get();
     if !WheelSteps::claims(&e) {

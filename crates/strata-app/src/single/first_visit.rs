@@ -7,7 +7,10 @@
 
 use strata_components::collection::selection::AnchorRule;
 
-use crate::{listing::Load, pane::Pane};
+use crate::{
+    listing::Load,
+    pane::{Applied, Pane},
+};
 
 /// Armed when another folder shows, until its load ends or the user's input reaches the
 /// pane: a press, a wheel or a key (GTK's `is_user_input`), so a user who scrolled or moved
@@ -25,9 +28,13 @@ pub(super) struct FirstVisit {
 }
 
 impl FirstVisit {
-    /// Another folder shows.
-    pub(super) fn arm(&mut self) {
-        self.armed = true;
+    /// Follows what a change did to the pane: another folder showing arms the visit. A
+    /// relocation of the folder shown (`Change::Relocated`) applies `Within`, so it does not,
+    /// as GTK's `arriving` leaves relocations out.
+    pub(super) fn follow(&mut self, applied: Applied) {
+        if applied == Applied::Entered {
+            self.armed = true;
+        }
     }
 
     /// The user's input reached the pane.

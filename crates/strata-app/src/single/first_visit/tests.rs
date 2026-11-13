@@ -5,13 +5,13 @@
 
 use strata_components::{
     collection::{element::CollectionState, selection::AnchorRule},
-    contract::EntryId,
+    contract::{EntryId, EntrySource},
 };
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 
 use super::FirstVisit;
 use crate::{
-    events::{Added, Change, Marks},
+    events::{Added, Change, Marks, Moved},
     listing::{Edit, Load, Row},
     pane::Pane,
     slots::Ids,
@@ -23,8 +23,17 @@ fn folder() -> Location {
     Location::local("/root")
 }
 
+/// Where the folder is after it was renamed elsewhere.
+fn renamed() -> Location {
+    Location::local("/renamed")
+}
+
 fn entry(name: &str) -> FileEntry {
-    let path = folder().native_path().expect("a local folder").join(name);
+    entry_in(&folder(), name)
+}
+
+fn entry_in(folder: &Location, name: &str) -> FileEntry {
+    let path = folder.native_path().expect("a local folder").join(name);
     FileEntry {
         location: Location::local(path),
         thumbnail_path: None,
@@ -58,6 +67,8 @@ enum Step {
     Moves(&'static str),
     /// The user's input reaches the pane and changes nothing, as a scroll does.
     Touches,
+    /// The folder shown is renamed elsewhere, its rows read again under the new name.
+    Relocated,
 }
 
 struct Visit {
@@ -76,18 +87,20 @@ impl Visit {
             ids: Ids::default(),
             tx: rune::Tx::default(),
         };
-        visit.pane.apply(
-            Change::Added(Added {
-                depth: 0,
-                location: folder(),
-                show_hidden: false,
-                active: true,
-                grouping: None,
-            }),
-            &mut visit.tx,
-        );
-        visit.visit.arm();
+        visit.apply(Change::Added(Added {
+            depth: 0,
+            location: folder(),
+            show_hidden: false,
+            active: true,
+            grouping: None,
+        }));
         visit
+    }
+
+    /// A change the view's listener hands the pane, which the visit follows.
+    fn apply(&mut self, change: Change) {
+        let applied = self.pane.apply(change, &mut self.tx);
+        self.visit.follow(applied);
     }
 
     fn id(&self, name: &str) -> EntryId {
@@ -144,8 +157,20 @@ impl Visit {
                 self.visit.interrupt();
                 return;
             }
+            Step::Relocated => Change::Relocated {
+                from_depth: 0,
+                columns: vec![Moved {
+                    location: renamed(),
+                    rows: NAMES
+                        .iter()
+                        .map(|name| Row::of(&entry_in(&renamed(), name), &self.ids))
+                        .collect(),
+                    marks: Marks::default(),
+                    grouping: None,
+                }],
+            },
         };
-        self.pane.apply(change, &mut self.tx);
+        self.apply(change);
     }
 
     /// A poll after each step, as the view polls between the browser's dispatches.
@@ -155,17 +180,16 @@ impl Visit {
             let _ = self.visit.settle(&mut self.pane);
         }
         let cursor = self.pane.collection().selection.cursor()?;
-        NAMES
-            .into_iter()
-            .find(|name| self.id(name) == cursor)
-            .map(str::to_owned)
+        let listing = self.pane.listing()?;
+        let index = listing.index_of(cursor)?;
+        Some(listing.entry(index).name.to_owned())
     }
 }
 
 #[test]
 fn the_first_row_takes_the_cursor_only_when_nothing_else_placed_one_by_the_loads_end() {
-    use Step::{Failed, Loaded, Moves, Rows, Touches};
-    let cases: [(&str, &[Step], Option<&str>); 7] = [
+    use Step::{Failed, Loaded, Moves, Relocated, Rows, Touches};
+    let cases: [(&str, &[Step], Option<&str>); 8] = [
         (
             "rows first, then the load's end with no cursor",
             &[Rows(&NAMES), Loaded(None)],
@@ -199,6 +223,11 @@ fn the_first_row_takes_the_cursor_only_when_nothing_else_placed_one_by_the_loads
         (
             "a folder that could not be read",
             &[Failed, Rows(&NAMES)],
+            None,
+        ),
+        (
+            "the folder shown renamed elsewhere, which is no navigation",
+            &[Rows(&NAMES), Touches, Loaded(None), Relocated],
             None,
         ),
     ];

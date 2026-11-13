@@ -37,6 +37,7 @@ pub(super) fn grid() -> IconsGrid<App> {
         Some((app.window.thumbnails_mut(), id, source))
     })
     .details(details_version, details_text)
+    .on_wheel(single::wheeled::<Icons>)
 }
 
 fn row<'a>(app: &'a App, rcx: &RowCx<'_>) -> Option<&'a Row> {
