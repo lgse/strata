@@ -179,10 +179,10 @@ use crate::contract::dnd::{DropAction, DropOffer};
 pub use build::PlacesSidebar;
 pub use data::{
     Device, DeviceGroup, ItemId, LockState, Pin, Place, PlaceKind, Release, RowIcon, SidebarData,
+    SidebarLabels,
 };
 pub use drag::{Landing, RowDrag, Rows, landing};
 pub use drops::pin_action;
-pub use heading::count_words;
 pub use intent::{DropSite, Gap, Section, SidebarIntent, Via};
 pub use rows::PENDING_RELEASE;
 pub use state::{MAX_WIDTH, MIN_WIDTH, PinCheck, PinVerdict, SidebarState, Step, Unchecked, Width};
