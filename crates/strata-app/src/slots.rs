@@ -363,10 +363,6 @@ pub(crate) enum Place<S: 'static> {
     )]
     Footer(Build<S>),
     Overlays(Build<S>),
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no part fills the dialogs slot yet")
-    )]
     Dialogs(Build<S>),
 }
 

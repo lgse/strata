@@ -43,7 +43,6 @@ pub(crate) enum Holds {
     /// its key without running (`composition.rs:239`). `field` says whether a text field of
     /// the layer has the keyboard (a palette's query, a dialog's name): typing is then the
     /// field's, as under any focused editable (`context_of` in `src/ui/keys/alias.rs`).
-    #[cfg_attr(not(test), expect(dead_code, reason = "no part is a modal layer yet"))]
     Modal { field: bool },
 }
 

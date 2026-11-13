@@ -142,25 +142,22 @@ blocker = "A6"
 scenario = "rename-onto-existing-rejected"
 run = "columns-enter"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "rename-onto-existing-rejected"
 run = "columns-tab"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "rename-onto-existing-rejected"
 run = "list-tab"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "secondary-click-retargets-menu"
