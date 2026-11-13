@@ -413,3 +413,20 @@ sequence only together with the alphabet's version, so the version is part of th
   own (an entry listed above; the lines flowing anew at a tile size). GTK keeping the edit is confirmed by running it: the new
   scenario `inline_renaming/rename-survives-entry-listed-above` passes on both targets, and
   fails on Rune with the old check, at its line 13.
+
+### #2290: a list's visible rows reported as none, and never again
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2290), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** `columns::tests::fills` (`crates/strata-app`) fail every time once the sidebar
+  ([A3](packages/A3.md)) or the location bar ([A5](packages/A5.md)) is mounted: the first
+  column's `on_visible_rows` reports `0..5`, then `0..0` in the same frame, and never again,
+  so it asks for no fills and its sizes and dates stay unknown until it scrolls. It takes
+  animations on, the folder opened before the first frame, and text laid out ahead of the
+  column in those frames (three or more sidebar rows, or the crumbs revealing their end).
+- **Concerns:** every collection's visible range (C1e): fills, thumbnails, the rename
+  editor's scroll check, in every view.
+- **State:** worked around, not cut down to a Rune-only repro. strata-components'
+  collection catches its range up from its own layout when the last report is empty
+  (`catch_up_visible`, U-C1f-7). Rune packet entry
+  [101](../upstream/rune/101-stale-visible-rows.md) is drafted.

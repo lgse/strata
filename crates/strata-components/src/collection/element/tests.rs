@@ -80,6 +80,8 @@ struct Host {
     followers: Option<FollowerLog>,
     /// With it, a `before_keys` hook that takes each key, or leaves each.
     host_takes_keys: Option<bool>,
+    /// Every range `on_visible` heard, in order.
+    heard_visible: Vec<std::ops::Range<usize>>,
 }
 
 /// What each `on_scroll` follower heard: its name and the offset.
@@ -119,6 +121,7 @@ impl Host {
             vanished: Vec::new(),
             followers: None,
             host_takes_keys: None,
+            heard_visible: Vec::new(),
         }
     }
 }
@@ -197,6 +200,10 @@ fn collection(s: &Host) -> Collection<Host> {
     }))
     .on_cursor(|s: &mut Host, id, _| s.cursors.push(id))
     .on_selection(|s: &mut Host, _| s.selections += 1)
+    .on_visible(|s: &mut Host, range| {
+        s.heard_visible.push(range);
+        false
+    })
     .on_press(|s: &mut Host, input, _| {
         s.order
             .borrow_mut()
@@ -784,6 +791,25 @@ fn a_selection_change_rebuilds_only_the_rows_whose_state_changed() {
         before,
         "a commit that changes nothing rebuilds nothing"
     );
+}
+
+/// Rune packet entry 101: Rune can leave a newly mounted list's last report of its rows in
+/// view empty while rows show, and not report again until they change. The list's next layout
+/// tells the host the rows its own viewport shows.
+#[test]
+fn a_layout_after_an_empty_report_tells_the_host_the_rows_in_view() {
+    let mut rt = runtime(Host::new(50));
+    settle(&mut rt);
+    let reported = rt.state.coll.visible_range();
+    assert!(!reported.is_empty(), "Rune reports the rows in view");
+    // As the stale report leaves it.
+    rt.state.coll.visible = 0..0;
+    rt.state.heard_visible.clear();
+    rt.state.width = W - 100.0;
+    rt.invalidate();
+    settle(&mut rt);
+    assert_eq!(rt.state.coll.visible_range(), reported);
+    assert_eq!(rt.state.heard_visible, [reported]);
 }
 
 #[test]

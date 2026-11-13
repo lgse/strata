@@ -110,7 +110,7 @@ package = "A5"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "A5: BackSpace in Columns (`navigate_up` at the `item_navigation` stage), on line 23; the crumb steps before it pass"
+blocker = "A5: three rounds on both targets, now that the crumbs (lgse/strata#2286) and BackSpace (lgse/strata#2288) are both in"
 
 [[run]]
 scenario = "focus-usable-after-view-change"

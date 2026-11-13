@@ -113,13 +113,6 @@ impl Situation {
     }
 
     /// Whether the shown view's listing has it: GTK's `item_view_has_focus()`.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "no registered command asks where the keyboard is yet"
-        )
-    )]
     pub(crate) fn in_view(&self) -> bool {
         self.focused.is_some() && self.focused.as_deref() == self.view
     }

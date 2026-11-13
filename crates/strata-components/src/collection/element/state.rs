@@ -200,6 +200,20 @@ impl CollectionState {
         top < offset + self.viewport.h && top + h > offset
     }
 
+    /// The lines of `count` the viewport shows by its own last layout and the scroll as it is
+    /// now, or None before a layout has given it a height and its rows a height: what Rune's
+    /// `on_visible_rows` reports, for where that report is stale (Rune packet entry 101).
+    pub(super) fn lines_in_view(&self, count: usize) -> Option<Range<usize>> {
+        let h = self.row_height;
+        if h <= 0.0 || self.viewport.h <= 0.0 || count == 0 {
+            return None;
+        }
+        let offset = self.scroll.get().max(0.0);
+        let first = ((offset / h).floor() as usize).min(count);
+        let last = (((offset + self.viewport.h) / h).ceil() as usize).min(count);
+        (first < last).then_some(first..last)
+    }
+
     /// The part of the content the viewport shows, in content coordinates.
     pub fn visible_content(&self) -> Rect {
         Rect::new(0.0, self.scroll.get(), self.viewport.w, self.viewport.h)
