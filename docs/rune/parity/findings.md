@@ -659,7 +659,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **On `main`:** bug [#2361](https://github.com/lgse/strata/issues/2361), GTK's QA snapshot faults
   of #2350 and #2351 together; the coverage `columns` leaves out waits on it.
 - **State:** open, set aside. The fix is `main`'s, in `src/qa/state.rs`, placed by the
-  coordinator. Meanwhile `columns v2` keeps Shift+Home, Shift+End and Shift+Left out of its
+  coordinator. Meanwhile the `columns` alphabet keeps Shift+Home, Shift+End and Shift+Left out of its
   rename editor, the reason it is narrower; they come back with the fix.
 
 ### #2351: after Ctrl+A in Columns, GTK reports the old row while its cursor is on the last
@@ -676,7 +676,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **On `main`:** bug [#2361](https://github.com/lgse/strata/issues/2361), GTK's QA snapshot faults
   of #2350 and #2351 together; the coverage `columns` leaves out waits on it.
 - **State:** open, set aside, by the coordinator's ruling (2026-11-13): no Rune change. It is
-  the reason `columns v2` has no Ctrl+A; Ctrl+A comes back once GTK's report is fixed on
+  the reason the `columns` alphabet has no Ctrl+A; Ctrl+A comes back once GTK's report is fixed on
   `main`, or the owner rules otherwise.
 
 ### #2353: after a Shift+click in Columns, GTK's next Down starts from the old cursor
