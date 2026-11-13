@@ -1,0 +1,180 @@
+# The entry-management alphabet (A7): what a user does to the entries of the canonical
+# fixture in Columns, by the keys, menus and dialogs GTK's Columns view and the Rune Columns
+# view both take today: new folders and files named or left, renames by F2 and by the menu
+# (a plain name, or a path that moves the item), Move to Trash, a permanent delete confirmed
+# or cancelled, undo and redo, with enough navigation and selection between them to reach
+# the three folders and their files.
+#
+# Type to search is off (the header's `prefs`), so a stray letter is never a search.
+#
+# Every name typed in an editor is typed only while the editor has the keyboard: each
+# naming action waits for the field, or is skipped with it. Return is pressed only in an
+# editor or a dialog: on a file it asks for its default application, which the QA image has
+# none of, and GTK then opens its Open With chooser (`list.toml` says more).
+#
+# Left out, with why:
+# - New Folder with Selection (Ctrl+Alt+N): not bound on Rune (`new_item.rs`), and its run
+#   waits on finding lgse/strata#2162.
+# - Delete in the Trash itself: the walk never opens it.
+# - The clipboard and drag (A12's, A19's), the preview (A15's), view switches (A8's).
+# - A click on the entry being renamed: where the caret goes is by pixel, and GTK does not
+#   answer a Shift+click there the same way twice (lgse/strata#2173).
+area = "entries"
+version = 1
+about = "Columns on the canonical fixture, type to search off: new folders and files by key and menu, named or left, renames by F2 and the menu with plain names and paths, Move to Trash, permanent deletes confirmed or cancelled, undo and redo, with navigation, clicks and selection between, and files made and removed behind the application's back"
+header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
+
+[[action]]
+name = "down"
+weight = 8
+steps = ['{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}']
+
+[[action]]
+name = "up"
+weight = 6
+steps = ['{"key":"Up","when":{"not":{"field":{"name":"Rename"}}}}']
+
+[[action]]
+name = "right"
+weight = 4
+steps = ['{"key":"Right","when":{"not":{"field":{"name":"Rename"}}}}']
+
+# Left of the fixture's own column is its parent, /tmp: Left stays inside the fixture.
+[[action]]
+name = "left"
+weight = 4
+steps = ['{"key":"Left","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}']
+
+[[action]]
+name = "edge"
+weight = 3
+steps = ['{"key":"<key>","when":{"not":{"field":{"name":"Rename"}}}}']
+choose.key = ["Home", "End"]
+
+[[action]]
+name = "extend"
+weight = 3
+steps = ['{"key":"shift+<key>","when":{"not":{"field":{"name":"Rename"}}}}']
+choose.key = ["Down", "Up"]
+
+[[action]]
+name = "escape"
+weight = 2
+steps = ['{"key":"Escape"}']
+
+[[action]]
+name = "click"
+weight = 5
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.entry = ["archive", "documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "photo.txt"]
+
+[[action]]
+name = "click-with"
+weight = 2
+steps = ['{"click":{"entry":"<entry>"},"mods":["<modifier>"],"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "report.md", "spreadsheet.csv"]
+choose.modifier = ["ctrl", "shift"]
+
+# Ctrl+Shift+N, and the new folder's name, or its free name left.
+[[action]]
+name = "new-folder"
+weight = 4
+steps = [
+  '{"key":"ctrl+shift+n","when":{"not":{"field":{"name":"Rename"}}}}',
+  '{"wait":{"field":{"name":"Rename","focused":true}},"message":"the new folder’s name editor"}',
+  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
+]
+choose.end = ["Return", "Return", "Escape"]
+choose.text = ["plans", "made", "a/b/"]
+
+# The entry menu's New File, and its name: a plain one, or one that is a path.
+[[action]]
+name = "new-file"
+weight = 3
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"click":{"menu_item":"New File"},"when":{"present":{"menu_item":"New File"}}}',
+'{"wait":{"field":{"name":"Rename","focused":true}},"when":{"present":{"entry":"<entry>"}},"message":"the new file\u2019s name editor"}',
+  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
+]
+choose.end = ["Return", "Return", "Escape"]
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "photo.txt"]
+choose.text = ["made.txt", "notes/today.txt", "docs/"]
+
+# A rename by F2 of the entry the keyboard is on: a plain name, or a path that moves it.
+# One in three is cancelled.
+[[action]]
+name = "rename"
+weight = 5
+steps = [
+  '{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
+]
+choose.end = ["Return", "Return", "Escape"]
+choose.text = ["x", "-2", "kept/one"]
+
+# The entry menu's Rename, a name over the selected stem, then committed or cancelled.
+[[action]]
+name = "menu-rename"
+weight = 2
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}',
+  '{"type":"<text>","when":{"field":{"name":"Rename"}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename"}}}',
+]
+choose.end = ["Return", "Escape"]
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "photo.txt"]
+choose.text = ["y", "renamed"]
+
+# Move to Trash by Delete, on what the keyboard is on.
+[[action]]
+name = "trash"
+weight = 3
+steps = ['{"key":"Delete","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}']
+
+# The entry menu's Move to Trash.
+[[action]]
+name = "menu-trash"
+weight = 1
+steps = [
+  '{"click":{"entry":"<entry>"},"button":3,"when":{"all":[{"present":{"entry":"<entry>"}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"click":{"menu_item":"Move to Trash"},"when":{"present":{"menu_item":"Move to Trash"}}}',
+]
+choose.entry = ["readme.md", "todo.txt", "notes.txt", "pictures"]
+
+# Shift+Delete, then the confirmation: kept two times in three, or deleted for good.
+[[action]]
+name = "delete"
+weight = 2
+steps = [
+  '{"key":"shift+Delete","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"key":"<end>","when":{"dialog":true}}',
+]
+choose.end = ["Escape", "Escape", "Return"]
+
+[[action]]
+name = "undo"
+weight = 4
+steps = ['{"key":"ctrl+z","when":{"not":{"field":{"name":"Rename"}}}}']
+
+[[action]]
+name = "redo"
+weight = 2
+steps = ['{"key":"<key>","when":{"not":{"field":{"name":"Rename"}}}}']
+choose.key = ["ctrl+shift+z", "ctrl+y"]
+
+[[action]]
+name = "write"
+weight = 2
+steps = ['{"fs":{"path":"<path>","write":"fuzz\n"}}']
+choose.path = ["fuzz-a.txt", "documents/fuzz-b.txt", "archive/fuzz-c.txt"]
+
+[[action]]
+name = "remove"
+weight = 1
+steps = ['{"fs":{"path":"<path>","remove":true}}']
+choose.path = ["fuzz-a.txt", "documents/fuzz-b.txt", "archive/fuzz-c.txt"]
