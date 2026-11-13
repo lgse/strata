@@ -12,18 +12,12 @@ use std::{cell::Cell, ops::Range};
 
 use strata_components::{
     collection::element::Slot,
-    contract::EntryId,
-    thumbnails::{Step, ThumbnailStore, Viewport, icon_slot},
+    contract::{EntryId, EntrySource},
+    thumbnails::{Step, ThumbnailStore, icon_slot},
 };
 use strata_kit::look::Look;
 
-use crate::{
-    App,
-    columns::thumbs::{Sync, Synced},
-    shell,
-    slots::Later,
-    thumbnails::Viewer,
-};
+use crate::{App, columns::thumbs::Synced, shell, slots::Later, thumbnails::Viewer};
 
 /// A row's thumbnail, in points: GTK's 18 × 18 (`set_thumbnail_or_icon(…, 18, 18)`).
 const ROW_THUMBNAIL: f32 = 18.0;
@@ -91,17 +85,10 @@ pub(super) fn poll(app: &mut App, clock: f64) -> bool {
     thumbs.viewer.fit(store, 1);
     let restep = thumbs.step.replace(step) != Some(step);
     let pruned = match (thumbs.viewer.id(), list.single.pane.listing()) {
-        (Some(id), Some(listing)) => {
-            let version = listing.version();
-            match thumbs.synced.next(listing.location(), version, restep) {
-                Sync::View(range) => {
-                    store.sync(id, listing, Viewport::new(range, step).listing(version))
-                }
-                Sync::Step => store.set_step(id, listing, step),
-                Sync::Again => store.resync(id, listing, version),
-                Sync::Nothing => false,
-            }
-        }
+        (Some(id), Some(listing)) => thumbs
+            .synced
+            .next(listing.location(), listing.version(), listing.len(), restep)
+            .tell(store, id, listing, step),
         _ => false,
     };
     Viewer::pump(app, parts, clock);

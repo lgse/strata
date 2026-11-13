@@ -9,6 +9,11 @@
 | Checked | At `2a44156` (2026-11-13), in `strata-app`'s hosted tests only: `columns::tests::fills` fail every time without the workaround once the sidebar (A3) or the location bar (A5) is mounted, and pass with it. Not cut down to a Rune-only repro: a window of the same shape built from Rune's `virtual_rows` and strata-components' `PlacesSidebar` reports correctly |
 | Status | Drafted, not filed. Cut a Rune-only repro before filing: the conditions below are what the hosted tests show, and the cause is not found. Workaround in force: the collection's catch-up at layout |
 
+What the report costs, besides the fills: an empty range synced to the thumbnail store
+cancels the renders the rows had asked for, and a running render that is cancelled costs its
+sandbox worker (finding lgse/strata#2296, where the second report does come). List and
+Columns pass over an empty range for a listed folder since lgse/strata#2313.
+
 Leads for a Rune-only repro, from the review of lgse/strata#2291 (by reading, at `2a44156`):
 
 - A virtual list's viewport height is set only when a commit measures: `measure_virtuals`

@@ -60,6 +60,8 @@ mod list;
 mod sidebar;
 // A4 Tabs
 // A5 Location bar
+// Return presses a focused button, as on GTK (Rune packet entry 103).
+mod buttons;
 mod error_dialog;
 mod location;
 mod open_failed;

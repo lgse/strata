@@ -459,11 +459,65 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `browser_workers/browser-workers-reuse-processes/list`, `required` since
   [#2263](https://github.com/lgse/strata/pull/2263); the render pool in
   `crates/strata-app/src/thumbnails/`.
-- **What it suggests:** a candidate, not verified. After the scenario kills the worker (lines
-  41 to 48), a cancel of a render a worker is already running still discards that worker
-  (`Lease::execute`), and the next job starts another. [#2260](https://github.com/lgse/strata/pull/2260)
-  fixed the cancel-on-refill A2 traced for this run; this would be the same shape on a later
-  path.
-- **State:** open, unowned: [A1](packages/A1.md) is closed, and the coordinator places it.
-  The flaky allowance may not name a `required` run ([`owner.md`](owner.md#h1-whole-corpus-ledger), H1 item 11), so a
-  failure of it in a gate is read against this entry.
+- **Cause, traced:** with log lines in the viewer, the pool and `Lease::execute` (a scratch
+  build, since removed), and reproduced alone with the machine's cores kept busy: 2 of 6
+  runs failed at line 49, one with 5 counted. Rune reports a folder's rows as none before
+  its list has laid them out, and reports them again once they show. Opening `photos-c`,
+  the List poll usually hears that empty report before the listing has entries, and asks
+  for nothing until the rows show. Under load the listing could come first: the poll then
+  resynced the store with the last viewport and asked for four rows, and the empty report,
+  heard next, made the store drop them, so the viewer cancelled all four, two of them
+  already rendering. A cancelled render errors, `Lease::execute` discards its worker, and
+  each discard costs a sandbox start: 2 extra, 5 counted. The cancel rule is GTK's, so the
+  difference is what Rune cancels on: GTK cancels a running render only when the last row
+  waiting for it is unbound (`install_edit_unbind` in `src/ui/browser_modes/pane.rs`,
+  `cancel_thumbnail_request` in `src/ui/thumbnail.rs`; `demote_offscreen` drops queued
+  jobs only), and a GTK row is not unbound while its folder loads. Not the worker kill: it
+  adds the one start line 49 expects, and the extra starts are the cancels'. Every folder
+  the run opens is opened from its parent, whose viewport the poll resyncs with, so the race
+  can come at any of the three: in H3's gate (2026-11-13) a full Rune run failed at line 31
+  instead, 4 counted where at most 2 may be, in `photos-b`, before the kill; alone it then
+  passed three rounds. Nor
+  [#2294](https://github.com/lgse/strata/pull/2294): the empty report is Rune's, and #2294
+  changes only how the collection's catch-up after one is heard.
+- **Fix:** [#2313](https://github.com/lgse/strata/pull/2313). The poll rule List and Columns
+  share (`Synced::next` in `crates/strata-app/src/columns/thumbs.rs`) passes over an empty
+  range while the listing has entries; an empty folder's still syncs. Both polls tell the
+  store through one `Sync::tell`. `a_report_of_no_rows_in_a_listed_folder_cancels_no_render`
+  (`thumbnails/tests.rs`) fails without it. The Icons grid syncs only on Rune's report and
+  never asked early, so it did not race.
+- **Related:** [#2290](#2290-a-lists-visible-rows-reported-as-none-and-never-again) is the
+  same Rune report, an empty range for a collection that lists entries; #2290 is the variant
+  where no second report comes (Rune packet entry
+  [101](../upstream/rune/101-stale-visible-rows.md)), and here the second report does come.
+  `Synced::next` now passes over both for List and Columns.
+- **Not covered:**
+  - **Icons** syncs every report, empty ones included (`on_visible` and `sync_thumbs` in
+    `crates/strata-components/src/icons_grid/mod.rs`), so an empty report there after its
+    requests are out would still cancel running renders. Not seen: the grid asks only on
+    Rune's reports, so no request is out before the first one.
+  - **The `Sync::Again` guess** uses the last viewport, the parent folder's, for a folder just
+    opened. When the first real report differs, as with Back into a folder whose scroll
+    position `Pane` restores, the store still cancels the guessed requests, running ones
+    included, which GTK never asks for.
+  - Both are left for a rule in the store if they show up.
+- **State:** fixed by [#2313](https://github.com/lgse/strata/pull/2313). A failure of the
+  run in a gate after it is a new sighting, not this one.
+
+### #2310: Return does not press a focused button on the Rune interface
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2310), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A5](packages/A5.md) while testing the pane header (#2307): Return on a focused
+  Back did nothing where Space pressed it. GTK's buttons take Return and Space alike; on Rune it
+  holds for every button.
+- **Cause, by reading Rune at `2a44156`:** Rune follows AppKit. Return goes to the window's
+  default button and presses only a focused row, link or `focus_highlight` element (`takes_return`
+  in `crates/rune/src/runtime/input/focus.rs`); Space presses a focused control. C15's dialogs
+  already turn Return into Space (`crates/strata-components/src/dialog/keys.rs`).
+- **Concerns:** every button of the Rune interface.
+- **State:** worked around by A5's pull request for it: `crates/strata-app/src/buttons.rs` gives
+  the pane header's buttons, an unreadable folder's Retry and Open as Administrator, and the
+  window header's actions an `on_key` that sends Space for a plain Return. Rune packet entry
+  [103](../upstream/rune/103-return-presses-a-button.md) asks for an opt-in. A button another
+  part adds takes `buttons::on_return` too.

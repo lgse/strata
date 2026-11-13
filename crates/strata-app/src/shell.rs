@@ -28,7 +28,7 @@ use strata_kit::{icons::IconName, look::Look};
 use strata_platform::csd::{self, Csd};
 
 use crate::{
-    App, Built, PARTS,
+    App, Built, PARTS, buttons,
     commands::{self, Live, On},
     folder_views,
     settings::Saved,
@@ -416,12 +416,13 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
     let labels = &app.window.labels;
     let action = |button: &Button| {
         let command = button.command;
-        header::action(look, button.icon, (button.label)(labels))
+        let action = header::action(look, button.icon, (button.label)(labels))
             .on_press_tx(move |app: &mut App, tx: &mut Tx| {
                 commands::run(app, command, On::Focus, tx);
             })
             .build(&look.kit)
-            .key(format!("header-{}", button.key))
+            .key(format!("header-{}", button.key));
+        buttons::on_return(action)
     };
     let header = Header::new("header", look).leading(action(&LEADING));
     let header = match location {
