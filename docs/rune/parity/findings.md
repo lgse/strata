@@ -731,7 +731,12 @@ sequence only together with the alphabet's version, so the version is part of th
   column.
 - **Concerns:** seed `0x10` of `columns v1`, shrunk to 4 steps and parked in
   `tests/qa/fuzz/corpus/columns/`.
-- **State:** open, F2's to fix in the Columns part.
+- **State:** fixed by [F2](packages/F2.md)'s pull request in C5, the Columns component: a click
+  that reopens a folder's column gave it the keyboard and no cursor; it now puts the cursor on
+  the column's first entry with nothing selected when the column has none
+  (`focus_child` in `crates/strata-components/src/columns/view.rs`). A hosted test,
+  `qa::tests::reopen`, takes the shrunk sequence's steps through the QA engine, and the
+  sequence is no longer parked: the corpus replay holds it to agreeing on both targets.
 
 ### #2357: Up, Down or a page key in the rename editor commits on GTK, not on Rune
 

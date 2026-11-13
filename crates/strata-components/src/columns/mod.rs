@@ -63,7 +63,8 @@
 //!   without a reveal; it cancels a slow-click rename pending in another column. The second press
 //!   of a click that opened a column leaves that column active (a double click on a closed
 //!   folder). Activating the folder whose column is open goes to that column: a click gives it
-//!   the keyboard and no cursor, and Return goes in as Right does. A plain click on a
+//!   the keyboard and, when it has no cursor, puts one on its first entry with nothing
+//!   selected, as GTK's list does when it takes the keyboard; Return goes in as Right does. A plain click on a
 //!   column's empty space closes the deeper columns and, in an inactive column, selects its first
 //!   visible entry, or in the active one clears every column; a click on the blank strip clears
 //!   every column. A click on a header (its title or blank space) focuses the column and keeps

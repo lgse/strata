@@ -570,11 +570,10 @@ fn column_intent<S: 'static>(
             id,
             how: Activation::Key,
         } if reopens(sh, s, depth, id) => enter_child(sh, s, depth + 1, tx),
-        // A click gives the column the keyboard and no cursor (`Browser::activate`:
-        // "reopening lands where opening did").
+        // A click gives the column the keyboard (`Browser::activate`: "reopening lands where
+        // opening did"), and its first entry the cursor, as GTK's list focuses its first row.
         Intent::Activate { id, .. } if reopens(sh, s, depth, id) => {
-            let p = (sh.parts_mut)(s);
-            p.state.set_active(depth + 1, p.look, tx);
+            focus_child(sh, s, depth + 1, tx);
         }
         Intent::Other(any) if any.downcast_ref::<Rested>().is_some() => {
             let p = (sh.parts)(s);
@@ -626,6 +625,17 @@ fn enter_child<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, child: usize, tx: &mut
     p.state
         .place_first(child, p.sources.source(child), listing, tx);
     p.state.reveal(p.look, tx);
+    sh.emit(s, ColumnsIntent::Active { depth: child }, tx);
+}
+
+/// A click on the folder whose column is open: Strata's `activate_column_entry` reveals the
+/// column, and GTK's list, taking the keyboard with no cursor, focuses its first row. So the
+/// cursor goes there with nothing selected, and a column with a cursor keeps it (finding
+/// lgse/strata#2356). The host hears the column is active.
+fn focus_child<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, child: usize, tx: &mut Tx) {
+    let p = (sh.parts_mut)(s);
+    p.state.set_active(child, p.look, tx);
+    p.state.focus_first(child, p.sources.source(child), tx);
     sh.emit(s, ColumnsIntent::Active { depth: child }, tx);
 }
 

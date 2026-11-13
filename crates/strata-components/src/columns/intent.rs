@@ -20,7 +20,7 @@ pub enum ColumnsIntent {
     /// new tab, a file drag, a rename, a context menu, an edge going up or down, anything else.
     /// Not sent: Left and Right edges (the view moves between columns) and the activation of
     /// the folder whose column is already open (the view goes to that column and says so with
-    /// [`ColumnsIntent::Active`] when a key did it, `browser/view-modes/columns`).
+    /// [`ColumnsIntent::Active`], `browser/view-modes/columns`).
     Collection {
         /// The column.
         depth: usize,

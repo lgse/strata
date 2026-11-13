@@ -14,6 +14,7 @@ use crate::collection::element::{CollectionState, viewport_path};
 use crate::collection::keyboard::{KeyHandle, Keyboard};
 use crate::collection::marquee::Marquee;
 use crate::collection::pointer::PointerIntent;
+use crate::collection::selection::AnchorRule;
 use crate::collection::selection::{Listing, Position, SyncRule};
 use crate::contract::{EntryId, EntrySource, Point, Rect};
 use crate::scroll::{Autoscroll, AutoscrollPointer, Bar, ScrollFeed};
@@ -684,6 +685,22 @@ impl ColumnsState {
             return;
         }
         place(column, &key, source, 0, tx);
+    }
+
+    /// The cursor on column `depth`'s first entry with nothing selected, when it has no cursor:
+    /// where a list that takes the keyboard with none puts its focus.
+    pub(super) fn focus_first(&mut self, depth: usize, source: &dyn EntrySource, tx: &mut Tx) {
+        let key = keys::column(&self.key, self.columns[depth].serial);
+        let column = &mut self.columns[depth];
+        if column.collection.selection.cursor().is_some() || source.is_empty() {
+            return;
+        }
+        let _ = column
+            .collection
+            .selection
+            .move_cursor(source, 0, AnchorRule::Move);
+        column.collection.note_selection(source);
+        column.collection.reveal(&key, source, 0, tx);
     }
 
     /// Left into column `depth` with no cursor: the cursor goes on the folder it has open, or

@@ -24,6 +24,7 @@ use crate::{
 mod icon;
 mod ready;
 mod rename;
+mod reopen;
 mod replaced;
 mod scroll;
 
