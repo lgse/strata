@@ -2,6 +2,8 @@
 
 //! The List view as a part of the window: the third of the view slot.
 
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use rune::Tx;
 
 use super::{List, VIEW, view};
@@ -33,6 +35,16 @@ impl SinglePane for List {
 
     fn renaming(app: &mut App) -> (&Single, &mut Rename) {
         (&app.list.single, &mut app.rename)
+    }
+
+    /// The table's mode and its row height: rows of one height scroll alike at any width.
+    fn layout_key(app: &App) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        VIEW.hash(&mut hasher);
+        strata_kit::slots::list::row_height(&app.look)
+            .to_bits()
+            .hash(&mut hasher);
+        hasher.finish()
     }
 }
 

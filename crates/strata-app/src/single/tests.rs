@@ -6,13 +6,18 @@
 //! view's case is a test of its own.
 
 use rune::{Key, Mods};
+use strata_components::{collection::selection::Position, contract::EntryId};
 use strata_core::model::Location;
 
-use crate::test_support::{
-    PATIENCE, fixture,
-    view::{
-        Shape, assert_browser_agrees, browser_holds, choose, double_click, field, hosted_in, open,
-        press, right_click, right_click_blank, seen, shift, wait,
+use super::SinglePane;
+use crate::{
+    host::offscreen::Offscreen,
+    test_support::{
+        PATIENCE, fixture,
+        view::{
+            Shape, assert_browser_agrees, browser_holds, choose, double_click, field, hosted_in,
+            idle, open, press, right_click, right_click_blank, seen, shift, wait,
+        },
     },
 };
 
@@ -455,4 +460,95 @@ fn a_folder_a_pointer_opened_starts_on_its_first_row_in_icons() {
 fn a_folder_a_pointer_opened_starts_on_its_first_row_in_list() {
     let name = "a_folder_a_pointer_opened_starts_on_its_first_row_in_list";
     a_folder_a_pointer_opened_starts_on_its_first_row(&LIST, name);
+}
+
+/// A folder of `count` folders, as `return-restores-nested-scroll` builds one.
+fn folders(count: usize) -> tempfile::TempDir {
+    let folder = tempfile::tempdir().expect("folder");
+    for index in 0..count {
+        std::fs::create_dir(folder.path().join(format!("folder-{index:03}"))).expect("folder");
+    }
+    folder
+}
+
+/// Waits until the pane shows `name`'s whole listing: the tree holds only the rows near the
+/// viewport.
+fn listed<V: SinglePane>(host: &mut Offscreen, name: &str) {
+    let done = host.run_until(PATIENCE, |host| {
+        let pane = &V::single(host.app()).pane;
+        let named = pane
+            .listing()
+            .is_some_and(|listing| listing.title() == name);
+        named && pane.load() == Some(&crate::listing::Load::Listed)
+    });
+    assert!(done, "waited for {name} to be listed");
+    idle(host);
+}
+
+/// The pane's scroll offset and cursor.
+fn stands<V: SinglePane>(host: &Offscreen) -> (f32, Option<EntryId>) {
+    let collection = V::single(host.app()).pane.collection();
+    (collection.scroll_offset(), collection.selection.cursor())
+}
+
+/// Scrolls the pane down by the wheel, and takes its cursor away as the browser's too.
+fn scroll_with_no_cursor<V: SinglePane>(host: &mut Offscreen) {
+    let viewport = V::single(host.app()).pane.collection().viewport();
+    let (x, y) = (viewport.x + viewport.w / 2.0, viewport.y + viewport.h / 2.0);
+    for _ in 0..6 {
+        host.runtime().wheel(x, y, -40.0);
+        idle(host);
+    }
+    host.runtime().update(|app, _| {
+        let (source, collection) = V::single_mut(app).pane.parts_mut();
+        let _ = collection.selection.restore(&Position::default());
+        collection.note_selection(source);
+        crate::shell::publish(app);
+    });
+    idle(host);
+}
+
+/// Back to a folder left scrolled and with no cursor, as GTK's saved visit with no cursor:
+/// its scroll comes back, and no first visit gives its first row the cursor.
+fn back_keeps_a_scroll_left_with_no_cursor<V: SinglePane>(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = folders(300);
+        let root = Location::local(folder.path()).display_name();
+        host.app().open(Location::local(folder.path()));
+        listed::<V>(&mut host, &root);
+        scroll_with_no_cursor::<V>(&mut host);
+        let left = stands::<V>(&host);
+        assert!(left.0 > 0.0, "scrolled: {left:?}");
+        assert_eq!(left.1, None, "no cursor");
+
+        // Opened by its location, as the location bar opens a folder: nothing focuses a row.
+        host.app()
+            .open(Location::local(folder.path().join("folder-030")));
+        listed::<V>(&mut host, "folder-030");
+        let alt = Mods {
+            alt: true,
+            ..Mods::default()
+        };
+        press(&mut host, Key::Left, alt);
+        listed::<V>(&mut host, &root);
+
+        let back = stands::<V>(&host);
+        assert!(
+            (back.0 - left.0).abs() < 2.0,
+            "the scroll: left {left:?}, back {back:?}"
+        );
+        assert_eq!(back.1, None, "no first row's cursor");
+    });
+}
+
+#[test]
+fn back_keeps_a_scroll_left_with_no_cursor_in_icons() {
+    let name = "back_keeps_a_scroll_left_with_no_cursor_in_icons";
+    back_keeps_a_scroll_left_with_no_cursor::<crate::icons::Icons>(&ICONS, name);
+}
+
+#[test]
+fn back_keeps_a_scroll_left_with_no_cursor_in_list() {
+    let name = "back_keeps_a_scroll_left_with_no_cursor_in_list";
+    back_keeps_a_scroll_left_with_no_cursor::<crate::list::List>(&LIST, name);
 }

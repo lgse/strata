@@ -71,6 +71,7 @@ impl Fixture {
             show_hidden: false,
             active,
             grouping: self.grouping,
+            reveal: false,
         }));
         let row = Row::of(&entry(&folder, &format!("in-{depth}")), &self.ids);
         self.apply(Change::Rows {
@@ -219,6 +220,7 @@ fn a_grouped_folder_shows_and_steps_in_its_groups_and_an_ungrouped_one_does_not(
         show_hidden: false,
         active: true,
         grouping: fixture.grouping,
+        reveal: false,
     }));
     let names = ["b.txt", "a.png", "c.txt"];
     let rows = names
@@ -260,4 +262,98 @@ fn a_grouped_folder_shows_and_steps_in_its_groups_and_an_ungrouped_one_does_not(
 
     assert!(fixture.pane.collection().groups().is_empty());
     assert_eq!(fixture.pane.neighbour(0, b, 1), Some(a));
+}
+
+impl Fixture {
+    /// The browser opens `folder` in place, active, and lists `names` in it, its load over
+    /// with no cursor of its own.
+    fn visit(&mut self, folder: &Location, names: &[&str]) -> Applied {
+        let applied = self.apply(Change::Added(Added {
+            depth: 0,
+            location: folder.clone(),
+            show_hidden: false,
+            active: true,
+            grouping: self.grouping,
+            reveal: false,
+        }));
+        let rows = names
+            .iter()
+            .map(|name| Row::of(&file(folder, name), &self.ids))
+            .collect();
+        self.apply(Change::Rows {
+            depth: 0,
+            edit: Edit::Replace(rows),
+            marks: Some(Marks::default()),
+            grouping: self.grouping,
+        });
+        self.apply(Change::Loaded {
+            depth: 0,
+            load: Load::Listed,
+            marks: Marks::default(),
+            grouping: self.grouping,
+        });
+        applied
+    }
+}
+
+/// A folder left and shown again comes back at its position, by id: in a grouped folder the
+/// rows show in their groups' order, and the browser lists them in another order on return,
+/// and the same entry still holds the cursor and the selection.
+#[test]
+fn a_folder_shown_again_comes_back_at_its_position_by_id() {
+    let mut fixture = Fixture::new();
+    fixture.grouping = Some(ViewPreferences::default());
+    let folder = location(0);
+    fixture.visit(&folder, &["b.txt", "a.png", "c.txt"]);
+    let c = fixture.ids.of(&folder
+        .child(std::ffi::OsStr::new("c.txt"))
+        .expect("a child"));
+    fixture.pane.select_only(0, c);
+
+    let other = Location::local("/elsewhere");
+    assert_eq!(
+        fixture.visit(&other, &["x.txt"]),
+        Applied::Entered,
+        "a first visit"
+    );
+    let back = fixture.visit(&folder, &["c.txt", "b.txt", "a.png"]);
+
+    assert_eq!(back, Applied::Returned);
+    let collection = fixture.pane.collection();
+    assert_eq!(collection.selection.cursor(), Some(c));
+    assert_eq!(
+        collection.selection.selected_ids(fixture.pane.source()),
+        [c]
+    );
+}
+
+/// The browser revealing an entry in the folder wins over the position remembered for it,
+/// which stays for a later visit.
+#[test]
+fn a_reveal_wins_over_the_remembered_position() {
+    let mut fixture = Fixture::new();
+    let folder = location(0);
+    fixture.visit(&folder, &["a.txt", "b.txt"]);
+    let b = fixture.ids.of(&folder
+        .child(std::ffi::OsStr::new("b.txt"))
+        .expect("a child"));
+    fixture.pane.select_only(0, b);
+    fixture.visit(&Location::local("/elsewhere"), &["x.txt"]);
+
+    let revealed = fixture.apply(Change::Added(Added {
+        depth: 0,
+        location: folder.clone(),
+        show_hidden: false,
+        active: true,
+        grouping: None,
+        reveal: true,
+    }));
+    assert_eq!(revealed, Applied::Entered);
+    assert_eq!(fixture.pane.collection().selection.cursor(), None);
+
+    fixture.visit(&Location::local("/elsewhere"), &["x.txt"]);
+    assert_eq!(
+        fixture.visit(&folder, &["a.txt", "b.txt"]),
+        Applied::Returned
+    );
 }

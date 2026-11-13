@@ -113,6 +113,11 @@ pub(crate) trait SinglePane: 'static {
 
     /// The view's state and the rename editor's, borrowed together.
     fn renaming(app: &mut App) -> (&Single, &mut rename::Rename);
+
+    /// The view's layout, as C1e keys a remembered scroll offset: the mode and anything that
+    /// changes wrapping. An offset comes back only in the layout it was measured in, as GTK's
+    /// comes back only in the same mode, and in Icons at the same page width.
+    fn layout_key(app: &App) -> u64;
 }
 
 fn pane<V: SinglePane>(app: &App) -> &Pane {
@@ -250,10 +255,13 @@ pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> 
         heard.copied(read.copied);
         for change in read.changes {
             heard.then(move |app: &mut App, tx: &mut Tx| {
+                let layout = V::layout_key(app);
                 let single = V::single_mut(app);
+                single.pane.set_layout_key(layout);
                 let applied = single.pane.apply(change, tx);
+                // A folder back at its remembered position arms no first visit.
                 single.first_visit.follow(applied);
-                if applied == Applied::Entered {
+                if matches!(applied, Applied::Entered | Applied::Returned) {
                     // The GTK window gives a new listing the keyboard.
                     tx.focus(V::KEY, false);
                 }
