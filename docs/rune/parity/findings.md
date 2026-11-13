@@ -629,3 +629,18 @@ sequence only together with the alphabet's version, so the version is part of th
   on that scrim, which closes on an outside press or wheel and takes every key; the gap left is
   the modal's alone, Rune packet entry [104](../upstream/rune/104-outside-wheel-closes-a-popover.md),
   not to be filed.
+
+### #2346: a view rebuilt during a staged publish can list rows twice
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2346), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What was seen, by reading** (in the review of [#2343](https://github.com/lgse/strata/pull/2343)):
+  - A view rebuilt from the browser while a large folder is still published in stages copies
+    every entry the column holds, including those not published yet. That is Rune's
+    `events::replay` (`with_column_entries`), and GTK's `rebuild_columns_from` and
+    `apply_snapshot` read the same snapshot.
+  - The `EntriesPublished` events still to come then insert their tails again.
+  - No scenario or seed reaches it.
+- **State:** open, set aside. The fix, for whoever meets it: a published-count accessor on
+  `Browser`, so that a rebuild copies only what has been published. GTK's fix, if taken up,
+  lands on `main`.
