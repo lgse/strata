@@ -18,7 +18,9 @@ use serde_json::{Value, json};
 
 use super::{
     generate::Origin,
-    observe::{Observation, Outcome, Rest, Rested, Sample, at_rest, milliseconds, settings, tree},
+    observe::{
+        Faults, Observation, Outcome, Rest, Rested, Sample, at_rest, milliseconds, settings, tree,
+    },
     perturb::Perturbation,
     project::{self, Places as Names},
     sequence::{Loaded, strip},
@@ -225,6 +227,11 @@ impl Stream {
     pub(crate) fn criticals(&self) -> usize {
         self.observations.iter().map(Observation::criticals).sum()
     }
+
+    /// The invariants broken, counted at every step that broke them.
+    pub(crate) fn broken(&self) -> usize {
+        self.observations.iter().map(Observation::broken).sum()
+    }
 }
 
 /// The directories of one replay, made afresh and gone with it.
@@ -361,6 +368,8 @@ struct Session<'a> {
     transcript: String,
     /// What GLib logged since the last observation, with addresses taken out.
     criticals: Vec<String>,
+    /// The step that asks the target for its invariants, for a target that checks any.
+    invariants: Option<Value>,
 }
 
 impl<'a> Session<'a> {
@@ -376,6 +385,7 @@ impl<'a> Session<'a> {
             rest,
             transcript: String::new(),
             criticals: Vec::new(),
+            invariants: launch.target.invariants_step(),
         };
         let hello = session.application.receive(LAUNCH_TIMEOUT)?;
         session.record(&json!({ "launch": true }), &hello);
@@ -516,8 +526,48 @@ impl<'a> Session<'a> {
         } else {
             outcome
         };
-        let criticals = std::mem::take(&mut self.criticals);
-        (Observation::new(step, outcome, criticals, rested), None)
+        // Outside the fixture what the window lists is the machine's, and an unsettled step
+        // is compared by its outcome alone: the invariants are asked for only at rest within.
+        let checked = outcome != Outcome::Left && rested.settled;
+        let invariants = if checked {
+            match self.broken_invariants() {
+                Ok(broken) => broken,
+                Err(error) => {
+                    let (outcome, gone) = self.lost(error);
+                    return (self.unseen(step, outcome), gone);
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        let faults = Faults {
+            criticals: std::mem::take(&mut self.criticals),
+            invariants,
+        };
+        (Observation::new(step, outcome, faults, rested), None)
+    }
+
+    /// The invariants the target broke, as it reports them at rest; none for a target that
+    /// checks none. An error is the target going away.
+    fn broken_invariants(&mut self) -> Result<Vec<String>, String> {
+        let Some(step) = self.invariants.clone() else {
+            return Ok(Vec::new());
+        };
+        let reply = self.send(&step, COMMAND_TIMEOUT)?;
+        if let Some(error) = reply["error"].as_str() {
+            return Ok(vec![format!(
+                "the target could not check its invariants: {error}"
+            )]);
+        }
+        // A name the window shows can be the fixture's, which is random in every run.
+        let broken = self.names.normalise(&reply["result"]);
+        Ok(broken
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect())
     }
 
     /// The observation of a step that ended the replay before anything could be read: the
@@ -536,8 +586,11 @@ impl<'a> Session<'a> {
             waited: Duration::ZERO,
             changes: Vec::new(),
         };
-        let criticals = std::mem::take(&mut self.criticals);
-        Observation::new(step, outcome, criticals, rested)
+        let faults = Faults {
+            criticals: std::mem::take(&mut self.criticals),
+            invariants: Vec::new(),
+        };
+        Observation::new(step, outcome, faults, rested)
     }
 
     fn sample(&mut self) -> Result<Sample, String> {

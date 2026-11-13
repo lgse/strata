@@ -1702,8 +1702,9 @@ yet, and `fixture_root`, which would give such a place a fixed name, is among
 the header keys a sequence may not have.
 
 A GLib warning or critical is recorded on the step that logged it, with its
-addresses taken out. A crash and a GLib warning are findings: the command
-reports them and fails whether or not the replays agree on them.
+addresses taken out. A crash, a GLib warning and a broken invariant
+("Invariants" below) are findings: the command reports them and fails whether
+or not the replays agree on them.
 
 #### The observation
 
@@ -1714,6 +1715,7 @@ is a fixed projection, and nothing else of a reply is kept:
 | --- | --- |
 | `result` | The step's outcome. |
 | `criticals` | What GLib logged since the last observation. |
+| `invariants` | The invariants the target broke at rest, one line each; empty on GTK, which checks none. |
 | `app.*` | The ten keys of the reply's `app` snapshot: `view_mode`, `directory`, `panes` (each pane's `name`, `selected` and `focused`), `focused`, `focused_pane`, `dialog`, `menu`, `preview`, `field` and `matches`. A runner unit test holds the list to the snapshot's own keys, so a key added there is not left uncompared by oversight. |
 | `fs.<path>` | The fixture tree: `dir <mode>`, `file <mode> <size> <digest of its bytes>` or `link <target>` for each path. |
 | `settings.<key>` | `settings.toml`, parsed, so two files that say the same in another order are equal. |
@@ -1750,6 +1752,42 @@ its outcome and its criticals only. That is not agreement: a target that
 never rests would agree on everything. So a sequence with an unsettled step
 is reported as `UNSETTLED` and fails the command, as a difference does.
 Calibration saw none on GTK.
+
+#### Invariants
+
+Some states have no GTK peer to compare: above all, whether the browser,
+which every command acts on, holds what the view shows. A view that shows one
+selection while the browser holds another deletes, renames and opens what the
+user did not choose, and the snapshot, which is read off the accessibility
+tree, would not say so. Package F3 (`docs/rune/parity/packages/F3.md`) holds
+the Rune target to such properties of one target.
+
+Once a step has come to rest inside the fixture, the runner sends a Rune
+target `{"invariants":{}}`, a step of the runner's own, like `keymap`, which
+no scenario may write and the GTK application answers as not supported. The
+application checks itself (`crates/strata-app/src/qa/invariants.rs`) and
+answers with the list of what failed, each line naming the invariant, the
+browser's column by its depth and entries by name:
+
+| Invariant | Holds |
+| --- | --- |
+| `browser-view` | The view keeps a listing for each of the browser's columns, of the same folder, loading while it loads; Columns draws a column for each; the active column is the browser's; each listing shows the browser's entries that are not hidden, each under its entry's id and at its position, none twice; and each column shown has the browser's cursor, selection and Shift anchor, and says the selection is the cursor a load placed when the browser does. |
+| `browser` | The browser lists no entry twice, and marks no position past its entries. |
+| `tree-view` | Each pane the snapshot reads out of the tree is a column the view shows, with the same entries selected, and no entry twice. The tree leaves out rows scrolled out of sight, so only the rows it has are held to the view. |
+
+The lines go into the observation's `invariants`, which the comparator
+treats as it treats `criticals`: a broken invariant is a divergence at its
+step even when both replays break it alike, the map and the mask never cover
+it, and the shrinker shrinks it as it shrinks any divergence, to the fewest
+steps that break the same invariant with the same words after the same
+action. A line names no id and no path, and the fixture's name is written
+`$root`, so two replays failing alike say the same thing. A step that did not
+come to rest, or that left the fixture, is not checked.
+
+A sequence that breaks one is parked against its finding like any other
+(`divergence` until the finding has an exception code), so a smoke tier stays
+green while the finding is open. Asking costs one reply a step, against the
+eight or more of the rest wait.
 
 #### Comparison, the map and the mask
 
@@ -1907,7 +1945,7 @@ FUZZ rules: 0 normalisation rules (tests/qa/fuzz/normalisation.map); 0 calibrati
 AGREE fuzz-calibration-v3-0000000000000001: 40 steps, 2 replays
 DIFFER fuzz-calibration-v3-000000000000002a on gtk at step 14 {"key":"Right"}: app.matches (["a"] | ["a","b"]); kept target/qa-fuzz/calibration/gtk/fuzz-calibration-v3-000000000000002a
 FUZZ result: 300 sequences: 299 agree, 0 agree under a mask, 1 differ, 0 unsettled, 0 could not be replayed; 0 parked; 0 with a finding
-FUZZ steps: 24600 observations in 600 replays, 12300 compared; 270 refused, 1800 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse
+FUZZ steps: 24600 observations in 600 replays, 12300 compared; 270 refused, 1800 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse, 0 invariants broken
 FUZZ replays that ended early: 4 left the fixture, 0 closed the window
 FUZZ late changes: 2890 of 24600 observations changed after their step's reply; quiet before a late change: median 60 ms, 99th percentile 170 ms, longest 215 ms
 FUZZ fields that differed first, with nothing masked, by sequence: app.matches 1
@@ -1922,8 +1960,8 @@ differs, the first value GTK's:
 ```text
 FUZZ replays: targets gtk and rune, 2 of each sequence on each side by side, 12 sequences at once; each target compared with itself, then every rune replay with the first gtk one
 DIFFER fuzz-entries-v1-0000000000000008 gtk against rune at step 1 {"key":"Up","when":{"not":{"field":{"name":"Rename"}}}}: app.focused (null | "archive"); kept target/qa-fuzz/entries/gtk-rune/fuzz-entries-v1-0000000000000008
-FUZZ steps on gtk: 34 refused, 692 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse
-FUZZ steps on rune: 28 refused, 688 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse
+FUZZ steps on gtk: 34 refused, 692 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse, 0 invariants broken
+FUZZ steps on rune: 28 refused, 688 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse, 0 invariants broken
 FUZZ fields that differed first between the targets, a divergence and never noise, by sequence: app.focused 12, app.matches 5, app.panes 5, app.panes[].focused 7
 ```
 
@@ -1938,7 +1976,7 @@ one.
 | `MASKED` | One whose replays differ only on fields the mask leaves out, or, between two targets, the map; the line names the comparison, as a `DIFFER` line does. It counts as agreeing under a mask, and the "fields that differed first" lines count it with nothing left out, which is how calibration sees what a mask is hiding. |
 | `DIFFER` | One whose replays differ: which replays (`on gtk`, `on rune`, `gtk against rune`), the step, the action, the first field and its two values. |
 | `UNSETTLED` | One with a step that did not come to rest within the budget. |
-| `FINDING` | A crash or a GLib warning. It comes with a `DIFFER` line that names its step. |
+| `FINDING` | A crash, a GLib warning or a broken invariant. It comes with a `DIFFER` line that names its step. |
 | `ERROR` | One the harness could not replay. |
 | `PARKED` | One that is parked, and was not replayed. |
 | `FUZZ late changes` | How many observations changed after their step's reply, and how long each such change was in coming after the read before it. A change is seen only while the rest wait still runs, so the default window sees up to 350 ms and `--rest-samples 40 --rest-poll-ms 25` up to a second. |
@@ -2154,9 +2192,9 @@ sequence that agrees is not thereby fixed.
 - **Runner steps other than `fs`.** `restart`, `layout`, the session bus and
   its peers, portals and input methods are refused when a sequence loads.
 - **Invariants.** Properties of one target with no GTK peer to compare are
-  F3's (lgse/strata#2139). `Stream` and `Observation` in
-  `tests/qa/fuzz/replay.rs` and `observe.rs` are what a check of one stream
-  reads.
+  F3's (lgse/strata#2139): the application's own, asked for at rest
+  ("Invariants" above), and a check of one stream, which reads `Stream` and
+  `Observation` in `tests/qa/fuzz/replay.rs` and `observe.rs`.
 - **`scenario` is for reading.** A sequence with a refused step fails under
   the ordinary runner before it reaches what it was kept for, so a sequence
   file is not something to hand to `qa.sh`.

@@ -335,6 +335,9 @@ pub(crate) struct Probe<S: 'static> {
     pub(crate) listed: fn(&S) -> bool,
     /// The key of each entry list in the tree, the first pane's first.
     pub(crate) lists: fn(&S) -> Vec<String>,
+    /// What the view holds of the browser's columns, read and never changed: what the QA
+    /// backend's invariants hold against the browser ([`crate::handover::Presented`]).
+    pub(crate) presented: fn(&S) -> crate::handover::Presented<'_>,
 }
 
 /// What the sidebar gives the shell.

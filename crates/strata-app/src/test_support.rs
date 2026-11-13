@@ -139,6 +139,7 @@ pub(crate) fn idle_view<S>(
             roles: ("list-box", "list-box-option"),
             listed: |_| true,
             lists: |_| Vec::new(),
+            presented: |_| crate::handover::Presented::default(),
         },
     }
 }

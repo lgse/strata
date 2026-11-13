@@ -12,6 +12,7 @@ mod backend;
 mod compose;
 mod field;
 mod input_log;
+mod invariants;
 mod keyboard;
 mod keymap;
 mod keys;
