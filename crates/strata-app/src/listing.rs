@@ -114,6 +114,23 @@ pub(crate) struct Facts {
 }
 
 impl Facts {
+    /// These facts, with a time or a size still unknown here taken from `now`.
+    fn learning(&self, now: &Facts) -> Facts {
+        Facts {
+            modified: self.modified.or(now.modified),
+            size: self.size.or(now.size),
+            ..*self
+        }
+    }
+
+    /// Whether a time or a size known in both differs: the file changed.
+    fn contradict(&self, other: &Facts) -> bool {
+        fn differ<T: PartialEq>(a: Option<T>, b: Option<T>) -> bool {
+            matches!((a, b), (Some(a), Some(b)) if a != b)
+        }
+        differ(self.modified, other.modified) || differ(self.size, other.size)
+    }
+
     fn of(entry: &FileEntry) -> Self {
         Self {
             size: known(&entry.size),
@@ -152,9 +169,41 @@ pub(crate) struct Row {
     /// ([`Column::group`]), as a MIME lookup for every row would cost every view.
     group: Option<TypeGroup>,
     facts: Facts,
+    /// The time and size the thumbnail key was made under, with any learnt since while it was
+    /// kept: what a later row is compared against, so a change across a reload that listed
+    /// them unknown is still seen.
+    keyed: Facts,
 }
 
 impl Row {
+    /// Keeps `previous`'s thumbnail key when this is the same entry read again, both rows
+    /// have a key (a file replaced by a folder of its name has none), and no time or size
+    /// known in both differs. A metadata fill that only makes them known, or a reload that
+    /// lists them unknown again, is then the same file: a new key would ask for its thumbnail
+    /// again and cancel the request out. GTK's key changes on the first fill too; GTK does not
+    /// ask again because a slot already showing a thumbnail of that path is not asked
+    /// (`displayed_thumbnail_matches`), nor a key already requested (`already_requested`).
+    ///
+    /// The window it leaves: a thumbnail rendered while the time and size were both unknown,
+    /// of a file then replaced, stays while every later row brings only newly known facts,
+    /// until a known time or size changes. GTK's window is wider: a slot showing a thumbnail
+    /// of that path is not asked again until it is bound anew.
+    fn keep_key_of(&mut self, previous: &Row) {
+        if self.same_file_as(previous) {
+            self.thumbnail = previous.thumbnail;
+            self.keyed = previous.keyed.learning(&self.facts);
+        }
+    }
+
+    /// Whether this row is `previous`'s file read again, as far as its facts tell: the same
+    /// entry, both with a thumbnail key, and no time or size known now differing from the last
+    /// known under `previous`'s key.
+    fn same_file_as(&self, previous: &Row) -> bool {
+        let keyed = previous.thumbnail.is_some() && self.thumbnail.is_some();
+        let same_entry = self.id == previous.id;
+        keyed && same_entry && !self.facts.contradict(&previous.keyed)
+    }
+
     pub(crate) fn of(entry: &FileEntry, ids: &Ids) -> Self {
         let (kind, described) = kinds(entry);
         Self {
@@ -167,6 +216,7 @@ impl Row {
             entry_kind: entry.kind,
             group: None,
             facts: Facts::of(entry),
+            keyed: Facts::of(entry),
         }
     }
 
@@ -308,7 +358,8 @@ impl Column {
 
     pub(crate) fn apply(&mut self, edit: Edit) {
         match edit {
-            Edit::Replace(rows) => {
+            Edit::Replace(mut rows) => {
+                self.keep_keys(&mut rows);
                 self.rows = rows;
                 self.index();
             }
@@ -318,7 +369,8 @@ impl Column {
                 }
             }
             Edit::Splice(splices) => {
-                for (position, removed, rows) in splices {
+                for (position, removed, mut rows) in splices {
+                    self.keep_keys(&mut rows);
                     let start = position.min(self.rows.len());
                     let end = start.saturating_add(removed).min(self.rows.len());
                     self.rows.splice(start..end, rows);
@@ -367,10 +419,21 @@ impl Column {
         // A row read again carries no type (`Row::of` reads none): one whose type did not
         // change keeps the one its group was found by, which `group_at` reads.
         let group = current.group.filter(|_| !retyped);
+        let mut row = row;
+        row.keep_key_of(current);
         *current = row;
         current.group = group;
         if moved {
             self.index();
+        }
+    }
+
+    /// Rows read again keep the thumbnail keys of the rows they replace ([`Row::keep_key_of`]).
+    fn keep_keys(&self, rows: &mut [Row]) {
+        for row in rows {
+            if let Some(previous) = self.row_of(row.id) {
+                row.keep_key_of(previous);
+            }
         }
     }
 
