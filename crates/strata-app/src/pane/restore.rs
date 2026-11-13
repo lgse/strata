@@ -19,14 +19,15 @@
 //!   folder shows in its groups' order); C1e's [`Position`] keeps ids, so the restore finds
 //!   the same entries whatever order they show in.
 //! - **A cursor falls back** to the first restored selected entry when its own entry is gone,
-//!   or none was remembered, and the anchor to the cursor ([`fall_back`]).
+//!   or none was remembered, and the anchor to the cursor; with no selection either, to the
+//!   browser's own cursor, so the two never disagree ([`fall_back`]).
 
 use strata_components::{
     collection::{
         element::CollectionState,
         selection::{AnchorRule, Position, RestoreMemory},
     },
-    contract::EntrySource,
+    contract::{EntryId, EntrySource},
 };
 use strata_core::model::Location;
 
@@ -80,7 +81,15 @@ fn listed(column: &Column) -> bool {
 /// After a restore landed: a cursor whose entry is gone, or none remembered, falls back to
 /// the first restored selected entry in the browser's order, and the anchor to the cursor
 /// where it has none, as GTK's `restore_selection` does (`focused.or_else(|| positions.first())`).
-pub(super) fn fall_back(column: &Column, collection: &mut CollectionState) {
+/// With no selection either, the cursor is the browser's own, `browser_cursor` (the folder
+/// come from, on Back): the browser keeps it whatever the view hands over, and the view must
+/// never show a cursor other than the entry Return or Delete act on. None of it scrolls: the
+/// restored offset stays.
+pub(super) fn fall_back(
+    column: &Column,
+    collection: &mut CollectionState,
+    browser_cursor: Option<EntryId>,
+) {
     let selection = &collection.selection;
     if selection.cursor().is_some() {
         return;
@@ -89,8 +98,9 @@ pub(super) fn fall_back(column: &Column, collection: &mut CollectionState) {
         .selected_ids(column)
         .into_iter()
         .filter_map(|id| Some((column.position_of(id)?, id)))
-        .min();
-    let Some(index) = first.and_then(|(_, id)| column.index_of(id)) else {
+        .min()
+        .map(|(_, id)| id);
+    let Some(index) = first.or(browser_cursor).and_then(|id| column.index_of(id)) else {
         return;
     };
     let anchor = match selection.anchor() {

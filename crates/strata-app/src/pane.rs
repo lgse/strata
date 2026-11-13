@@ -460,7 +460,7 @@ impl Pane {
         let restored = restoring && !self.collection.restore_pending();
         if restored {
             if let Some(column) = self.shown.and_then(|depth| self.columns.get(depth)) {
-                restore::fall_back(column, &mut self.collection);
+                restore::fall_back(column, &mut self.collection, marks.cursor);
             }
         } else if !handover::placed(before, &self.collection) {
             self.adopt(marks);

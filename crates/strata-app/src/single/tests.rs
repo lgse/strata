@@ -6,7 +6,10 @@
 //! view's case is a test of its own.
 
 use rune::{Key, Mods};
-use strata_components::{collection::selection::Position, contract::EntryId};
+use strata_components::{
+    collection::selection::Position,
+    contract::{EntryId, EntrySource},
+};
 use strata_core::model::Location;
 
 use super::SinglePane;
@@ -531,7 +534,36 @@ fn back_keeps_a_scroll_left_with_no_cursor<V: SinglePane>(case: &Case, name: &st
         listed::<V>(&mut host, &root);
 
         assert_eq!(drawn(&host), left, "the entries drawn when it was left");
-        assert_eq!(cursor::<V>(&host), None, "no first row's cursor");
+        let came_from = V::single(host.app())
+            .pane
+            .listing()
+            .and_then(|listing| {
+                (0..listing.len()).find(|index| listing.entry(*index).name == "folder-030")
+            })
+            .map(|index| {
+                V::single(host.app())
+                    .pane
+                    .listing()
+                    .expect("a listing")
+                    .id_at(index)
+            });
+        assert_eq!(
+            cursor::<V>(&host),
+            came_from,
+            "the browser's cursor, not row 0's"
+        );
+        // The cursor's row may be out of view, so the tree names no focused row: the
+        // browser's own state is compared with the pane's.
+        let (selected, focused) = browser_holds(&host);
+        assert!(selected.is_empty(), "nothing selected: {selected:?}");
+        assert_eq!(focused.as_deref(), Some("folder-030"), "the browser agrees");
+
+        press(&mut host, case.next.clone(), Mods::default());
+        assert_eq!(
+            seen(&host, case.shape).focused.as_deref(),
+            Some("folder-031"),
+            "the next key goes on from it"
+        );
     });
 }
 
