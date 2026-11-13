@@ -9,7 +9,7 @@ use std::{
 };
 
 use rune::{El, Key as Logical, KeyEvent, Mods, Tx, el};
-use strata_desktop::keys::{Binding, Key, KeyPress, Map, bindings::TAB_NUMBERS};
+use strata_desktop::keys::{Binding, Key, KeyPress, Map, Modifiers, bindings::TAB_NUMBERS};
 
 use super::super::{
     Action, Call, Holds, Keys, On, Outcome, Reads, Situation, Stage, always, on_key, read, run,
@@ -319,6 +319,81 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
                     (asked.iter().map(|s| (*s).to_owned()).collect(), taken),
                     "{holds:?}"
                 );
+            }
+        },
+    );
+}
+
+/// F9 with or without Ctrl or Alt.
+fn f9_held(press: &KeyPress) -> bool {
+    press.is(Binding::plain(Key::F9).ignoring(Modifiers::CONTROL_MASK.union(Modifiers::ALT_MASK)))
+}
+
+says! {
+    focus_navigation: "focus navigation" => Outcome::Declined;
+    dismissal: "dismissal" => Outcome::Declined;
+    item_navigation: "item navigation" => Outcome::Declined;
+    left_unclaimed: "unclaimed" => Outcome::Declined;
+}
+
+const LATE: &[Action<App>] = &[
+    Action::new("focus-navigation", focus_navigation).keys(&[at(Stage::FocusNavigation, f9_held)]),
+    Action::new("dismissal", dismissal).keys(&[at(Stage::Dismissal, f9_held)]),
+    Action::new("item-navigation", item_navigation).keys(&[at(Stage::ItemNavigation, f9_held)]),
+    Action::new("unclaimed", left_unclaimed).keys(&[at(Stage::Unclaimed, f9_held)]),
+];
+
+fn an_owner_and_the_late_stages() -> Vec<Entry<App>> {
+    struct Owner;
+    struct Late;
+    vec![
+        view(),
+        part::<Owner>("owner", &[], |_| HOLDS.get()),
+        part::<Late>("late", LATE, |_| None),
+    ]
+}
+
+/// `popover_navigation` (`focus.rs:112`) ends GTK's chain for a key without Ctrl or Alt while
+/// focus is in a popover: focus navigation, dismissal and item navigation never hear it, and
+/// with Ctrl or Alt held they do.
+#[test]
+fn a_popover_ends_the_chain_at_focus_navigation_for_a_key_without_ctrl_or_alt() {
+    const ALL: [&str; 4] = [
+        "focus navigation",
+        "dismissal",
+        "item navigation",
+        "unclaimed",
+    ];
+    let ctrl = Mods {
+        ctrl: true,
+        cmd: true,
+        ..Mods::default()
+    };
+    let alt = Mods {
+        alt: true,
+        ..Mods::default()
+    };
+    let cases: [(Option<Holds>, Mods, &[&str]); 4] = [
+        (None, Mods::default(), &ALL),
+        (Some(Holds::Popover), Mods::default(), &["unclaimed"]),
+        (Some(Holds::Popover), ctrl, &ALL),
+        (Some(Holds::Popover), alt, &ALL),
+    ];
+    hosted_over(
+        MODULE,
+        "routing::a_popover_ends_the_chain_at_focus_navigation_for_a_key_without_ctrl_or_alt",
+        an_owner_and_the_late_stages,
+        move |mut host| {
+            for (holds, mods, asked) in cases {
+                HOLDS.set(holds);
+                let event = KeyEvent {
+                    key: Logical::Function(9),
+                    mods,
+                };
+
+                act(&mut host, move |app, tx| on_key(app, &event, tx));
+
+                assert_eq!(noted(), asked, "{holds:?}, {mods:?}");
             }
         },
     );

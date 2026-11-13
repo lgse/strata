@@ -8,6 +8,7 @@
 //! those it is ([`Holds`]), and [`reach`] holds the rule for each in one place.
 
 use rune::Tx;
+use strata_desktop::keys::{KeyPress, Modifiers};
 
 use super::Stage;
 use crate::{App, shell};
@@ -17,10 +18,12 @@ use crate::{App, shell};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Holds {
     /// A plain popover, such as the Icons header's thumbnail size: GTK's `gtk::Popover`, which
-    /// `native_menu_owns_input` does not count as owning input (`input_owner.rs:116`), so the
-    /// whole chain runs and window commands act while it is open. Two things still follow
-    /// GTK's `focus_in_popover` (`src/ui/window/keyboard/tenxer.rs:158`): the default Tab
-    /// navigation does not run ([`reach`]), and typing is the popover's for the aliases
+    /// `native_menu_owns_input` does not count as owning input (`input_owner.rs:116`), so
+    /// window commands act while it is open. What GTK's dispatcher still does for focus in a
+    /// popover ([`reach`]): the default Tab navigation does not run (`focus_in_popover`,
+    /// `src/ui/window/keyboard/tenxer.rs:158`); a key without Ctrl or Alt ends the chain at
+    /// focus navigation (`popover_navigation`, `focus.rs:112`), so dismissal and item
+    /// navigation never hear it; and typing is the popover's for the aliases
     /// ([`Situation::typing`], `in_popover` in `context_of`). 10xer's own checks
     /// (`focus_keeps_typing`, `tenxer_pane_focus`) ask [`Situation::popover`]. A part answers
     /// it while focus is inside its popover, and closes the popover where GTK's goes away with
@@ -155,6 +158,9 @@ impl Situation {
     }
 }
 
+/// What `popover_navigation` lets on (`event.without(CONTROL_MASK | ALT_MASK)`).
+const CTRL_OR_ALT: Modifiers = Modifiers::CONTROL_MASK.union(Modifiers::ALT_MASK);
+
 /// What a stage is to a press, given who has the keyboard.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Reach {
@@ -168,8 +174,8 @@ pub(super) enum Reach {
 }
 
 /// GTK's rule for `stage` while the owner in `at` has the keyboard, for a command of the
-/// part named `part`.
-pub(super) fn reach(at: &Situation, stage: Stage, part: &str) -> Reach {
+/// part named `part` and the press `press`.
+pub(super) fn reach(at: &Situation, stage: Stage, part: &str, press: &KeyPress) -> Reach {
     let Some((holds, owner)) = at.holds else {
         return Reach::Runs;
     };
@@ -179,6 +185,14 @@ pub(super) fn reach(at: &Situation, stage: Stage, part: &str) -> Reach {
         Stage::TabStrip => !matches!(holds, Holds::Modal { .. }),
         // `default_tab_navigation` declines while focus is in a popover (`focus.rs:44`).
         Stage::DefaultTabNavigation if holds == Holds::Popover => false,
+        // `popover_navigation` (`focus.rs:112`) ends the chain for a key without Ctrl or Alt
+        // while focus is in a popover: the rest of `focus_navigation`, `dismissal` and
+        // `item_navigation` never hear it, so Delete on its slider trashes nothing.
+        Stage::FocusNavigation | Stage::Dismissal | Stage::ItemNavigation
+            if holds == Holds::Popover && !press.modifiers().intersects(CTRL_OR_ALT) =>
+        {
+            false
+        }
         // Follows every answer but "taken" (`keyboard.rs:147`). The guard of a window action
         // lets through the action that owns the layer on top, so that it can close it.
         Stage::AfterYield => match holds {

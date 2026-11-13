@@ -260,6 +260,33 @@ fn alt_up_goes_to_the_parent_and_closes_the_popover() {
     });
 }
 
+/// A key without Ctrl or Alt on the slider ends GTK's chain at `popover_navigation`: Delete
+/// there trashes nothing, though the view holds a selection.
+#[test]
+fn delete_on_the_slider_trashes_nothing() {
+    let name = "delete_on_the_slider_trashes_nothing";
+    hosted_in(MODULE, "icons", name, |mut host| {
+        let folder = fixture();
+        open(&mut host, ICONS, folder.path());
+        press(&mut host, Key::End);
+        let (selected, _) = view::browser_holds(&host);
+        let [chosen] = selected.as_slice() else {
+            panic!("End selects the last entry: {selected:?}");
+        };
+        let chosen = folder.path().join(chosen);
+        open_popover(&mut host);
+
+        press(&mut host, Key::Delete);
+        for _ in 0..20 {
+            host.turn();
+        }
+        idle(&mut host);
+
+        assert!(chosen.exists(), "{} is still there", chosen.display());
+        assert!(drawn(&host, SLIDER), "the popover is still open");
+    });
+}
+
 #[test]
 fn the_list_view_has_no_thumbnail_size_button() {
     let name = "the_list_view_has_no_thumbnail_size_button";
