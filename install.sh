@@ -196,7 +196,7 @@ case "$(installer_locale)" in
     [ready]='Felfedezés megkezdése'
     [installed_notices]='Telepítve — tekintse át a beállítás részleteit'
     [installed_warnings]='Telepítve, figyelmeztetésekkel'
-    [installed]='A Strata %{version} telepítve van.'
+    [installed]='A Strata %{version} telepítve lett.'
     [launch]='Az indításhoz futtassa a következőt: %{command}'
     [usage_intro]='Kapcsolók nélkül választhat az ajánlott telepítés és az asztali integráció testreszabása között.'
     [verbose_help]='Részletes letöltési és ellenőrzési kimenet megjelenítése'
