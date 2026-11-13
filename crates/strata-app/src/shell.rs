@@ -414,9 +414,8 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
             .on_press_tx(move |app: &mut App, tx: &mut Tx| {
                 commands::run(app, command, On::Focus, tx);
             })
-            .build(&look.kit)
-            .key(format!("header-{}", button.key));
-        buttons::on_return(action)
+            .build(&look.kit);
+        buttons::on_return(format!("header-{}", button.key), action)
     };
     let header = Header::new("header", look).leading(action(&LEADING));
     let header = match location {

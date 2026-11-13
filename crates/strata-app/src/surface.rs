@@ -173,9 +173,8 @@ pub(crate) fn drawn(app: &App, surface: &Surface, said: &str, failed: Option<usi
         let button = Button::new(label.to_owned())
             .variant(ButtonVariant::Neutral)
             .on_press_tx(move |app: &mut App, tx: &mut Tx| act(app, depth, tx))
-            .build(&look.kit)
-            .key(key);
-        buttons::on_return(button)
+            .build(&look.kit);
+        buttons::on_return(key, button)
     };
     let page = match administrator(app, depth) {
         Some(_) => page.child(button(
