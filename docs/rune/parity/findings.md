@@ -625,10 +625,10 @@ sequence only together with the alphabet's version, so the version is part of th
   (`src/ui/browser/pane_header/sort_menu.rs:61`) is affected the same way.
 - **Concerns:** the "Thumbnail size" popover ([A5](packages/A5.md)), and every popover GTK
   dismisses on an outside scroll, the sort popover among them.
-- **State:** open, narrowed. [A5](packages/A5.md)'s next pull request builds the plain popover
-  on that scrim, which closes on an outside press or wheel and takes every key; the gap left is
-  the modal's alone, Rune packet entry [104](../upstream/rune/104-outside-wheel-closes-a-popover.md),
-  not to be filed.
+- **State:** worked around for Strata's plain popovers by [A5](packages/A5.md)'s plain
+  popover (`crates/strata-app/src/popover.rs`), on that scrim: it closes on an outside press or
+  wheel and lets a wheel over the listing scroll it. The gap left is the modal's alone, Rune
+  packet entry [104](../upstream/rune/104-outside-wheel-closes-a-popover.md), not to be filed.
 
 ### #2346: a view rebuilt during a staged publish can list rows twice
 
