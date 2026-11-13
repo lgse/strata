@@ -95,6 +95,11 @@ pub(super) fn resized(app: &mut App, request: SizeRequest, tx: &mut Tx) {
     app.icons.size = size;
 }
 
+/// The folder the Icons view shows, for the pane header's popover, which closes when it changes.
+pub(crate) fn shown_location(app: &App) -> Option<&Location> {
+    shown_folder(app)
+}
+
 /// The shown size, for the pane header's slider (`pane_header::thumbnail_size`).
 pub(crate) fn shown(app: &App) -> i32 {
     stored(app.icons.size)

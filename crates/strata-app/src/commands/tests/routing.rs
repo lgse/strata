@@ -187,6 +187,7 @@ says! {
     tab_strip: "tab strip" => Outcome::Declined;
     entry: "entry" => Outcome::Declined;
     zoom: "zoom" => Outcome::Declined;
+    default_tab: "default tab" => Outcome::Declined;
     inline_editing: "inline editing" => Outcome::Declined;
     text_input: "text input" => Outcome::Declined;
     outside_text: "file commands, outside text" => Outcome::Declined;
@@ -204,6 +205,7 @@ const STAGES: &[Action<App>] = &[
     Action::new("tab-strip", tab_strip).keys(&[at(Stage::TabStrip, f9)]),
     Action::new("entry", entry).keys(&[at(Stage::Entry, f9)]),
     Action::new("zoom", zoom).keys(&[at(Stage::ZoomShortcut, f9)]),
+    Action::new("default-tab", default_tab).keys(&[at(Stage::DefaultTabNavigation, f9)]),
     Action::new("inline-editing", inline_editing).keys(&[at(Stage::InlineEditing, f9)]),
     Action::new("text-input", text_input).keys(&[at(Stage::TextInput, f9)]),
     Action::new("outside-text", outside_text)
@@ -234,9 +236,21 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
     const TAIL: [&str; 3] = ["after yield, the owner's", "after yield", "unclaimed"];
     let chain =
         |stages: &[&'static str]| -> Vec<&'static str> { [&HEAD[..], stages, &TAIL[..]].concat() };
-    let cases: [(Option<Holds>, Vec<&str>, bool); 8] = [
+    let cases: [(Option<Holds>, Vec<&str>, bool); 9] = [
         (
             None,
+            chain(&[
+                "default tab",
+                "inline editing",
+                "text input",
+                "file commands, outside text",
+            ]),
+            false,
+        ),
+        // A plain popover keeps the whole chain but the default Tab navigation
+        // (`focus_in_popover`, `focus.rs:44`).
+        (
+            Some(Holds::Popover),
             chain(&[
                 "inline editing",
                 "text input",
@@ -246,12 +260,13 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
         ),
         (
             Some(Holds::Field),
-            chain(&["inline editing", "text input"]),
+            chain(&["default tab", "inline editing", "text input"]),
             false,
         ),
         (
             Some(Holds::Filter),
             chain(&[
+                "default tab",
                 "inline editing",
                 "text input",
                 "file commands, in the filter",
@@ -260,13 +275,19 @@ fn each_owner_of_the_keyboard_leaves_the_stages_gtk_leaves() {
         ),
         (
             Some(Holds::Location),
-            chain(&["inline editing", "text input"]),
+            chain(&["default tab", "inline editing", "text input"]),
             false,
         ),
         // The first window action takes the key, and nothing after it is asked.
         (
             Some(Holds::Edit),
-            vec!["tab strip", "entry", "zoom", "inline editing"],
+            vec![
+                "tab strip",
+                "entry",
+                "zoom",
+                "default tab",
+                "inline editing",
+            ],
             true,
         ),
         (Some(Holds::Menu), chain(&[]), false),
@@ -324,10 +345,11 @@ fn an_owner_every_stage_and_a_button() -> Vec<Entry<App>> {
 /// stage, since the root then asks them all.
 #[test]
 fn a_press_is_offered_once_from_wherever_the_keyboard_is() {
-    const WHOLE: [&str; 9] = [
+    const WHOLE: [&str; 10] = [
         "tab strip",
         "entry",
         "zoom",
+        "default tab",
         "inline editing",
         "text input",
         "file commands, outside text",
@@ -336,7 +358,7 @@ fn a_press_is_offered_once_from_wherever_the_keyboard_is() {
         "unclaimed",
     ];
     // A field's part holds the keyboard: the window asks, with what a field leaves.
-    let under_a_field = [&WHOLE[..5], &WHOLE[6..]].concat();
+    let under_a_field = [&WHOLE[..6], &WHOLE[7..]].concat();
     let cases: [(Option<&str>, Option<Holds>, &[&str]); 4] = [
         (None, None, &WHOLE),
         (Some("made-button"), None, &WHOLE),
@@ -370,6 +392,8 @@ fn a_letter_is_text_in_any_field_and_an_arrow_elsewhere() {
     let cases = [
         (None, true),
         (Some(Holds::Field), false),
+        // In a popover, as `in_popover` in `context_of` has it.
+        (Some(Holds::Popover), false),
         (Some(Holds::Modal { field: false }), true),
         (Some(Holds::Modal { field: true }), false),
     ];

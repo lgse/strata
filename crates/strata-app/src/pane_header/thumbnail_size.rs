@@ -14,19 +14,20 @@
 //!   folder is remembered at a size other than the default, and each closes the popover
 //!   (`closing_menu_action`).
 //! - While it is open, the slider follows a size the window's keys change.
-//! - Escape or a press outside closes it, and the keyboard goes back to the button. While it is
-//!   open the window's commands wait, as under GTK's popover ([`Holds::Menu`] in the part).
+//! - Escape or a press outside closes it, and the keyboard goes back to the button; so does
+//!   another folder or view showing. While it is open the window's commands run, as under
+//!   GTK's plain popover ([`crate::commands::Holds::Popover`]): Alt+Up goes to the parent.
 
-use rune::{El, Key, KeyEvent, Tx, col, row, text};
+use rune::{El, Tx, col, row, text};
 use rune_kit::{Button, ButtonVariant, Placement, popover};
 use strata_components::{
     controls::slider::{Range, Slider, SliderChange, SliderState},
     header,
 };
-use strata_core::i18n::tr;
+use strata_core::{i18n::tr, model::Location};
 use strata_kit::icons::IconName;
 
-use crate::{App, buttons, icons::size, slots::Frame};
+use crate::{App, buttons, icons::size, shell, slots::Frame};
 
 /// The button's key, which the popover hangs from and gives the keyboard back to.
 pub(crate) const BUTTON: &str = "icons-thumbnail-size";
@@ -40,6 +41,9 @@ const RANGE: (f64, f64, f64) = (32.0, 256.0, 16.0);
 /// The popover's state: whether it is open, and its slider.
 pub(crate) struct ThumbnailSize {
     open: bool,
+    /// The folder the popover opened over: GTK's goes away with its pane when a navigation
+    /// rebuilds it, and this one closes when the folder changes or another view shows.
+    over: Option<Location>,
     slider: SliderState,
     labels: Labels,
 }
@@ -57,6 +61,7 @@ impl ThumbnailSize {
         let (min, max, step) = RANGE;
         Self {
             open: false,
+            over: None,
             slider: SliderState::new(64.0, Range::new(min, max, step)),
             labels: Labels {
                 title: tr("Thumbnail size"),
@@ -90,21 +95,37 @@ fn toggle(app: &mut App) {
         return;
     }
     let shown = f64::from(size::shown(app));
+    let over = size::shown_location(app).cloned();
     let state = &mut app.pane_header.thumbnails;
     state.slider.set_value(shown);
+    state.over = over;
     state.open = true;
 }
 
 /// While the popover is open its slider follows a size the window's keys changed, as GTK's
 /// scale does (`icons_thumbnail_scale` in `src/ui/browser/view_modes.rs`), unless a drag holds
-/// it. True when it moved.
-pub(crate) fn follow(app: &mut App) -> bool {
-    let shown = f64::from(size::shown(app));
-    let state = &mut app.pane_header.thumbnails;
-    if !state.open || state.slider.dragging() || state.slider.value() == shown {
+/// it; and it closes when another folder or another view shows, as GTK's goes with its pane
+/// (`rebuild_icons` on `ColumnAdded`). True when anything changed.
+pub(crate) fn follow(app: &mut App, tx: &mut Tx) -> bool {
+    if !app.pane_header.thumbnails.open {
         return false;
     }
-    state.slider.set_value(shown);
+    let icons = shell::view_focus(app) == Some(crate::icons::VIEW);
+    if !icons || size::shown_location(app) != app.pane_header.thumbnails.over.as_ref() {
+        close(app);
+        // Focus inside GTK's popover is inside the pane, so the new listing takes it
+        // (`on_navigation_starting` in `src/ui/browser_modes/events.rs`).
+        if let Some(view) = shell::view_focus(app) {
+            tx.focus(view, true);
+        }
+        return true;
+    }
+    let shown = f64::from(size::shown(app));
+    let slider = &mut app.pane_header.thumbnails.slider;
+    if slider.dragging() || slider.value() == shown {
+        return false;
+    }
+    slider.set_value(shown);
     true
 }
 
@@ -130,6 +151,8 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) {
     .label(labels.title.clone())
     .value_text(value.clone())
     .wheel(Some(1.0))
+    // GTK's scale lands a drag on any whole pixel; its keys step by 16.
+    .free_drag(true)
     .on_change(slid)
     .build(app, look);
     let mut body = col()
@@ -145,24 +168,17 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) {
     if size::differs_from_default(app) {
         body = body.child(actions(app, labels));
     }
-    // Rune's modal keeps Tab inside, and the keyboard goes back to the button on close; Escape
-    // is the host's, as rune-kit's popover has none.
+    // Rune's modal keeps Tab inside, closes on Escape or a press outside, and the keyboard
+    // goes back to the button.
     let body = body
         .focus_return(BUTTON)
-        .on_key(|app: &mut App, event: &KeyEvent, _: &mut Tx| {
-            if event.key != Key::Escape {
-                return false;
-            }
-            close(app);
-            true
-        })
         .modal_tx(true, |app: &mut App, _: &mut Tx| close(app));
     let surface = popover::raised(kit, body, kit.radius.md);
     frame.layer.push(popover::anchored(
         kit,
         surface,
         BUTTON,
-        Placement::BottomEnd,
+        Placement::Bottom,
         look.space.xs,
     ));
 }

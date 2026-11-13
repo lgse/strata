@@ -4,12 +4,16 @@
 //! slider that sizes the tiles as A1's commands do, kept by the shared policy, and its two
 //! actions make the remembered folder's size the default or forget it.
 
+use std::path::Path;
+
 use rune::{Key, KeyEvent, Mods, Tx};
 use serde_json::Value;
+use strata_core::model::Location;
+use strata_desktop::settings::folder_views::key_for_location;
 
 use super::{BUTTON, MAKE_DEFAULT, RESET, SLIDER};
 use crate::{
-    App,
+    App, folder_views,
     host::offscreen::Offscreen,
     icons::size,
     shell,
@@ -97,6 +101,12 @@ fn default_size(host: &Offscreen) -> i32 {
     shell::preferences(host.app()).icons_thumbnail_size
 }
 
+/// The size the folder-view store keeps as `folder`'s own.
+fn own_size(host: &Offscreen, folder: &Path) -> Option<i32> {
+    let key = key_for_location(&Location::local(folder)).expect("a key");
+    folder_views::views(host.app()).view(&key).icons_size
+}
+
 /// The button is named as GTK's, its slider too, and a step of the slider sizes the tiles
 /// and is kept as the remembered folder's own; the slider follows the window's keys while it is
 /// open; Escape closes it and gives the button the keyboard back.
@@ -129,7 +139,7 @@ fn the_slider_sizes_the_tiles_and_escape_closes_it() {
             64,
             "the remembered folder keeps its own"
         );
-        assert!(size::differs_from_default(host.app()));
+        assert_eq!(own_size(&host, folder.path()), Some(80));
 
         let larger = Mods {
             ctrl: true,
@@ -182,7 +192,11 @@ fn make_default_and_reset_follow_the_remembered_folder() {
         return_on(&mut host, MAKE_DEFAULT);
         wait_closed(&mut host, "Make this the default size");
         assert_eq!(default_size(&host), 80);
-        assert!(!size::differs_from_default(host.app()));
+        assert_eq!(
+            own_size(&host, folder.path()),
+            None,
+            "the default pruned it"
+        );
 
         open_popover(&mut host);
         press(&mut host, Key::Right);
@@ -197,6 +211,52 @@ fn make_default_and_reset_follow_the_remembered_folder() {
             size::shown(host.app())
         );
         assert_eq!(default_size(&host), 80);
+        assert_eq!(
+            own_size(&host, folder.path()),
+            None,
+            "the folder forgot its own"
+        );
+    });
+}
+
+/// The window's commands run while the popover is open, as under GTK's plain popover: Alt+Up
+/// on the slider goes to the parent folder, and the popover goes, as GTK's goes with its pane,
+/// leaving the keyboard to the new listing.
+#[test]
+fn alt_up_goes_to_the_parent_and_closes_the_popover() {
+    let name = "alt_up_goes_to_the_parent_and_closes_the_popover";
+    hosted_in(MODULE, "icons", name, |mut host| {
+        let folder = fixture();
+        let root = Location::local(folder.path());
+        open(&mut host, ICONS, &folder.path().join("documents"));
+        open_popover(&mut host);
+
+        let alt = Mods {
+            alt: true,
+            ..Mods::default()
+        };
+        send_key(
+            &mut host,
+            KeyEvent {
+                key: Key::Up,
+                mods: alt,
+            },
+        );
+        let up = host.run_until(PATIENCE, |host| {
+            host.app().browser().active_location().as_ref() == Some(&root)
+        });
+        assert!(up, "Alt+Up went to the parent");
+        let closed = host.run_until(PATIENCE, |host| !drawn(host, SLIDER));
+        assert!(closed, "the popover closed with the folder");
+        let view = host.run_until(PATIENCE, |host| {
+            shell::view_focus(host.app()).is_some_and(|view| view == crate::icons::VIEW)
+        });
+        assert!(view, "the Icons view shows");
+        assert_eq!(
+            focused(&mut host).as_deref(),
+            Some(crate::icons::VIEW),
+            "the new listing takes the keyboard, as GTK's does from inside the pane"
+        );
     });
 }
 

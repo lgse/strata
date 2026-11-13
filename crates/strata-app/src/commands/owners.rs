@@ -16,6 +16,16 @@ use crate::{App, shell};
 /// of the chain it keeps the later.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Holds {
+    /// A plain popover, such as the Icons header's thumbnail size: GTK's `gtk::Popover`, which
+    /// `native_menu_owns_input` does not count as owning input (`input_owner.rs:116`), so the
+    /// whole chain runs and window commands act while it is open. Two things still follow
+    /// GTK's `focus_in_popover` (`src/ui/window/keyboard/tenxer.rs:158`): the default Tab
+    /// navigation does not run ([`reach`]), and typing is the popover's for the aliases
+    /// ([`Situation::typing`], `in_popover` in `context_of`). 10xer's own checks
+    /// (`focus_keeps_typing`, `tenxer_pane_focus`) ask [`Situation::popover`]. A part answers
+    /// it while focus is inside its popover, and closes the popover where GTK's goes away with
+    /// its pane: a navigation that rebuilds the pane, or another view.
+    Popover,
     /// A text field none of the others is. Every stage runs, and each command's guard asks
     /// [`Situation::text`], as GTK's stages ask `text_has_focus()`.
     #[cfg_attr(
@@ -46,6 +56,7 @@ impl Holds {
     /// The last stage of the chain that still runs: after it the key is the owner's.
     const fn last(self) -> Stage {
         match self {
+            Self::Popover => Stage::Unclaimed,
             Self::Modal { .. } | Self::Menu => Stage::ZoomShortcut,
             Self::Edit => Stage::InlineEditing,
             Self::Location => Stage::TextInput,
@@ -97,6 +108,15 @@ impl Situation {
         )
     }
 
+    /// Whether a plain popover has it: GTK's `focus_in_popover()` ([`Holds::Popover`]).
+    #[expect(
+        dead_code,
+        reason = "10xer's stages ask it (`focus_keeps_typing`, `tenxer_pane_focus`): A11's"
+    )]
+    pub(crate) fn popover(&self) -> bool {
+        self.holds() == Some(Holds::Popover)
+    }
+
     /// Whether the filter's field has it: GTK's `filter_has_focus()`.
     pub(crate) fn filter(&self) -> bool {
         self.holds() == Some(Holds::Filter)
@@ -131,7 +151,7 @@ impl Situation {
     /// What owns typing where the press lands, for the aliases (`context_of` in
     /// `src/ui/keys/alias.rs`): a text field, a modal layer's among them, or a popover.
     pub(super) fn typing(&self) -> bool {
-        self.text() || self.holds() == Some(Holds::Menu)
+        self.text() || matches!(self.holds(), Some(Holds::Menu | Holds::Popover))
     }
 }
 
@@ -157,6 +177,8 @@ pub(super) fn reach(at: &Situation, stage: Stage, part: &str) -> Reach {
         // What the dispatcher does on every press, and what the focused widget left.
         Stage::Entry | Stage::Unclaimed => true,
         Stage::TabStrip => !matches!(holds, Holds::Modal { .. }),
+        // `default_tab_navigation` declines while focus is in a popover (`focus.rs:44`).
+        Stage::DefaultTabNavigation if holds == Holds::Popover => false,
         // Follows every answer but "taken" (`keyboard.rs:147`). The guard of a window action
         // lets through the action that owns the layer on top, so that it can close it.
         Stage::AfterYield => match holds {
