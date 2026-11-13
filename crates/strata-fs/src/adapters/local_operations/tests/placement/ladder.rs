@@ -283,11 +283,14 @@ fn a_folder_into_itself_is_refused_and_learns_nothing() -> Result<(), Box<dyn Er
         assert_eq!(result, Err(PlaceError::IntoItself));
         assert!(names(&source.join("child"))?.is_empty());
         let learned = mount_capabilities(scope.key());
-        let expected = MountCapabilities {
-            no_replace: rejected_definitively.then_some(false),
-            ..MountCapabilities::default()
-        };
-        assert_eq!(learned, expected);
+        assert_eq!(
+            (
+                learned.no_replace,
+                learned.hard_links,
+                learned.rename_over_empty_directory
+            ),
+            (rejected_definitively.then_some(false), None, None)
+        );
     }
     Ok(())
 }

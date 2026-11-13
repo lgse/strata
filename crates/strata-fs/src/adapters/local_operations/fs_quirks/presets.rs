@@ -249,6 +249,20 @@ impl Quirks {
             ..Self::default()
         }
     }
+
+    /// No `RENAME_NOREPLACE` and no hard links, and a folder renamed over another is moved
+    /// entry by entry, which stops at the files still waiting to be uploaded.
+    pub fn rclone() -> Self {
+        Self {
+            mount_type: Some(("fuse.rclone", "rw,user_id=1000,group_id=1000")),
+            fs_type: Some(FUSE_SUPER_MAGIC),
+            rename_flags: Support::Rejected(Errno::INVAL),
+            links: Support::Rejected(Errno::PERM),
+            rename_over_empty_dir: OverEmptyDirectory::InSteps,
+            no_birth_time: true,
+            ..Self::default()
+        }
+    }
 }
 
 pub const FUSE_SUPER_MAGIC: FsWord = 0x6573_5546;

@@ -111,6 +111,7 @@ fn learn_mount_type(fs: &dyn FsOps, dir: BorrowedFd<'_>, key: MountKey) -> Mount
     let attribute_cache = mount_type.and_then(MountType::attribute_cache);
     let cuts_long_names_renamed_over =
         mount_type.is_some_and(|mount| mount.cuts_long_names_renamed_over(format));
+    let renames_folders_in_steps = mount_type.is_some_and(MountType::renames_folders_in_steps);
     let names = match &mount {
         Some((mount_type, site)) if mount_type.is_gvfs_bridge() => match folders(&site.root).next()
         {
@@ -142,6 +143,7 @@ fn learn_mount_type(fs: &dyn FsOps, dir: BorrowedFd<'_>, key: MountKey) -> Mount
             capabilities.silly_names = silly_names;
             capabilities.attribute_cache = attribute_cache;
             capabilities.cuts_long_names_renamed_over = cuts_long_names_renamed_over;
+            capabilities.renames_folders_in_steps = renames_folders_in_steps;
             capabilities.names = Some(names);
             capabilities.symlinks = symlinks;
             capabilities.max_file_size = max_file_size;

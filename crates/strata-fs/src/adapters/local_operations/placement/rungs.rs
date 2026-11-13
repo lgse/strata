@@ -300,7 +300,7 @@ impl Rung<'_> {
 
     fn directory(&self) -> Result<Placed, PlaceError> {
         let Placing { fs, from, to } = self.placing;
-        if !self.mount.renames_over(to.name) {
+        if !self.mount.renames_folder_over(to.name) {
             return if self.mount.capabilities().no_replace == Some(false) {
                 self.folder_after_check()
             } else {
