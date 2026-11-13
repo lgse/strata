@@ -480,11 +480,11 @@ sequence only together with the alphabet's version, so the version is part of th
   passed three rounds. Nor
   [#2294](https://github.com/lgse/strata/pull/2294): the empty report is Rune's, and #2294
   changes only how the collection's catch-up after one is heard.
-- **Fix:** [#NNNN](https://github.com/lgse/strata/pull/NNNN). The poll rule List and Columns
+- **Fix:** [#2313](https://github.com/lgse/strata/pull/2313). The poll rule List and Columns
   share (`Synced::next` in `crates/strata-app/src/columns/thumbs.rs`) passes over an empty
   range while the listing has entries; an empty folder's still syncs. Both polls tell the
   store through one `Sync::tell`. `a_report_of_no_rows_in_a_listed_folder_cancels_no_render`
   (`thumbnails/tests.rs`) fails without it. The Icons grid syncs only on Rune's report and
   never asked early, so it did not race.
-- **State:** fixed by [#NNNN](https://github.com/lgse/strata/pull/NNNN). A failure of the
+- **State:** fixed by [#2313](https://github.com/lgse/strata/pull/2313). A failure of the
   run in a gate after it is a new sighting, not this one.
