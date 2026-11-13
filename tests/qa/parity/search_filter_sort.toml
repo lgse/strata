@@ -24,7 +24,7 @@ run = "list"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: the Sort by menu, at \"Choose sort field\" on line 3; then A8: the List header's Columns menu, at \"Columns\" on line 99"
 
 [[run]]
 scenario = "dismissing-filter-keeps-hidden"
@@ -86,9 +86,8 @@ blocker = "A10"
 scenario = "grouped-list-first-visit-starts-at-first-row"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "grouped-list-keeps-file-targets"
@@ -102,9 +101,8 @@ blocker = "A10"
 scenario = "hidden-files-toggle"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "local-filtered-result-opens-once"
