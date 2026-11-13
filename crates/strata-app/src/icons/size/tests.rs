@@ -9,6 +9,7 @@ use rune::{Key, Mods};
 
 use crate::{
     host::offscreen::Offscreen,
+    shell,
     test_support::{
         PATIENCE, fixture,
         view::{Shape, hosted_with, open, press, wheel_held},
@@ -50,6 +51,13 @@ fn size_wheel(host: &mut Offscreen, up: bool) {
 
 fn size(host: &Offscreen) -> f32 {
     host.app().icons.size
+}
+
+/// The default as this process holds it, saved or not.
+fn default_in_memory(host: &mut Offscreen) -> i32 {
+    shell::saved(&mut host.runtime().state)
+        .preferences()
+        .icons_thumbnail_size
 }
 
 fn saved_size() -> Option<i64> {
@@ -123,12 +131,14 @@ fn a_remembered_folders_size_leaves_the_default_alone() {
         chord(&mut host, '=');
         chord(&mut host, '=');
         assert_eq!(size(&host), 128.0, "two steps larger");
+        assert_eq!(default_in_memory(&mut host), 96, "the default after the steps");
         chord(&mut host, '0');
         assert_eq!(size(&host), 96.0, "reset to the default");
 
         chord(&mut host, '=');
         opened(&mut host, &folder.path().join("documents"));
         assert_eq!(size(&host), 96.0, "another folder");
+        assert_eq!(default_in_memory(&mut host), 96, "the default");
         assert_eq!(saved_size(), Some(96), "the default saved");
     });
 }
