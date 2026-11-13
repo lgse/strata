@@ -4,12 +4,12 @@
 //! (`src/ui/browser_modes/list_columns.rs` and `list_headings.rs`): Name, Mode, Size, Type and
 //! Modified, with GTK's default widths and minimums, the order and visibility saved as
 //! `list_column_order` and `list_hidden_columns`, and the widths as `browser_list_columns`.
-//! Cells read the row's facts ([`crate::details`]); the Type cell is read only for the rows
-//! drawn, as GTK binds it.
+//! Cells read the row's facts ([`crate::details`]), as GTK's `list_metadata_label` shows
+//! them: left-aligned, in the text colour. The Type cell is read only for the rows drawn, as
+//! GTK binds it.
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use rune::Align;
 use strata_components::{
     collection::element::RowCx,
     list_table::{Cell, Column as TableColumn, ColumnId, ColumnLayout, ColumnWidths, LayoutChange},
@@ -59,12 +59,12 @@ fn row<'a>(app: &'a App, rcx: &RowCx<'_>) -> Option<&'a Row> {
 
 fn mode(app: &App, rcx: &RowCx<'_>) -> Cell {
     let text = row(app, rcx).map(|row| details::mode_cell(row.facts()));
-    Cell::text(text.unwrap_or_default()).mono().muted()
+    Cell::text(text.unwrap_or_default())
 }
 
 fn size(app: &App, rcx: &RowCx<'_>) -> Cell {
     let text = row(app, rcx).map(|row| details::size_cell(row.is_folder(), row.facts()));
-    Cell::text(text.unwrap_or_default()).muted()
+    Cell::text(text.unwrap_or_default())
 }
 
 fn kind(app: &App, rcx: &RowCx<'_>) -> Cell {
@@ -77,19 +77,22 @@ fn kind(app: &App, rcx: &RowCx<'_>) -> Cell {
             row.name(),
         ))
     });
-    Cell::text(text.unwrap_or_default()).muted()
+    Cell::text(text.unwrap_or_default())
 }
 
 fn modified(app: &App, rcx: &RowCx<'_>) -> Cell {
     let text = row(app, rcx).map(|row| details::modified_cell(row.facts()));
-    Cell::text(text.unwrap_or_default()).muted()
+    Cell::text(text.unwrap_or_default())
 }
 
 /// Moves with what a row's cells read beyond its entry, so only the rows whose facts changed
-/// build again.
+/// build again; and, while dates are relative, every 30 s, when they read the clock again.
 pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     let mut hasher = DefaultHasher::new();
     row(app, rcx).map(Row::facts).hash(&mut hasher);
+    if app.list.relative_dates {
+        app.list.dates.epoch().hash(&mut hasher);
+    }
     hasher.finish()
 }
 
@@ -102,7 +105,7 @@ pub(super) fn columns(headings: &Headings) -> Vec<TableColumn<App>> {
     vec![
         sized(TableColumn::primary("name", name.clone()), 0),
         sized(TableColumn::new("mode", mode_title.clone(), mode), 1),
-        sized(TableColumn::new("size", size_title.clone(), size), 2).align(Align::End),
+        sized(TableColumn::new("size", size_title.clone(), size), 2),
         sized(TableColumn::new("type", kind_title.clone(), kind), 3),
         sized(
             TableColumn::new("modified", modified_title.clone(), modified),

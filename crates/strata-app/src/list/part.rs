@@ -3,6 +3,7 @@
 //! The List view as a part of the window: the third of the view slot.
 
 use rune::Tx;
+use strata_components::contract::EntrySource;
 
 use super::{List, VIEW, view};
 #[cfg(feature = "qa")]
@@ -21,6 +22,22 @@ fn fill(app: &mut App) {
     if let (Some(depth), Some(listing)) = (pane.depth(), pane.listing()) {
         list.fills.request(&app.browser, depth, listing);
     }
+}
+
+/// Has the rows drawn read their relative dates again every 30 s, as GTK's labels do. True
+/// when they do now.
+fn redate(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let list = &mut app.list;
+    let rows = list
+        .single
+        .pane
+        .listing()
+        .is_some_and(|listing| !listing.is_empty());
+    let tick = list.dates.tick(list.relative_dates && rows, clock);
+    if let Some(wake) = tick.wake {
+        tx.wake_after(wake);
+    }
+    tick.moved
 }
 
 /// Whether the saved `browser_mode` names this view: `list`, or `explorer`, which the GTK
@@ -81,6 +98,6 @@ impl Part for List {
         let said = single::poll::<Self>(app, clock, tx);
         let ticked = view::ticked(app).tick(app, tx);
         fill(app);
-        ticked | said
+        ticked | said | redate(app, clock, tx)
     }
 }

@@ -15,7 +15,7 @@ use crate::{
     list::columns,
     test_support::{
         PATIENCE,
-        view::{hosted_in, open},
+        view::{hosted_in, open, wheel},
     },
 };
 
@@ -27,8 +27,9 @@ fn saved_text() -> String {
     std::fs::read_to_string(settings_file()).expect("settings")
 }
 
-/// Opening a folder and leaving it rewrites nothing: neither the columns, which the person
-/// did not touch, nor anything else the GTK application reads from the same file.
+/// Opening a folder, resizing the window, scrolling and leaving rewrites nothing: neither the
+/// columns, which the person did not touch, nor anything else the GTK application reads from
+/// the same file.
 #[test]
 fn an_untouched_list_window_writes_nothing() {
     hosted_in(
@@ -40,6 +41,9 @@ fn an_untouched_list_window_writes_nothing() {
             let folder = mixed();
             open(&mut host, LIST, folder.path());
             settle(&mut host);
+            host.runtime().set_viewport((640.0, 360.0), 1.0);
+            settle(&mut host);
+            wheel(&mut host, -60.0, 3);
             host.run_until(Duration::from_millis(500), |_| false);
 
             assert_eq!(saved_text(), before);

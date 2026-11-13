@@ -15,15 +15,16 @@ use strata_components::{
     context_menu::AnchorEdge,
     list_table::{ColumnLayout, ColumnWidths, ListTableState},
 };
-use strata_core::i18n::tr;
+use strata_core::{i18n::tr, util::DateFormat};
 use strata_desktop::settings::Preferences;
 
 use crate::{
-    fills::Fills,
+    fills::{Details, Fills},
     single::{Made, Single},
 };
 
 mod columns;
+mod dates;
 mod part;
 mod view;
 
@@ -40,8 +41,13 @@ pub(crate) struct List {
     widths: ColumnWidths,
     /// The columns' headings (`list_headings.rs` in `src/ui/browser_modes`).
     headings: columns::Headings,
-    /// The metadata fills of the rows near the viewport, without the Icons view's details.
+    /// The metadata fills of the rows near the viewport, with a folder's item count.
     fills: Fills,
+    /// The saved date format is relative ("5m ago"), whose text moves with the clock. Read
+    /// at start: a live change is A18's.
+    relative_dates: bool,
+    /// When the relative dates read again.
+    dates: dates::Dates,
 }
 
 /// The keys of the List table. Every row is at the pane's left edge (`at_left_edge` in
@@ -75,7 +81,9 @@ impl List {
             layout: columns::layout(settings),
             widths: columns::widths(settings),
             headings: columns::Headings::translated(),
-            fills: Fills::new(false),
+            fills: Fills::new(Details::Folders),
+            relative_dates: DateFormat::parse(&settings.date_format) == DateFormat::Relative,
+            dates: dates::Dates::default(),
         }
     }
 }
