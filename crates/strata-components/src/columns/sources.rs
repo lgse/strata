@@ -34,6 +34,14 @@ pub trait ColumnSources {
     /// name.
     fn title(&self, depth: usize) -> &str;
 
+    /// What assistive technology reads after column `depth`'s header title, as the host words
+    /// it: Strata describes the title by the folder's path (`column_heading`). `None` (the
+    /// default) keeps the title out of the tree, the list being named by it already; with
+    /// words, the title is a `label` named by the folder and described by them.
+    fn title_description(&self, _depth: usize) -> Option<Cow<'_, str>> {
+        None
+    }
+
     /// Whether the column's folder is still loading: its header shows a spinner.
     fn loading(&self, _depth: usize) -> bool {
         false
