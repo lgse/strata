@@ -269,3 +269,63 @@ fn an_ungrouped_listing_keeps_the_browsers_order_and_builds_no_lookup() {
     let id = column.id_at(2);
     assert_eq!(column.index_of(id), Some(2));
 }
+
+/// `photo.png` with the time and size the browser knows, if any.
+fn photo(modified: Option<i64>, size: Option<u64>) -> FileEntry {
+    let known = |value: Option<i64>| value.map_or(MetadataValue::Unknown, MetadataValue::Known);
+    FileEntry {
+        modified_unix_seconds: known(modified),
+        size: size.map_or(MetadataValue::Unknown, MetadataValue::Known),
+        ..entry("photo.png")
+    }
+}
+
+/// A row read again keeps its thumbnail key while only facts it did not know arrive (a fill:
+/// a new key would ask again and cancel the request out), and takes a new one when a time or
+/// size it knew changes (the file changed), however the rows come back.
+#[test]
+fn a_row_keeps_its_thumbnail_key_until_a_known_time_or_size_changes() {
+    let cases = [
+        (
+            "the first fill",
+            photo(None, None),
+            photo(Some(1), Some(10)),
+            true,
+        ),
+        (
+            "the time filled later",
+            photo(None, Some(10)),
+            photo(Some(1), Some(10)),
+            true,
+        ),
+        (
+            "a known time changed",
+            photo(Some(1), Some(10)),
+            photo(Some(2), Some(10)),
+            false,
+        ),
+        (
+            "a known size changed",
+            photo(Some(1), Some(10)),
+            photo(Some(1), Some(11)),
+            false,
+        ),
+    ];
+    let edits: [(&str, fn(Row) -> Edit); 3] = [
+        ("refill", |row| Edit::Refill(vec![(0, row)])),
+        ("replace", |row| Edit::Replace(vec![row])),
+        ("splice", |row| Edit::Splice(vec![(0, 1, vec![row])])),
+    ];
+    for (name, before, after, kept) in cases {
+        for (how, edit) in edits {
+            let ids = Ids::default();
+            let mut column = Column::new(Location::local(FOLDER), false, None);
+            column.apply(Edit::Replace(vec![Row::of(&before, &ids)]));
+            let key = column.entry(0).thumbnail.expect("a key");
+            column.apply(edit(Row::of(&after, &ids)));
+
+            let now = column.entry(0).thumbnail.expect("a key");
+            assert_eq!(now == key, kept, "{name}, by {how}");
+        }
+    }
+}

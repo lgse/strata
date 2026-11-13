@@ -385,3 +385,71 @@ fn a_render_runs_to_its_end_when_its_viewer_leaves() {
     );
     assert!(matches!(outcome, Outcome::Ready { .. }));
 }
+
+/// A folder's rows as the browser first lists them, `photo-<n>.png` with no time or size, or
+/// as a fill completes them.
+fn photos(filled: bool, ids: &crate::slots::Ids) -> Vec<crate::listing::Row> {
+    use strata_core::model::{EntryKind as Kind, FileEntry, Location, MetadataValue};
+    (0..3)
+        .map(|index| {
+            let name = format!("photo-{index}.png");
+            let (modified, size) = match filled {
+                true => (MetadataValue::Known(1), MetadataValue::Known(10)),
+                false => (MetadataValue::Unknown, MetadataValue::Unknown),
+            };
+            let entry = FileEntry {
+                location: Location::local(format!("/photos/{name}")),
+                thumbnail_path: None,
+                native_name: name.clone().into(),
+                display_name: name,
+                kind: Kind::File,
+                size,
+                modified_unix_seconds: modified,
+                created_unix_seconds: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
+                recent_uri: None,
+                mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+                listable: MetadataValue::Unavailable,
+                is_hidden: false,
+            };
+            crate::listing::Row::of(&entry, ids)
+        })
+        .collect()
+}
+
+/// The Icons and List views ask for a folder's thumbnails, and the browser's fill lands after
+/// the first poll: the store asks once for each image and cancels nothing.
+#[test]
+fn a_fill_landing_after_the_first_poll_asks_nothing_again() {
+    use crate::listing::{Column, Edit};
+    use strata_core::model::Location;
+    let ids = crate::slots::Ids::default();
+    let mut column = Column::new(Location::local("/photos"), false, None);
+    column.apply(Edit::Replace(photos(false, &ids)));
+    let inbox = Inbox::new();
+    let mut viewer = Viewer::new(inbox.later(), |_, _| None);
+    let mut store = ThumbnailStore::new(Settings::default());
+    let _ = viewer.take_requests(&mut store, 0.0);
+    let id = viewer.id().expect("a viewer");
+    let view = Viewport::new(0..3, Step::new(64)).listing(column.version());
+    store.sync(id, &column, view);
+    for request in viewer.take_requests(&mut store, 0.0) {
+        viewer
+            .pending
+            .insert(request.ticket, Cancellation::default());
+    }
+    assert_eq!(viewer.pending.len(), 3, "one request a photo");
+
+    let filled = photos(true, &ids).into_iter().enumerate().collect();
+    column.apply(Edit::Refill(filled));
+    store.resync(id, &column, column.version());
+
+    assert!(
+        viewer.take_requests(&mut store, 0.1).is_empty(),
+        "asked again"
+    );
+    assert_eq!(viewer.pending.len(), 3, "a request cancelled");
+}

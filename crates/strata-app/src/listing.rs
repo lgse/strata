@@ -155,6 +155,25 @@ pub(crate) struct Row {
 }
 
 impl Row {
+    /// Keeps `previous`'s thumbnail key when this is the same entry read again and no time
+    /// or size it already knew has changed: a metadata fill that only makes them known is the
+    /// same file, and a new key would ask for its thumbnail again and cancel the request out
+    /// (GTK's key changes on the first fill too, but GTK neither cancels a running render nor
+    /// asks again for a slot already showing that path). A time or size that was known and
+    /// changed takes the new key, a new thumbnail. A file replaced before its first fill keeps
+    /// the key, and its thumbnail is still the file's as it is: a render reads the file as it
+    /// stands, its time from `stat` (`thumbnails::look_up`).
+    fn keep_key_of(&mut self, previous: &Row) {
+        let changed = |was: Option<i64>, now: Option<i64>| was.is_some() && was != now;
+        let resized = previous.facts.size.is_some() && previous.facts.size != self.facts.size;
+        let same_file = self.id == previous.id
+            && !changed(previous.facts.modified, self.facts.modified)
+            && !resized;
+        if same_file && previous.thumbnail.is_some() {
+            self.thumbnail = previous.thumbnail;
+        }
+    }
+
     pub(crate) fn of(entry: &FileEntry, ids: &Ids) -> Self {
         let (kind, described) = kinds(entry);
         Self {
@@ -308,7 +327,8 @@ impl Column {
 
     pub(crate) fn apply(&mut self, edit: Edit) {
         match edit {
-            Edit::Replace(rows) => {
+            Edit::Replace(mut rows) => {
+                self.keep_keys(&mut rows);
                 self.rows = rows;
                 self.index();
             }
@@ -318,7 +338,8 @@ impl Column {
                 }
             }
             Edit::Splice(splices) => {
-                for (position, removed, rows) in splices {
+                for (position, removed, mut rows) in splices {
+                    self.keep_keys(&mut rows);
                     let start = position.min(self.rows.len());
                     let end = start.saturating_add(removed).min(self.rows.len());
                     self.rows.splice(start..end, rows);
@@ -367,10 +388,21 @@ impl Column {
         // A row read again carries no type (`Row::of` reads none): one whose type did not
         // change keeps the one its group was found by, which `group_at` reads.
         let group = current.group.filter(|_| !retyped);
+        let mut row = row;
+        row.keep_key_of(current);
         *current = row;
         current.group = group;
         if moved {
             self.index();
+        }
+    }
+
+    /// Rows read again keep the thumbnail keys of the rows they replace ([`Row::keep_key_of`]).
+    fn keep_keys(&self, rows: &mut [Row]) {
+        for row in rows {
+            if let Some(previous) = self.row_of(row.id) {
+                row.keep_key_of(previous);
+            }
         }
     }
 
