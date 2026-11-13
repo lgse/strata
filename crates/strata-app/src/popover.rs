@@ -9,21 +9,33 @@
 //!   [`Holds::Popover`] while it is open, which cuts every stage of the window's chain.
 //! - **Tab and Shift+Tab cycle** through its own controls and wrap; the keyboard never leaves
 //!   it. [`Plain::stops`] lists them in order.
+//! - **Up and Down move** through the same controls and stop at the ends, without wrapping;
+//!   on a control that takes the arrows itself (the slider, [`Plain::own_arrows`]) they are
+//!   that control's.
 //! - **Escape closes it**, and the keyboard goes back to the button that opened it.
-//! - **A press outside closes it and goes no further**: a press on a tile selected nothing, a
-//!   press on the sidebar's Home opened nothing. The keyboard goes back to the button.
+//! - **A press outside, primary or secondary, closes it and goes no further**: a press on a
+//!   tile selected nothing, a right-click there opened no menu, a press on the sidebar's Home
+//!   opened nothing. The keyboard goes back to the button.
 //! - **A wheel outside closes it**, and scrolls the listing when it is over the listing (GTK's
 //!   `listing_ancestor` in `src/ui/scrolling/popover.rs`); over the sidebar or other chrome it
 //!   scrolls nothing. The keyboard goes back to the button.
+//! - **Focus leaving it closes it** (GTK's autohide): [`focus_left`], which the part asks in
+//!   its poll.
 //!
 //! Rune's `El::modal` would make everything outside inert, so a wheel there could neither
 //! close it nor scroll (finding lgse/strata#2341, Rune packet entry 104). So the surface is not
 //! modal: it lies over a full-window scrim that is hidden from assistive technology, takes a
-//! press, and takes a wheel unless it is over [`Plain::listing`], where it returns false and
-//! Rune's fallback scrolls the viewport under the point (`scroll_at_axis`, which looks past
-//! what covers the point).
+//! press, and takes a wheel unless it is over the listing, where it returns false and Rune's
+//! fallback scrolls the viewport under the point (`scroll_at_axis`, which looks past what
+//! covers the point). The listing's rect is read while the popover builds
+//! (`Cx::window_layout` of [`Plain::listing`]), so the window builds again whenever it moves.
+//!
+//! **Nesting.** A plain popover opened from another, as A8's "Customize columns…" from its
+//! Appearance popover, has its scrim over the parent's, so an outside press or wheel reaches
+//! only the child's. GTK closes both then: [`Plain::parent`] closes the parent too. Each keeps
+//! its own [`Plain::stops`] by hand, with only its own controls.
 
-use rune::{El, Key, KeyEvent, Tx, WheelEvent, el};
+use rune::{El, Key, KeyEvent, PointerPress, Tx, WheelEvent, el};
 use rune_kit::{Placement, popover};
 use strata_kit::look::Look;
 
@@ -41,30 +53,38 @@ pub(crate) struct Plain {
     pub(crate) anchor: &'static str,
     /// The accessible name of the surface (a dialog).
     pub(crate) label: String,
-    /// The keys of its Tab stops, in order: Tab and Shift+Tab cycle through them.
+    /// The keys of its controls, in order: Tab, Shift+Tab, Up and Down move through them.
     pub(crate) stops: Vec<&'static str>,
-    /// Where the listing is, in window points: a wheel over it scrolls it as well as closing
-    /// the popover.
-    pub(crate) listing: Option<[f32; 4]>,
+    /// Those of [`Self::stops`] that take Up and Down themselves, such as a slider.
+    pub(crate) own_arrows: &'static [&'static str],
+    /// The key of the shown view's listing (its element that takes the keyboard): a wheel
+    /// over it scrolls it as well as closing the popover.
+    pub(crate) listing: Option<&'static str>,
     /// Closes the popover: the part's own state.
     pub(crate) close: fn(&mut App),
+    /// Closes the popover this one was opened from, if any, on an outside press or wheel.
+    pub(crate) parent: Option<fn(&mut App)>,
 }
 
 impl Plain {
     /// Pushes the scrim and the surface around `body` onto the layer.
     pub(crate) fn build(self, look: &Look, body: El, frame: &mut Frame<'_, App>) {
         let kit = &look.kit;
-        frame
-            .layer
-            .push(scrim(self.key, self.anchor, self.listing, self.close));
-        let (close, stops) = (self.close, self.stops);
+        let listing = self.listing.and_then(|key| frame.cx.window_layout(key));
+        let closes = Closes {
+            own: self.close,
+            parent: self.parent,
+            anchor: self.anchor,
+        };
+        frame.layer.push(scrim(self.key, listing, closes));
+        let (close, stops, own_arrows) = (self.close, self.stops, self.own_arrows);
         let body = body
             .key(self.key)
             .role("dialog")
             .label(self.label)
             .focus_return(self.anchor)
             .on_key(move |app: &mut App, event: &KeyEvent, tx: &mut Tx| {
-                keyed(app, event, tx, (close, &stops))
+                keyed(app, event, tx, (close, &stops, own_arrows))
             })
             // A press or a wheel on the surface's own blank parts stays with it.
             .on_press(|_: &mut App| {})
@@ -80,20 +100,39 @@ impl Plain {
     }
 }
 
-/// The full-window layer under the surface: a press closes the popover and goes no further; a
-/// wheel closes it, and goes on to the listing when it is over it.
-fn scrim(key: &str, anchor: &'static str, listing: Option<[f32; 4]>, close: fn(&mut App)) -> El {
+/// What an outside press or wheel closes, and the button the keyboard goes back to.
+#[derive(Clone, Copy)]
+struct Closes {
+    own: fn(&mut App),
+    parent: Option<fn(&mut App)>,
+    anchor: &'static str,
+}
+
+impl Closes {
+    fn close(self, app: &mut App) {
+        (self.own)(app);
+        if let Some(parent) = self.parent {
+            parent(app);
+        }
+    }
+}
+
+/// The full-window layer under the surface: a press, primary or secondary, closes the
+/// popover and goes no further; a wheel closes it, and goes on to the listing when it is over
+/// it.
+fn scrim(key: &str, listing: Option<[f32; 4]>, closes: Closes) -> El {
     el().key(format!("{key}-scrim"))
         .absolute(0.0, 0.0)
         .w_full()
         .h_full()
         .a11y_hidden()
-        .on_press(move |app: &mut App| close(app))
+        .on_press(move |app: &mut App| closes.close(app))
+        .on_secondary_press(move |app: &mut App, _: PointerPress, _: &mut Tx| closes.close(app))
         .on_wheel(move |app: &mut App, wheel: WheelEvent, tx: &mut Tx| {
-            close(app);
+            closes.close(app);
             // A wheel passed on to the listing leaves the handler's change unseen: the focus
             // request, which GTK's close makes too, has Rune build the window again.
-            tx.focus(anchor, true);
+            tx.focus(closes.anchor, true);
             !listing.is_some_and(|rect| inside(rect, wheel.x, wheel.y))
         })
 }
@@ -102,34 +141,56 @@ fn inside([x, y, w, h]: [f32; 4], px: f32, py: f32) -> bool {
     px >= x && py >= y && px < x + w && py < y + h
 }
 
-/// Escape closes the popover; Tab and Shift+Tab move through its stops and wrap.
+/// Whether the keyboard has left the popover whose controls are `stops`, opened by `anchor`:
+/// it is on something else, GTK's autohide. Nowhere, or on the button, as while it opens, is
+/// not leaving.
+pub(crate) fn focus_left(tx: &Tx, anchor: &str, stops: &[&str]) -> bool {
+    tx.focused()
+        .is_some_and(|focused| focused != anchor && !stops.contains(&focused))
+}
+
+/// Escape closes the popover; Tab and Shift+Tab move through its stops and wrap; Up and Down
+/// move through them and stop at the ends, unless the control takes them itself.
 fn keyed(
     app: &mut App,
     event: &KeyEvent,
     tx: &mut Tx,
-    (close, stops): (fn(&mut App), &[&'static str]),
+    (close, stops, own_arrows): (fn(&mut App), &[&'static str], &[&'static str]),
 ) -> bool {
-    match event.key {
+    let at = tx
+        .focused()
+        .and_then(|focused| stops.iter().position(|stop| *stop == focused));
+    let last = stops.len().saturating_sub(1);
+    let next = match event.key {
         Key::Escape => {
             close(app);
-            true
+            return true;
         }
-        Key::Tab if !stops.is_empty() => {
-            let at = tx
-                .focused()
-                .and_then(|focused| stops.iter().position(|stop| *stop == focused));
-            let count = stops.len();
-            let next = match (at, event.mods.shift) {
-                (Some(at), false) => (at + 1) % count,
-                (Some(at), true) => (at + count - 1) % count,
-                (None, false) => 0,
-                (None, true) => count - 1,
+        Key::Tab if stops.is_empty() => return false,
+        Key::Tab => match (at, event.mods.shift) {
+            (Some(at), false) if at == last => 0,
+            (Some(at), false) => at + 1,
+            (Some(0), true) | (None, true) => last,
+            (Some(at), true) => at - 1,
+            (None, false) => 0,
+        },
+        Key::Up | Key::Down => {
+            let Some(at) = at else {
+                return false;
             };
-            tx.focus(stops[next], true);
-            true
+            if own_arrows.contains(&stops[at]) {
+                return false;
+            }
+            if event.key == Key::Down {
+                (at + 1).min(last)
+            } else {
+                at.saturating_sub(1)
+            }
         }
-        _ => false,
-    }
+        _ => return false,
+    };
+    tx.focus(stops[next], true);
+    true
 }
 
 #[cfg(test)]

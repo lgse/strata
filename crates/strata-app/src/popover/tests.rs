@@ -235,3 +235,96 @@ fn a_wheel_closes_it_and_scrolls_the_listing_only_over_it() {
         assert!(scrolled, "a wheel over the listing scrolls it");
     });
 }
+
+fn right_click_at(host: &mut Offscreen, (x, y): (f32, f32)) {
+    host.runtime().pointer_move(x, y);
+    host.runtime().secondary_down(x, y);
+    host.runtime().secondary_up(x, y);
+    idle(host);
+}
+
+/// A right-click outside, on a tile or on the sidebar's Home, closes the popover and opens no
+/// menu.
+#[test]
+fn a_right_click_outside_closes_it_and_opens_no_menu() {
+    let name = "a_right_click_outside_closes_it_and_opens_no_menu";
+    hosted_in(MODULE, "icons", name, |mut host| {
+        let _folder = many(&mut host);
+        let before = browser_holds(&host).0;
+
+        open_popover(&mut host);
+        let third = tile(&mut host, "f003.txt");
+        right_click_at(&mut host, third);
+        assert_closed_to_the_button(&mut host, "a right-click on a tile");
+        assert_eq!(view::open_menu(&host), None, "no menu opened");
+        assert_eq!(
+            browser_holds(&host).0,
+            before,
+            "the right-click selected nothing"
+        );
+
+        open_popover(&mut host);
+        let home = centre(&mut host, "sidebar-place-home");
+        right_click_at(&mut host, home);
+        assert_closed_to_the_button(&mut host, "a right-click on Home");
+        assert_eq!(view::open_menu(&host), None, "no menu opened");
+    });
+}
+
+/// Up and Down move through the popover's controls and stop at the ends; on the slider they
+/// step it.
+#[test]
+fn up_and_down_move_through_the_controls_and_step_the_slider() {
+    let name = "up_and_down_move_through_the_controls_and_step_the_slider";
+    hosted_in(MODULE, "icons", name, |mut host| {
+        let _folder = many(&mut host);
+        open_popover(&mut host);
+        press(&mut host, Key::Right, Mods::default());
+        let offered = host.run_until(PATIENCE, |host| drawn(host, MAKE_DEFAULT));
+        assert!(offered, "the actions show at another size than the default");
+        press(&mut host, Key::Tab, Mods::default());
+
+        let steps = [
+            (Key::Down, RESET),
+            (Key::Down, RESET),
+            (Key::Up, MAKE_DEFAULT),
+            (Key::Up, SLIDER),
+        ];
+        for (key, lands) in steps {
+            press(&mut host, key.clone(), Mods::default());
+            assert_eq!(focused(&mut host).as_deref(), Some(lands), "{key:?}");
+        }
+        let size = crate::icons::size::shown(host.app());
+        press(&mut host, Key::Up, Mods::default());
+        assert_eq!(
+            focused(&mut host).as_deref(),
+            Some(SLIDER),
+            "Up stays on the slider"
+        );
+        let stepped = host.run_until(PATIENCE, |host| {
+            crate::icons::size::shown(host.app()) > size
+        });
+        assert!(stepped, "Up on the slider steps it");
+    });
+}
+
+/// The keyboard leaving the popover closes it, as GTK's autohide does.
+#[test]
+fn the_keyboard_leaving_it_closes_it() {
+    hosted_in(
+        MODULE,
+        "icons",
+        "the_keyboard_leaving_it_closes_it",
+        |mut host| {
+            let _folder = many(&mut host);
+            open_popover(&mut host);
+
+            host.runtime()
+                .update(|_: &mut App, tx: &mut Tx| tx.focus(crate::icons::VIEW, true));
+            idle(&mut host);
+
+            let closed = host.run_until(PATIENCE, |host| !drawn(host, SLIDER));
+            assert!(closed, "the popover closed when the keyboard left it");
+        },
+    );
+}

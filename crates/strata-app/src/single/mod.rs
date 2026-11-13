@@ -238,19 +238,8 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El) -> El {
         .grow(1.0)
         .min_h(0.0)
         .child(pane_header::bar(app, V::KEY, &title))
-        // What is left under the header: the component fills its parent's height. Its box is
-        // the listing a popover's outside wheel scrolls.
-        .child(
-            col()
-                .w_full()
-                .grow(1.0)
-                .min_h(0.0)
-                .on_layout_tx(|app: &mut App, rect, tx: &mut Tx| {
-                    pane_header::listing_at(app, rect);
-                    tx.live_only();
-                })
-                .child(component),
-        )
+        // What is left under the header: the component fills its parent's height.
+        .child(col().w_full().grow(1.0).min_h(0.0).child(component))
 }
 
 /// One poll of what the view says while it shows no entry, a read announced once it outlasts

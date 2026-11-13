@@ -112,9 +112,14 @@ fn toggle(app: &mut App, tx: &mut Tx) {
 /// `src/ui/browser/view_modes.rs`), unless a drag holds it; and it closes when another folder
 /// or another view shows, as GTK's goes with its pane (`rebuild_icons` on `ColumnAdded`). True
 /// when anything changed.
-pub(crate) fn follow(app: &mut App) -> bool {
+pub(crate) fn follow(app: &mut App, tx: &Tx) -> bool {
     if !app.pane_header.thumbnails.open {
         return false;
+    }
+    // GTK's popover hides when the keyboard leaves it.
+    if crate::popover::focus_left(tx, BUTTON, &stops(app)) {
+        close(app);
+        return true;
     }
     let icons = shell::view_focus(app) == Some(crate::icons::VIEW);
     if !icons || size::shown_location(app) != app.pane_header.thumbnails.over.as_ref() {
@@ -163,20 +168,29 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) {
         .child(heading(app, value))
         .child(slider)
         .child(extremes(app));
-    let mut stops = vec![SLIDER];
     if differs {
         body = body.child(actions(app, labels));
-        stops.extend([MAKE_DEFAULT, RESET]);
     }
     let plain = Plain {
         key: "icons-thumbnail-popover",
         anchor: BUTTON,
         label: labels.title.clone(),
-        stops,
-        listing: app.pane_header.listing,
+        stops: stops(app),
+        own_arrows: &[SLIDER],
+        listing: shell::view_focus(app),
         close,
+        parent: None,
     };
     plain.build(look, body, frame);
+}
+
+/// The popover's controls, in order: the slider, and its two actions while they show.
+fn stops(app: &App) -> Vec<&'static str> {
+    if size::differs_from_default(app) {
+        vec![SLIDER, MAKE_DEFAULT, RESET]
+    } else {
+        vec![SLIDER]
+    }
 }
 
 /// "Thumbnail size" with the size in px beside it.
