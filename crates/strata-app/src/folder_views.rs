@@ -89,7 +89,8 @@ pub(crate) struct Kept {
     revision: u64,
     later: Later<App>,
     /// Whether the last write before the process ends has started: closing the window and
-    /// quitting may both ask for it.
+    /// quitting may both ask for it. Strata does not use Rune's `keep_running`; if it ever
+    /// does, a closed window can open again, and this must be cleared on reopen, or dropped.
     exiting: bool,
     /// Follows what another Strata process, such as the portal chooser, saves.
     _monitor: LoadHandle,

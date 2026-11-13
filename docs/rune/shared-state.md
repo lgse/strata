@@ -158,7 +158,8 @@ beside the size's when [`A10.md`](parity/packages/A10.md)'s per-folder sort need
 restored or found deleted.
 
 **The Rune side's store** is `crates/strata-app/src/folder_views.rs`: the process's one
-`FolderViewStore`, held by the window and loaded with it, its timer on the poll's clock, the
+`FolderViewStore`, held by the window and loaded with it, its timer stamped with the window's
+clock (`Tx::clock`) when the write is asked and fired from the poll, the
 three-step settling of a write, the write at exit, once, from `on_close` or `on_quit` (a quit
 runs no `on_close`), and a file monitor that rereads and adopts what another process saved,
 once more when it is live. The notices are logged only, since that
