@@ -203,7 +203,8 @@ impl Seen {
 
     /// The AT-SPI role name the scenarios use.
     pub(super) fn role(&self) -> &'static str {
-        roles::at_spi(&self.role, !self.name.is_empty())
+        let toggled = self.has_state("checked") || self.has_state("unchecked");
+        roles::at_spi_toggled(&self.role, !self.name.is_empty(), toggled)
     }
 }
 
