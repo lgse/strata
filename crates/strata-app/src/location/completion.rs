@@ -19,7 +19,7 @@
 //!
 //! **Ported from GTK: watch merges from `main`.** The planner (`plan_completions`, `Folder`,
 //! `Listing`, `compact_hint`, `directory_prefix`) is a copy of `src/ui/browser/location/completion.rs`
-//! as of `65019ba16` (`plan_completions`'s `~/` and `/` arms split out as `plan_home` and
+//! as of `65019ba16cb530a2bc7235cc665f367574d19239` (`plan_completions`'s `~/` and `/` arms split out as `plan_home` and
 //! `plan_absolute`, unchanged), and its tests of `completion/tests.rs`. A fix there that
 //! reaches `main` is ported here by hand.
 
