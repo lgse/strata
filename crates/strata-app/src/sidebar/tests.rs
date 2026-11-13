@@ -17,7 +17,7 @@ use crate::{
     host::offscreen::Offscreen,
     test_support::{
         PATIENCE, fixture, hosted, hosted_after,
-        view::{all, browser_holds, idle, press, text},
+        view::{all, browser_holds, idle, press, shift, text},
     },
 };
 
@@ -610,5 +610,43 @@ fn k_from_the_first_row_reaches_the_headers_toggle() {
         MODULE,
         "k_from_the_first_row_reaches_the_headers_toggle",
         |host| up_from_the_top_reaches_the_toggle(host, letter("k")),
+    );
+}
+
+/// Shift and Super with Up and Down move between the rows as the plain arrows do, as GTK's
+/// `child_focus` moves them with both held; Shift+Up on the first row moves nothing, and
+/// Super+Up there reaches the header's toggle, since only Shift keeps Up in the sidebar.
+#[test]
+fn shift_and_super_with_up_and_down_move_between_the_rows() {
+    hosted(
+        MODULE,
+        "shift_and_super_with_up_and_down_move_between_the_rows",
+        |mut host| {
+            let folder = fixture();
+            opened(folder.path(), &mut host);
+            shown(&mut host, "sidebar-place-trash");
+            let logo = Mods {
+                logo: true,
+                ..Mods::default()
+            };
+            into_the_sidebar(&mut host);
+            for mods in [shift(), logo] {
+                press(&mut host, Key::Down, mods);
+                focus_reaches(&mut host, "sidebar-place-trash", &Key::Down);
+                press(&mut host, Key::Up, mods);
+                focus_reaches(&mut host, "sidebar-place-home", &Key::Up);
+            }
+            press(&mut host, Key::Up, shift());
+            host.turn();
+            idle(&mut host);
+            let at = focused(&host.tree());
+            assert_eq!(
+                at.as_deref(),
+                Some("sidebar-place-home"),
+                "Shift+Up at the top"
+            );
+            press(&mut host, Key::Up, logo);
+            focus_reaches(&mut host, TOGGLE, &Key::Up);
+        },
     );
 }

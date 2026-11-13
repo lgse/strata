@@ -10,7 +10,8 @@
 //! - **Up** without Shift, from the sidebar's first element, goes up to the header's toggle
 //!   (`TopBarNavigation::move_up_from_sidebar`).
 //! - **Up and Down** otherwise move between the rows and headings, which Rune's own focus
-//!   navigation does for the arrows; their other keys are handed to it as the arrows.
+//!   navigation does for the plain arrows; their other keys, and the arrows with Shift or
+//!   Super, are handed to it as the plain arrows. Shift+Up on the first element moves nothing.
 //! - **Left** moves nothing, and is taken, as GTK's `child_focus(Left)` finds nothing.
 //!
 //! In 10xer mode GTK reads none of this (`tenxer_pane_focus`), and C8 takes `h`, `j`, `k`, `l`,
@@ -19,7 +20,7 @@
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_components::sidebar::ItemId;
 use strata_desktop::keys::{
-    Command, KeyPress, Matcher, Modifiers,
+    Command, KeyPress, Modifiers,
     bindings::{DOWN, LEFT, RIGHT, UP},
 };
 
@@ -68,16 +69,21 @@ fn down(_: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     step(call, DOWN, Key::Down, tx)
 }
 
+/// GTK's `!event.shift()` sends Up to the header (`move_up_from_sidebar`) only without Shift;
+/// with it, `child_focus(Up)` finds nothing above the first element.
 fn up(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     let shift = call
         .press
         .is_some_and(|press| press.modifiers().contains(Modifiers::SHIFT_MASK));
     let at_top = tx.focused().is_some() && tx.focused() == app.sidebar.first_key().as_deref();
-    if shift || !at_top {
-        return step(call, UP, Key::Up, tx);
+    match (at_top, shift) {
+        (false, _) => step(call, UP, Key::Up, tx),
+        (true, true) => Outcome::Ran,
+        (true, false) => {
+            tx.focus(TOGGLE, true);
+            Outcome::Ran
+        }
     }
-    tx.focus(TOGGLE, true);
-    Outcome::Ran
 }
 
 fn right(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
@@ -87,25 +93,23 @@ fn right(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// A move between the sidebar's elements: Rune's focus navigation takes the arrow itself, and
-/// the arrow's other key is handed to it as the arrow.
+/// A move between the sidebar's elements, as GTK's `child_focus` makes it with Shift or Super
+/// held too: Rune's focus navigation takes the plain arrow itself, refuses it with Super and
+/// does nothing with Shift, so any other press is handed to it as the plain arrow.
 fn step(call: &Call<'_>, arrow: Command, key: Key, tx: &mut Tx) -> Outcome {
-    let Some(press) = call.press.filter(|press| other_key(press, arrow)) else {
+    if call.press.is_none_or(|press| plain(press, arrow)) {
         return Outcome::Declined;
-    };
+    }
     tx.send_key(KeyEvent {
         key,
-        mods: Mods {
-            shift: press.modifiers().contains(Modifiers::SHIFT_MASK),
-            ..Mods::default()
-        },
+        mods: Mods::default(),
     });
     Outcome::Ran
 }
 
-fn other_key(press: &KeyPress, arrow: Command) -> bool {
-    let alternates: Matcher = arrow.alternates();
-    press.is(alternates)
+/// The arrow itself, with nothing held.
+fn plain(press: &KeyPress, arrow: Command) -> bool {
+    press.modifiers().is_empty() && !press.is(arrow.alternates())
 }
 
 impl super::Sidebar {
