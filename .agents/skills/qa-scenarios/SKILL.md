@@ -431,6 +431,7 @@ step between replays. "Fuzzing" in `docs/testing.md` has the method;
 
 ```bash
 ./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..20   # generate, replay twice, compare
+./scripts/qa-fuzz.sh run --alphabet entries --seeds 1..20 --target gtk,rune   # Rune against GTK too
 ./scripts/qa-fuzz.sh replay                                     # every kept sequence that is not parked
 ./scripts/qa-fuzz.sh replay --parked --repeats 24               # the parked ones, on purpose
 ./scripts/qa-fuzz.sh shrink --alphabet calibration --seeds 7    # the fewest steps that still differ
