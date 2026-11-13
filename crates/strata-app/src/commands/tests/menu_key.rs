@@ -11,7 +11,7 @@ use crate::{
     host::offscreen::Offscreen,
     test_support::{
         PATIENCE, folder_of,
-        view::{browser_holds, drawn, hosted_in, open_menu, wheel},
+        view::{browser_holds, drawn, half_an_entry, hosted_in, open_menu, wheel},
     },
 };
 
@@ -82,21 +82,28 @@ fn the_menu_keys_open_the_cursors_menu_or_the_folders(mode: &'static str, name: 
     });
 }
 
+/// A folder of 400 files, listed, with the cursor on the first and the first selected: what
+/// the browser holds.
+fn many_files(host: &mut Offscreen) -> (tempfile::TempDir, (Vec<String>, Option<String>)) {
+    let names: Vec<String> = (0..400).map(|at| format!("file-{at:03}")).collect();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let folder = folder_of(&names);
+    host.app().open(Location::local(folder.path()));
+    let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+    assert!(host.run_until(PATIENCE, listed), "the folder's listing");
+    while host.turn() {}
+    press(host, Key::Home, Mods::default());
+    let held = browser_holds(host);
+    assert_eq!(held.1.as_deref(), Some("file-000"));
+    (folder, held)
+}
+
 /// GTK opens an entry's menu at the row it has drawn, and has none for a row scrolled out of
 /// view (`shown_row_at`, `item_widget`): nothing opens, and nothing moves.
 fn the_menu_key_opens_nothing_for_a_cursor_out_of_view(mode: &'static str, name: &str) {
     let name = format!("menu_key::out_of_view::{name}");
     hosted_in(MODULE, mode, &name, |mut host| {
-        let names: Vec<String> = (0..400).map(|at| format!("file-{at:03}")).collect();
-        let names: Vec<&str> = names.iter().map(String::as_str).collect();
-        let folder = folder_of(&names);
-        host.app().open(Location::local(folder.path()));
-        let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
-        assert!(host.run_until(PATIENCE, listed), "the folder's listing");
-        while host.turn() {}
-        press(&mut host, Key::Home, Mods::default());
-        let held = browser_holds(&host);
-        assert_eq!(held.1.as_deref(), Some("file-000"));
+        let (_folder, held) = many_files(&mut host);
         // Far enough that the list no longer builds the cursor's row.
         wheel(&mut host, -240.0, 30);
         let shown = drawn(&host);
@@ -112,6 +119,36 @@ fn the_menu_key_opens_nothing_for_a_cursor_out_of_view(mode: &'static str, name:
         assert_eq!(drawn(&host), shown, "the view scrolled");
         assert_eq!(browser_holds(&host), held);
     });
+}
+
+/// A row partly in view is one GTK has drawn, so its menu opens, at the row where it is.
+fn the_menu_key_opens_the_menu_of_a_cursor_partly_in_view(mode: &'static str, name: &str) {
+    let name = format!("menu_key::partly_in_view::{name}");
+    hosted_in(MODULE, mode, &name, |mut host| {
+        let (_folder, held) = many_files(&mut host);
+        let half = half_an_entry(&host);
+        wheel(&mut host, -half, 1);
+        let shown = drawn(&host);
+
+        press(&mut host, Key::ContextMenu, Mods::default());
+
+        assert_eq!(open_menu(&host), held.1);
+        assert_eq!(browser_holds(&host), held);
+        // The rows are read again once the menu, which covers them, is gone.
+        press(&mut host, Key::Escape, Mods::default());
+        assert_eq!(drawn(&host), shown);
+    });
+}
+
+mod partly_in_view {
+    use super::the_menu_key_opens_the_menu_of_a_cursor_partly_in_view;
+
+    in_each_view! {
+        the_menu_key_opens_the_menu_of_a_cursor_partly_in_view:
+        "columns" => the_menu_key_opens_the_menu_of_a_cursor_partly_in_view_in_columns,
+        "icons" => the_menu_key_opens_the_menu_of_a_cursor_partly_in_view_in_icons,
+        "list" => the_menu_key_opens_the_menu_of_a_cursor_partly_in_view_in_list,
+    }
 }
 
 mod out_of_view {

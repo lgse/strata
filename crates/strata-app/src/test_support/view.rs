@@ -298,6 +298,16 @@ pub(crate) fn drawn(host: &Offscreen) -> Vec<String> {
     entries.iter().map(|entry| text(entry, "name")).collect()
 }
 
+/// Half the height the first entry is drawn at: a wheel's turn that leaves it partly shown.
+pub(crate) fn half_an_entry(host: &Offscreen) -> f32 {
+    let tree = host.tree();
+    let entries = all(&tree, &keyed_as_entry);
+    let height = entries.first().expect("an entry")["bounds"][3].as_f64();
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let half = (height.expect("a bound") / 2.0) as f32;
+    half
+}
+
 /// Turns the wheel `turns` times by `dy` points, over where the first entry is drawn now.
 pub(crate) fn wheel(host: &mut Offscreen, dy: f32, turns: usize) {
     let tree = host.tree();
