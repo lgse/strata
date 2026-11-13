@@ -87,8 +87,8 @@ fn up(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
         browser.parent();
         return Outcome::Ran;
     }
-    // The browser's active column is the one the keyboard is in once the view has said so.
-    shell::publish(app);
+    // The keyboard's column: the registry has handed the browser what the view moved
+    // (`call`, in `commands.rs`), so its active column is the one the keyboard is in.
     match browser.active_depth() {
         Some(0) => {
             if let Some(parent) = browser.location_at(0).and_then(|first| first.parent()) {
