@@ -505,3 +505,46 @@ fn the_windows_keys_wait_while_the_field_has_the_keyboard() {
         },
     );
 }
+
+/// A name half typed survives the folder being read again under it: a change on disk that the
+/// folder's monitor reports, and then a re-list of the whole column, as the browser's
+/// revalidation does in the background. The field keeps its text, its caret and the keyboard,
+/// and the entry it edits stays under it. GTK holds the browser's re-lists while an edit is
+/// open (`set_freshness_hold` in `src/ui/browser/view_setup.rs`), since its re-list rebinds
+/// the rows an edit leases.
+#[test]
+fn a_name_half_typed_survives_the_folder_being_read_again() {
+    hosted(
+        "rename::a_name_half_typed_survives_the_folder_being_read_again",
+        |mut host| {
+            let folder = fixture();
+            open_on(&mut host, folder.path(), "todo.txt");
+            press(&mut host, "F2");
+            wait_for_field(&mut host, "todo.txt");
+            type_text(&mut host, "dra");
+            let typed = wait_for_field(&mut host, "dra.txt");
+            assert_eq!(typed.selection, Some((3, 3)));
+
+            std::fs::write(folder.path().join("aaa.txt"), "new").expect("a new file");
+            wait(&mut host, "the new file", |seen: &Seen| {
+                seen.panes[0].names().contains(&"aaa.txt")
+            });
+            assert_eq!(field(&host), Some(typed.clone()), "after a change on disk");
+
+            let browser = host.app().browser().clone();
+            let before = browser.column_request_id(0);
+            browser.refresh_operation_columns(&[0]);
+            let settled = host.run_until(PATIENCE, |_| {
+                browser.column_request_id(0) != before
+                    && browser.column_snapshot(0).is_some_and(|column| !column.loading)
+            });
+            assert!(settled, "the column to be read again");
+            rest(&mut host);
+            assert_eq!(field(&host), Some(typed), "after the column was read again");
+
+            press(&mut host, "Return");
+            wait_for_no_field(&mut host);
+            assert_eq!(read(folder.path(), "dra.txt").as_deref(), Some("todo.txt"));
+        },
+    );
+}
