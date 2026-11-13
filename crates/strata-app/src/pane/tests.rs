@@ -65,7 +65,19 @@ impl Fixture {
     /// The browser opens column `depth`, active or not, and lists one entry in it.
     fn open(&mut self, depth: usize, active: bool) {
         let folder = location(depth);
-        self.apply(Change::Added(Added {
+        let row = Row::of(&entry(&folder, &format!("in-{depth}")), &self.ids);
+        self.list((depth, active), &folder, vec![row]);
+    }
+
+    /// The browser opens `folder` at `depth`, active or not, lists `rows` in it, and ends its
+    /// load with no cursor of its own. What the opening did to the folder shown.
+    fn list(
+        &mut self,
+        (depth, active): (usize, bool),
+        folder: &Location,
+        rows: Vec<Row>,
+    ) -> Applied {
+        let applied = self.apply(Change::Added(Added {
             depth,
             location: folder.clone(),
             show_hidden: false,
@@ -73,10 +85,9 @@ impl Fixture {
             grouping: self.grouping,
             reveal: false,
         }));
-        let row = Row::of(&entry(&folder, &format!("in-{depth}")), &self.ids);
         self.apply(Change::Rows {
             depth,
-            edit: Edit::Replace(vec![row]),
+            edit: Edit::Replace(rows),
             marks: Some(Marks::default()),
             grouping: self.grouping,
         });
@@ -86,6 +97,7 @@ impl Fixture {
             marks: Marks::default(),
             grouping: self.grouping,
         });
+        applied
     }
 
     /// The folder shown, and its entries.
@@ -265,34 +277,13 @@ fn a_grouped_folder_shows_and_steps_in_its_groups_and_an_ungrouped_one_does_not(
 }
 
 impl Fixture {
-    /// The browser opens `folder` in place, active, and lists `names` in it, its load over
-    /// with no cursor of its own.
+    /// The browser opens `folder` in place and lists `names` in it.
     fn visit(&mut self, folder: &Location, names: &[&str]) -> Applied {
-        let applied = self.apply(Change::Added(Added {
-            depth: 0,
-            location: folder.clone(),
-            show_hidden: false,
-            active: true,
-            grouping: self.grouping,
-            reveal: false,
-        }));
         let rows = names
             .iter()
             .map(|name| Row::of(&file(folder, name), &self.ids))
             .collect();
-        self.apply(Change::Rows {
-            depth: 0,
-            edit: Edit::Replace(rows),
-            marks: Some(Marks::default()),
-            grouping: self.grouping,
-        });
-        self.apply(Change::Loaded {
-            depth: 0,
-            load: Load::Listed,
-            marks: Marks::default(),
-            grouping: self.grouping,
-        });
-        applied
+        self.list((0, true), folder, rows)
     }
 }
 
