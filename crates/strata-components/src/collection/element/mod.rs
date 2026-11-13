@@ -212,6 +212,7 @@ pub use keys::{
 };
 use lines::LineMap;
 pub use lines::{Group, GroupStyle, GroupedRows, Groups, Lines, OnePerLine};
+pub(crate) use route::KeyTaken;
 pub use row::{ContentSlot, Describe, Rest, RestReport, RestView, RowCx, RowMarks, RowState, Slot};
 pub use seam::{
     Activation, Controllers, Ctx, Effect, Flow, Hit, Intent, KeyController, KeyInput,
@@ -255,6 +256,7 @@ pub(crate) type DragPhaseFn<S> = Rc<dyn Fn(&mut S, &rune::Drag, &str, &mut Tx) -
 pub(crate) type DropActionFn<S> =
     Rc<dyn Fn(&S, Option<EntryId>, &DropOffer, Mods) -> Option<DropAction>>;
 type WheelFn<S> = Rc<dyn Fn(&mut S, WheelEvent, &mut Tx) -> bool>;
+type BeforeKeysFn<S> = Rc<dyn Fn(&mut S, &KeyEvent, &mut Tx) -> bool>;
 
 /// What [`Collection`] was built with, shared by its rows and handlers.
 pub(crate) struct Config<S> {
@@ -295,6 +297,7 @@ pub(crate) struct Config<S> {
     /// Every handler [`Collection::on_scroll`] added, in order.
     on_scroll: Vec<ScrollFn>,
     keys_by_host: bool,
+    before_keys: Option<BeforeKeysFn<S>>,
     on_drag_over: Option<DragOverFn<S>>,
     on_drag_phase: Option<DragPhaseFn<S>>,
     drop_action: Option<DropActionFn<S>>,
@@ -374,6 +377,7 @@ impl<S: 'static> Collection<S> {
                 announce: None,
                 on_scroll: Vec::new(),
                 keys_by_host: false,
+                before_keys: None,
                 on_drag_over: None,
                 on_drag_phase: None,
                 drop_action: None,
@@ -602,6 +606,17 @@ impl<S: 'static> Collection<S> {
         self
     }
 
+    /// Hears each key the collection is given before its controllers do, with the key's own
+    /// transaction: true takes the key, and no controller hears it. The collection's keys are
+    /// its controllers' otherwise, so a host whose window reads a key ahead of its list (a
+    /// shortcut, a key that dismisses something) asks here, where it has its own state, which
+    /// a [`KeyController`] does not. It is asked for a key that reaches the collection by
+    /// either road: its own key handler, or [`Collection::key`] from a host's focus stop.
+    pub fn before_keys(mut self, f: impl Fn(&mut S, &KeyEvent, &mut Tx) -> bool + 'static) -> Self {
+        self.cfg.before_keys = Some(Rc::new(f));
+        self
+    }
+
     /// Hears where a drag the collection's drop zones accept is, in window points, while it is
     /// over them (`Some`, on reaching a zone and on every move), and when it leaves them or a
     /// zone refuses it (`None`). Set, it replaces the element's own edge scroll during a drag
@@ -722,12 +737,20 @@ impl<S: 'static> Collection<S> {
         route::tick(&cfg, s, tx)
     }
 
-    /// Handles a key as the collection's own key handler would: the keyboard controller hears
-    /// it, through the same routing a focused collection's keys take. For a collection built
-    /// with [`Collection::keys_by_host`], from the focus stop's `on_key`, with the key's own
-    /// transaction (so layout-aware chords still match). True when a controller took the key;
-    /// the caller then says so to Rune.
+    /// Handles a key as the collection's own key handler would: the host's
+    /// [`Collection::before_keys`] hears it, then the keyboard controller, through the same
+    /// routing a focused collection's keys take. For a collection built with
+    /// [`Collection::keys_by_host`], from the focus stop's `on_key`, with the key's own
+    /// transaction (so layout-aware chords still match). True when the hook or a controller
+    /// took the key; the caller then says so to Rune.
     pub fn key(self, s: &mut S, event: &KeyEvent, tx: &mut Tx) -> bool {
+        self.key_taken(s, event, tx) != KeyTaken::No
+    }
+
+    /// [`Collection::key`], saying who took the key: a focus stop that does something of its
+    /// own after a controller's key (the Columns strip reveals the active column) does not do
+    /// it for a key the host took.
+    pub(crate) fn key_taken(self, s: &mut S, event: &KeyEvent, tx: &mut Tx) -> KeyTaken {
         let cfg = Rc::new(self.cfg);
         route::on_key(&cfg, s, event, tx)
     }
@@ -929,7 +952,7 @@ impl<S: 'static> Collection<S> {
         if !cfg.keys_by_host {
             root = root
                 .focusable(true)
-                .on_key(move |s: &mut S, e, tx| route::on_key(&key_cfg, s, e, tx));
+                .on_key(move |s: &mut S, e, tx| route::on_key(&key_cfg, s, e, tx) != KeyTaken::No);
         }
         if let Some(name) = &cfg.name {
             root = root.label(name.clone());

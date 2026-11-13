@@ -20,6 +20,7 @@ use crate::{
 const MODULE: &str = "commands::tests";
 
 mod routing;
+mod views;
 
 /// Opens the fixture and waits for the browser to list it.
 fn listed(host: &mut Offscreen) -> tempfile::TempDir {

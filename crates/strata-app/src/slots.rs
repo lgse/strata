@@ -92,7 +92,8 @@
 //!   fails with "this lint expectation is unfulfilled" until it does.
 //! - **A part's place can be tested without registering it.** `test_support::hosted_over`
 //!   runs the window over a table a test makes up, as `shell/tests.rs` does with a part in
-//!   every slot.
+//!   every slot. `crate::parts_and(more)` is the registered table with a test's parts after
+//!   it, for a made-up part beside the real views (`commands/tests/views.rs`).
 //! - **No CI job builds this crate.** Run `mise run test-rune slots::` before pushing and
 //!   again after merging `strata-next`: a second part in a slot for one, or a part registered
 //!   twice, shows only there and in a debug build's start.
@@ -128,7 +129,7 @@
 //!
 //! | A part that needs | Waits on |
 //! | --- | --- |
-//! | A key the shown view's own controller takes (Escape, Delete, Space, Ctrl+A), as a command | The entry points (`docs/rune/parity/packages/B3.md`, "What Rune gives"). A part can register the command today, and its menu row and its button run it; from the view the key does not reach it yet, because the view's controller hears the key first and takes it. A header button's or a menu row's command with no such key waits on nothing: register it under the button's name (`shell.rs`) or the row's id (`menus.rs`) |
+//! | A key the shown view's own controller takes (Escape, Delete, Space, Ctrl+A), as a command | Nothing: register it at the GTK dispatcher's stage that reads it. A view's collection asks the registry ahead of its own keys (`commands::in_view`), for every stage ahead of `ItemNavigation`, and the view keeps each key no command takes. A view built on a collection of its own calls `commands::in_view` on it once. A header button's or a menu row's command with no key is registered under the button's name (`shell.rs`) or the row's id (`menus.rs`) |
 //! | To save a setting | Nothing: `shell::saved(app).change(…)`, by the rules under [Saving a setting](#saving-a-setting) |
 //! | A `Browser` and a state for each tab | lgse/strata#2131, which opens with a `contract` change. There is one `Browser`, and one state for each part, made once in `App::new` |
 //! | To change the shown view while the window is open | lgse/strata#2140, with a `contract` change: a setter, and a listener and a rebuild from the browser for a view that starts hidden |
@@ -487,6 +488,17 @@ macro_rules! parts {
         pub(crate) const PARTS: &[$crate::slots::Entry<App>] = &[
             $($crate::slots::Entry::of::<$part>(stringify!($field)),)*
         ];
+
+        /// The registered parts with `more` after them: a table for a test that hosts a
+        /// made-up part beside the real ones (`test_support::hosted_over`).
+        #[cfg(test)]
+        pub(crate) fn parts_and(
+            more: Vec<$crate::slots::Entry<App>>,
+        ) -> Vec<$crate::slots::Entry<App>> {
+            let mut parts = vec![$($crate::slots::Entry::of::<$part>(stringify!($field)),)*];
+            parts.extend(more);
+            parts
+        }
     };
 }
 pub(crate) use parts;

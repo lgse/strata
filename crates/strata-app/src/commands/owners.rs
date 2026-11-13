@@ -107,6 +107,16 @@ impl Situation {
         self.holds() == Some(Holds::Filter)
     }
 
+    /// The key of the element that has it.
+    pub(super) fn focused(&self) -> Option<&str> {
+        self.focused.as_deref()
+    }
+
+    /// Whether no element has it.
+    pub(super) fn nowhere(&self) -> bool {
+        self.focused.is_none()
+    }
+
     /// Whether the shown view's listing has it: GTK's `item_view_has_focus()`.
     #[cfg_attr(
         not(test),
