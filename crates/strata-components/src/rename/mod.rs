@@ -68,9 +68,12 @@
 //!   edit (probe P10), as Strata's capture-phase click does for any button.
 //! - **The row leaving the viewport.** Rune keeps a focused virtual row mounted out of view,
 //!   so the field would go on taking keys unseen. The edit ends ([`By::Scrolled`], keeping the
-//!   name) once the row has left [`CollectionState::visible_range`] after it had shown there,
-//!   as Strata's ends when its row unmaps. The rule waits for the row to show, so a reveal
-//!   still gliding to it doesn't end it.
+//!   name) once the row has left the viewport after it had shown there
+//!   ([`CollectionState::shows_entry`]), as Strata's ends when its row unmaps. The rule waits
+//!   for the row to show, so a reveal still gliding to it doesn't end it. It reads the row's
+//!   place now, not the range Rune reported a frame ago, so an entry listed above the row
+//!   moves it down a line and the edit goes on, as Strata's lease on its bound entry does
+//!   (lgse/strata#2277).
 //! - **Focus afterwards.** The editor carries `El::focus_return` to its collection, so when
 //!   Enter, Escape or a last Tab removes the field, the keyboard goes back to the listing
 //!   (probe P2). It acts on every way the field goes, and only while the field has the
@@ -222,7 +225,8 @@
 //! - **C1b:** the slow second click and what cancels it.
 //! - **C2:** the size badge hidden while editing (`RowState::renaming` says so).
 //!
-//! In process, without bullets (`rename/tests.rs`): a row scrolled out, the entry leaving the
+//! In process, without bullets (`rename/tests.rs`): a row scrolled out, an entry listed above
+//! the row, the entry leaving the
 //! listing or renamed elsewhere, the field menu and its hold with a real rune-kit menu (opened
 //! by a right-click and by the Menu key), the hold ending without `menu_closed` and when no
 //! menu takes the keyboard, a press in the box's margin, a middle press in the field and its

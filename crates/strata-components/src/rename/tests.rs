@@ -564,6 +564,30 @@ fn a_row_scrolled_out_of_view_cancels_its_edit_once_it_had_shown() {
     );
 }
 
+/// lgse/strata#2277: an entry listed above the row moves it down a line, still in view. The
+/// edit goes on, as GTK's lease on its bound entry does; the range Rune reported for the
+/// frame before the change ends one entry too early.
+#[test]
+fn an_entry_listed_above_the_row_keeps_its_edit() {
+    let mut rt = mount(5);
+    begin(&mut rt, 5);
+    assert!(rt.state.rename.is_open(), "{:?}", rt.state.heard);
+    rt.update(|s, _| {
+        let mut entries = s.listing.entries().to_vec();
+        let above = ListEntry::new(
+            EntryId::new(99),
+            "a above.txt".to_owned(),
+            EntryKind::File,
+            "text",
+        );
+        entries.insert(0, above);
+        s.listing.replace(entries);
+    });
+    frames(&mut rt, 5);
+    assert!(rt.state.rename.is_open(), "{:?}", rt.state.heard);
+    assert_eq!(rt.state.rename.renaming(), Some(EntryId::new(5)));
+}
+
 #[test]
 fn an_entry_leaving_the_listing_or_renamed_elsewhere_cancels_its_edit() {
     let mut rt = mount(20);

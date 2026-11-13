@@ -214,9 +214,11 @@ impl RenameState {
             Some(_) => {}
         }
         // Rune keeps a focused row mounted out of view, so the field may still have the
-        // keyboard: the viewport decides. The check comes before the blur's, as the row also
-        // loses the keyboard once Rune unmounts it.
-        if coll.visible_range().contains(&index) {
+        // keyboard: the viewport decides, by the row's place now rather than the range Rune
+        // reported a frame ago, which an entry listed above would push the row out of
+        // (lgse/strata#2277). The check comes before the blur's, as the row also loses the
+        // keyboard once Rune unmounts it.
+        if coll.shows_entry(index, source.len()) {
             self.seen_shown = true;
         } else if self.seen_shown {
             return self.cancel(By::Scrolled);
