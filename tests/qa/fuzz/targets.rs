@@ -36,9 +36,7 @@ impl Targets {
                  compared with"
                     .to_owned(),
             ),
-            other => Err(format!(
-                "--target is gtk, rune or gtk,rune, not {other:?}"
-            )),
+            other => Err(format!("--target is gtk, rune or gtk,rune, not {other:?}")),
         }
     }
 
@@ -154,8 +152,11 @@ pub(crate) fn between(reference: &str, other: &str) -> String {
 
 /// Every stream of `others` compared with `first`, the first that differs reported.
 fn held_to(between: String, first: &Stream, others: &[&Stream], ignored: &Ignored) -> Comparison {
-    let against =
-        |ignored: &Ignored| others.iter().find_map(|other| compare(first, other, ignored));
+    let against = |ignored: &Ignored| {
+        others
+            .iter()
+            .find_map(|other| compare(first, other, ignored))
+    };
     Comparison {
         between,
         divergence: against(ignored),

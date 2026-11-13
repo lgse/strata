@@ -388,9 +388,10 @@ impl Run {
             Verdict::Differ(differing) => {
                 self.tally.differ += 1;
                 let first = differing[0];
-                let divergence = first.divergence.as_ref().unwrap_or_else(|| {
-                    unreachable!("a differing comparison has its divergence")
-                });
+                let divergence = first
+                    .divergence
+                    .as_ref()
+                    .unwrap_or_else(|| unreachable!("a differing comparison has its divergence"));
                 format!(
                     "STILL DIFFERS, PARKED ({issue}): {}",
                     differ_line(&examined.name, &first.between, divergence, self.perturbed)
@@ -780,7 +781,12 @@ pub(crate) fn shrunk(
     }
     println!(
         "{}",
-        differ_line(&shortest.name, &targets.between(), &shrunk.divergence, perturbed)
+        differ_line(
+            &shortest.name,
+            &targets.between(),
+            &shrunk.divergence,
+            perturbed
+        )
     );
     let title = (!perturbed).then(|| shrunk.divergence.title(area));
     if let Some(title) = &title {

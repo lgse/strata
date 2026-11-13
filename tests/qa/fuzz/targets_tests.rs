@@ -30,8 +30,7 @@ fn entry(field: &str, code: &str) -> Entry {
     }
 }
 
-pub(crate) fn a_command_takes_one_target_or_gtk_and_rune_and_the_comparing_commands_take_both()
-{
+pub(crate) fn a_command_takes_one_target_or_gtk_and_rune_and_the_comparing_commands_take_both() {
     let differential = parse("run --alphabet calibration --seeds 1 --target gtk,rune")
         .expect("a run takes both targets");
     assert!(differential.targets.is_differential());
@@ -53,17 +52,32 @@ pub(crate) fn a_command_takes_one_target_or_gtk_and_rune_and_the_comparing_comma
     );
     let calibration = "run --alphabet calibration --seeds 1";
     for (line, expected) in [
-        (format!("{calibration} --target rune,gtk"), "names GTK first"),
-        (format!("{calibration} --target qt"), "gtk, rune or gtk,rune"),
-        (format!("{calibration} --target gtk,rune --jobs 129"), "at most 256"),
+        (
+            format!("{calibration} --target rune,gtk"),
+            "names GTK first",
+        ),
+        (
+            format!("{calibration} --target qt"),
+            "gtk, rune or gtk,rune",
+        ),
+        (
+            format!("{calibration} --target gtk,rune --jobs 129"),
+            "at most 256",
+        ),
         (
             "generate --alphabet calibration --seeds 1 --target gtk,rune".to_owned(),
             "for run, replay and shrink",
         ),
-        ("check --target gtk,rune".to_owned(), "for run, replay and shrink"),
+        (
+            "check --target gtk,rune".to_owned(),
+            "for run, replay and shrink",
+        ),
     ] {
         let error = parse(&line).expect_err(expected);
-        assert!(error.contains(expected), "{error:?} should say {expected:?}");
+        assert!(
+            error.contains(expected),
+            "{error:?} should say {expected:?}"
+        );
     }
 }
 
@@ -89,7 +103,11 @@ pub(crate) fn each_target_is_held_to_itself_and_rune_to_the_first_gtk_replay_und
     assert!(found[0].divergence.is_none() && found[1].divergence.is_none());
     let across = found[2].divergence.as_ref().expect("the targets differ");
     assert_eq!((across.step, across.field()), (1, "app.focused"));
-    assert_eq!(found[2].compared, 2 * 2, "two Rune replays, two observations each");
+    assert_eq!(
+        found[2].compared,
+        2 * 2,
+        "two Rune replays, two observations each"
+    );
 
     // A rule of the map holds between targets and never within one; a mask holds in both.
     let fields = ["app.focused", "app.panes"];
