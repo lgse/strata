@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{ROLES, at_spi};
+use super::{ROLES, at_spi, at_spi_toggled};
 
 #[test]
 fn runes_roles_read_as_the_at_spi_names_the_scenarios_use() {
@@ -20,6 +20,20 @@ fn runes_roles_read_as_the_at_spi_names_the_scenarios_use() {
     ] {
         assert_eq!(at_spi(rune, true), expected, "{rune}, named");
         assert_eq!(at_spi(rune, false), expected, "{rune}, unnamed");
+    }
+}
+
+/// A button that reports a pressed state is a toggle button, as GTK's sidebar toggle and its
+/// play buttons are; the state leaves every other role as it is.
+#[test]
+fn a_button_with_a_pressed_state_is_a_toggle_button() {
+    for (rune, toggled, expected) in [
+        ("button", true, "toggle button"),
+        ("button", false, "button"),
+        ("check-box", true, "check box"),
+        ("menu-item-check-box", true, "check menu item"),
+    ] {
+        assert_eq!(at_spi_toggled(rune, true, toggled), expected, "{rune}");
     }
 }
 
