@@ -10,4 +10,4 @@
 # calibration: versions 1 and 2 were its states while the driver was calibrated (before
 # the click guard, and before the hidden-files action). Three parked sequences are theirs.
 calibration v3 d06627cec8c47f93
-list v1 5aa1c96c067166a7
+list v2 4af5c8a48b72038d
