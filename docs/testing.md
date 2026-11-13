@@ -617,6 +617,49 @@ the runner sends it the manifest's layout as a `keymap` request of its own, and
 the application reads key names by their US positions under that layout itself
 ("The Rune target and the parity ledger" below).
 
+### The key lookups and the test image
+
+The GTK application asks GDK what a key's name, character and case are. The Rune
+interface's key library, `strata_desktop::keys::Xkb`, asks its own table and then
+libxkbcommon, and corrects the library to GDK's answers by rules and exception
+tables (`crates/strata-desktop/src/keys/xkb/`). Two tests hold that to GDK, and
+both are tied to the libraries of the pinned test image:
+
+- **`tests/key_lookups.rs`** compares `Xkb` with GDK for every legacy keysym,
+  every direct-Unicode keysym, every vendor's keys and `VoidSymbol`: the name
+  written, the name read (every name either library writes, the names in the
+  installed `xkbcommon-keysyms.h`, with and without `XF86`, and the numeric forms
+  GDK refuses), the character a key types, the key of a character, and both
+  cases. It needs no display and takes about twelve seconds. A difference is
+  written to `key-lookups/<lookup>.txt` under the test's target directory
+  (`CARGO_TARGET_TMPDIR`), as the row the table in `xkb/tables.rs` would need.
+- **`ui::keys::tests::table`** holds `keys::Table`, which answers for the keys the
+  code declares, to GDK, the three names GDK writes by another X name among them.
+
+**In the image the rules are exact:** `./scripts/quality.sh` runs the comparison
+with nothing tolerated, so a row that is missing, and a row that is there and no
+longer true, both fail it. So a change of the image's GTK, GLib or libxkbcommon
+fails these tests when an answer moved, and whoever makes that change runs the
+comparison in the new image and brings the tables to its rows: add the rows it
+prints, and take out a row whose key, name or character now needs none. A row is
+never written from a source file, only from what the test printed.
+
+**On another machine two classes are counted and not failed,** because they follow
+the installed libraries and not the rules: a key or a name that only one of the
+two libraries knows, and a direct-Unicode keysym whose character has another case
+in one library's Unicode tables and none in the other's (GLib's and the
+compiler's are of different versions). Their counts are printed with the test's
+output and their rows written to `key-lookups/tolerated-<lookup>.txt`. Every
+other difference fails everywhere. When the rules were written, the host's GTK
+4.24 and the image's GTK 4.22 gave the same rows for every lookup, and neither
+class had a member.
+
+After GTK is deleted nothing checks the rules against GDK: they stay as the
+record of how the 1.x application read and wrote keys. `strata-desktop`'s own
+tests of `Xkb` (`keys/xkb/tests.rs`) need no GDK and stay: a declared key is named
+by the table whatever the library says, a key without a name is written by its
+range and not read back, and the refusals.
+
 ### Scheduling and run costs
 
 `tests/qa.rs` makes every run of every scenario a test of its own, named

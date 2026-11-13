@@ -189,12 +189,19 @@ comments of 2026-11-12, unless another is named.
   the names of keys beyond those the code declares follow the user's installed library,
   and the comparison with GDK is exact only for the test image's pair of GTK and
   `xkbcommon`. Where a user's library names a key the image's does not, or the reverse, a
-  rebinding of that key can be lost at restart or be unreadable by a 1.x release. On the
-  host's versions `xkbcommon` read 361 names GDK refuses, 139 of them not `XF86` keys;
-  the count for the image's pair comes with the backend. Meanwhile, by the orchestrating
-  session's ruling: a refusal list exact for the image's pair, no reading of numbers added
-  to cure it, and every declared key read from Strata's own table whatever library is
-  installed.
+  rebinding of that key can be lost at restart or be unreadable by a 1.x release.
+  Measured with the backend (B_PR): libxkbcommon 1.13 reads 359 names that GDK refuses, and
+  names 321 keys that GDK writes as a number. The backend refuses and numbers all of them:
+  328 names and 306 keys by two rules (GDK names no vendor's keys but XFree86's, and none of
+  XFree86's keys named after the Linux kernel's key codes), and 31 names and 15 keys one by
+  one. GDK reads two names libxkbcommon does not, and writes 16 keys by another name. The
+  image's GTK 4.22 and a developer host's GTK 4.24 gave the same rows throughout. So on the
+  image's pair no name is read on one interface and refused on the other; a user whose
+  libxkbcommon is newer than 1.13 has the names it added outside the two ranges read on
+  Rune and refused by GTK, and how many those are depends on that library. Meanwhile, by
+  the orchestrating session's ruling: the refusal list exact for the image's pair, no
+  reading of numbers added to cure it, and every declared key read from Strata's own table
+  whatever library is installed.
 - **Tab-session restore has no QA scenario.** No scenario seeds or reads `tabs.toml` or
   sets `restore_tabs`, so the ledger holds no interface to the rules for using the shared
   store, which live in GTK code that is deleted at parity (`docs/rune/shared-state.md`,
