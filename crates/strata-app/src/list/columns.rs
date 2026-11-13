@@ -93,22 +93,21 @@ pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     hasher.finish()
 }
 
-/// The five columns in their default order.
+/// The five columns in their default order. None is sortable yet: a sortable heading is a
+/// control that sorts when pressed, and nothing sorts until A10 gives the table `on_sort`
+/// (Name, Size, Type and Modified, as GTK's; Mode never).
 pub(super) fn columns(headings: &Headings) -> Vec<TableColumn<App>> {
     let [name, mode_title, size_title, kind_title, modified_title] = &headings.0;
     let sized = |column: TableColumn<App>, at: usize| column.width(WIDTHS[at]).min(MINIMUMS[at]);
     vec![
-        sized(TableColumn::primary("name", name.clone()), 0).sortable(),
+        sized(TableColumn::primary("name", name.clone()), 0),
         sized(TableColumn::new("mode", mode_title.clone(), mode), 1),
-        sized(TableColumn::new("size", size_title.clone(), size), 2)
-            .align(Align::End)
-            .sortable(),
-        sized(TableColumn::new("type", kind_title.clone(), kind), 3).sortable(),
+        sized(TableColumn::new("size", size_title.clone(), size), 2).align(Align::End),
+        sized(TableColumn::new("type", kind_title.clone(), kind), 3),
         sized(
             TableColumn::new("modified", modified_title.clone(), modified),
             4,
-        )
-        .sortable(),
+        ),
     ]
 }
 
