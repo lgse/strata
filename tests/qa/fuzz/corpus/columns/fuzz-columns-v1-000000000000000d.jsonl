@@ -1,0 +1,6 @@
+{"scenario":"fuzz-columns-v1-000000000000000d","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"shift+End","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Up","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
+{"key":"Escape"}
+{"click":{"entry":"documents"},"mods":["shift"],"when":{"all":[{"present":{"entry":"documents"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}

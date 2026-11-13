@@ -503,6 +503,25 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    and a sidebar-devices package is planned once H5 lands device scenarios. Source: A3's
    closing, 2026-11-13, by the coordinator's ruling.
 
+### F2: Differential mode and Columns pilot
+
+1. **The cursor after a Shift+click** (finding
+   [#2353](https://github.com/lgse/strata/issues/2353)). In Columns, after a Shift+click,
+   GTK's next Down starts from the cursor the click left in place, not from the clicked row,
+   so the user lands two rows lower than expected; GTK draws no outline after the click
+   (`pointer_selection` with Shift, `src/ui/collection_interaction.rs`). Rune starts from the
+   clicked row. Should Rune copy GTK, or keep the clicked row? Meanwhile: Rune keeps its
+   behaviour, and the fuzz seeds that meet it are parked against the finding. Source: F2's
+   pilot triage, 2026-11-13, by the coordinator's ruling.
+2. **An arrow or page key in the rename editor** (finding
+   [#2357](https://github.com/lgse/strata/issues/2357)). On GTK, Up, Down, Page_Up and
+   Page_Down in an inline rename field move focus out of it by the entry's own key navigation,
+   and the field commits the rename on focus-out (`src/ui/collection_edit.rs:235`): the file is
+   renamed by a toolkit side effect, and the cursor moves. Rune keeps editing and moves the
+   caret. Should Rune copy GTK's commit-on-arrow, or keep editing? Meanwhile: Rune keeps
+   editing, and the Columns fuzz alphabet keeps those keys out of its rename editor. Source:
+   F2's pilot triage, 2026-11-13, by the coordinator's ruling.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

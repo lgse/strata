@@ -415,7 +415,7 @@ impl Model {
             p.provisional && self.sel.len() == 1 && p.cursor.is_some_and(|c| self.sel.contains(&c));
         self.cursor = p.cursor;
         self.seen_at = p.cursor.and(p.cursor_index);
-        self.anchor = p.anchor.and(p.cursor);
+        self.anchor = p.anchor.filter(|_| p.cursor.is_some());
     }
 
     fn selected_in_order(&self, s: &ListSource) -> Vec<EntryId> {

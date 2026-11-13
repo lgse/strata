@@ -1,0 +1,4 @@
+{"scenario":"fuzz-columns-v2-0000000000000012","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"x","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Down","when":{"field":{"name":"Rename","focused":true}}}
