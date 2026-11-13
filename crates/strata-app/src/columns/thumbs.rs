@@ -103,9 +103,13 @@ impl Thumbs {
         Step::for_tile(look, ROW_THUMBNAIL, self.scale.get())
     }
 
-    /// The rows' icon: the entry's thumbnail from the window's store, else its icon.
+    /// The rows' icon: the entry's thumbnail from the window's store, else its icon, a file's
+    /// fainter than a folder's, as GTK's Columns rows draw it (`set_base_opacity` in
+    /// `src/ui/browser/columns/rows/bind.rs`).
     pub(super) fn icon(&self, look: &Look) -> Slot<App> {
         icon_slot(shell::thumbnails, self.step(look), ROW_THUMBNAIL)
+            .dim_files()
+            .into()
     }
 
     #[cfg(test)]

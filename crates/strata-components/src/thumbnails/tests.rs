@@ -1365,3 +1365,59 @@ fn a_dropped_viewers_slot_is_reused_fresh() {
     );
     assert_eq!(st.pop(0.3).map(|r| index(r.key)), Some(50));
 }
+
+/// The rule of a placeholder's opacity: a file dims where the view dims files, unless it is
+/// cut; a folder, a folder link, and every entry of a view that does not dim stay at full
+/// opacity; the slot token sets how faint.
+#[test]
+fn a_file_icon_dims_and_a_folder_or_cut_entry_does_not() {
+    use crate::contract::{EntryKind, LinkTarget};
+    use part::file_icon_opacity;
+    let look = strata_kit::look::Look::fallback(false);
+    let dimmed = strata_kit::slots::collection::file_icon_opacity(&look);
+    assert!(dimmed < 1.0);
+    let cases = [
+        ("a file", EntryKind::File, false, true, dimmed),
+        (
+            "a file link",
+            EntryKind::Symlink(LinkTarget::File),
+            false,
+            true,
+            dimmed,
+        ),
+        (
+            "a broken link",
+            EntryKind::Symlink(LinkTarget::Broken),
+            false,
+            true,
+            dimmed,
+        ),
+        ("a folder", EntryKind::Folder, false, true, 1.0),
+        (
+            "a folder link",
+            EntryKind::Symlink(LinkTarget::Folder),
+            false,
+            true,
+            1.0,
+        ),
+        ("a cut file", EntryKind::File, true, true, 1.0),
+        (
+            "a file where files do not dim",
+            EntryKind::File,
+            false,
+            false,
+            1.0,
+        ),
+    ];
+    for (name, kind, cut, dim, expected) in cases {
+        assert_eq!(file_icon_opacity(&look, kind, cut, dim), expected, "{name}");
+    }
+
+    let mut faint = look.clone();
+    faint.slots.collection.file_icon_opacity = Some(0.5);
+    assert_eq!(
+        file_icon_opacity(&faint, EntryKind::File, false, true),
+        0.5,
+        "the token"
+    );
+}

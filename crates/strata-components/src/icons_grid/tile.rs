@@ -23,7 +23,7 @@ use super::Shared;
 use super::caption::Cut;
 use super::metrics::TileMetrics;
 use crate::collection::element::{ContentSlot, ICON, LABEL, RowCx, Slot};
-use crate::thumbnails::{Step, THUMB};
+use crate::thumbnails::{GLYPH, Step, THUMB, icon_opacity};
 
 /// The key of a tile's details line, under its cell (`row-{id}/details`).
 pub const DETAILS: &str = "details";
@@ -127,7 +127,15 @@ fn placeholder(rcx: &RowCx<'_>, points: f32) -> El {
     let glyph = look
         .icon_named(rcx.entry.icon)
         .unwrap_or_else(|| look.icon(fallback));
-    icon(glyph, points).color(tokens::frame_icon(look))
+    // A file's icon draws fainter than a folder's, as Strata's tiles draw it
+    // (`FILE_ICON_OPACITY` in `src/ui/browser_modes/icons_card.rs`).
+    let glyph = icon(glyph, points)
+        .key(GLYPH)
+        .color(tokens::frame_icon(look));
+    match icon_opacity(rcx, true) {
+        opacity if opacity < 1.0 => glyph.opacity(opacity),
+        _ => glyph,
+    }
 }
 
 /// The icon slot: the frame (keyed [`ICON`], so C23's flights fly it, selection and all), with
