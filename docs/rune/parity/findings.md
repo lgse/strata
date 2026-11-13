@@ -725,18 +725,25 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, F2's to fix in C1e (a `contract` pull request), by the coordinator's
   ruling to follow GTK, once GTK's List and Icons are checked.
 
-### #2356: a click on an open folder enters its first entry on GTK, only its column on Rune
+### #2356: after a click on an open folder, GTK reports a focused row it neither draws nor uses
 
-- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2356), filed on
+- **Code:** `oracle`, reclassified on 2026-11-13 from `divergence`. [Issue](https://github.com/lgse/strata/issues/2356), filed on
   2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in the Columns fuzz pilot ([F2](packages/F2.md)). With `pictures` selected and
-  its column open, a click on it moves GTK's focus to `diagram.txt`, in 24 GTK replays of
-  24, so not [#2180](https://github.com/lgse/strata/issues/2180)'s race; Rune focuses the
-  column with no entry, since the Columns part places a cursor only when the browser adds a
-  column.
+  its column open, a click on it reveals the column (`activate_column_entry`,
+  `src/ui/browser/columns/state.rs`), and GTK's keyboard focus goes to its first row's widget,
+  which GTK's QA snapshot reports as `focused` (`diagram.txt`), in 24 GTK replays of 24. But a
+  screenshot shows no cursor drawn in the column and nothing selected, and the next Down lands
+  on that first entry and selects it, since GtkListView's own cursor is unset. Rune gives the
+  column the keyboard with no cursor and reports no focused entry; its next Down lands on the
+  first entry too. So the screen and the next key agree; only GTK's report differs, as in
+  [#2351](https://github.com/lgse/strata/issues/2351).
 - **Concerns:** seed `0x10` of `columns v1`, shrunk to 4 steps and parked in
   `tests/qa/fuzz/corpus/columns/`.
-- **State:** open, F2's to fix in the Columns part.
+- **On `main`:** the third case of bug [#2361](https://github.com/lgse/strata/issues/2361), GTK's QA snapshot faults.
+- **State:** open, set aside: no Rune change. A fix that gave Rune's column a cursor
+  ([#2368](https://github.com/lgse/strata/pull/2368)) was closed unmerged: it made Rune's next
+  Down move on where GTK's lands on the first entry, as a list with no cursor does ([#2367](https://github.com/lgse/strata/issues/2367)).
 
 ### #2357: Up, Down or a page key in the rename editor commits on GTK, not on Rune
 
@@ -784,3 +791,14 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** ruled by the coordinator (2026-11-14): C6 stays as it is, since a screen reader
   hears the same name; the run takes an `a11y` twin once it can otherwise flip, after
   [A21](packages/A21.md)'s second window. [A5](packages/A5.md)'s, or whoever flips the run.
+
+### #2367: withdrawn, an artifact of a fix that did not merge
+
+- **Code:** `divergence`, withdrawn. [Issue](https://github.com/lgse/strata/issues/2367), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F2](packages/F2.md), on a probe of [#2368](https://github.com/lgse/strata/pull/2368): after a click on an open folder,
+  GTK's first Down selects the column's first entry in place, where Rune with #2368 moved on.
+  #2368 had given Rune's column a real cursor; GTK's has none (see #2356), so its first Down
+  lands on the first entry, as Rune without #2368 does. With a cursor and nothing selected by
+  Escape, Down moves on in Columns, List and Icons on both targets.
+- **State:** withdrawn: #2368 was closed unmerged, and there is nothing left to fix.
