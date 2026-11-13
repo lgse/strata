@@ -94,7 +94,16 @@ impl<'a> Mount<'a> {
 
     pub(super) fn renames_over(&self, name: &OsStr) -> bool {
         units(name.as_encoded_bytes()) <= LONGEST_NAME_NTFS_3G_RENAMES_OVER
-            || !mount_profile::known(self.fs, self.dir, self.key()).cuts_long_names_renamed_over
+            || !self.known().cuts_long_names_renamed_over
+    }
+
+    /// Whether a folder may be renamed over an empty placeholder at `name`.
+    pub(super) fn renames_folder_over(&self, name: &OsStr) -> bool {
+        !self.known().renames_folders_in_steps && self.renames_over(name)
+    }
+
+    fn known(&self) -> MountCapabilities {
+        mount_profile::known(self.fs, self.dir, self.key())
     }
 }
 
@@ -272,14 +281,15 @@ pub(in crate::adapters::local_operations) fn links_hold(
     mount.capabilities().hard_links == Some(true)
 }
 
-/// Whether a staged entry could be placed in `dir`; `None` until the mount
-/// is known, without probing it.
-pub(in crate::adapters::local_operations) fn can_place(
+/// Whether a new folder in `dir` is built in a stage and placed once complete. It is made
+/// under its own name where the mount is known to place no folder, and where its daemon may
+/// leave a filled stage split between both names when it is renamed.
+pub(in crate::adapters::local_operations) fn stages_folders(
     fs: &dyn FsOps,
     dir: BorrowedFd<'_>,
-    directory: bool,
-) -> Option<bool> {
-    placeable(Mount::new(fs, dir).capabilities(), directory)
+) -> bool {
+    let known = Mount::new(fs, dir).known();
+    !known.renames_folders_in_steps && placeable(known, true) != Some(false)
 }
 
 /// Whether an existing entry in `dir` can be moved aside without risking a

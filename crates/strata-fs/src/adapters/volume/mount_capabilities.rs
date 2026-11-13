@@ -47,6 +47,7 @@ pub(crate) struct MountCapabilities {
     pub silly_names: Option<SillyNames>,
     pub attribute_cache: Option<Duration>,
     pub cuts_long_names_renamed_over: bool,
+    pub renames_folders_in_steps: bool,
     pub names: Option<MountNames>,
     pub strictness: Strictness,
     pub symlinks: Option<bool>,

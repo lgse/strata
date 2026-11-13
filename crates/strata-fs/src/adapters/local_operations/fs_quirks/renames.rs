@@ -82,6 +82,10 @@ impl Scope {
                 OverEmptyDirectory::Supported => {}
                 OverEmptyDirectory::NotEmpty => return Err(Errno::NOTEMPTY),
                 OverEmptyDirectory::Eperm => return Err(Errno::PERM),
+                OverEmptyDirectory::InSteps => {
+                    make_subfolders(from, to);
+                    return Err(Errno::IO);
+                }
             }
         }
         self.cut_rename_over_name(to)?;
@@ -227,6 +231,27 @@ fn replaces_empty_folder(from: Entry<'_>, to: Entry<'_>) -> bool {
     let target_is_empty_directory = System.stat(to, false).is_ok_and(|stat| stat.is_directory())
         && System.names(to).is_ok_and(|names| names.is_empty());
     source_is_directory && target_is_empty_directory
+}
+
+fn make_subfolders(from: Entry<'_>, to: Entry<'_>) {
+    let path = |entry: Entry<'_>| path_of(entry.dir).map(|dir| dir.join(entry.name));
+    if let (Some(from), Some(to)) = (path(from), path(to)) {
+        make_subfolders_in(&from, &to);
+    }
+}
+
+fn make_subfolders_in(from: &Path, to: &Path) {
+    let subfolders = std::fs::read_dir(from)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()));
+    for subfolder in subfolders {
+        let made = to.join(subfolder.file_name());
+        if std::fs::create_dir(&made).is_ok() {
+            make_subfolders_in(&subfolder.path(), &made);
+        }
+    }
 }
 
 impl State {

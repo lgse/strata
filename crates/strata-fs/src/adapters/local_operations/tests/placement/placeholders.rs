@@ -72,6 +72,66 @@ fn an_empty_own_placeholder_rejected_means_unsupported() -> Result<(), Box<dyn E
 }
 
 #[test]
+fn a_daemon_that_renames_folders_in_steps_gets_no_placeholder_folder() -> Result<(), Box<dyn Error>>
+{
+    use Placed::{AfterCheck, OverReservedFile, ReservedDirectory};
+    type Row = (&'static str, Preset, bool, bool, Result<Placed, PlaceError>);
+    let rows: [Row; 4] = [
+        ("rclone folder", Quirks::rclone, true, false, Ok(AfterCheck)),
+        (
+            "rclone folder, name taken meanwhile",
+            Quirks::rclone,
+            true,
+            true,
+            Err(PlaceError::Exists),
+        ),
+        (
+            "rclone file",
+            Quirks::rclone,
+            false,
+            false,
+            Ok(OverReservedFile),
+        ),
+        (
+            "sshfs folder",
+            Quirks::sshfs,
+            true,
+            false,
+            Ok(ReservedDirectory),
+        ),
+    ];
+    for (row, preset, folder, arrives, expected) in rows {
+        let root = tempfile::tempdir()?;
+        let source = root.path().join("source");
+        let target = root.path().join("target");
+        let mut quirks = preset();
+        if arrives {
+            let arrival = target.clone();
+            let racer: Racer = Box::new(move || fs::create_dir(&arrival).expect("arrival"));
+            quirks.after.push((Op::Rename, "target", 0, racer));
+        }
+        let _scope = FsQuirks::install(root.path(), quirks);
+        make(&source, folder)?;
+        let original = identity(&source);
+
+        assert_eq!(
+            place_in(root.path(), "source", "target", Some(original)),
+            expected,
+            "{row}"
+        );
+
+        if arrives {
+            assert_eq!(names(root.path())?, ["source", "target"], "{row}");
+            assert_eq!(identity(&source), original, "{row}");
+            assert!(names(&target)?.is_empty(), "{row}");
+        } else {
+            assert_only(root.path(), "target", original, row)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn an_ambiguous_rename_failure_is_resolved_by_identity() -> Result<(), Box<dyn Error>> {
     for (quirks, folder, placed) in [
         (Quirks::default(), true, Placed::Renamed),

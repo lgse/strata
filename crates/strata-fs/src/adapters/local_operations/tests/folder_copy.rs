@@ -655,29 +655,57 @@ fn a_stopped_merge_leaves_nothing_partial_at_a_real_name() -> Result<(), Box<dyn
 }
 
 #[test]
-fn a_folder_is_copied_in_place_where_nothing_can_place_it() -> Result<(), Box<dyn Error>> {
+fn a_folder_is_copied_in_place_where_no_stage_can_be_placed_whole() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
-    let root = tempfile::tempdir()?;
-    let source = root.path().join("source");
-    fs::create_dir_all(source.join("nested"))?;
-    fs::write(source.join("nested/file.txt"), b"contents")?;
-    let destination = root.path().join("destination");
-    fs::create_dir(&destination)?;
-    let scope = FsQuirks::install(&destination, Quirks::without_folder_placement());
-    learn_mount_capability(scope.key(), |capabilities| {
+    type Learned = fn(&mut MountCapabilities);
+    let unplaceable: Learned = |capabilities| {
         capabilities.no_replace = Some(false);
         capabilities.hard_links = Some(true);
         capabilities.rename_over_empty_directory = Some(false);
-    });
+    };
+    let rows: [(&str, Preset, Option<Learned>); 2] = [
+        (
+            "no step places a folder",
+            Quirks::without_folder_placement,
+            Some(unplaceable),
+        ),
+        ("the daemon renames folders in steps", Quirks::rclone, None),
+    ];
+    for (row, preset, learned) in rows {
+        let root = tempfile::tempdir()?;
+        let source = root.path().join("source");
+        fs::create_dir_all(source.join("nested"))?;
+        fs::write(source.join("nested/file.txt"), b"contents")?;
+        let merged = root.path().join("merged");
+        fs::create_dir_all(merged.join("added"))?;
+        fs::write(merged.join("added/new.txt"), b"new")?;
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+        let scope = FsQuirks::install(&destination, preset());
+        if let Some(learned) = learned {
+            learn_mount_capability(scope.key(), learned);
+        }
+        let target = destination.join("target");
 
-    copy(&source, &destination.join("target"))?;
+        copy(&source, &target).map_err(|error| format!("{row}: {error}"))?;
+        glib::MainContext::default()
+            .block_on(copy_recursively(
+                gio::File::for_path(&merged),
+                gio::File::for_path(&target),
+                true,
+                gio::Cancellable::new(),
+            ))
+            .map_err(|error| format!("{row}: {error}"))?;
 
-    assert_eq!(names(&destination)?, ["target"]);
-    assert_eq!(
-        fs::read(destination.join("target/nested/file.txt"))?,
-        b"contents"
-    );
-    assert!(!scope.used_name(".strata-*"), "{:?}", scope.calls());
+        assert_eq!(names(&destination)?, ["target"], "{row}");
+        assert_eq!(
+            fs::read(target.join("nested/file.txt"))?,
+            b"contents",
+            "{row}"
+        );
+        assert_eq!(fs::read(target.join("added/new.txt"))?, b"new", "{row}");
+        assert!(!scope.used_name(".strata-*"), "{row}: {:?}", scope.calls());
+    }
     Ok(())
 }
 

@@ -331,6 +331,30 @@ fn network_and_fuse_filesystems_are_remote_and_written_from_elsewhere() {
     }
 }
 
+#[test]
+fn only_fuse_daemons_over_remote_storage_rename_folders_in_steps() {
+    for (fs_type, in_steps) in [
+        ("fuse.rclone", true),
+        ("fuse.s3fs", true),
+        ("fuse.gvfsd-fuse", true),
+        ("fuse", true),
+        ("fuse.sshfs", false),
+        ("fuseblk", false),
+        ("fuse.mergerfs", false),
+        ("fuse.gocryptfs", false),
+        ("fusectl", false),
+        ("nfs4", false),
+        ("cifs", false),
+        ("ext4", false),
+    ] {
+        let mount = MountType {
+            fs_type: fs_type.to_owned(),
+            super_options: String::new(),
+        };
+        assert_eq!(mount.renames_folders_in_steps(), in_steps, "{fs_type}");
+    }
+}
+
 /// The lab's mountinfo lines (2026-10-14), then options it did not mount.
 const NAME_MOUNTS: &str = "\
 1241 1219 0:135 / /tmp rw,nosuid,nodev,relatime - tmpfs tmpfs rw,size=16777216k,inode64,huge=advise
