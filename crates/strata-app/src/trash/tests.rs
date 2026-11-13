@@ -166,3 +166,113 @@ fn outside_columns_delete_with_nothing_selected_trashes_nothing() {
         },
     );
 }
+
+fn nodes<'a>(node: &'a serde_json::Value, role: &str, found: &mut Vec<&'a serde_json::Value>) {
+    for child in node["children"].as_array().map_or(&[][..], Vec::as_slice) {
+        if child["role"] == role {
+            found.push(child);
+        }
+        nodes(child, role, found);
+    }
+}
+
+/// The open dialog's name and the name of the button that has the keyboard.
+fn dialog(host: &Offscreen) -> Option<(String, Option<String>)> {
+    let tree = host.tree();
+    let mut dialogs = Vec::new();
+    nodes(&tree, "dialog", &mut dialogs);
+    let dialog = dialogs.first()?;
+    let mut buttons = Vec::new();
+    nodes(dialog, "button", &mut buttons);
+    nodes(dialog, "default-button", &mut buttons);
+    let focused = buttons.iter().find(|button| {
+        button["states"]
+            .as_array()
+            .is_some_and(|states| states.iter().any(|state| state == "focused"))
+    });
+    let name = |node: &serde_json::Value| node["name"].as_str().unwrap_or_default().to_owned();
+    Some((name(dialog), focused.map(|button| name(button))))
+}
+
+fn wait_for_dialog(host: &mut Offscreen) -> (String, Option<String>) {
+    let shown = host.run_until(PATIENCE, |host| dialog(host).is_some());
+    let opened = dialog(host);
+    assert!(shown, "no dialog");
+    opened.expect("the dialog")
+}
+
+fn wait_for_no_dialog(host: &mut Offscreen) {
+    let closed = host.run_until(PATIENCE, |host| dialog(host).is_none());
+    assert!(closed, "the dialog stayed: {:?}", dialog(host));
+}
+
+/// `permanent-delete-symlinked-parent`'s keys: Shift+Delete asks, with the delete focused;
+/// Escape keeps the file; asked again, Return deletes it for good, past the Trash.
+#[test]
+fn shift_delete_asks_and_deletes_for_good_only_when_confirmed() {
+    hosted(
+        MODULE,
+        "shift_delete_asks_and_deletes_for_good_only_when_confirmed",
+        |mut host| {
+            let folder = listed(&mut host);
+            let todo = folder.path().join("todo.txt");
+            select(&mut host, &Location::local(&todo));
+            let shift = Mods {
+                shift: true,
+                ..Mods::default()
+            };
+
+            key(&mut host, Key::Delete, shift);
+            let (name, focused) = wait_for_dialog(&mut host);
+            assert_eq!(name, "Permanently delete 1 item?");
+            assert_eq!(focused.as_deref(), Some("Permanently delete 1 item"));
+            key(&mut host, Key::Escape, Mods::default());
+            wait_for_no_dialog(&mut host);
+            host.run_until(std::time::Duration::from_millis(300), |_| false);
+            assert!(todo.exists(), "Escape deleted it");
+
+            key(&mut host, Key::Delete, shift);
+            wait_for_dialog(&mut host);
+            key(&mut host, Key::Enter, Mods::default());
+            assert!(host.run_until(PATIENCE, |_| !todo.exists()), "not deleted");
+            wait_for_no_dialog(&mut host);
+            assert_eq!(trashed_count(), 0, "it went past the Trash");
+        },
+    );
+}
+
+/// `report_partial_failure`: a trash the location could not do for some items, with nothing
+/// else failed, asks to delete those for good, with Cancel focused since the user asked for
+/// the Trash.
+#[test]
+fn a_trash_the_location_refused_asks_to_delete_for_good() {
+    hosted(
+        MODULE,
+        "a_trash_the_location_refused_asks_to_delete_for_good",
+        |mut host| {
+            let folder = listed(&mut host);
+            let todo = Location::local(folder.path().join("todo.txt"));
+            host.runtime().update(|app: &mut App, _| {
+                let entry = app
+                    .browser
+                    .entries_named(&std::collections::HashSet::from(["todo.txt".to_owned()]))
+                    .pop()
+                    .expect("the entry");
+                app.trash.trashing = vec![entry];
+                super::completed_with_errors(
+                    app,
+                    super::Failed {
+                        retryable: vec![todo.clone()],
+                        others_failed: false,
+                    },
+                );
+            });
+            let (name, focused) = wait_for_dialog(&mut host);
+            assert_eq!(name, "Permanently delete 1 item?");
+            assert_eq!(focused.as_deref(), Some("Cancel"));
+            key(&mut host, Key::Enter, Mods::default());
+            wait_for_no_dialog(&mut host);
+            assert!(folder.path().join("todo.txt").exists(), "Cancel deleted it");
+        },
+    );
+}

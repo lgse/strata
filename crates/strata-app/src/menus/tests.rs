@@ -318,6 +318,7 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "open",
                     "rename",
                     "trash",
+                    "delete",
                     "select-all",
                     "refresh",
                     "hidden"

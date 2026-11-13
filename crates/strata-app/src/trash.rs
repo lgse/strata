@@ -1,76 +1,155 @@
 // SPDX-License-Identifier: MIT
 
-//! Move to Trash: Delete in the default map, and the entry menu's Move to Trash row
-//! (`request_delete` in `src/ui/browser/trash.rs`).
+//! Deleting: Move to Trash and Permanently Delete, by their keys and the entry menu's rows,
+//! and the confirmation GTK asks first (`request_delete` in `src/ui/browser/trash.rs`).
 //!
-//! - **The key.** The dispatcher's `dismissal` stage reads it with Ctrl, Alt or Super held
-//!   too, outside a text field (`delete_kind` and `confirms_delete` in
-//!   `src/ui/window/keyboard/items.rs`). It acts on the active column's selection, or the
-//!   cursor's entry when nothing is selected there, else on the folder the keyboard entered
-//!   (`confirm_delete` in `src/ui/browser/view_edit.rs`). The 10xer map's D is 10xer mode's
-//!   own stage, A11's.
-//! - **The menu row** acts on the selection when the row's entry is in it, else on the entry
+//! - **The keys.** The dispatcher's `dismissal` stage reads Delete and Shift+Delete in the
+//!   default map, with Ctrl, Alt or Super held too, outside a text field (`delete_kind` and
+//!   `confirms_delete` in `src/ui/window/keyboard/items.rs`). In Columns they act on the active
+//!   column's selection, or its cursor's entry, else on the folder the keyboard entered; in the
+//!   other views on the selection or that folder (`confirm_delete` in
+//!   `src/ui/browser/view_edit.rs`). In the Trash, Delete deletes for good. 10xer's D and
+//!   Shift+D are 10xer mode's own stage, A11's.
+//! - **The menu rows** act on the selection when the row's entry is in it, else on the entry
 //!   alone (`context_entries` in `src/ui/browser/context_menu.rs`).
 //! - **What happens.** Nothing inside a trashed folder can be removed alone, and nothing is
-//!   asked for one. Otherwise the items go to the Trash: a folder whose column is open gives
-//!   the keyboard to its row in the folder above first, so the deletion moves the cursor on
-//!   to a neighbour (`leave_folder_being_deleted`). Undo puts them back (`undo.rs`).
+//!   asked for one. A permanent delete, and a trash where the location deletes but cannot
+//!   trash, ask first ([`dialog`]). Otherwise the items go to the Trash. Either way a folder
+//!   whose column is open gives the keyboard to its row in the folder above first, so the
+//!   deletion moves the cursor on to a neighbour (`leave_folder_being_deleted`). Undo puts
+//!   trashed items back (`undo.rs`).
+//! - **A trash that fails for some items** because the location cannot trash them asks to
+//!   delete those permanently, when nothing else failed (`report_partial_failure` in
+//!   `src/ui/browser/events/operations.rs`).
+//! - **The dialog's buttons** only queue what they do: the part's `poll` hands it to the
+//!   browser, with the handler's `Tx` the button lacks.
 //!
 //! Left out, with what brings each back:
 //!
-//! - **The confirmation dialogs**: Shift+Delete and the Permanently Delete row, Delete in
-//!   the Trash itself, and the fallback where a location can delete but not trash
-//!   (`show_delete_dialog`). Until they land, those cases do nothing, and Delete there is
-//!   left to the view.
+//! - **"Completed with errors"**, GTK's message for a failure with nothing to retry, and its
+//!   form with a retry button beside failures that cannot be retried: the error dialog the
+//!   location bar's package makes the window's (A5).
 //! - **The fly-to-trash animation** (`prepare_fly_to_trash`): C23's trash flight.
 //! - **A recursive search's own selection** (`selected_search_results`): A10's.
-//! - **A trash that fails for some items** (`on_operation_completed_with_errors` in
-//!   `src/ui/browser/events/operations.rs`): GTK shows "Completed with errors" and offers to
-//!   delete the items it could not trash permanently. Here the failure is silent; the report
-//!   and its retry come with the confirmation dialogs, which the retry opens.
 
 use rune::Tx;
 use strata_core::model::{FileEntry, Location};
-use strata_desktop::keys::{Map, Modifiers, bindings::MOVE_TO_TRASH};
+use strata_desktop::keys::{
+    Map, Modifiers,
+    bindings::{DELETE_PERMANENTLY, MOVE_TO_TRASH},
+};
+use strata_fs::app::BrowserEvent;
 
 use crate::{
     App,
-    commands::{Action, Call, Keys, On, Outcome, Stage},
+    commands::{Action, Call, Holds, Keys, On, Outcome, Stage},
     shell,
-    slots::{At, Frame, Part, Place, Setup},
+    slots::{At, Later, Listener, Part, Place, Setup},
 };
+
+mod dialog;
+mod sizes;
+
+use dialog::{Confirm, Kind};
+use sizes::{Reach, deletion_reach, permanent_delete_subtitle, size_text};
 
 /// What `delete_kind` lets be held.
 const DELETE_MODIFIERS: Modifiers = Modifiers::CONTROL_MASK
     .union(Modifiers::ALT_MASK)
     .union(Modifiers::SUPER_MASK);
 
-/// The part holds nothing yet: what it will hold is the confirmation dialog it leaves out.
-pub(crate) struct Trash;
+/// What a dialog button asked, for the part's next `poll`.
+enum Queued {
+    Delete,
+    Cancel,
+}
 
-/// Nothing is drawn: the rows leave, and the dialogs are left out.
-fn nothing(app: &App, _: &mut Frame<'_, App>) -> Option<rune::El> {
-    // Goes when the confirmation dialog's state lands here.
-    let Trash = &app.trash;
-    None
+pub(crate) struct Trash {
+    later: Later<App>,
+    /// The confirmation, kept after it closes for its closing motion.
+    confirm: Option<Confirm>,
+    open: bool,
+    queued: Option<Queued>,
+    /// Counts the confirmations, so a size task's answer finds its own.
+    opened: u64,
+    /// What the last Move to Trash asked for (`pending_delete_entries`): what a partial
+    /// failure's retry may delete.
+    trashing: Vec<FileEntry>,
+}
+
+/// A trash that some items failed (`OperationCompletedWithErrors`).
+struct Failed {
+    retryable: Vec<Location>,
+    others_failed: bool,
 }
 
 impl Part for Trash {
-    const PLACE: Place<App> = Place::Overlays(nothing);
+    const PLACE: Place<App> = Place::Dialogs(dialog::build);
 
-    fn new(_: &Setup<'_>) -> Self {
-        Self
+    fn new(setup: &Setup<'_>) -> Self {
+        Self {
+            later: setup.later.clone(),
+            confirm: None,
+            open: false,
+            queued: None,
+            opened: 0,
+            trashing: Vec::new(),
+        }
     }
 
-    const COMMANDS: &'static [Action<App>] = &[Action::new("trash", trashed)
-        .command(MOVE_TO_TRASH)
-        .keys(&[Keys::at(
-            Stage::Dismissal,
-            &[MOVE_TO_TRASH
-                .in_map(Map::Default)
-                .ignoring(DELETE_MODIFIERS)],
-        )
-        .when(|_, at| !at.text())])];
+    fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
+        Some(Box::new(|event, _, heard| {
+            if let BrowserEvent::OperationCompletedWithErrors {
+                retryable_locations,
+                has_non_retryable_failures,
+                ..
+            } = event
+            {
+                let failed = Failed {
+                    retryable: retryable_locations.clone(),
+                    others_failed: *has_non_retryable_failures,
+                };
+                heard.then(move |app: &mut App, _: &mut Tx| completed_with_errors(app, failed));
+            }
+        }))
+    }
+
+    fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
+        let Some(queued) = app.trash.queued.take() else {
+            return false;
+        };
+        match queued {
+            Queued::Delete => delete_confirmed(app),
+            Queued::Cancel => return_cursor(app),
+        }
+        shell::settle(app, tx);
+        true
+    }
+
+    fn keyboard(app: &App) -> Option<Holds> {
+        app.trash.open.then_some(Holds::Modal { field: false })
+    }
+
+    const COMMANDS: &'static [Action<App>] = &[
+        Action::new("trash", trashed)
+            .command(MOVE_TO_TRASH)
+            .keys(&[Keys::at(
+                Stage::Dismissal,
+                &[MOVE_TO_TRASH
+                    .in_map(Map::Default)
+                    .ignoring(DELETE_MODIFIERS)],
+            )
+            .when(|_, at| !at.text())]),
+        Action::new("delete", deleted)
+            .command(DELETE_PERMANENTLY)
+            .keys(&[Keys::at(
+                Stage::Dismissal,
+                &[DELETE_PERMANENTLY
+                    .in_map(Map::Default)
+                    .ignoring(DELETE_MODIFIERS)],
+            )
+            .when(|_, at| !at.text())]),
+    ];
 }
 
 fn is_trash(location: &Location) -> bool {
@@ -166,33 +245,171 @@ fn leave_folder_being_deleted(app: &App, entries: &[FileEntry]) {
     }
 }
 
-/// `request_delete` for what goes to the Trash. `Declined` where GTK asks first, which this
-/// interface cannot yet.
+/// `request_delete`.
 fn request(app: &mut App, entries: Vec<FileEntry>, permanent: bool) -> Outcome {
     if entries.iter().any(|entry| !can_remove(&entry.location)) {
         return Outcome::Ran;
     }
-    if permanent || trash_unsupported(app, &entries) {
-        tracing::debug!("a deletion GTK confirms first, and this interface has no dialog yet");
-        return Outcome::Declined;
+    if permanent {
+        show(app, entries, Kind::Permanent);
+    } else if trash_unsupported(app, &entries) {
+        show(app, entries, Kind::TrashUnavailable);
+    } else {
+        move_to_trash(app, entries);
     }
-    leave_folder_being_deleted(app, &entries);
-    app.browser.delete(entries, false);
-    app.browser.focus_active();
     Outcome::Ran
 }
 
-fn trashed(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    let (entries, in_trash) = match call.on {
+/// `move_to_trash`.
+fn move_to_trash(app: &mut App, entries: Vec<FileEntry>) {
+    leave_folder_being_deleted(app, &entries);
+    app.trash.trashing.clone_from(&entries);
+    app.browser.delete(entries, false);
+    app.browser.focus_active();
+}
+
+/// The menu's or the key's items, and whether their folder is the Trash.
+fn targets(app: &App, on: On) -> Option<(Vec<FileEntry>, bool)> {
+    let (entries, in_trash) = match on {
         On::Focus => focused_entries(app),
         On::Row(at) => row_entries(app, at),
-        // A folder's menu has no Move to Trash row.
-        On::Column(_) => return Outcome::Declined,
+        // A folder's menu has no delete rows.
+        On::Column(_) => return None,
     };
-    if entries.is_empty() {
-        return Outcome::Declined;
+    (!entries.is_empty()).then_some((entries, in_trash))
+}
+
+/// Delete, and the Move to Trash row: for good in the Trash.
+fn trashed(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
+    match targets(app, call.on) {
+        Some((entries, in_trash)) => request(app, entries, in_trash),
+        None => Outcome::Declined,
     }
-    request(app, entries, in_trash)
+}
+
+/// Shift+Delete, and the Permanently Delete row.
+fn deleted(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
+    match targets(app, call.on) {
+        Some((entries, _)) => request(app, entries, true),
+        None => Outcome::Declined,
+    }
+}
+
+/// `show_delete_dialog`: the confirmation opens over the window, and its size task starts.
+fn show(app: &mut App, entries: Vec<FileEntry>, kind: Kind) {
+    let reach = deletion_reach(&entries);
+    let trash = &mut app.trash;
+    trash.opened += 1;
+    let mut confirm = Confirm::new(entries, kind, reach, trash.opened);
+    confirm.cursor = app
+        .browser
+        .focused_item()
+        .map(|(depth, _, entry)| (depth, entry.location));
+    let entries = confirm.entries.clone();
+    let generation = confirm.generation;
+    trash.confirm = Some(confirm);
+    trash.open = true;
+    trash.queued = None;
+    size_in_background(&trash.later, entries, reach, generation);
+}
+
+/// `spawn_delete_size_task`: the total, and each listed file link's size, off the interface
+/// thread's turn.
+fn size_in_background(later: &Later<App>, entries: Vec<FileEntry>, reach: Reach, generation: u64) {
+    let later = later.clone();
+    glib::MainContext::default().spawn_local(async move {
+        let mut links = Vec::new();
+        let summary = sizes::aggregate_directory_summary(&entries, |index, size| {
+            links.push((index, size_text(size)));
+        })
+        .await;
+        let subtitle = permanent_delete_subtitle(reach, &summary);
+        later.then(move |app: &mut App, _| {
+            let Some(confirm) = app
+                .trash
+                .confirm
+                .as_mut()
+                .filter(|confirm| confirm.generation == generation)
+            else {
+                return false;
+            };
+            confirm.subtitle = subtitle;
+            confirm.sizing = false;
+            for (index, text) in links {
+                if let Some(metadata) = confirm.metadata.get_mut(index) {
+                    *metadata = text;
+                }
+            }
+            true
+        });
+    });
+}
+
+/// The delete button: the dialog closes and the items go for good
+/// (`delete_confirmed_permanently`).
+fn confirmed(app: &mut App) {
+    if app.trash.open {
+        app.trash.open = false;
+        app.trash.queued = Some(Queued::Delete);
+    }
+}
+
+/// Cancel, Escape, the close button and a click outside.
+fn cancelled(app: &mut App) {
+    if app.trash.open {
+        app.trash.open = false;
+        app.trash.queued = Some(Queued::Cancel);
+    }
+}
+
+fn delete_confirmed(app: &mut App) {
+    let Some(confirm) = app.trash.confirm.as_ref() else {
+        return;
+    };
+    let entries = confirm.entries.clone();
+    let remote = confirm.reach == Reach::Remote;
+    leave_folder_being_deleted(app, &entries);
+    app.browser.delete_permanently(entries, remote);
+    app.browser.focus_active();
+}
+
+/// `return_cursor_on_cancel`: a cursor something moved while the dialog was open goes back
+/// to the items it asked about.
+fn return_cursor(app: &mut App) {
+    let Some(confirm) = app.trash.confirm.as_ref() else {
+        return;
+    };
+    let Some((depth, cursor)) = confirm.cursor.clone() else {
+        return;
+    };
+    let stayed = app
+        .browser
+        .focused_item()
+        .is_some_and(|(now, _, entry)| now == depth && entry.location == cursor);
+    if !stayed {
+        let locations: Vec<Location> = std::iter::once(cursor)
+            .chain(confirm.entries.iter().map(|entry| entry.location.clone()))
+            .collect();
+        app.browser
+            .select_shown_entries_by_location_at(depth, &locations);
+    }
+}
+
+/// `on_operation_completed_with_errors` and `report_partial_failure`, for what a trash
+/// failed: the items the location could not trash may go for good, when nothing else failed.
+fn completed_with_errors(app: &mut App, failed: Failed) -> bool {
+    let trashing = std::mem::take(&mut app.trash.trashing);
+    // `retryable_delete_entries`.
+    let retryable: Vec<FileEntry> = trashing
+        .into_iter()
+        .filter(|entry| failed.retryable.contains(&entry.location))
+        .collect();
+    if retryable.is_empty() || failed.others_failed {
+        tracing::warn!("an operation completed with errors, and this interface has no report yet");
+        return false;
+    }
+    show(app, retryable, Kind::TrashUnavailable);
+    true
 }
 
 #[cfg(test)]
