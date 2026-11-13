@@ -825,4 +825,7 @@ sequence only together with the alphabet's version, so the version is part of th
   as the browser's views do; C18's results are a C1e collection, so a Shift+click after it
   would range from the right-clicked result.
 - **Concerns:** C18's results, once hosted on Rune. Not yet run: no package hosts them.
-- **State:** open, [A10](packages/A10.md)'s (search, filter and sort), noted in its file.
+- **State:** open, [A10](packages/A10.md)'s (search, filter and sort), noted in its file. When
+  A10 takes it, it also checks a filtered Columns column: GTK's `focus_search_result` has a
+  Columns branch (`column.selection.select_item`), and whether that reaches the browser's
+  no-anchor rule (`set_selection` in `strata-fs`) has not been traced.
