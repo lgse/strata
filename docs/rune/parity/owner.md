@@ -489,6 +489,14 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    Rune's clicked column takes it. Closed by Escape, both return it to the files. Should Rune
    copy GTK's? Meanwhile: Rune's, and the `location` alphabet makes no click while a dialog
    shows. Source: A5's fuzz alphabet, 2026-11-14.
+4. **Three smaller differences of the pane header and the crumbs.** (a) A press held on Back
+   opens the back history after 0.5 s however far the pointer moves; GTK's long press is
+   cancelled once the pointer passes the drag threshold. (b) Escape while that press is held
+   closes the history, and the press, released over Back afterwards, goes back; GTK's long
+   press has claimed the press by then, so its release goes nowhere. (c) The crumbs'
+   hierarchy menu shows the arrow over its items, rune-kit's `Menu`'s, where GTK gives each
+   a pointer (`src/ui/browser/location/breadcrumbs.rs`). Should Rune copy each? Meanwhile:
+   Rune's stays. Source: A5's closing, 2026-11-14, by the coordinator's ruling.
 
 ### A8: View switching and appearance
 
