@@ -12,9 +12,9 @@
 //! - **A named key** is itself.
 //! - **A character** is read by `KeyPress::from_signal`, the shared crate's reading of a press
 //!   that has no GDK event: the label first, then the US key at the position, the digit row
-//!   by position, and the Shift a symbol consumes. The character is always given as
-//!   `Key::from_char` gives it, which is what makes that reading right on the table key
-//!   backend: the backend has no character for a legacy keysym, and this never passes one.
+//!   by position, and the Shift a symbol consumes. The character is given as
+//!   `Key::from_char` gives it: the key GDK has for that character, which for a Cyrillic or
+//!   Greek letter is the keysym a layout delivers, so a press records the key GTK records.
 //! - **What Rune's modifiers do not say** is worked out: Caps Lock from an uppercase
 //!   character with no Shift, and a level above Shift's (AltGr) from a character that is
 //!   neither the key's base nor typed with Shift.

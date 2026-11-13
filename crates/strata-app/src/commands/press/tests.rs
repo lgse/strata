@@ -139,6 +139,38 @@ fn a_chord_on_a_layout_without_ascii_is_the_us_key_and_says_it_fell_back() {
     assert!(!latin.used_fallback(), "{latin:?}");
 }
 
+/// A letter beyond ASCII is the key GDK has for it, lowered, with the Shift that typed its
+/// capital kept: what the GTK application would record for the same press.
+#[test]
+fn a_letter_beyond_ascii_is_recorded_as_gdk_records_it() {
+    let cases = [
+        (
+            "ru: я with no key to fall back to",
+            typed('я', NONE, NOWHERE),
+            Binding::plain(Key::from_keysym(0x6d1)),
+        ),
+        (
+            "ru: Shift+Я",
+            typed('Я', SHIFT, NOWHERE),
+            Binding::shift(Key::from_keysym(0x6d1)),
+        ),
+        (
+            "É typed with no Shift, under Caps Lock, is é",
+            typed('É', NONE, NOWHERE),
+            Binding::plain(Key::from_keysym(0xe9)),
+        ),
+        (
+            "pl: ą at a level above Shift's",
+            typed('ą', NONE, at(At::KeyA, 'a')),
+            Binding::plain(Key::from_keysym(0x1b1)),
+        ),
+    ];
+    for (case, press, binding) in cases {
+        assert_eq!(press.binding(), Some(binding), "{case}: {press:?}");
+        assert!(press.is(binding), "{case}: {press:?}");
+    }
+}
+
 /// The default in force for the eighth key case (`docs/rune/parity/owner.md`, B3): where
 /// only the level typed is not ASCII, Rune has dropped the character, the base says nothing
 /// was replaced, and the press is the US key's. GTK reads Ctrl+`|` and no shortcut.
