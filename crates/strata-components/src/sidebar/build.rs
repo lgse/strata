@@ -156,12 +156,12 @@ impl<'a, S: 'static> PlacesSidebar<'a, S> {
             rail,
             new_tabs: self.new_tabs,
             tenxer: self.tenxer,
+            labels: self.data.labels,
         };
         let pad = look.space.xs;
         let mut list = col()
             .key(format!("{}-list", self.key))
             .role("list")
-            .label("Places")
             .focus_group()
             .w_full()
             .px(pad)

@@ -360,6 +360,7 @@ fn window(g: &Gallery, look: &Look) -> El {
             pins: &d.pins,
             devices: &d.devices,
             current: d.current.as_ref(),
+            labels: super::c8::LABELS,
         },
     )
     .key("k4-sidebar")

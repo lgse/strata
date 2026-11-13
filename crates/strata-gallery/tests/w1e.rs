@@ -14,7 +14,9 @@ mod w1e {
     use strata_components::contract::{Dnd, DragSource, ElementKey, EntrySource};
     use strata_components::location_bar::{LocationBar, crumb_key};
     use strata_components::preview_drawer::{Arrangement, HeaderInfo, PreviewDrawer};
-    use strata_components::sidebar::{DEFAULT_KEY as SIDEBAR, PlacesSidebar, SidebarData};
+    use strata_components::sidebar::{
+        DEFAULT_KEY as SIDEBAR, PlacesSidebar, SidebarData, SidebarLabels,
+    };
     use strata_components::tabs::{
         Accepts, BrowserTabs, BrowserTabsState, Tab, TabId, TabsData, new_tab_key, tab_key,
     };
@@ -331,6 +333,11 @@ mod w1e {
             pins: &d.pins,
             devices: &d.devices,
             current: d.current.as_ref(),
+            labels: SidebarLabels {
+                pinned: "PINNED",
+                devices: "DEVICES",
+                rows: |rows| format!("{rows} items"),
+            },
         };
         let sidebar = PlacesSidebar::new(&d.sidebar, |g: &mut Gallery| &mut g.c8.sidebar, data)
             .dnd(recording())

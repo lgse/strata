@@ -491,6 +491,18 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    Meanwhile: they stay as they are; no scenario Tabs onto a heading. Source: A8's agent,
    2026-11-14, by the coordinator's ruling.
 
+### A3: Sidebar
+
+1. **The sidebar's unported features.** A3 closes with these recorded, not ported: no run
+   covers them, so there is no oracle to port against, and H5's device scenarios are held.
+   Devices (volumes, mounting, eject, the release spinner and the devices' menu), the
+   automatic rail, the full sidebar's width kept across a rail or a hidden step, custom folder
+   icons on rows, the update notice, and the bookmarks write-error dialog; the `g` keycaps go
+   to [A11](packages/A11.md) and live settings to [A18](packages/A18.md). A3's file lists each
+   with GTK's source. Meanwhile, the default: A3 is `done` with these as a recorded follow-up,
+   and a sidebar-devices package is planned once H5 lands device scenarios. Source: A3's
+   closing, 2026-11-13, by the coordinator's ruling.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
