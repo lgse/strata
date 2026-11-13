@@ -722,13 +722,18 @@ sequence only together with the alphabet's version, so the version is part of th
   `select_only` (`crates/strata-components/src/collection/pointer/machine.rs`).
 - **Concerns:** seeds `0x12` and `0x07` of `columns v1` (shrunk to 3 and 10 steps) and seed
   `0x0f` of `columns v3`, parked in `tests/qa/fuzz/corpus/columns/`.
-- **State:** fixed by [F2](packages/F2.md)'s [#2371](https://github.com/lgse/strata/pull/2371) in C1e: a secondary press selects an
-  unselected entry with `Selection::select_only_keeping_anchor`, so the anchor stays where it
-  was in Columns, List and Icons, as GTK's shared `focus_context_entry` leaves it in all three
-  (checked on GTK's List and Icons with the same three steps). Held by C1e's
-  secondary-press test and by a hosted test in each view, `qa::tests::right_click`; the
-  sequences `v1-0x12`, `v1-0x07` and `v3-0x0f` are no longer parked: the corpus replay holds
-  them to agreeing on both targets.
+- **State:** fixed by [F2](packages/F2.md)'s [#2371](https://github.com/lgse/strata/pull/2371) in C1e: a secondary press
+  selects an unselected entry with `Selection::select_only_keeping_anchor`, so an anchor there
+  is stays where it was in Columns, List and Icons, as GTK's shared `focus_context_entry`
+  leaves it in all three (checked on GTK's List and Icons with the same three steps). With
+  no anchor, as in a column just opened, the anchor goes to the right-clicked entry, as
+  `strata-fs`'s `set_selection` takes the cursor for an anchor it lacks: click `pictures`,
+  right-click `photo.txt`, Escape, Shift+click `diagram.txt` selects both on both targets.
+  Held by C1e's secondary-press test (both cases) and by `qa::tests::right_click` (each view,
+  and the no-anchor case in Columns); the sequences `v1-0x12`, `v1-0x07` and `v3-0x0f` are no
+  longer parked: the corpus replay holds them to agreeing on both targets. The filter results
+  (C18) take no anchor from GTK's right-click even when they have none: finding
+  [#2375](https://github.com/lgse/strata/issues/2375), A10's.
 
 ### #2356: after a click on an open folder, GTK reports a focused row it neither draws nor uses
 
@@ -807,3 +812,17 @@ sequence only together with the alphabet's version, so the version is part of th
   lands on the first entry, as Rune without #2368 does. With a cursor and nothing selected by
   Escape, Down moves on in Columns, List and Icons on both targets.
 - **State:** withdrawn: #2368 was closed unmerged, and there is nothing left to fix.
+
+### #2375: a right-click in filter results with no anchor anchors there on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2375), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen, by reading** (in the review of [#2371](https://github.com/lgse/strata/pull/2371)): GTK's
+  search and filter results keep an anchor of their own (`interactions.anchor`,
+  `src/ui/inline_search/collection.rs`), which a right-click (`focus_search_result`, then
+  `focus_result`) never sets; with none, the next Shift+click selects the clicked result alone.
+  C1e's secondary press, since #2371, anchors the right-clicked entry when there is no anchor,
+  as the browser's views do; C18's results are a C1e collection, so a Shift+click after it
+  would range from the right-clicked result.
+- **Concerns:** C18's results, once hosted on Rune. Not yet run: no package hosts them.
+- **State:** open, [A10](packages/A10.md)'s (search, filter and sort), noted in its file.

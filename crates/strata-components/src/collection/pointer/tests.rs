@@ -998,6 +998,12 @@ fn a_secondary_press_selects_an_unselected_entry_and_keeps_a_selection_it_lands_
     // Strata's menu moves no Shift anchor (`focus_context_entry`): a Shift+click after it
     // ranges from where the anchor was (finding lgse/strata#2355).
     assert_eq!(r.f.sel.anchor(), anchor);
+    // With no anchor, as in a column just opened, the anchor goes to the entry: Strata's
+    // selection takes the cursor for an anchor it lacks (`set_selection` in `strata-fs`).
+    let mut fresh = Rig::double();
+    assert_eq!(fresh.f.sel.anchor(), None);
+    fresh.down_with(Button::Secondary, Some(6), Spot::Content, PLAIN);
+    assert_eq!(fresh.f.sel.anchor(), Some(id(6)));
     assert!(matches!(
         r.take()[..],
         [Outcome::ContextMenu {
