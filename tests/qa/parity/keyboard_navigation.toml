@@ -76,7 +76,7 @@ run = "icons"
 package = "A1"
 status = "pending"
 reason = "scope"
-blocker = "A1"
+blocker = "A5: the pane header's Back button, at `drag` on line 13 (placed with A5 by the coordinator, 2026-11-12)"
 
 [[run]]
 scenario = "back-history-dropdown"
