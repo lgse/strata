@@ -217,6 +217,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, not taken up. Until the harness checks that the child ran its test, a
   move or rename of a test file, module or function takes the name strings with it; in a
   log the only sign is a GTK test printed once and not twice. A fix lands on `main`.
+  `strata-app`'s own tests are guarded since [#2237](https://github.com/lgse/strata/pull/2237), where the fault was met again in a test
+  inside a nested module: `test_support::in_own_process` has the child leave a marker and
+  fails without one. The whole Rune lane ran with the guard and no existing test failed it.
+  The shared helper, and so every GTK test and `strata-fs`'s, is as it was.
 
 ### The updater shows "Interrupted system call" when a signal arrives during a download
 
