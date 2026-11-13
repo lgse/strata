@@ -9,11 +9,12 @@
 //! - **Where.** An entry's menu opens at the entry, vertically centred: at its right edge in
 //!   Columns and Icons and at its centre in List (`item_menu_target`). The folder's opens at
 //!   the middle of the listing (`folder_menu_target`). C21's `keyboard_anchor` holds both.
-//! - **A cursor scrolled out of view opens nothing.** GTK opens an entry's menu at the row it
-//!   has drawn (`shown_row_at` in `src/ui/browser/columns.rs`, `item_widget` in the mode
-//!   views) and finds none for a row out of view. C21 can scroll the row in and open there;
-//!   this host does not ask it to. Which is right is the owner's
-//!   (`docs/rune/parity/owner.md`, B3).
+//! - **A cursor scrolled out of view opens nothing, in every view.** GTK's Columns and Icons
+//!   views do the same. Its List view opens the menu of whichever entry is drawn where the
+//!   cursor's row was last placed, and selects it (finding lgse/strata#2235, seen in a run):
+//!   that is not copied. A row partly in view gets its own menu where it is drawn, as on
+//!   GTK. C21 can scroll a row in and open there; this host does not ask it to. Which
+//!   outcome is right is the owner's (`docs/rune/parity/owner.md`, B3).
 //! - **Why a controller.** Where the menu opens is the collection's geometry, which only a
 //!   controller is handed. So the key is read after every stage of the chain ahead of the
 //!   view's own keys, where GTK's `context_menu_command` sits in the middle of it.

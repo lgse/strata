@@ -140,8 +140,9 @@ fn many_files(host: &mut Offscreen) -> (tempfile::TempDir, (Vec<String>, Option<
     (folder, held)
 }
 
-/// GTK opens an entry's menu at the row it has drawn, and has none for a row scrolled out of
-/// view (`shown_row_at`, `item_widget`): nothing opens, and nothing moves.
+/// With the cursor's row scrolled out of view nothing opens and nothing moves, in every view:
+/// what GTK's Columns and Icons views do. Its List view opens another entry's menu there
+/// (finding lgse/strata#2235), which is not copied.
 fn the_menu_key_opens_nothing_for_a_cursor_out_of_view(mode: &'static str, name: &str) {
     let name = format!("menu_key::out_of_view::{name}");
     hosted_over_in((MODULE, &name), mode, the_views_and_a_watch, |mut host| {
