@@ -188,7 +188,7 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
 }
 
 /// The key of the cell around the heading of column `id`.
-fn heading_cell_key(id: &str) -> String {
+pub(super) fn heading_cell_key(id: &str) -> String {
     format!("{}-cell", heading_key(id))
 }
 

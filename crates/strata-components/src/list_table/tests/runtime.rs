@@ -12,6 +12,7 @@ use rune::{Cursor, Cx, El, Env, Runtime, WheelEvent, col};
 use strata_kit::look::Look;
 use strata_kit::shape::LookParams;
 
+use super::super::header::heading_cell_key;
 use super::super::*;
 use crate::collection::element::{Collection, CollectionState};
 use crate::contract::{EntryId, EntryKind, ListEntry, ListSource};
@@ -222,7 +223,14 @@ fn drag(rt: &mut Runtime<Host>, x: f32, y: f32, dx: f32, steps: usize) {
 }
 
 fn heading(rt: &Runtime<Host>, pane: usize, id: &str) -> [f32; 4] {
-    rect(rt, &format!("t{pane}-headings/{}", heading_key(id)))
+    rect(
+        rt,
+        &format!(
+            "t{pane}-headings/{}/{}",
+            heading_cell_key(id),
+            heading_key(id)
+        ),
+    )
 }
 
 /// list: "Dragging a heading's right edge resizes that column and follows the pointer without
@@ -453,7 +461,17 @@ fn a_table_removed_mid_drag_leaves_the_order_and_comes_back_with_no_line() {
 #[test]
 fn two_tables_over_one_layout_both_hide_a_column_one_of_them_hid() {
     let mut rt = runtime(Host::new(2, Look::fallback(false)));
-    assert!(element(&rt, &format!("t1-headings/{}", heading_key("size"))).is_some());
+    assert!(
+        element(
+            &rt,
+            &format!(
+                "t1-headings/{}/{}",
+                heading_cell_key("size"),
+                heading_key("size")
+            )
+        )
+        .is_some()
+    );
     rt.update(|s, _| s.panes[0].table.open_columns_menu(MenuAt::Headings(None)));
     settle(&mut rt);
     // The menu's items after its group label: Name, Mode, then Size.
@@ -465,7 +483,15 @@ fn two_tables_over_one_layout_both_hide_a_column_one_of_them_hid() {
     assert_eq!(rt.state.layouts[0].why, LayoutWhy::Visibility);
     for t in ["t0", "t1"] {
         assert!(
-            element(&rt, &format!("{t}-headings/{}", heading_key("size"))).is_none(),
+            element(
+                &rt,
+                &format!(
+                    "{t}-headings/{}/{}",
+                    heading_cell_key("size"),
+                    heading_key("size")
+                )
+            )
+            .is_none(),
             "{t} hides Size"
         );
     }
@@ -586,9 +612,16 @@ fn an_assistive_press_after_a_release_over_a_clipped_heading_sorts() {
     // Two 450 pt panes, narrower than the columns: Type's heading runs past pane 0's edge.
     let mut rt = runtime(Host::new(2, Look::fallback(false)));
     let [x, y, w, h] = heading(&rt, 0, "type");
-    let full = element(&rt, &format!("t0-headings/{}", heading_key("type")))
-        .unwrap()
-        .rect;
+    let full = element(
+        &rt,
+        &format!(
+            "t0-headings/{}/{}",
+            heading_cell_key("type"),
+            heading_key("type")
+        ),
+    )
+    .unwrap()
+    .rect;
     assert!(full[2] > w + 20.0, "clipped: drawn {w} of {}", full[2]);
     let right = x + w;
     rt.pointer_down(right - 15.0, y + h / 2.0);
