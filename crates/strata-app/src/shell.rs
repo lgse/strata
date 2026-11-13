@@ -39,7 +39,7 @@ use crate::{
     events, folder_views,
     location::labels::with_keys,
     settings::Saved,
-    slots::{Entry, Frame, Heard, Hearing, Ids, Inbox, Registry, Setup, Slot, View},
+    slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, ShownView, Slot, View},
     startup::UiThread,
 };
 
@@ -69,8 +69,8 @@ pub(crate) struct Window {
     events: Inbox<App>,
     /// The registered parts, with the view that is shown.
     parts: Registry<'static, App>,
-    /// Which view's listener hears the browser: the shown one's.
-    hearing: Hearing,
+    /// Which view is shown, as the listeners and the parts' timers read it.
+    shown: ShownView,
     /// The table that names an entry for the components: every part holds the same one.
     ids: Ids,
     /// The browser's active location as of the last `poll`: what the title names.
@@ -137,13 +137,15 @@ impl App {
         let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
         browser.set_operation_provider(Rc::new(LocalOperationProvider));
         let ids = Ids::default();
+        debug_assert_eq!(Registry::check(parts, commands::own()), Ok(()));
+        let parts = Registry::new(parts, &saved.browser_mode);
+        let shown = parts.shown_now();
         let setup = Setup {
             settings: saved,
             ids: &ids,
             later: &later,
+            shown: &shown,
         };
-        debug_assert_eq!(Registry::check(parts, commands::own()), Ok(()));
-        let parts = Registry::new(parts, &saved.browser_mode);
         // Before the first load, so that its cursor lands on the first row a grouped view
         // shows (`rebuild.rs` in `src/ui/browser_modes`). A view shown later is mounted by
         // `show_view`, which does the same.
@@ -151,8 +153,7 @@ impl App {
             .shown()
             .is_some_and(|view| view.supports_type_grouping);
         browser.set_type_grouping(saved.group_by_type && groups);
-        let hearing = parts.hearing();
-        let mut listeners = parts.listeners(&setup, &hearing);
+        let mut listeners = parts.listeners(&setup);
         listeners.push(Box::new(hear));
         events.observe(&browser, listeners);
         let queue = setup.later.clone();
@@ -171,7 +172,7 @@ impl App {
             settings,
             events,
             parts,
-            hearing,
+            shown,
             ids,
             location: None,
             title: title_for(None),
@@ -350,7 +351,7 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
         .returns
         .and_then(|_| app.browser.follow_selection_on_return());
     app.window.parts = parts;
-    app.window.hearing.follow(parts);
+    app.window.shown.follow(parts);
     let grouping = preferences(app).group_by_type && view.supports_type_grouping;
     app.browser.set_type_grouping(grouping);
     let rebuilt = events::replay(&app.browser, &app.window.ids);

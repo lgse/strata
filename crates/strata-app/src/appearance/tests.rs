@@ -142,3 +142,38 @@ fn returning_to_columns(mirrors: bool, name: &str) {
         assert_eq!(browser_holds(&host).0, ["documents"]);
     });
 }
+
+/// A child column the cursor was to open in Columns, its wait not over when Icons shows, is
+/// not opened: Columns mirrors only while it is shown, as GTK's `child_mirror_blocked` asks
+/// for the mode when its wait is over.
+#[test]
+fn a_mirror_waiting_when_another_view_shows_opens_no_column() {
+    hosted_with(
+        MODULE,
+        "columns",
+        String::new(),
+        "a_mirror_waiting_when_another_view_shows_opens_no_column",
+        |mut host| {
+            let folder = fixture();
+            host.app()
+                .open(strata_core::model::Location::local(folder.path()));
+            let browser = host.app().browser().clone();
+            let listed = host.run_until(PATIENCE, |_| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            assert!(listed, "the folder to be listed");
+            idle(&mut host);
+            assert_eq!(browser_holds(&host).1.as_deref(), Some("archive"));
+
+            press(&mut host, Key::Down, Mods::default());
+            press(&mut host, Key::Command('2'), ctrl());
+            assert_eq!(shown(&host), Some("Icons"));
+            host.run_until(NONE_OPENS, |_| browser.location_at(1).is_some());
+
+            assert_eq!(browser.location_at(1), None);
+            assert_eq!(browser_holds(&host).0, ["documents"]);
+        },
+    );
+}

@@ -135,7 +135,7 @@
 //! | A key the shown view's own controller takes (Escape, Delete, Space, Ctrl+A), as a command | Nothing: register it at the GTK dispatcher's stage that reads it. A view's collection asks the registry ahead of its own keys (`commands::in_view`), for every stage ahead of `ItemNavigation`, and the view keeps each key no command takes. A view built on a collection of its own calls `commands::in_view` on it once. A header button's or a menu row's command with no key is registered under the button's name (`shell.rs`) or the row's id (`menus.rs`) |
 //! | To save a setting | Nothing: `shell::saved(app).change(…)`, by the rules under [Saving a setting](#saving-a-setting) |
 //! | A `Browser` and a state for each tab | lgse/strata#2131, which opens with a `contract` change. There is one `Browser`, and one state for each part, made once in `App::new` |
-//! | To change the shown view while the window is open | Nothing: `shell::show_view(app, mode, tx)`, which the view switch's part calls (`crate::appearance`) |
+//! | To change the shown view while the window is open | Nothing: `shell::show_view(app, mode, tx)`, which the view switch's commands call (`crate::appearance::views`) |
 //! | Another order within a slot | A `contract` change. The order is the registration lines', which is the packages', and a line is not moved from under its comment |
 //! | The stored names `grid` and `explorer` read in one place | The preference store's move, lgse/strata#2125: they are read in `src/ui/preferences/stored.rs` on the GTK side. Until then the Icons view's `shows` answers to `icons` and `grid`, and the List view's to `list` and `explorer` |
 //! | More of the Columns view than the listing and the handover | The listing a view shows is shared (`listing.rs`), and so is the cursor and selection handover (`handover.rs`), which Columns uses for each column and a single-pane view through `pane.rs`. What stays in `columns/` is the Columns component's own: `Listings` as its `ColumnSources`, the adapter that puts a change into `ColumnsState`, the active column and the mirror. A view that needs more of it opens a `contract` change |
@@ -202,7 +202,7 @@ mod registry;
 
 pub(crate) use ids::Ids;
 pub(crate) use inbox::{Heard, Inbox, Later, Listener};
-pub(crate) use registry::{Entry, Hearing, Registry};
+pub(crate) use registry::{Entry, Registry, ShownView};
 
 /// A place in the window. The module docs say where each is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -235,6 +235,8 @@ pub(crate) struct Setup<'a> {
     pub(crate) ids: &'a Ids,
     /// Where the callback of a service other than `Browser` queues: clone it into the state.
     pub(crate) later: &'a Later<App>,
+    /// Which view is shown, now and later: clone it into the state of what asks after start.
+    pub(crate) shown: &'a ShownView,
 }
 
 /// What a part builds its element with, for one run of the view.

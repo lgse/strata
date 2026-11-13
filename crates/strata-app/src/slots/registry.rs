@@ -216,10 +216,12 @@ impl<'a, S> Registry<'a, S> {
         }
     }
 
-    /// Whose events a view's listener lets through: the shown view's, as [`Registry::listeners`]
-    /// reads it.
-    pub(crate) fn hearing(self) -> Hearing {
-        Hearing(Rc::new(Cell::new(self.shown)))
+    /// Which view is shown, as the parts that read it later share it: the view's listener
+    /// ([`Registry::listeners`]) and a part's timer ([`ShownView::is`]).
+    pub(crate) fn shown_now(self) -> ShownView {
+        let shown = ShownView(Rc::new(Cell::new(None)));
+        shown.follow(self);
+        shown
     }
 
     /// The sidebar, when one is registered.
@@ -238,10 +240,10 @@ impl<'a, S> Registry<'a, S> {
         })
     }
 
-    /// Every part's listener, in registration order. A view's hears only while `hearing`
-    /// names it: a view that is not shown misses the browser's events, and is rebuilt from
-    /// the browser when it is shown.
-    pub(crate) fn listeners(self, setup: &Setup<'_>, hearing: &Hearing) -> Vec<Listener<S>>
+    /// Every part's listener, in registration order. A view's hears only while it is the one
+    /// [`Setup::shown`] names: a view that is not shown misses the browser's events, and is
+    /// rebuilt from the browser when it is shown.
+    pub(crate) fn listeners(self, setup: &Setup<'_>) -> Vec<Listener<S>>
     where
         S: 'static,
     {
@@ -252,32 +254,45 @@ impl<'a, S> Registry<'a, S> {
                 if entry.view().is_none() {
                     return Some(listener);
                 }
-                Some(hearing.gate(index, listener))
+                Some(setup.shown.gate(index, listener))
             })
             .collect()
     }
 }
 
-/// Which registered view hears the browser: the one shown. The shell keeps it with the
-/// registry and moves both together ([`Hearing::follow`]).
+/// Which registered view is shown, for what reads it after the start: a view's listener, which
+/// hears the browser only while its view is shown, and a part's timer, which asks at the time
+/// it fires, as GTK's `child_mirror_blocked` asks for the mode. The shell keeps it with the
+/// registry and moves both together ([`ShownView::follow`]).
 #[derive(Clone)]
-pub(crate) struct Hearing(Rc<Cell<Option<usize>>>);
+pub(crate) struct ShownView(Rc<Cell<Option<(usize, TypeId)>>>);
 
-impl Hearing {
+impl ShownView {
     /// `listener`, heard only while the view registered at `index` is the one shown.
     fn gate<S: 'static>(&self, index: usize, listener: Listener<S>) -> Listener<S> {
-        let hearing = self.0.clone();
+        let shown = self.0.clone();
         Box::new(
             move |event: &BrowserEvent, browser: &Browser, heard: &mut Heard<'_, S>| {
-                if hearing.get() == Some(index) {
+                if shown.get().is_some_and(|(shown, _)| shown == index) {
                     listener(event, browser, heard);
                 }
             },
         )
     }
 
-    /// From now on the view `registry` shows hears the browser, and no other.
+    /// Whether the view shown now is part `P`.
+    pub(crate) fn is<P: 'static>(&self) -> bool {
+        self.0
+            .get()
+            .is_some_and(|(_, kind)| kind == TypeId::of::<P>())
+    }
+
+    /// From now on the view `registry` shows is the one shown: it hears the browser, and no
+    /// other does.
     pub(crate) fn follow<S>(&self, registry: Registry<'_, S>) {
-        self.0.set(registry.shown);
+        let shown = registry
+            .shown
+            .and_then(|index| Some((index, (registry.entries.get(index)?.kind)())));
+        self.0.set(shown);
     }
 }

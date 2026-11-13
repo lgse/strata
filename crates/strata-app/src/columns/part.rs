@@ -70,7 +70,12 @@ impl Part for Columns {
     });
 
     fn new(setup: &Setup<'_>) -> Self {
-        Self::with_settings(setup.settings, setup.ids.clone(), setup.later.clone())
+        Self::with_settings(
+            setup.settings,
+            setup.ids.clone(),
+            setup.later.clone(),
+            setup.shown.clone(),
+        )
     }
 
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {

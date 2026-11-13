@@ -19,6 +19,9 @@ use std::{
 
 use strata_fs::app::Browser;
 
+use super::Columns;
+use crate::slots::ShownView;
+
 /// How long the cursor rests before its folder opens: `FOCUS_PREVIEW_DELAY` in
 /// `src/ui/preview.rs`. Holding an arrow key so opens nothing on the way.
 pub(crate) const WAIT: Duration = Duration::from_millis(75);
@@ -34,13 +37,16 @@ struct Gate {
     keyboard: Rc<Cell<bool>>,
     /// An inline rename is open: the child column stays as it is under an edit.
     editing: Rc<Cell<bool>>,
+    /// Which view is shown: Columns mirrors only while it is (`mode() != Columns`).
+    shown: ShownView,
 }
 
 impl Gate {
-    /// Only the keyboard mirrors, unless a deletion moved the cursor, and never under an edit.
+    /// Only the keyboard mirrors, unless a deletion moved the cursor, never under an edit, and
+    /// never once another view shows, which the wait asks again when it is over.
     fn open(&self, by_removal: bool) -> bool {
         let moved_by = by_removal || self.keyboard.get();
-        self.enabled && moved_by && !self.editing.get()
+        self.enabled && moved_by && !self.editing.get() && self.shown.is::<Columns>()
     }
 }
 
@@ -57,12 +63,13 @@ impl Mirror {
         self.gate.enabled
     }
 
-    pub(crate) fn new(enabled: bool) -> Self {
+    pub(crate) fn new(enabled: bool, shown: ShownView) -> Self {
         Self {
             gate: Gate {
                 enabled,
                 keyboard: Rc::new(Cell::new(true)),
                 editing: Rc::default(),
+                shown,
             },
             pointer: Cell::new(None),
             waiting: Rc::default(),

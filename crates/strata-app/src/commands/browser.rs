@@ -15,7 +15,7 @@ use strata_desktop::keys::{
 };
 
 use super::{Action, Call, Keys, On, Outcome, Reads, Situation, Stage};
-use crate::{App, shell};
+use crate::{App, appearance::views, shell};
 
 const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
 const SUPER: Modifiers = Modifiers::SUPER_MASK;
@@ -167,4 +167,8 @@ pub(super) const ACTIONS: &[Action<App>] = &[
             Stage::ItemNavigation,
             &[HOME_FOLDER.ignoring(SHIFT)],
         )]),
+    // `window_commands` in `src/ui/window/keyboard/commands.rs`: the view switch.
+    views::SHOW_COLUMNS,
+    views::SHOW_ICONS,
+    views::SHOW_LIST,
 ];

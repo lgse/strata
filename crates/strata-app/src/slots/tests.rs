@@ -14,7 +14,7 @@ use strata_fs::{
 };
 
 use super::{
-    Entry, Frame, Hearing, Ids, Inbox, Listener, Place, Registry, Setup, Sidebar, Slot,
+    Entry, Frame, Ids, Inbox, Listener, Place, Registry, Setup, ShownView, Sidebar, Slot,
     registry::Fault,
 };
 use crate::{
@@ -297,18 +297,19 @@ fn observed(entries: &'static [Entry<Log>]) -> (Rc<Browser>, Inbox<Log>) {
 }
 
 /// [`observed`] over `registry`, with what says which view hears.
-fn observed_with(registry: Registry<'static, Log>) -> (Rc<Browser>, Inbox<Log>, Hearing) {
+fn observed_with(registry: Registry<'static, Log>) -> (Rc<Browser>, Inbox<Log>, ShownView) {
     let (settings, ids, inbox) = (Preferences::default(), Ids::default(), Inbox::new());
+    let shown = registry.shown_now();
     let setup = Setup {
         settings: &settings,
         ids: &ids,
         // The made-up parts are over a log, and the handle is the window's.
         later: &Inbox::new().later(),
+        shown: &shown,
     };
     let browser = Browser::with_preferences(Rc::new(LocalFileSource), ViewPreferences::default());
-    let hearing = registry.hearing();
-    inbox.observe(&browser, registry.listeners(&setup, &hearing));
-    (browser, inbox, hearing)
+    inbox.observe(&browser, registry.listeners(&setup));
+    (browser, inbox, shown)
 }
 
 /// Applies everything `inbox` holds to a new log. Returns the log, and what each update said
@@ -403,16 +404,17 @@ fn what_a_service_queues_waits_its_turn_among_the_browsers_events() {
 fn the_view_shown_later_hears_the_browser_in_place_of_the_one_it_replaces() {
     let entries = table(vec![view::<Columns>(), view::<Icons>(), overlay::<Menu>()]);
     let mut registry = Registry::new(entries, "columns");
-    let (browser, inbox, hearing) = observed_with(registry);
+    let (browser, inbox, shown) = observed_with(registry);
 
     browser.toggle_hidden();
     assert!(!registry.show("list"));
     assert!(!registry.show("columns"));
     assert!(registry.show("icons"));
-    hearing.follow(registry);
+    shown.follow(registry);
     browser.toggle_hidden();
 
     assert_eq!(registry.shown().map(|view| view.focus), Some("icons"));
+    assert!(shown.is::<Icons>() && !shown.is::<Columns>());
     assert_eq!(names(registry.active()), ["icons", "menu"]);
     assert_eq!(
         applied(&inbox).0,
