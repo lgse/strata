@@ -14,11 +14,12 @@
 //!   (`Browser::back_to`). While it is open the window's commands wait, as under GTK's
 //!   popover ([`Holds::Menu`]).
 //! - **The heading:** the folder's name, described by it, as GTK's heading label is.
-//! - **The Trash's "Empty Trash"** ([`empty_trash`]) and **the Icons view's "Thumbnail size"**
-//!   button and its popover ([`thumbnail_size`]), in the actions row.
+//! - **The header's own actions** ([`actions`]): the Trash's "Empty Trash", "Refresh", and the
+//!   Icons view's "Thumbnail size" button and its popover ([`thumbnail_size`]), in GTK's order;
+//!   [`actions`] serves a Columns column's header too, and names who brings the rest.
 //!
 //! The rest of GTK's header is other packages': the spinner and the truncated listing's hint,
-//! and the other actions after the heading (leftovers, Refresh, the sort and the filter). They go in [`bar`]'s `actions` row, in GTK's order (`icons_controls` in
+//! and the other actions after the heading (leftovers, the sort and the filter). They go in [`bar`]'s `actions` row, in GTK's order (`icons_controls` in
 //! `src/ui/browser_modes/icons_controls.rs`).
 
 use rune::{Drag, El, KeyEvent, Phase, PointerEvent, Tx, row, text};
@@ -42,8 +43,10 @@ use crate::{
     slots::{Frame, Part, Place, Setup},
 };
 
-pub(crate) mod empty_trash;
+pub(crate) mod actions;
+mod empty_trash;
 mod history;
+mod refresh;
 mod thumbnail_size;
 
 #[cfg(test)]
@@ -128,11 +131,11 @@ pub(crate) fn bar(app: &App, view: &str, title: &str) -> El {
         .min_w(0.0)
         .description(title.to_owned());
     // Other packages' actions follow the heading here, in GTK's order (the module docs).
-    // GTK's order: Empty Trash, then the Icons view's thumbnail size.
-    let mut actions = row().key(format!("{view}-header-actions")).items_center();
-    if let Some(button) = empty_trash::button(app, view) {
-        actions = actions.child(button);
-    }
+    // GTK's order ([`actions`]): Empty Trash, Refresh, then the Icons view's thumbnail size.
+    let mut actions = row()
+        .key(format!("{view}-header-actions"))
+        .items_center()
+        .children(actions::pane(app, view));
     if view == crate::icons::VIEW {
         actions = actions.child(thumbnail_size::button(app));
     }
