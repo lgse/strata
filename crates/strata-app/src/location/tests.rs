@@ -2,7 +2,7 @@
 
 //! The bar on the offscreen host: where the keyboard goes when an edit ends.
 
-use rune::{Key, KeyEvent, Mods, Tx};
+use rune::{Cursor, Key, KeyEvent, Mods, Tx};
 use strata_core::model::Location;
 
 use crate::{
@@ -136,8 +136,8 @@ fn a_typed_location_refused_at_once_is_reported() {
     );
 }
 
-/// Presses at the middle of the element keyed `key`.
-fn click(host: &mut Offscreen, key: &str) {
+/// The middle of the element keyed `key`, with the pointer moved there.
+fn hover(host: &mut Offscreen, key: &str) -> (f32, f32) {
     let elements = host.runtime().elements();
     let target = elements
         .iter()
@@ -145,6 +145,13 @@ fn click(host: &mut Offscreen, key: &str) {
     let [x, y, w, h] = target.unwrap_or_else(|| panic!("{key} is drawn")).visible;
     let (x, y) = (x + w / 2.0, y + h / 2.0);
     host.runtime().pointer_move(x, y);
+    idle(host);
+    (x, y)
+}
+
+/// Presses at the middle of the element keyed `key`.
+fn click(host: &mut Offscreen, key: &str) {
+    let (x, y) = hover(host, key);
     host.runtime().pointer_down(x, y);
     host.turn();
     host.runtime().pointer_up(x, y);
@@ -193,6 +200,36 @@ fn a_press_on_the_strip_but_on_a_crumb_opens_the_entry() {
             click(&mut host, "location-copy");
             let state = &host.app().location.state;
             assert!(!state.entry_focused(), "Copy path takes its own press");
+        },
+    );
+}
+
+/// The pointer's shape over the strip, as GTK's: a text cursor where a press opens the entry,
+/// and a pointer over the crumbs and Copy path.
+#[test]
+fn the_strip_shows_a_text_cursor_and_its_buttons_a_pointer() {
+    hosted(
+        MODULE,
+        "the_strip_shows_a_text_cursor_and_its_buttons_a_pointer",
+        |mut host| {
+            let _folder = open(&mut host);
+            let tree = host.tree();
+            let ancestors = view::all(&tree, &|node| {
+                view::text(node, "key").starts_with("location-crumb-")
+            });
+            let current = format!("location-item-{}", ancestors.len());
+            let shapes = [
+                ("location-gap-1", Cursor::Text),
+                ("location-sep-1", Cursor::Text),
+                (current.as_str(), Cursor::Text),
+                ("location-crumbs-space", Cursor::Text),
+                ("location-crumb-1", Cursor::Pointer),
+                ("location-copy", Cursor::Pointer),
+            ];
+            for (key, shape) in shapes {
+                hover(&mut host, key);
+                assert_eq!(host.runtime().cursor(), shape, "the pointer over {key}");
+            }
         },
     );
 }

@@ -6,7 +6,8 @@
 //! inside a scroll pane, which assistive technology meets as such.
 
 use rune::{
-    El, Key, KeyEvent, Mods, PointerButton, PointerEvent, Tx, WheelEvent, col, el, icon, row, text,
+    Cursor, El, Key, KeyEvent, Mods, PointerButton, PointerEvent, Tx, WheelEvent, col, el, icon,
+    row, text,
 };
 use strata_kit::icons::IconName;
 
@@ -85,6 +86,9 @@ pub(super) fn view<S: 'static>(cx: &Ctx<'_, S>) -> El {
     let height = cx.height();
     let strip = row()
         .key(viewport.clone())
+        // GTK's strip shows a text cursor, as a press on it opens the entry; its buttons a
+        // pointer (`view_setup.rs`, `breadcrumbs.rs`).
+        .cursor(Cursor::Text)
         .w_full()
         .h(cx.row())
         .scroll_x()
@@ -170,6 +174,7 @@ fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb) -> El {
         .gap(look.space.xxs)
         .items_center()
         .radius(k.radius.sm)
+        .cursor(Cursor::Pointer)
         .hover(look.fill.highlight)
         .press_scale(0.97)
         .focus_ring(RING, 0.0, k.c.border_focus);
@@ -284,6 +289,7 @@ fn current<S: 'static>(cx: &Ctx<'_, S>, crumb: &Crumb, n: usize) -> El {
         })
         .build(k)
         .key(format!("{}-copy", cx.key))
+        .cursor(Cursor::Pointer)
         .on_key(return_as_space::<S>);
     let mut name = row()
         .key(format!("{}-current", cx.key))
