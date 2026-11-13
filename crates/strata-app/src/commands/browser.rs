@@ -7,17 +7,18 @@
 use rune::Tx;
 use strata_core::model::Location;
 use strata_desktop::keys::{
-    Map, Modifiers, SHORTCUT_MODIFIERS,
+    KeyPress, Map, Modifiers, SHORTCUT_MODIFIERS,
     bindings::{
-        ENTER, HIDDEN_FILES, HISTORY_BACK, HISTORY_FORWARD, HOME_FOLDER, PARENT_FOLDER, REFRESH,
-        SELECT_ALL,
+        BACKSPACE, ENTER, HIDDEN_FILES, HISTORY_BACK, HISTORY_FORWARD, HOME_FOLDER, PARENT_FOLDER,
+        REFRESH, SELECT_ALL,
     },
 };
 
-use super::{Action, Call, Keys, On, Outcome, Stage};
+use super::{Action, Call, Keys, On, Outcome, Reads, Situation, Stage};
 use crate::{App, shell};
 
 const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
+const SUPER: Modifiers = Modifiers::SUPER_MASK;
 
 /// The column a call is for: the row's, the folder's, or the browser's active one.
 fn depth(app: &App, on: On) -> Option<usize> {
@@ -76,6 +77,42 @@ fn parent(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
+/// `navigate_up` in `src/ui/browser/view_navigation.rs`: outside Columns the parent folder;
+/// in Columns the keyboard's column closes, or from the first the parent opens with the
+/// folder the user came from selected.
+fn up(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    let columns = shell::shown_view(app).is_some_and(|view| (view.shows)("columns"));
+    let browser = app.browser.clone();
+    if !columns {
+        browser.parent();
+        return Outcome::Ran;
+    }
+    // The browser's active column is the one the keyboard is in once the view has said so.
+    shell::publish(app);
+    match browser.active_depth() {
+        Some(0) => {
+            if let Some(parent) = browser.location_at(0).and_then(|first| first.parent()) {
+                browser.navigate_to_ancestor(parent);
+            }
+        }
+        Some(depth) => browser.close_column(depth),
+        None => {}
+    }
+    Outcome::Ran
+}
+
+/// BackSpace is no catalog command: `item_action` reads the bare binding, with Shift or Super
+/// held too.
+fn backspace(press: &KeyPress) -> bool {
+    press.is(BACKSPACE.ignoring(SHIFT.union(SUPER)))
+}
+
+/// `items_unfocused_for` in `src/ui/window/keyboard/items.rs`: a key with neither Ctrl nor
+/// Alt held reaches the items only from the shown view's listing.
+fn from_the_listing(_: &App, at: &Situation) -> bool {
+    at.in_view()
+}
+
 fn home(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     app.browser
         .navigate(Location::local(crate::launch::home_directory()));
@@ -118,6 +155,12 @@ pub(super) const ACTIONS: &[Action<App>] = &[
             Stage::ItemNavigation,
             &[PARENT_FOLDER.ignoring(SHIFT)],
         )]),
+    // `item_action` in `src/ui/window/keyboard/items.rs`, at `item_navigation`.
+    Action::new("navigate-up", up).keys(&[Keys {
+        stage: Stage::ItemNavigation,
+        reads: Reads::Press(backspace),
+        when: from_the_listing,
+    }]),
     Action::new("home-folder", home)
         .command(HOME_FOLDER)
         .keys(&[Keys::at(
