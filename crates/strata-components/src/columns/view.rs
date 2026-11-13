@@ -666,11 +666,11 @@ fn go_left<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut Tx)
     sh.emit(s, ColumnsIntent::Active { depth: parent }, tx);
 }
 
-/// A plain click on column `depth`'s empty space: every column's selection clears, as
-/// Strata's marquee group clears it for any background click (`group_background_click`), and
-/// the deeper columns close; in a column that wasn't active, it then becomes active (and is
-/// revealed) and its first visible entry is selected. Either way the column keeps its scroll
-/// position.
+/// A plain click on column `depth`'s empty space: every column's selection clears and the
+/// deeper columns close, as Strata's `clear_marquee_selection` does for a press on a column's
+/// background (`src/ui/browser/columns/append/surface.rs`); in a column that wasn't active, it
+/// then becomes active (and is revealed) and its first visible entry is selected. Either way
+/// the column keeps its scroll position.
 fn background_click<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, tx: &mut Tx) {
     let p = (sh.parts_mut)(s);
     let was_active = p.state.press_was_active;
