@@ -62,6 +62,21 @@ The checkpoint a package feeds is its wave's, in the plan's
 - **Running checks:** `AGENTS.md`, "Pre-push checks", "QA scenarios" and "Test image reuse",
   and the Rune side's rules under "The Rune side". `./scripts/qa-parity.sh <selection>
   --counts` and `--twins` read files on the host and start no container.
+- **The Rune side's tests, without the gallery's integration tests.** By the owner's
+  instruction of 2026-11-12 ([`owner.md`](owner.md#ruled)), `mise run test-rune [filter]`
+  runs every Rune-side crate's tests and only the gallery's unit tests (`--lib --bins
+  --examples`); a filter goes to both runs. The gallery's goldens, page tests and scripts are
+  not part of any gate: `mise run test-gallery [filter]` runs them on demand, and
+  `mise run bless` stays for rewriting goldens when the gallery is cleaned up. The gate for a
+  change to a host, the shell or the key routing is `mise run test-platform window::` alone.
+  What prompted it, measured that day on the 24-core machine the agents share: each gallery
+  golden and script test starts a `strata-gallery` process, and with no lavapipe installed
+  each opens a Vulkan device on the real GPU, where the opens serialise in the driver. One
+  render alone took 0.63 s; throughput peaked at 8 at once (6.1 renders a second) and fell
+  beyond it (5.4 at 24, 4.5 at 48), and at 72 at once 70 to 72 threads sat in uninterruptible
+  sleep. A Rune-lane run started about 1,900 of them (514 PNG goldens, 514 accessibility
+  goldens, 897 scripts), 24 at a time, and with three package agents running lanes at once
+  the load average passed 40.
 - **The compositor tests on a loaded machine.** `mise run test-platform` starts a sway and
   an Xwayland for each test, as many at once as the machine has cores, and with other
   packages building on the machine its waits ran out in `strata-platform`'s own session

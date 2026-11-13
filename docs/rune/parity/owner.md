@@ -43,6 +43,15 @@ session's notes, the item says so.
   GDK, would not have kept `gdk-pixbuf` out of `strata-rune` either unless `strata-fs`
   changed too.
 
+### The gallery while its tests are off
+
+- **Goldens will go stale while they are not run.** When the gallery is cleaned up, decide
+  whether to re-bless them from scratch. Meanwhile: they are left as they are, and
+  `mise run bless` stays. Two options the owner has not chosen between, for running them
+  again: installing lavapipe, which the harness uses with no code change
+  (`crates/strata-gallery/tests/goldens/support.rs`), or a cap across worktrees on how many
+  gallery processes run at once. Source: the coordinator, 2026-11-12.
+
 ### The plan's copy
 
 - **The plan's copy and the owner's document.** From the pull request that moved tracking
@@ -431,6 +440,15 @@ Rulings of the owner on the parity work, oldest first.
   `packaging.yml` on pull requests that touch their paths. For `strata-next` this replaces
   "CI is green" in the 2026-11-11 merge ruling above with the plan's
   [checks in place of CI](README.md#checks-in-place-of-ci).
+- **2026-11-12: the gallery's tests are not run, except its unit tests.** The owner said:
+  "I want to stop running tests on the gallery except for the basic unit tests; we'll clean
+  up that crate and reduce the overhead later but for now the parity with GTK strata is
+  quite enough to assure quality in my opinion" (recorded by the orchestrating session,
+  2026-11-12). So `mise run test-rune` runs `strata-gallery`'s unit tests only, its goldens,
+  page tests and scripts run on demand with `mise run test-gallery`, and `AGENTS.md`'s
+  bullets on gallery scenes, goldens and scripts per component are suspended until the
+  cleanup. `strata-components`' and `strata-app`'s own tests still run. Which test targets
+  count as "the basic unit tests" (`--lib --bins --examples`) is the coordinator's reading.
 
 ## Housekeeping
 

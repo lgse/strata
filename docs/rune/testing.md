@@ -11,6 +11,11 @@ things differ in Strata's workspace:
   application's tests, and `mise run check` runs both sides.
 - **No CI job runs these tests yet.** Where a section says CI renders on lavapipe, it
   describes the old repository's workflow. Strata's pinned test image has no Vulkan driver.
+- **The gallery's integration tests are not run for now.** By the owner's instruction of
+  2026-11-12, `mise run test-rune` runs only `strata-gallery`'s unit tests. Its goldens, page
+  tests and scripts (below) run on demand with `mise run test-gallery [filter]`, are part of
+  no gate, and go unreviewed until the owner cleans up the crate; `mise run bless` stays for
+  rewriting them then. `docs/rune/parity/owner.md` has the ruling.
 - **The `media-audio` shim was not imported,** so the last section, on media output,
   describes code that remains in the old repository. `strata-platform` has no release of
   its own, so "Publishing strata-platform" does not apply either.
@@ -251,9 +256,9 @@ Name scripts after the behavior group they check, in lowercase kebab case
 
 | Command | Runs |
 | --- | --- |
-| `mise run test` | Every test, headless |
-| `mise run test c1::` | Page c1's three golden tests. The trailing `::` keeps `c1` from matching `c10`. |
-| `mise run test c1::png` | One page's PNG goldens |
+| `mise run test-rune` | Every Rune-side test, headless, with the gallery's unit tests only (see the top of this page) |
+| `mise run test-gallery c1::` | Page c1's three golden tests, on demand. The trailing `::` keeps `c1` from matching `c10`. |
+| `mise run test-gallery c1::png` | One page's PNG goldens, on demand |
 | `mise run bless c1` | Rewrites only `tests/golden/*/c1/` |
 | `mise run bless c1-ten-rows-dark` | Rewrites one scene's a11y and PNG goldens |
 | `mise run bless c5/stem-selection` | Rewrites one script's golden |
@@ -279,8 +284,10 @@ nor writes it. `mise run bless <filter>` sets both and passes the cargo filters 
   names fail too.
 - A script whose `expect` entries fail is never blessed.
 
-After blessing, run `mise run test` and review every golden diff (look at each PNG) before you
-commit.
+After blessing, run `mise run test-gallery <page>::` and review every golden diff (look at each
+PNG) before you commit. While the gallery's tests are off (top of this page), goldens are not
+re-blessed on a branch; that is the coordinator's reading, and `docs/rune/parity/owner.md` has
+the open question of re-blessing at the cleanup.
 
 ## strata-platform features
 
@@ -383,7 +390,9 @@ harness refuses a session display that matches them.
 The task builds the peer and strata-platform's examples, then runs the `#[ignore]`d tests of
 `crates/strata-platform/tests/session/`, the gallery's `x2` and `x3`, and `strata-rune`'s
 `tests/window.rs`, which starts the real binary on a folder (`mise run test-platform
-window::`). `mise run test` and `check` never start a session.
+window::`). `mise run test` and `check` never start a session. The gate for a change to a
+host, the shell or the key routing is `mise run test-platform window::` alone; the rest of the
+task runs on demand.
 
 | Variable | Effect |
 | --- | --- |

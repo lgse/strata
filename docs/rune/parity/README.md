@@ -21,6 +21,8 @@
 > - Since the owner's instruction of 2026-11-12 the `CI` workflow does not run for
 >   `strata-next`, so "The merge gate" and the "Decided" item on CI differ from the document
 >   too, and [Checks in place of CI](#checks-in-place-of-ci) is this copy's own.
+> - Since the owner's instruction of 2026-11-12 the gallery's goldens, page tests and scripts
+>   are not run as validation, so "Before a package's pull request" differs here too.
 > - Since the owner's rule of 2026-11-12 on mutation testing, the routine checks and the
 >   merge gate run no mutation patches, so "Before a package's pull request" and "The merge
 >   gate" differ from the document too, and [When a mutation run is
@@ -556,7 +558,7 @@ checkpoints.
 | --- | --- |
 | The runs it claims, on both targets | `./scripts/qa-parity.sh <selection> --scenario <name>`. Selections by folder and package arrive with H1 |
 | Which pending runs already pass on Rune | `./scripts/qa-parity.sh <selection> --pending` |
-| Rune-side unit and gallery tests | `mise run test-rune <filter>`, with a filter that matches at least one test |
+| Rune-side unit tests, with the gallery's unit tests only | `mise run test-rune <filter>`, with a filter that matches at least one test. The gallery's goldens, page tests and scripts are not run, by the owner's instruction of 2026-11-12; `mise run test-gallery <filter>` runs them on demand |
 | The GTK side, when a shared crate or `src/` changed | `./scripts/qa.sh <scenario>` and `./scripts/test-headless.py <filter>` |
 | The fuzz smoke tier for its alphabet | F1's command |
 | That every mutation patch still applies, when anything under `crates/` or `src/` changed: seconds, no container, and no mutation run | The `git apply --check` loop below. Only `cut.patch` (finding #2161) is known not to apply |
@@ -735,7 +737,9 @@ Three remain. The first two wait on what the gaps turn out to be.
   carries it. Left open on 2026-11-11 for the same reason.
 - [ ] **Golden images altogether.** Whether to drop them for their wall-clock cost. Raised
   on 2026-11-11 and not ruled. Until it is, the existing GTK baselines and the Rune
-  gallery's goldens stay as they are.
+  gallery's goldens stay as they are. (This copy: since the owner's instruction of
+  2026-11-12 the gallery's goldens and scripts are not run on `strata-next` for now; see
+  [`owner.md`](owner.md#ruled).)
 
 ### Decided
 
