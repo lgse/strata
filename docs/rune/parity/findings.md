@@ -429,7 +429,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** worked around, not cut down to a Rune-only repro. strata-components'
   collection catches its range up from its own layout when the last report is empty
   (`catch_up_visible`, U-C1f-7). Rune packet entry
-  [101](../upstream/rune/101-stale-visible-rows.md) is drafted.
+  [101](../upstream/rune/101-stale-visible-rows.md) is drafted. The view's place in the tree
+  is not the cause: with A3's sidebar pull request keeping the view at one path whether the
+  sidebar is drawn or not, and the catch-up turned off, the two fills tests still fail with
+  the sidebar mounted (checked once, 2026-11-13).
 
 ### #2296: `browser-workers-reuse-processes/list` started one sandbox too many once
 
