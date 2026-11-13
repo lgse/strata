@@ -1521,17 +1521,22 @@ has come to rest. Two replays of one sequence are then compared field by field,
 and a sequence whose replays differ is shrunk to the fewest steps that still
 differ.
 
-Today both replays are on one target, which is what calibration needs: a field
-on which GTK does not agree with itself cannot be compared with Rune. Comparing
-the GTK target with the Rune target is package F2's (lgse/strata#2138).
+A command replays on one target, which is what calibration needs, or on GTK
+and Rune, the differential mode (`--target gtk,rune`, package F2's,
+lgse/strata#2138). There each target is first compared with itself, since a
+field on which a target does not agree with itself cannot be compared with
+the other, and then every Rune replay with the first GTK one, with the
+normalisation map applied.
 
 ```bash
-./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..20   # the smoke tier: generate, replay twice, compare
+./scripts/qa-fuzz.sh run --alphabet calibration --seeds 1..20   # generate, replay twice on GTK, compare
+./scripts/qa-fuzz.sh run --alphabet entries --seeds 1..20 --target gtk,rune   # twice on each, Rune against GTK
 ./scripts/qa-fuzz.sh run --alphabet calibration --seeds 7 --length 80 --repeats 3
 ./scripts/qa-fuzz.sh replay                                     # every kept sequence that is not parked
 ./scripts/qa-fuzz.sh replay --alphabet calibration              # one area's
 ./scripts/qa-fuzz.sh replay --parked --repeats 24               # a survey: the parked sequences, on purpose
 ./scripts/qa-fuzz.sh shrink --alphabet calibration --seeds 7    # shrink one seed's divergence and confirm it
+./scripts/qa-fuzz.sh shrink --alphabet entries --seeds 8 --target gtk,rune   # the same, GTK against Rune
 ./scripts/qa-fuzz.sh shrink tests/qa/fuzz/corpus/calibration/fuzz-calibration-v3-0000000000000007.jsonl
 ./scripts/qa-fuzz.sh generate --alphabet calibration --seeds 7  # print the sequence, alone on stdout; replay nothing
 ./scripts/qa-fuzz.sh scenario <file>                            # run a sequence file as the scenario it is
@@ -1554,9 +1559,9 @@ ruling that parity and fuzzing are run by the agent before merging.
 | `--alphabet <area>` | An alphabet of `tests/qa/fuzz/alphabets`. `run`, `shrink` and `generate` need one; `replay` takes one to replay that area's corpus only. |
 | `--seeds <seeds>` | `7`, `1..200` with both ends, or `3,9,0x2a`. A seed is a 64-bit number, and names a sequence only together with the alphabet's version. |
 | `--length <n>` | Actions in a generated sequence; 40 by default. An action can be several steps. |
-| `--repeats <n>` | Replays of each sequence; 2 by default. Every replay is compared with the first. |
-| `--jobs <n>` | Sequences replayed at once; one per CPU by default, 256 at most. A sequence's own replays run one after another. |
-| `--target gtk\|rune` | The target every replay starts; `gtk` by default. `rune` builds `strata-rune` first, as `qa-parity.sh` does. |
+| `--repeats <n>` | Replays of each sequence on each target; 2 by default. Each target's replays are compared with its first, and on two targets every Rune replay with the first GTK one too. |
+| `--jobs <n>` | Sequences replayed at once; one per CPU by default, half that on two targets. A sequence's own replays on a target run one after another, its two targets' side by side, so on two targets a sequence holds two displays, and at most 256 replays run at once. |
+| `--target gtk\|rune\|gtk,rune` | The target every replay starts; `gtk` by default. `rune` builds `strata-rune` first, as `qa-parity.sh` does. `gtk,rune` is the differential mode, for `run`, `replay` and `shrink`: `--repeats` replays on each target. |
 | `--keep` | Keep the artifacts of sequences that agree too. |
 | `--parked` | `replay`: the parked sequences and no other, as a survey. |
 | `--corpus` | `shrink`: write a confirmed sequence into the area's corpus. |
@@ -1568,7 +1573,7 @@ What a command's exit status says:
 
 | Command | Exits 0 when |
 | --- | --- |
-| `run`, `replay` | It replayed at least one sequence, every one agreed and came to rest at every step, none failed to replay and none showed a finding. A selection that replays nothing fails, as `qa.sh` fails one that runs no scenario. |
+| `run`, `replay` | It replayed at least one sequence, every one agreed and came to rest at every step, none failed to replay and none showed a finding. On two targets, a sequence agrees when each target agrees with itself and Rune with GTK. A selection that replays nothing fails, as `qa.sh` fails one that runs no scenario. |
 | `replay --parked` | Every parked sequence could be replayed. What each does now is in its line. |
 | `shrink` | It found a divergence and the shortest sequence confirmed it three times out of three. It fails when there is nothing to shrink, and when the divergence does not confirm. |
 | `compare` | The two streams agree. |
@@ -1796,6 +1801,19 @@ longer see. Every summary prints both counts, by code, and `check` prints them
 without replaying anything: they are the "normalisation rules by code" of a
 checkpoint report.
 
+**What is compared with what.** On one target every replay of a sequence is
+compared with its first, with the mask applied. On GTK and Rune there are three
+comparisons, each reported on its own line: GTK with itself and Rune with
+itself in the same way, then every Rune replay with the first GTK one, with
+the map and the mask. A difference within a target is noise or a race of that
+target and goes to calibration or an `oracle` issue; only one between the
+targets is a divergence to triage, and it is replayed GTK against GTK many
+times before Rune is blamed for it ("What the next packages build on"). The
+first GTK replay is the reference, so a `gtk against rune` line at the same
+step and field as an `on gtk` or `on rune` line is that target's noise, not a
+divergence: a target that does not agree with itself there cannot be held to
+the other.
+
 `compare` takes two kept streams. Each stream's first line says what it is a
 stream of: the target, the sequence, the alphabet and its version, the rest
 rule, and whether the harness perturbed it. `compare` refuses two streams of
@@ -1805,7 +1823,8 @@ their targets differ.
 #### Shrinking
 
 `shrink` replays the sequence twice, at once, and takes the divergence it
-finds. It drops the steps after the divergence, then takes runs of steps out,
+finds: on one target, two replays of it; with `--target gtk,rune`, one on GTK
+and one on Rune, compared with the map applied. It drops the steps after the divergence, then takes runs of steps out,
 halves first and single steps last, keeping each removal after which the same
 divergence still shows first: the same field, after the same action, between
 the same two values, so that it cannot slide to some other difference on that
@@ -1886,21 +1905,38 @@ FUZZ replays: target gtk, 2 of each sequence, 24 sequences at once
 FUZZ rest: 8 equal samples 50 ms apart, budget 10000 ms
 FUZZ rules: 0 normalisation rules (tests/qa/fuzz/normalisation.map); 0 calibration masks (tests/qa/fuzz/calibration.mask)
 AGREE fuzz-calibration-v3-0000000000000001: 40 steps, 2 replays
-DIFFER fuzz-calibration-v3-000000000000002a at step 14 {"key":"Right"}: app.matches (["a"] | ["a","b"]); kept target/qa-fuzz/calibration/fuzz-calibration-v3-000000000000002a
+DIFFER fuzz-calibration-v3-000000000000002a on gtk at step 14 {"key":"Right"}: app.matches (["a"] | ["a","b"]); kept target/qa-fuzz/calibration/gtk/fuzz-calibration-v3-000000000000002a
 FUZZ result: 300 sequences: 299 agree, 0 agree under a mask, 1 differ, 0 unsettled, 0 could not be replayed; 0 parked; 0 with a finding
 FUZZ steps: 24600 observations in 600 replays, 12300 compared; 270 refused, 1800 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse
 FUZZ replays that ended early: 4 left the fixture, 0 closed the window
 FUZZ late changes: 2890 of 24600 observations changed after their step's reply; quiet before a late change: median 60 ms, 99th percentile 170 ms, longest 215 ms
 FUZZ fields that differed first, with nothing masked, by sequence: app.matches 1
 FUZZ load average: 2.10 at the start, 21.30 at the end
-FUZZ artifacts: target/qa-fuzz/calibration/
+FUZZ artifacts: target/qa-fuzz/calibration/gtk/
 ```
+
+On two targets the replays line says so, each target's steps get a line of
+their own, and a sequence gets a `DIFFER` line for each comparison that
+differs, the first value GTK's:
+
+```text
+FUZZ replays: targets gtk and rune, 2 of each sequence on each side by side, 12 sequences at once; each target compared with itself, then every rune replay with the first gtk one
+DIFFER fuzz-entries-v1-0000000000000008 gtk against rune at step 1 {"key":"Up","when":{"not":{"field":{"name":"Rename"}}}}: app.focused (null | "archive"); kept target/qa-fuzz/entries/gtk-rune/fuzz-entries-v1-0000000000000008
+FUZZ steps on gtk: 34 refused, 692 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse
+FUZZ steps on rune: 28 refused, 688 skipped, 0 failed, 0 unsettled, 0 GLib warnings or worse
+FUZZ fields that differed first between the targets, a divergence and never noise, by sequence: app.focused 12, app.matches 5, app.panes 5, app.panes[].focused 7
+```
+
+The first "fields that differed first" line counts the comparisons of a target
+with itself only, since it is what calibration reads to grow the mask; the
+fields between the targets have a line of their own, and a mask never answers
+one.
 
 | Line | Is |
 | --- | --- |
 | `AGREE` | A sequence whose replays agree on every field. |
-| `MASKED` | One whose replays differ only on masked fields. It counts as agreeing under a mask, and the "fields that differed first" line counts it with nothing masked, which is how calibration sees what a mask is hiding. |
-| `DIFFER` | One whose replays differ: the step, the action, the first field and its two values. |
+| `MASKED` | One whose replays differ only on fields the mask leaves out, or, between two targets, the map; the line names the comparison, as a `DIFFER` line does. It counts as agreeing under a mask, and the "fields that differed first" lines count it with nothing left out, which is how calibration sees what a mask is hiding. |
+| `DIFFER` | One whose replays differ: which replays (`on gtk`, `on rune`, `gtk against rune`), the step, the action, the first field and its two values. |
 | `UNSETTLED` | One with a step that did not come to rest within the budget. |
 | `FINDING` | A crash or a GLib warning. It comes with a `DIFFER` line that names its step. |
 | `ERROR` | One the harness could not replay. |
@@ -1909,7 +1945,9 @@ FUZZ artifacts: target/qa-fuzz/calibration/
 
 A sequence that differed, did not come to rest, showed a finding or could not
 be replayed (every sequence, with `--keep`) leaves
-`target/qa-fuzz/<area>/<sequence>/`:
+`target/qa-fuzz/<area>/<targets>/<sequence>/`, where `<targets>` is `gtk`,
+`rune` or `gtk-rune`: a run on one target never removes what a run on the
+other, or a differential run, kept:
 
 | File | Holds |
 | --- | --- |
@@ -1918,7 +1956,7 @@ be replayed (every sequence, with `--keep`) leaves
 | `<target>-<n>.transcript.jsonl` | Every command and reply of the replay, the rest wait's reads included. |
 | `<target>-<n>.strata.log` | The application's log. |
 | `<target>-<n>.input.log` | Every synthetic key, motion and button of the replay, as a scenario run's `input.log` has them. |
-| `divergence.json` | The first differing step and fields, with and without the mask, the issue title, and `perturbed`. |
+| `divergence.json` | The first divergence; then each comparison (`between`), its first differing step and fields outside the map and the mask and with nothing left out, and its issue title; and `perturbed`. |
 | `shrunk.jsonl` | After `shrink`: the shortest sequence. |
 
 #### Calibration
@@ -2067,12 +2105,13 @@ sequence that agrees is not thereby fixed.
   batch before they were seen. So a
   difference between GTK and Rune is replayed GTK against GTK many times, 24
   and not 2, before Rune is blamed for it.
-- **Two targets.** A replay starts the target `STRATA_QA_TARGET` names, which
-  is one for the whole process: `Launch::binary` in `tests/qa.rs` is the only
-  place the replay path reads the target. Comparing GTK with Rune needs
-  `Launch` to take the target, or two processes and `compare` over their kept
-  streams, which already applies the map when the targets differ. That, the
-  map's first rules and the Columns pilot alphabet are F2's.
+- **Two targets.** A replay names the target it starts (`Replay::target`,
+  `Launch::target`); a scenario run takes it from `STRATA_QA_TARGET`. With
+  `--target gtk,rune` the script builds both, a sequence is replayed on both
+  side by side, and the comparisons above are made. The map stays empty until
+  the owner rules a `deviation`; a divergence the alphabet cannot guard is
+  parked against its finding, never normalised. The Columns pilot alphabet is
+  F2's.
 - **The rename guard is not for copying.** `calibration` skips every click,
   Ctrl+click, Shift+click and right-click on any entry while a name is being
   edited. That is far wider than the race of lgse/strata#2173, which is a

@@ -538,6 +538,8 @@ impl Drop for Display {
 }
 
 struct Launch<'a> {
+    /// The binary a scenario run takes from `STRATA_QA_TARGET`; a fuzz replay names its own.
+    target: Target,
     manifest: &'a Manifest,
     home: &'a Path,
     fixture: &'a Path,
@@ -590,7 +592,8 @@ impl Launch<'_> {
 
     /// The binary of the target this run drives.
     fn binary(&self) -> Result<String, String> {
-        let binary = Target::from_environment()?
+        let binary = self
+            .target
             .binary(std::env::var_os(RUNE_BINARY_VARIABLE).as_deref())?;
         binary
             .into_os_string()
@@ -899,7 +902,12 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
         }
         _ => None,
     };
+    let target = match Target::from_environment() {
+        Ok(target) => target,
+        Err(error) => return failed_setup(format!("launch: {error}"), &mut fs_state),
+    };
     let launch = Launch {
+        target,
         manifest,
         home: &home,
         fixture: fixture.path(),

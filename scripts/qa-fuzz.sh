@@ -20,17 +20,20 @@
 #                                             compare two kept streams of one sequence
 #   ./scripts/qa-fuzz.sh check                read the alphabets, the map, the mask and the
 #                                             corpus, and print their counts
-#   --target gtk|rune                         the target every replay starts (default gtk)
+#   --target gtk|rune|gtk,rune                the target every replay starts (default gtk), or
+#                                             gtk,rune: the differential mode, each sequence
+#                                             replayed on both and Rune compared with GTK
 # The commands and their other selections are the runner's (tests/qa/fuzz/options.rs): it
 # refuses what it does not know and prints them. A file is named by its path under the
-# checkout. Artifacts go to target/qa-fuzz/<area>/<sequence>.
+# checkout. Artifacts go to target/qa-fuzz/<area>/<targets>/<sequence>, where <targets> is
+# gtk, rune or gtk-rune, so a run on one target keeps what a run on another kept.
 # Shares target/qa-container with qa.sh, so one QA script at a time. The script takes no
 # lock of its own: on a machine several sessions share, the caller holds theirs.
 set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-usage='Usage: scripts/qa-fuzz.sh <command> [selections] [--target gtk|rune]
+usage='Usage: scripts/qa-fuzz.sh <command> [selections] [--target gtk|rune|gtk,rune]
 See the head of this script, and docs/testing.md, "Fuzzing".'
 case "${1:-}" in
   ""|-*) echo "$usage" >&2; exit 2 ;;
@@ -40,12 +43,12 @@ arguments=()
 while (($#)); do
   case "$1" in
     --target)
-      case "${2:-}" in gtk|rune) target="$2" ;; *) echo "$usage" >&2; exit 2 ;; esac
+      case "${2:-}" in gtk|rune|gtk,rune) target="$2" ;; *) echo "$usage" >&2; exit 2 ;; esac
       shift 2
       ;;
     --target=*)
       target="${1#--target=}"
-      case "$target" in gtk|rune) ;; *) echo "$usage" >&2; exit 2 ;; esac
+      case "$target" in gtk|rune|gtk,rune) ;; *) echo "$usage" >&2; exit 2 ;; esac
       shift
       ;;
     *)
@@ -62,8 +65,11 @@ qa_container_prepare
 # large machine, and the targets then abort at launch with EAGAIN.
 qa_container_options --rm --pids-limit=-1
 qa_container_mounts
+# The runner is told the targets; STRATA_QA_TARGET names the first, which is what the
+# runner's other paths read.
 exec "$engine" run "${options[@]}" "${mounts[@]}" \
-  --env "STRATA_QA_TARGET=$target" \
+  --env "STRATA_QA_TARGET=${target%%,*}" \
+  --env "STRATA_QA_FUZZ_TARGETS=$target" \
   "$image" bash -euc '
     # Stdout belongs to the runner alone, so that `generate` redirected to a file gives
     # the sequence: everything before the runner goes to stderr.
@@ -74,7 +80,7 @@ exec "$engine" run "${options[@]}" "${mounts[@]}" \
       # The tmpfs hides the X socket directory of the image; the xvfb.log owner warning is harmless.
       mkdir -p -m 1777 /tmp/.X11-unix
       rustc --version
-      if [[ "$STRATA_QA_TARGET" == rune ]]; then
+      if [[ ",$STRATA_QA_FUZZ_TARGETS," == *,rune,* ]]; then
         # The Rune side builds in a cargo run of its own (docs/workspace.md).
         cargo build --locked -p strata-rune --features qa
         export STRATA_QA_RUNE_BINARY="$CARGO_TARGET_DIR/debug/strata-rune"
@@ -82,5 +88,6 @@ exec "$engine" run "${options[@]}" "${mounts[@]}" \
     } >&2
     # --fuzz first sends the runner to the fuzz driver; it is an option, so that no test
     # filter can be taken for it.
-    cargo test --locked --features qa,invariant-checks --test qa -- --fuzz "$@"
+    cargo test --locked --features qa,invariant-checks --test qa -- --fuzz "$@" \
+      --target "$STRATA_QA_FUZZ_TARGETS"
   ' bash "${arguments[@]}"

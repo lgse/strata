@@ -30,7 +30,10 @@ use strata_fs::{
     adapters::{LocalFileSource, LocalOperationProvider},
     app::{Browser, BrowserEvent},
 };
-use strata_kit::{icons::IconName, look::Look};
+use strata_kit::{
+    icons::IconName,
+    look::{Look, LookParams},
+};
 use strata_platform::csd::{self, Csd};
 
 use crate::{
@@ -168,6 +171,8 @@ impl App {
         let keys = Live::registered(saved, first_window_reports().as_deref());
         let thumbnails = thumbnail_store(saved);
         let folder_views = folder_views::Kept::load(later.clone());
+        let mut look = Look::fallback(true);
+        follow_saved_look(&mut look, saved);
         let window = Window {
             settings,
             events,
@@ -184,7 +189,7 @@ impl App {
             thumbnails,
             folder_views,
         };
-        Self::assemble(Look::fallback(true), browser, window, built)
+        Self::assemble(look, browser, window, built)
     }
 
     pub(crate) fn open(&self, location: Location) {
@@ -264,6 +269,29 @@ impl App {
 /// unsaved, and a change made meanwhile writes them again.
 pub(crate) fn saved(app: &mut App) -> &mut Saved {
     &mut app.window.settings
+}
+
+/// Sets the look's tokens from what of the saved settings this interface follows: the text
+/// size (`TextSize`, 8 to 48 px). The rest of [`LookParams`] stays at Strata's defaults until
+/// its settings are followed (density, roundness, the font, the desktop's text scale), and
+/// the glow and animations switches stay as the look has them, which a host may have turned
+/// off (`Offscreen::without_animations`).
+fn follow_saved_look(look: &mut Look, saved: &strata_desktop::settings::Preferences) {
+    let text_size = u16::try_from(saved.text_size.root_font_px()).unwrap_or(u16::MAX);
+    look.apply_params(&LookParams {
+        text_size,
+        element_glow: look.glow.on,
+        animations: look.animations,
+        ..LookParams::default()
+    });
+}
+
+/// The look follows the saved settings as they are now: a part that changes one the look
+/// reads, the text size, calls this after `saved(app).change(…)`, as GTK's theme follows its
+/// preference (`src/ui/theme.rs`).
+pub(crate) fn follow_look(app: &mut App) {
+    let App { look, window, .. } = app;
+    follow_saved_look(look, window.settings.preferences());
 }
 
 /// The saved settings as they are now, for a build or a reader that does not change them.
@@ -394,6 +422,16 @@ pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
     };
     tx.focus(key, true);
     true
+}
+
+/// How much of the files' area the sidebar holds back beyond what it draws: its full width
+/// less its rail's while it is railed ([`crate::slots::Sidebar::held_back`]), and nothing with
+/// no sidebar.
+pub(crate) fn sidebar_held_back(app: &App) -> f32 {
+    app.window
+        .parts
+        .sidebar()
+        .map_or(0.0, |sidebar| (sidebar.held_back)(app))
 }
 
 /// The key of the shown view's element that takes the keyboard: where a field or a menu
