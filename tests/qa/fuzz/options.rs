@@ -7,7 +7,9 @@ use std::{path::PathBuf, time::Duration};
 use super::{
     observe::{REST, Rest},
     perturb::Perturbation,
+    targets::Targets,
 };
+use crate::target::Target;
 
 pub(crate) const USAGE: &str = "\
 usage: ./scripts/qa-fuzz.sh <command> [selections]
@@ -29,9 +31,12 @@ usage: ./scripts/qa-fuzz.sh <command> [selections]
   --seeds SEEDS       7, 1..200 (both ends) or 3,9,0x2a
   --length N          actions in a generated sequence (default 40)
   --repeats N         replays of each sequence (default 2)
-  --jobs N            sequences replayed at once (default: one per CPU; at most 256, a
-                      display each)
-  --target gtk|rune   the target every replay starts (default gtk); the script sets it
+  --jobs N            sequences replayed at once (default: one per CPU, and half that on
+                      two targets; at most 256 replays at once, a display each)
+  --target T          gtk or rune, the target every replay starts, or gtk,rune: the
+                      differential mode, each sequence replayed on both side by side and
+                      every Rune replay compared with the first GTK one (default: the
+                      STRATA_QA_TARGET the script sets, else gtk)
   --keep              keep the streams of sequences that agree too
   --corpus            shrink: write a confirmed sequence into the area's corpus
   --limit N           shrink: replays tried before the confirmations (default 200)
@@ -63,6 +68,7 @@ pub(crate) struct Options {
     pub(crate) length: usize,
     pub(crate) repeats: usize,
     pub(crate) jobs: usize,
+    pub(crate) targets: Targets,
     pub(crate) keep: bool,
     /// `replay`: the parked sequences, and only those.
     pub(crate) parked: bool,
@@ -93,7 +99,8 @@ impl Options {
             seeds: Vec::new(),
             length: 40,
             repeats: 2,
-            jobs: std::thread::available_parallelism().map_or(1, usize::from),
+            jobs: 0,
+            targets: Targets::one(Target::from_environment()?),
             keep: false,
             parked: false,
             corpus: false,
@@ -114,6 +121,7 @@ impl Options {
                 "--length" => options.length = positive(&argument, &value()?)?,
                 "--repeats" => options.repeats = positive(&argument, &value()?)?,
                 "--jobs" => options.jobs = positive(&argument, &value()?)?,
+                "--target" => options.targets = Targets::parse(&value()?)?,
                 "--limit" => options.limit = positive(&argument, &value()?)?,
                 "--keep" => options.keep = true,
                 "--parked" => options.parked = true,
@@ -128,6 +136,10 @@ impl Options {
                 flag if flag.starts_with('-') => return Err(format!("no option {flag}")),
                 file => options.files.push(PathBuf::from(file)),
             }
+        }
+        if options.jobs == 0 {
+            let processors = std::thread::available_parallelism().map_or(1, usize::from);
+            options.jobs = (processors / options.targets.all().len()).max(1);
         }
         options.check()?;
         Ok(options)
@@ -184,15 +196,20 @@ impl Options {
             Command::Run | Command::Replay | Command::Shrink
         );
         let survey_of_files = self.command != Command::Replay || !self.files.is_empty();
+        let replays_at_once = self.jobs * self.targets.all().len();
         vec![
             (
                 compares && self.repeats < 2,
                 "a comparison needs --repeats 2 or more",
             ),
             (
-                self.jobs > MOST_AT_ONCE,
-                "--jobs is at most 256: every replay has a display of its own, and the runner \
-                 has that many",
+                replays_at_once > MOST_AT_ONCE,
+                "--jobs is at most 256, and 128 on two targets: every replay has a display of \
+                 its own, and the runner has 256",
+            ),
+            (
+                self.targets.is_differential() && !compares,
+                "--target gtk,rune is for run, replay and shrink: the commands that compare",
             ),
             (
                 self.parked && survey_of_files,

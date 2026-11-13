@@ -21,6 +21,8 @@ class QaFuzzScriptTests(unittest.TestCase):
             ["run", "--target", "qt"],
             ["run", "--target"],
             ["run", "--target=wayland"],
+            ["run", "--target", "rune,gtk"],
+            ["run", "--target", "gtk,rune,gtk"],
         )
         for arguments in calls:
             with self.subTest(arguments=arguments):
@@ -38,15 +40,17 @@ class QaFuzzScriptTests(unittest.TestCase):
                 self.assertEqual(refused.stdout, "")
 
     def test_a_call_with_a_command_goes_on_to_the_container_engine(self):
-        asked = subprocess.run(
-            [str(SCRIPT), "check", "--target", "gtk"],
-            capture_output=True,
-            text=True,
-            check=False,
-            env={"PATH": "/usr/bin:/bin", "STRATA_CONTAINER_ENGINE": "no-such-engine"},
-        )
-        self.assertEqual(asked.returncode, 1)
-        self.assertIn("QA scenarios require Docker or Podman", asked.stderr)
+        for target in ("gtk", "gtk,rune"):
+            with self.subTest(target=target):
+                asked = subprocess.run(
+                    [str(SCRIPT), "run", "--target", target],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    env={"PATH": "/usr/bin:/bin", "STRATA_CONTAINER_ENGINE": "no-such-engine"},
+                )
+                self.assertEqual(asked.returncode, 1)
+                self.assertIn("QA scenarios require Docker or Podman", asked.stderr)
 
 
 if __name__ == "__main__":
