@@ -441,6 +441,14 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    [A7](packages/A7.md), entry management, or a package of its own after A7. Meanwhile:
    Return on such a file does nothing on Rune.
 
+### A7: Entry management and undo
+
+1. **Who takes the List details cell for a symlink's size?** On GTK the List row of a file
+   link shows its target's size (`delete-file-symlink-sizes-link`, 100 kB at line 5, in
+   both its runs); on Rune the cell shows nothing. It is the List view's details cell, A2's
+   area and the contract's `details.rs` and `fills.rs`, and A2 has closed. Meanwhile: the two
+   runs stay `pending`, unplaced. Found by A7's closing survey, 2026-11-13.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
