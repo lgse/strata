@@ -190,6 +190,23 @@ fn caps_lock_never_changes_a_shortcut() {
     assert_eq!(capital.text(), Some('C'));
     let cyrillic = typed('С', NONE, at(At::KeyC, 'с'));
     assert!(cyrillic.is(Binding::plain(Key::c)), "{cyrillic:?}");
+    assert!(!cyrillic.is(Binding::shift(Key::c)), "{cyrillic:?}");
+    assert_eq!(cyrillic.text(), Some('С'));
+    let cyrillic_shifted = typed('С', SHIFT, at(At::KeyC, 'с'));
+    assert!(
+        cyrillic_shifted.is(Binding::shift(Key::c)),
+        "{cyrillic_shifted:?}"
+    );
+    assert!(
+        !cyrillic_shifted.is(Binding::plain(Key::c)),
+        "{cyrillic_shifted:?}"
+    );
+    let cyrillic_chord = chord('c', CTRL_SHIFT, at(At::KeyC, 'с'));
+    assert!(
+        cyrillic_chord.is(Binding::ctrl_shift(Key::c)),
+        "{cyrillic_chord:?}"
+    );
+    assert!(cyrillic_chord.used_fallback(), "{cyrillic_chord:?}");
     let shifted = typed('C', SHIFT, at(At::KeyC, 'c'));
     assert!(shifted.is(Binding::shift(Key::c)), "{shifted:?}");
 }
