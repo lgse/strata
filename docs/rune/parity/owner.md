@@ -241,6 +241,17 @@ comments of 2026-11-12, unless another is named.
   report can be placed. Meanwhile, by the orchestrating session's ruling: the rules exact
   for the image's libraries, no reading of numbers added to cure it, and every declared
   key read from Strata's own table whatever library is installed.
+- **`strata-rune` links libxkbcommon directly.** The owner ruled "link `xkbcommon` at run
+  time" for the key tables. The orchestrating session read that as ordinary dynamic
+  linking: the system's library, resolved by the loader at start, not tables built in and
+  not a library loaded by hand. In force from [#2259](https://github.com/lgse/strata/pull/2259), and the owner's to reverse. The
+  consequence: before it, the Rune binary did not link the library (Rune's window stack
+  loaded it with `dlopen` when it set up the keyboard), so on a machine without
+  libxkbcommon `strata-rune --help` and the sandbox's thumbnail worker worked and the
+  window failed at its keyboard set-up; now none of the three starts. Accepted because GTK
+  4 links the same library, and because loading it by hand means unsafe calls through raw
+  function pointers in a shared crate. `strata-rune`'s packaging owes the dependency when
+  it is packaged.
 - **Tab-session restore has no QA scenario.** No scenario seeds or reads `tabs.toml` or
   sets `restore_tabs`, so the ledger holds no interface to the rules for using the shared
   store, which live in GTK code that is deleted at parity (`docs/rune/shared-state.md`,

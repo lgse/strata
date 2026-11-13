@@ -280,14 +280,28 @@ answers, for the libraries of the test image.
 
 It links libxkbcommon the ordinary way: the loader resolves it when the process starts,
 with no `dlopen` and no fallback, so the library is a start-up requirement of
-`strata-rune` in every mode, the sandbox's thumbnail worker included. It was one already:
-Rune itself depends on the same binding, and `strata-rune` listed `libxkbcommon.so.0`
-among the libraries it needs before this backend existed. The package that provides it is
-`libxkbcommon` on Arch and Fedora and `libxkbcommon0` on Debian and Ubuntu; a build needs
-its development files too, which Arch ships in the same package and the others as
-`libxkbcommon-devel` and `libxkbcommon-dev`. GTK depends on the library as well, so a
-machine that runs the GTK application has it. The GTK application's own build does not
-link it for this: only its tests enable the feature.
+`strata-rune` in every mode. **That is new with this backend.** Before it, the binary
+did not link the library: Rune's window stack loaded it with `dlopen` when it set up the
+keyboard, and nothing else needed it. So on a machine without libxkbcommon three things
+change: `strata-rune --help` and the sandbox's thumbnail worker, which used to work, do
+not start, and the window, which used to fail at its keyboard set-up, does not start
+either. It is accepted, by the orchestrating session's reading of the owner's "link
+xkbcommon at run time" ([`parity/owner.md`](parity/owner.md#b2-shared-state-out-of-the-gtk-package)), because it is ordinary dynamic linking,
+because GTK 4 links the same library, so a machine that runs the GTK application has it,
+and because the alternative, loading it by hand, means unsafe calls through raw function
+pointers in a shared crate that denies unsafe code.
+
+The package that provides it is `libxkbcommon` on Arch and Fedora and `libxkbcommon0` on
+Debian and Ubuntu; a build needs its development files too, which Arch ships in the same
+package and the others as `libxkbcommon-devel` and `libxkbcommon-dev`. `strata-rune` is
+not packaged yet: its packaging owes the dependency when it is. The GTK application's own
+build does not link the library for this: only its tests enable the feature.
+
+The thumbnail worker reads no key. It needs the library only because it is the same
+binary. The sandbox it runs in binds the whole runtime root read-only (`/usr` by default,
+or a root under `/nix/store` or `/gnu/store`), and `/lib` and `/lib64`, so the library is
+there by design, as any system library is; a copy of it outside that root would not be
+visible to the worker.
 
 | | `Xkb` | How it follows GDK |
 | --- | --- | --- |
