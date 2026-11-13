@@ -33,7 +33,8 @@ use crate::listing::Column;
 /// What [`Fills`] needs of the browser: [`Browser`] in the application, a recorder in tests.
 pub(crate) trait Filler {
     fn entry_at(&self, depth: usize, position: usize) -> Option<FileEntry>;
-    fn request(&self, depth: usize, position: usize, location: Location, details: bool);
+    /// Asks for the fill of the entry at `(depth, position)`.
+    fn request(&self, at: (usize, usize), location: Location, details: bool);
     fn prioritize(&self, depth: usize, near: &[Location]);
     fn touched(&self, location: &Location) -> bool;
 }
@@ -43,7 +44,7 @@ impl Filler for Rc<Browser> {
         Browser::entry_at(self, depth, position)
     }
 
-    fn request(&self, depth: usize, position: usize, location: Location, details: bool) {
+    fn request(&self, (depth, position): (usize, usize), location: Location, details: bool) {
         self.request_visible_metadata_fill(depth, position, location, details);
     }
 
@@ -172,7 +173,11 @@ impl Fills {
         let known = Known::of(&entry);
         if !held && self.asked.get(&id) != Some(&known) {
             self.asked.insert(id, known);
-            browser.request(shown.depth, position, entry.location.clone(), self.details);
+            browser.request(
+                (shown.depth, position),
+                entry.location.clone(),
+                self.details,
+            );
         }
         Some(entry.location)
     }
@@ -194,13 +199,18 @@ fn widened(range: &Range<usize>, len: usize) -> Range<usize> {
 /// `schedule_refresh`, from `metadata_needs_fill` (`src/ui/browser/entry.rs`) and
 /// `icon_details_need_fill` (`src/ui/browser_modes/metadata.rs`).
 fn needs_fill(entry: &FileEntry, details: bool) -> bool {
+    metadata_needs_fill(entry)
+        || entry.mode == MetadataValue::Unknown
+        || (details && details_need_fill(entry))
+}
+
+fn metadata_needs_fill(entry: &FileEntry) -> bool {
     let folder = entry.is_directory();
-    let basic = entry.modified_unix_seconds == MetadataValue::Unknown
+    entry.modified_unix_seconds == MetadataValue::Unknown
         || (!folder && entry.size == MetadataValue::Unknown)
         || (folder
             && entry.location.native_path().is_some()
-            && entry.listable == MetadataValue::Unknown);
-    basic || entry.mode == MetadataValue::Unknown || (details && details_need_fill(entry))
+            && entry.listable == MetadataValue::Unknown)
 }
 
 fn details_need_fill(entry: &FileEntry) -> bool {

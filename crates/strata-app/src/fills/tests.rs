@@ -60,7 +60,7 @@ impl Filler for Recorder {
         self.entries.borrow().get(position).cloned()
     }
 
-    fn request(&self, _depth: usize, position: usize, _location: Location, _details: bool) {
+    fn request(&self, (_, position): (usize, usize), _location: Location, _details: bool) {
         self.requests.borrow_mut().push(position);
     }
 
