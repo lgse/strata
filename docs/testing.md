@@ -690,6 +690,19 @@ STRATA_KEY_LOOKUPS_TOLERATE_OTHER_LIBRARIES=1 \
   cargo test --locked -p strata --all-features --test key_lookups -- --nocapture
 ```
 
+Without a display that runs only the first test: the accelerator comparison
+says it skipped. To run it too, start the command under a private display and
+bus, never the desktop's. `./scripts/test-headless.py` does not pass the
+variable on, so:
+
+```bash
+env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+  xvfb-run -a -s "-screen 0 1280x1024x24 -nolisten tcp -noreset" dbus-run-session -- \
+  env GDK_BACKEND=x11 GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
+  STRATA_KEY_LOOKUPS_TOLERATE_OTHER_LIBRARIES=1 \
+  cargo test --locked -p strata --all-features --test key_lookups -- --nocapture
+```
+
 Three classes of difference are then counted and not failed, their counts
 printed (libtest shows them only with `--nocapture`) and their rows written to
 `key-lookups/tolerated-<lookup>.txt`: a key that one library names and the other
