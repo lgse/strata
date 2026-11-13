@@ -373,6 +373,7 @@ fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
         key: key.to_owned(),
         name: name.to_owned(),
         bounds: bounds(0.0),
+        column: None,
     };
     let drawn = Drawn {
         buttons: vec![
@@ -426,7 +427,8 @@ fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
 /// `column_background/context-menu-keeps-column-target` waits for the pane holding a column
 /// header's Refresh button with the column's menu open: a button drawn inside a column
 /// presented from what is drawn hangs under that column's pane, as a column's header actions
-/// do in GTK's tree, and one drawn outside every column hangs off the window's root.
+/// do in GTK's tree, and one drawn outside every column hangs off the window's root, even
+/// where its box lies over a column's.
 #[test]
 fn a_button_behind_an_open_menu_hangs_under_the_column_it_is_drawn_in() {
     let menu = json!({
@@ -437,20 +439,16 @@ fn a_button_behind_an_open_menu_hangs_under_the_column_it_is_drawn_in() {
             ] },
         ],
     });
-    let button = |key: &str, x: f64| DrawnButton {
+    let button = |key: &str, column: Option<&str>| DrawnButton {
         key: key.to_owned(),
         name: key.to_owned(),
-        bounds: Rect {
-            x,
-            y: 44.0,
-            width: 20.0,
-            height: 20.0,
-        },
+        bounds: bounds(0.0),
+        column: column.map(str::to_owned),
     };
     let drawn = Drawn {
         buttons: vec![
-            button("columns-refresh", 250.0),
-            button("header-search", 400.0),
+            button("columns-refresh", Some("columns-col-1")),
+            button("sidebar-pin", None),
         ],
         ..drawn_folder()
     };
@@ -475,7 +473,7 @@ fn a_button_behind_an_open_menu_hangs_under_the_column_it_is_drawn_in() {
         "a button drawn in the column hangs under its pane"
     );
     assert_eq!(
-        parent_of("header-search").and_then(|parent| parent.parent),
+        parent_of("sidebar-pin").and_then(|parent| parent.parent),
         None,
         "a button drawn outside every column hangs off the window's root"
     );

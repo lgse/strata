@@ -121,14 +121,18 @@ pub(super) struct Shape {
 /// It is presented with nothing else: it reads `sensitive` whatever it is (Rune's drawn
 /// elements say nothing of being disabled), it is not focusable and offers no click action,
 /// so a run that asserts a state of a button behind a menu needs an `a11y` twin. It hangs
-/// under the pane of the drawn column whose box holds it, as a column's header actions do in
-/// GTK's tree (`panes_with` finds the pane holding it), and off the window's root otherwise,
-/// where a target `within` a pane misses it and `nth: -1` finds it first.
+/// under the pane of the drawn column it is drawn inside, by the element tree, as a column's
+/// header actions do in GTK's tree (`panes_with` finds the pane holding it), and off the
+/// window's root otherwise, where a target `within` a pane misses it and `nth: -1` finds it
+/// first. Targets are matched depth first from the root, so a button under a pane comes
+/// before the window's later nodes; no run's `nth` reaches a button presented here.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct DrawnButton {
     pub(super) key: String,
     pub(super) name: String,
     pub(super) bounds: Rect,
+    /// The list of the drawn column whose pane is among the button's ancestors, if any.
+    pub(super) column: Option<String>,
 }
 
 /// What the snapshot is read from beside the accessibility tree.
@@ -322,7 +326,7 @@ impl Snapshot {
         if let Some(view) = &drawn.view {
             for column in &drawn.columns {
                 if let Some(pane) = snapshot.add_hidden_column(column, view) {
-                    panes.push((column.pane, pane));
+                    panes.push((column.list.as_str(), pane));
                 }
             }
             for list in &drawn.lists {
@@ -350,13 +354,13 @@ impl Snapshot {
         }
     }
 
-    /// Presents a button an open menu keeps out of the tree: under the pane of a column
-    /// presented from what is drawn (`panes`, each with its box) whose box holds the button's
-    /// centre, as a column's header actions sit in its pane in GTK's tree; else under the
-    /// window. Not behind a dialog, to stay cautious: GTK's dialogs are overlay layers that
-    /// leave the window's widgets in the tree, so a run aiming behind one fails on Rune rather
-    /// than passing falsely.
-    fn add_hidden_button(&mut self, button: &DrawnButton, panes: &[(Rect, usize)]) {
+    /// Presents a button an open menu keeps out of the tree: under the pane of the column
+    /// presented from what is drawn (`panes`, by list) that the button is drawn inside, as a
+    /// column's header actions sit in its pane in GTK's tree; else under the window. Not behind
+    /// a dialog, to stay cautious: GTK's dialogs are overlay layers that leave the window's
+    /// widgets in the tree, so a run aiming behind one fails on Rune rather than passing
+    /// falsely.
+    fn add_hidden_button(&mut self, button: &DrawnButton, panes: &[(&str, usize)]) {
         let listed = |seen: &Seen| seen.key.as_deref() == Some(button.key.as_str());
         let menu = |seen: &Seen| seen.role == "menu" && seen.has_state("modal");
         let modal = self.nodes.iter().any(menu);
@@ -370,13 +374,9 @@ impl Snapshot {
             bounds: Some(button.bounds),
             ..Seen::default()
         };
-        let (x, y) = button.bounds.centre();
-        let inside = |pane: &Rect| {
-            x >= pane.x && y >= pane.y && x < pane.x + pane.width && y < pane.y + pane.height
-        };
         let parent = panes
             .iter()
-            .find(|(pane, _)| inside(pane))
+            .find(|(list, _)| button.column.as_deref() == Some(*list))
             .map_or(0, |(_, index)| *index);
         self.push(parent, &button.key, seen);
     }
