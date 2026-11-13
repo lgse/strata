@@ -565,10 +565,28 @@ sequence only together with the alphabet's version, so the version is part of th
   and `chooser_selection/chooser-heading-escape-keeps-selection` at the headings as
   `{"role":"button","name":"Size"}`. Each still waits on another part first.
 - **State:** fixed by [H3](packages/H3.md)'s [#2329](https://github.com/lgse/strata/pull/2329), a `contract` change to C4:
-  the collection takes `Roles::LISTBOX` (`listbox` and `option`, heard as `list` and
-  `list item`), its cells take no role, and its heading strip is a box of `button`s. The List
-  probe's roles are `("list-box", "list-box-option")`. Nothing a user does changes: the
+  the collection takes `Roles::LIST` (Rune's `list` and `listitem`, AccessKit's `List` and
+  `ListItem`, which AT-SPI reports as `list` and `list item`, as GTK's; a `listbox` would be
+  heard as a `list box`), its cells take no role and its Name cell none either, so the name
+  is not heard twice, and its heading strip is a box of `button`s. The List probe's roles are
+  `("list", "list-item")`. Nothing a user does changes: the
   collection's container is the one focus stop for both roles and routes its own keys, so
   Rune's role-keyed focus rules (`focus.rs`) do not reach its items. Columns' columns are
   `listbox`es already, and the Icons grid stays `grid` and `gridcell`, as GTK's `GridView`
   is a grid.
+
+### #2331: the Rune List view's column headings are no Tab stops where GTK's are
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2331), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** GTK's List headings are plain `gtk::Button`s
+  (`src/ui/browser_modes/list_headings.rs`), with nothing keeping the keyboard off them, so
+  they are Tab stops that Return and Space press (to sort). C4's headings are no Tab stops: the
+  table is one focus stop, by an owner ruling C4's module docs record ("Headings aren't Tab
+  stops", `crates/strata-components/src/list_table/mod.rs`); assistive technology presses a
+  heading through its press action, and the keyboard cannot reach one.
+- **Reach:** by reading, no scenario Tabs onto a heading. The gap is older than
+  [#2329](https://github.com/lgse/strata/pull/2329), which made the headings `button`s for
+  assistive technology and left them unfocusable. Found in #2329's review.
+- **State:** open, [A8](packages/A8.md)'s: give C4's headings focus with Return and Space
+  pressing them, as GTK's buttons do, or have the owner confirm the ruling as a deviation.
