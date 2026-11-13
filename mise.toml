@@ -121,6 +121,9 @@ export STRATA_OUTER_DISPLAY="${DISPLAY:-}" STRATA_OUTER_WAYLAND_DISPLAY="${WAYLA
 export STRATA_OUTER_XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}"
 unset DISPLAY WAYLAND_SOCKET HYPRLAND_INSTANCE_SIGNATURE SWAYSOCK I3SOCK DBUS_SESSION_BUS_ADDRESS
 export WAYLAND_DISPLAY=strata-test-no-wayland CARGO_PROFILE_DEV_DEBUG=0
+# Every wait is 10 s times this. At 1 the task fails on a machine that is building something
+# else: it starts a sway and an Xwayland for each test, as many at once as there are cores.
+export STRATA_TEST_TIMEOUT_SCALE="${STRATA_TEST_TIMEOUT_SCALE:-3}"
 cargo build -p strata-test-peer -p strata-platform --bins --examples --all-features --locked
 # The drag-and-drop and clipboard demos, which the gallery's session tests (tests/x2.rs,
 # tests/x3.rs) drive against the peer.

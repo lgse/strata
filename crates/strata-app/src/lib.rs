@@ -12,6 +12,8 @@ rust_i18n::i18n!(
     backend = strata_core::i18n::Catalogs::compiled()
 );
 
+// The text of a row's facts, as the Icons details line and the List size column show it.
+mod details;
 mod events;
 // The cursor and selection handover every view shares.
 mod handover;

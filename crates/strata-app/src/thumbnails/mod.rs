@@ -32,7 +32,7 @@ use std::{
 };
 
 use strata_components::{contract::ThumbKey, thumbnails::Outcome};
-use strata_core::model::{FileEntry, MetadataValue};
+use strata_core::model::FileEntry;
 use strata_fs::adapters::thumbnail_cache;
 use strata_preview::sandbox::{Cancellation, browser};
 
@@ -40,6 +40,8 @@ mod kind;
 mod viewer;
 
 use kind::Kind;
+
+use crate::listing::known;
 pub(crate) use viewer::Viewer;
 
 /// The key of `entry`'s thumbnail: its path, modification time and size, so a change to the
@@ -63,13 +65,6 @@ pub(crate) fn key_of(entry: &FileEntry) -> Option<ThumbKey> {
 fn keys() -> &'static RandomState {
     static KEYS: OnceLock<RandomState> = OnceLock::new();
     KEYS.get_or_init(RandomState::new)
-}
-
-fn known<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
-    match value {
-        MetadataValue::Known(value) => Some(*value),
-        MetadataValue::Unknown | MetadataValue::Unavailable => None,
-    }
 }
 
 /// One thumbnail to make.
