@@ -17,7 +17,7 @@ use crate::{
     host::offscreen::Offscreen,
     test_support::{
         PATIENCE, fixture, hosted, hosted_after,
-        view::{all, browser_holds, idle, press, text},
+        view::{all, browser_holds, idle, press, shift, text},
     },
 };
 
@@ -529,6 +529,124 @@ fn a_sidebar_hidden_from_the_rail_starts_hidden_and_shows_full() {
                 (true, false),
                 "Compact sidebar (Ctrl+B)",
             );
+        },
+    );
+}
+
+/// Left at the start of a listed folder: the keyboard comes into the sidebar on Home's row.
+fn into_the_sidebar(host: &mut Offscreen) {
+    press(host, Key::Down, Mods::default());
+    press(host, Key::Left, Mods::default());
+    assert_eq!(focused(&host.tree()).as_deref(), Some("sidebar-place-home"));
+}
+
+/// Waits for `key` to have the keyboard after `pressed`: an arrow's other key reaches Rune's
+/// focus navigation as the arrow, a frame later.
+fn focus_reaches(host: &mut Offscreen, key: &str, pressed: &Key) {
+    host.run_until(PATIENCE, |host| {
+        focused(&host.tree()).as_deref() == Some(key)
+    });
+    let at = focused(&host.tree());
+    assert_eq!(at.as_deref(), Some(key), "after {pressed:?}");
+}
+
+fn letter(letter: &str) -> Key {
+    Key::Text(letter.to_owned())
+}
+
+/// The default map's arrows in the sidebar, and their other keys, as GTK's
+/// `sidebar_navigation` reads them: Down and Up move between the rows, and Right gives the
+/// keyboard back to the files.
+#[test]
+fn the_arrows_and_their_other_keys_move_between_the_rows_and_back_to_the_files() {
+    hosted(
+        MODULE,
+        "the_arrows_and_their_other_keys_move_between_the_rows_and_back_to_the_files",
+        |mut host| {
+            std::fs::write(home().join("a.txt"), "a").expect("a file at home");
+            let folder = fixture();
+            opened(folder.path(), &mut host);
+            shown(&mut host, "sidebar-place-trash");
+            let view = crate::shell::view_focus(host.app()).expect("the view's key");
+            for [down, up, right] in [
+                [Key::Down, Key::Up, Key::Right],
+                [letter("j"), letter("k"), letter("l")],
+            ] {
+                into_the_sidebar(&mut host);
+                press(&mut host, down.clone(), Mods::default());
+                focus_reaches(&mut host, "sidebar-place-trash", &down);
+                press(&mut host, up.clone(), Mods::default());
+                focus_reaches(&mut host, "sidebar-place-home", &up);
+                press(&mut host, right.clone(), Mods::default());
+                focus_reaches(&mut host, view, &right);
+            }
+        },
+    );
+}
+
+/// `key` on the sidebar's first row reaches the header's toggle
+/// (`TopBarNavigation::move_up_from_sidebar`).
+fn up_from_the_top_reaches_the_toggle(mut host: Offscreen, key: Key) {
+    let folder = fixture();
+    opened(folder.path(), &mut host);
+    shown(&mut host, "sidebar-place-home");
+    into_the_sidebar(&mut host);
+    press(&mut host, key.clone(), Mods::default());
+    focus_reaches(&mut host, TOGGLE, &key);
+}
+
+#[test]
+fn up_from_the_first_row_reaches_the_headers_toggle() {
+    hosted(
+        MODULE,
+        "up_from_the_first_row_reaches_the_headers_toggle",
+        |host| up_from_the_top_reaches_the_toggle(host, Key::Up),
+    );
+}
+
+#[test]
+fn k_from_the_first_row_reaches_the_headers_toggle() {
+    hosted(
+        MODULE,
+        "k_from_the_first_row_reaches_the_headers_toggle",
+        |host| up_from_the_top_reaches_the_toggle(host, letter("k")),
+    );
+}
+
+/// Shift and Super with Up and Down move between the rows as the plain arrows do, as GTK's
+/// `child_focus` moves them with both held; Shift+Up on the first row moves nothing, and
+/// Super+Up there reaches the header's toggle, since only Shift keeps Up in the sidebar.
+#[test]
+fn shift_and_super_with_up_and_down_move_between_the_rows() {
+    hosted(
+        MODULE,
+        "shift_and_super_with_up_and_down_move_between_the_rows",
+        |mut host| {
+            let folder = fixture();
+            opened(folder.path(), &mut host);
+            shown(&mut host, "sidebar-place-trash");
+            let logo = Mods {
+                logo: true,
+                ..Mods::default()
+            };
+            into_the_sidebar(&mut host);
+            for mods in [shift(), logo] {
+                press(&mut host, Key::Down, mods);
+                focus_reaches(&mut host, "sidebar-place-trash", &Key::Down);
+                press(&mut host, Key::Up, mods);
+                focus_reaches(&mut host, "sidebar-place-home", &Key::Up);
+            }
+            press(&mut host, Key::Up, shift());
+            host.turn();
+            idle(&mut host);
+            let at = focused(&host.tree());
+            assert_eq!(
+                at.as_deref(),
+                Some("sidebar-place-home"),
+                "Shift+Up at the top"
+            );
+            press(&mut host, Key::Up, logo);
+            focus_reaches(&mut host, TOGGLE, &Key::Up);
         },
     );
 }
