@@ -208,6 +208,7 @@ gaps"), by number. The owner ranks each at the filing pass.
 | 102 | [rune-kit's `Reorder` rounds where a dragged row lands, and keeps its drag offset private](102-reorder-rounds-its-target.md) | New issue, or a comment on U21 | strata-components' places sidebar (C8): reordering places and pins | C8's own row drag (`RowDrag`, `landing`) | Drafted, checked by source and the parity runs |
 | 103 | [Return can't press a focused button, and the only switch for it is `Cx::web_focus`](103-return-presses-a-button.md) | New issue | Every button of Strata's Rune interface; C15's dialogs route around it | `strata-app`'s `buttons::on_return`, and C15's Return-as-Space | Drafted, checked by reading and `strata-app`'s hosted tests |
 | 104 | [A modal popover can't also close on a wheel outside it and let that wheel through](104-outside-wheel-closes-a-popover.md) | New issue | A popover made with `El::modal` over a scrolling view | A popover that is not modal, over a scrim whose `on_wheel` closes it and returns false (finding lgse/strata#2341) | Drafted, checked by reading and a probe; not to be filed |
+| 105 | [Hover paints through a covering element](105-hover-paints-through-a-cover.md) | New issue | Strata's plain popovers, and any overlay that is not modal | Nothing yet: the owner left hover under a popover as it is (finding lgse/strata#2392) | Drafted, checked by reading and a hosted probe; to file at the owner's pass |
 
 ## Owner decisions (2026-11-10)
 
