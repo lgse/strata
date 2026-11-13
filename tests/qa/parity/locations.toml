@@ -70,8 +70,9 @@ host = "offscreen"
 scenario = "scrolled-away-crumbs-and-columns-stay-reachable"
 run = "columns"
 package = "A5"
-status = "required"
-host = "offscreen"
+status = "pending"
+reason = "rune"
+blocker = "lgse/strata#2322: flaky under a full run at line 37 (Columns Right after the resize leaves focus nowhere); 11/11 alone. Passes past the crumbs' wheel on line 52 since #2321"
 
 [[run]]
 scenario = "sidebar-place-navigates"
