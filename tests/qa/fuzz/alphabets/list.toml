@@ -46,13 +46,12 @@ name = "escape"
 weight = 4
 steps = ['{"key":"Escape"}']
 
-# A List view opens a folder in place: Return on a folder shows it, and on a file opens it
-# with its application, which the QA environment does not have. So Return is for folders
-# and for committing a rename only.
+# Return opens a folder in place, commits a rename, and on a file asks the QA environment's
+# default application, which it has none of, as the calibration alphabet's Return does.
 [[action]]
 name = "open"
 weight = 4
-steps = ['{"key":"Return","when":{"any":[{"field":{"name":"Rename"}},{"focused_kind":"folder"}]}}']
+steps = ['{"key":"Return"}']
 
 # The parent of the fixture's own folder is /tmp, which holds other runs' folders: the
 # parent and Back stay inside the fixture.
