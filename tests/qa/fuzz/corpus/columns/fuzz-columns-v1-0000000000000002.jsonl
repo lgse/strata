@@ -1,0 +1,3 @@
+{"scenario":"fuzz-columns-v1-0000000000000002","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"readme.md"},"mods":["shift"],"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"ctrl+a","when":{"not":{"field":{"name":"Rename"}}}}

@@ -1,0 +1,11 @@
+{"scenario":"fuzz-columns-v1-0000000000000007","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"entry":"todo.txt"},"button":3,"when":{"all":[{"present":{"entry":"todo.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}
+{"type":"y","when":{"field":{"name":"Rename","focused":true}}}
+{"type":"renamed","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Right","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Delete","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Escape","when":{"present":{"menu_item":"Rename"}}}
+{"key":"shift+End","when":{"not":{"field":{"name":"Rename"}}}}
