@@ -12,7 +12,7 @@ use rune::ElementInfo;
 use strata_components::collection::element::LABEL;
 use strata_qa::Rect;
 
-use super::tree::{Drawn, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
+use super::tree::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
 use crate::{App, host::offscreen::Offscreen, shell};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
@@ -83,6 +83,64 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
     })
 }
 
+/// What [`drawn_buttons`] reads of one drawn element.
+struct Candidate<'a> {
+    role: &'a str,
+    key: Option<&'a str>,
+    label: Option<&'a str>,
+    rect: [f32; 4],
+    /// The part of `rect` its ancestors' clips leave visible.
+    visible: [f32; 4],
+    /// With its ancestors': Rune leaves an element out of its tree at 0.01 and under.
+    opacity: f32,
+    inert: bool,
+    exiting: bool,
+}
+
+impl<'a> Candidate<'a> {
+    fn of(element: &'a ElementInfo) -> Self {
+        Self {
+            role: element.role,
+            key: element.key.as_deref(),
+            label: element.label.as_deref(),
+            rect: element.rect,
+            visible: element.visible,
+            opacity: element.opacity,
+            inert: element.inert,
+            exiting: element.exiting,
+        }
+    }
+
+    /// A button a user could press: keyed and named, not leaving, not inert, not transparent,
+    /// and with some of it in view (a crumb scrolled out of its strip is not).
+    fn button(&self) -> Option<DrawnButton> {
+        let [_, _, width, height] = self.visible;
+        let shown = width > 0.0 && height > 0.0 && self.opacity > 0.01;
+        let pressable = self.role == "button" && !self.exiting && !self.inert && shown;
+        if !pressable {
+            return None;
+        }
+        let [x, y, width, height] = self.rect.map(f64::from);
+        Some(DrawnButton {
+            key: self.key?.to_owned(),
+            name: self.label?.to_owned(),
+            bounds: Rect {
+                x,
+                y,
+                width,
+                height,
+            },
+        })
+    }
+}
+
+/// The keyed, named buttons drawn and in reach, as the snapshot presents those the tree
+/// leaves out.
+fn drawn_buttons(elements: &[ElementInfo]) -> Vec<DrawnButton> {
+    let button = |element| Candidate::of(element).button();
+    elements.iter().filter_map(button).collect()
+}
+
 /// What the snapshot reads beside the accessibility tree.
 fn drawn(host: &Offscreen) -> Drawn {
     let elements = host.elements();
@@ -100,6 +158,7 @@ fn drawn(host: &Offscreen) -> Drawn {
             .filter_map(|list| drawn_column(&elements, list))
             .collect(),
         labels: name_labels(&elements),
+        buttons: drawn_buttons(&elements),
         lists,
     }
 }
@@ -173,3 +232,6 @@ impl Stage {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
