@@ -4,13 +4,17 @@
 //! (`attach_place_context_menu_with` in `src/ui/window/sidebar_context_menu.rs`, and
 //! `build_trash_menu` in `src/ui/window/sidebar_trash.rs`), drawn by strata-components' C21.
 //!
-//! - **Opening.** A right-click on a row opens its menu at the pointer; the Menu key and
-//!   Shift+F10 on a focused row open it at the row, which Rune reports as the same secondary
-//!   press (`El::on_secondary_press`), as GTK pops the row's popover up on it
-//!   (`open_sidebar_context_menu`).
+//! - **Opening.** A right-click on a row opens its menu under the pointer, centred on it, as
+//!   GTK's popover points at a 1×1 rectangle at the click (`open_on_secondary_click`); the
+//!   Menu key and Shift+F10 on a focused row open it under the row, centred on it, as GTK
+//!   pops the row's popover up pointing at the row (`open_sidebar_context_menu`). Rune reports
+//!   both as the row's secondary press (`El::on_secondary_press`), the keyboard's at the row's
+//!   bottom-left, and `Tx::by_keys` tells them apart; C8 keeps each row's box.
 //! - **The rows**, in GTK's order: "Open in New Tab" and a separator, then "Connect to
 //!   server…" on Network, "Unpin", "Customize…" on a folder with a local path, and
-//!   "Properties"; the Trash's menu has "Unpin" and "Properties" after the separator.
+//!   "Properties"; the Trash's menu has "Unpin" and "Properties" after the separator, and
+//!   "Empty Trash…" in a section of its own while the Trash is known to hold something
+//!   ([`super::trash`]), which runs the trash part's `empty-trash`.
 //! - **The target** is the row and its location as the menu opened, as GTK's menu holds its
 //!   row's location: a relist while it is open renumbers the pins, and Unpin still takes the
 //!   one it was opened on.
@@ -19,9 +23,6 @@
 //!   commands belong to other packages' parts (tabs, the Connect to server dialog, the
 //!   Customize dialog, Properties) and are drawn as GTK draws them, doing nothing until those
 //!   parts land; each will add the target it needs to `commands::On` when it wires its row.
-//!
-//! Not here yet: the Trash's "Empty Trash…", which shows only while the Trash holds
-//! something.
 
 use std::rc::Rc;
 
@@ -35,50 +36,66 @@ use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::Preferences;
 use strata_fs::adapters::bookmarks;
 
-use super::{places::Row, relist};
-use crate::{App, shell};
+use super::{
+    places::Row,
+    relist,
+    trash::{self, Contents},
+};
+use crate::{
+    App,
+    commands::{self, On},
+    shell,
+};
 
 /// The menu's key: its surface is `sidebar-menu-menu`, its rows `sidebar-menu-item<n>`.
 const KEY: &str = "sidebar-menu";
 
-/// One row: its id, and its label in the catalogs.
+/// One row: its id, its label in the catalogs, and whether it destroys something.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct MenuRow {
     pub(super) id: &'static str,
     label: &'static str,
+    danger: bool,
 }
 
 impl MenuRow {
+    const fn new(id: &'static str, label: &'static str) -> Self {
+        Self {
+            id,
+            label,
+            danger: false,
+        }
+    }
+
     fn item(self) -> Item {
-        Item::new(self.id, tr(self.label))
+        Item::new(self.id, tr(self.label)).danger(self.danger)
     }
 }
 
-pub(super) const OPEN_IN_TAB: MenuRow = MenuRow {
-    id: "open-in-tab",
-    label: "Open in New Tab",
-};
-pub(super) const CONNECT: MenuRow = MenuRow {
-    id: "connect-to-server",
-    label: "Connect to server…",
-};
-pub(super) const UNPIN: MenuRow = MenuRow {
-    id: "unpin",
-    label: "Unpin",
-};
-pub(super) const CUSTOMIZE: MenuRow = MenuRow {
-    id: "customize",
-    label: "Customize…",
-};
-pub(super) const PROPERTIES: MenuRow = MenuRow {
-    id: "properties",
-    label: "Properties",
+pub(super) const OPEN_IN_TAB: MenuRow = MenuRow::new("open-in-tab", "Open in New Tab");
+pub(super) const CONNECT: MenuRow = MenuRow::new("connect-to-server", "Connect to server…");
+pub(super) const UNPIN: MenuRow = MenuRow::new("unpin", "Unpin");
+pub(super) const CUSTOMIZE: MenuRow = MenuRow::new("customize", "Customize…");
+pub(super) const PROPERTIES: MenuRow = MenuRow::new("properties", "Properties");
+/// The trash part's command (`crate::trash::empty`).
+pub(super) const EMPTY_TRASH: MenuRow = MenuRow {
+    danger: true,
+    ..MenuRow::new("empty-trash", "Empty Trash…")
 };
 
-/// The rows the menu of `row` shows, by section.
-pub(super) fn rows(row: &Row) -> Vec<Vec<MenuRow>> {
-    if matches!(&row.item, ItemId::Place(id) if id == "trash") {
-        return vec![vec![OPEN_IN_TAB], vec![UNPIN, PROPERTIES]];
+fn is_trash(item: &ItemId) -> bool {
+    matches!(item, ItemId::Place(id) if id == "trash")
+}
+
+/// The rows the menu of `row` shows, by section, with what the Trash holds: Empty Trash only
+/// once it is known to hold something (`trash_menu_visibility`).
+pub(super) fn rows(row: &Row, trash: Contents) -> Vec<Vec<MenuRow>> {
+    if is_trash(&row.item) {
+        let mut sections = vec![vec![OPEN_IN_TAB], vec![UNPIN, PROPERTIES]];
+        if trash == Contents::NonEmpty {
+            sections.push(vec![EMPTY_TRASH]);
+        }
+        return sections;
     }
     let mut actions = Vec::new();
     if matches!(&row.item, ItemId::Place(id) if id == "network") {
@@ -92,8 +109,8 @@ pub(super) fn rows(row: &Row) -> Vec<Vec<MenuRow>> {
     vec![vec![OPEN_IN_TAB], actions]
 }
 
-fn model(row: &Row) -> MenuModel {
-    rows(row)
+fn model(row: &Row, trash: Contents) -> MenuModel {
+    rows(row, trash)
         .into_iter()
         .fold(MenuModel::new(), |model, section| {
             model.section(Section::new(section.into_iter().map(MenuRow::item)))
@@ -106,19 +123,50 @@ struct Target {
     location: Location,
 }
 
-/// A row asked for its menu, at `point` in window points.
-pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress) {
+/// A row asked for its menu, at `point` in window points; `by_keys` when the keyboard asked.
+pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, by_keys: bool) {
     let Some(row) = app.sidebar.location_of(item) else {
         return;
     };
-    let model = model(row);
+    let model = model(row, app.sidebar.trash.contents);
+    let opens_trash = is_trash(item);
+    // GTK's popover points at the row from the keyboard, and at the click from the pointer.
+    let keyboard = by_keys.then(|| app.sidebar.state.row_box(item)).flatten();
+    let pointed = keyboard.unwrap_or([point.x, point.y, 0.0, 0.0]);
+    let at = under(pointed, model.width(&app.look));
     let target = MenuTarget::Other(Rc::new(Target {
         item: item.clone(),
         location: row.location.clone(),
     }));
-    app.sidebar
-        .menu
-        .open(target, Point::new(point.x, point.y), model);
+    app.sidebar.menu.open(target, at, model);
+    // GTK probes the Trash again as its menu shows.
+    if opens_trash {
+        trash::refresh(app);
+    }
+}
+
+/// Where a menu `width` wide opens to sit under `rect`, centred on it, as a GTK popover in its
+/// bottom position sits under what it points at: a row, or the point of a click.
+fn under([x, y, w, h]: [f32; 4], width: f32) -> Point {
+    Point::new(x + (w - width) / 2.0, y + h)
+}
+
+/// The probe found the Trash's contents changed: an open Trash menu takes them at once.
+pub(super) fn contents_changed(app: &mut App) {
+    let Some(MenuTarget::Other(target)) = app.sidebar.menu.target() else {
+        return;
+    };
+    let Some(target) = target
+        .downcast_ref::<Target>()
+        .filter(|target| is_trash(&target.item))
+    else {
+        return;
+    };
+    let Some(row) = app.sidebar.location_of(&target.item) else {
+        return;
+    };
+    let model = model(row, app.sidebar.trash.contents);
+    app.sidebar.menu.update_model(model);
 }
 
 /// The menu's anchor, with its surfaces in `layer` while it is open.
@@ -134,8 +182,9 @@ pub(super) fn element(app: &App, layer: &mut Vec<El>) -> El {
     .build(app, &app.look, layer)
 }
 
-/// A row of the menu was chosen; the menu has closed.
-fn chosen(app: &mut App, intent: MenuIntent, _: &mut Tx) {
+/// A row of the menu was chosen; the menu has closed. Unpin is the sidebar's, Empty Trash the
+/// trash part's command.
+fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { target, action } = intent;
     let MenuTarget::Other(target) = target else {
         return;
@@ -145,6 +194,8 @@ fn chosen(app: &mut App, intent: MenuIntent, _: &mut Tx) {
     };
     if &*action == UNPIN.id {
         unpin(app, target);
+    } else if &*action == EMPTY_TRASH.id {
+        commands::run(app, EMPTY_TRASH.id, On::Focus, tx);
     }
 }
 
