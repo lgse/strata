@@ -7,7 +7,7 @@ use rune::{TextEdit, Tx};
 use strata_components::location_bar::{Completions, LocationIntent, Polled, Via};
 use strata_fs::services::{LocationValidationError, sanitize_uri_credentials};
 
-use crate::{App, shell};
+use crate::{App, open_failed, shell};
 
 /// One of the bar's intents, or one a call into its state raised.
 pub(super) fn heard(app: &mut App, intent: LocationIntent, tx: &mut Tx) {
@@ -73,11 +73,9 @@ fn open(app: &mut App, id: &str, via: Via, tx: &mut Tx) {
 /// Enter, Navigate or a chosen suggestion: the typed location opens, and the keyboard goes
 /// back to the view. The bar is on its crumbs already.
 ///
-/// GTK mounts a location that needs it and shows "Unable to open location" for the rest;
-/// neither is on this interface yet. A location refused here, before it is opened, is logged.
-/// One that is opened and then refused (missing, unreadable, unmounted) comes back as the
-/// browser's `LocationNavigationRejected`, which no part hears yet: the bar has closed, and
-/// nothing shows.
+/// A location refused at once, or once the browser has looked (`LocationNavigationRejected`,
+/// which [`crate::open_failed`] hears), is reported as "Unable to open location". GTK mounts a
+/// location that needs it first; this interface does not mount yet.
 fn submit(app: &mut App, text: &str, tx: &mut Tx) {
     // What was typed, a password in a URI among it, is not kept in the closed entry or its
     // undo history.
@@ -86,10 +84,10 @@ fn submit(app: &mut App, text: &str, tx: &mut Tx) {
     let browser = app.browser.clone();
     let opened = typed(text).and_then(|input| browser.navigate_input_located(&input, None));
     shell::settle(app, tx);
-    if let Err(error) = opened {
-        tracing::warn!(%error, "the typed location did not open");
-    }
     give_back(app, tx);
+    if let Err(error) = opened {
+        open_failed::typed_refused(app, &error);
+    }
 }
 
 /// The text to open: a URI loses the credentials typed into it, which GTK hands its mount

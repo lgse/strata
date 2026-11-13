@@ -290,7 +290,7 @@ click lands.
 | `{"pane":"archive"}` | A pane; aims at an empty point unless `at` is given. |
 | `{"background":true,"dir":...}` | An empty point in a pane (a point; takes no `at`). |
 | `{"container":"archive"}` | The list or grid inside a pane. |
-| `{"viewport":null}` | The scroll viewport around a pane's entry list. |
+| `{"viewport":null}` | The scroll viewport of a pane's entry list: the one inside the list when it holds one (a Rune collection), else the one around it. |
 | `{"role":"button","name":"Settings"}` | By role and accessible name. Options: `"nth":-1`, `"name_ends_with":["/a"]`, `"name_matches":"^\\d+$"` (regex), `"description":...`, `"states":["selected"]` (also `focused`, `checked`, `pressed`, `sensitive`, `selectable`, `editable`, `busy`, `horizontal`, `vertical`), `"within":TARGET`, `"has":{role target}` (a match containing that widget), `"rendered":false` (presented but maybe scrolled away, which `state`, `description`, `activate`, and `remember` read as it is). Without `name` any name matches. `role` may be a list, or `*` for any. |
 | `{"named":"Apply to All","within":{"dialog":true}}` | Any role by name, inside another target. |
 | `{"menu_item":"New File"}` | A menu item, in the open menu if there is one. |

@@ -2,7 +2,9 @@
 
 //! The Columns view over the adapter's listings and state, with Strata's words.
 
-use rune::{El, col, text};
+use std::borrow::Cow;
+
+use rune::El;
 use strata_components::{
     collection::pointer::PointerSettings,
     columns::{ColumnsLabels, ColumnsParts, ColumnsPartsMut, ColumnsView},
@@ -10,7 +12,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 
 use super::intents;
-use crate::{App, commands, rename};
+use crate::{App, commands, rename, surface};
 
 /// The view's words, translated once: the language changes only on restart.
 pub(super) struct Labels(ColumnsLabels);
@@ -32,23 +34,18 @@ impl Labels {
 
 /// What column `depth` says in place of rows while it shows none ([`crate::surface`]), and
 /// whether it draws it.
-fn status(app: &App, depth: usize) -> Option<(&str, bool)> {
+fn status(app: &App, depth: usize) -> Option<(Cow<'_, str>, bool)> {
     let listing = app.columns.listings.columns.get(depth)?;
     app.columns.surface.status(depth, listing)
 }
 
-/// What a column draws in place of rows: the empty page's text or the browser's message, as
-/// GTK's column draws them (`show_empty` and `show_error` in `src/ui/browser/presentation.rs`).
+/// What a column draws in place of rows, as GTK's column draws it (`show_empty` and
+/// `show_error` in `src/ui/browser/presentation.rs`).
 fn shown_status(app: &App, depth: usize) -> Option<El> {
-    let (message, _) = status(app, depth).filter(|(_, drawn)| *drawn)?;
-    let look = &app.look;
-    Some(
-        col().w_full().px(look.space.lg).py(look.space.lg).child(
-            text(message.to_owned())
-                .font(look.kit.ty.ui)
-                .color(look.kit.c.text_muted),
-        ),
-    )
+    let (said, _) = status(app, depth).filter(|(_, drawn)| *drawn)?;
+    let listing = app.columns.listings.columns.get(depth)?;
+    let failed = surface::failed(listing, depth);
+    Some(surface::drawn(app, &app.columns.surface, &said, failed))
 }
 
 pub(crate) fn view(app: &App) -> ColumnsView<App> {
@@ -77,7 +74,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
             });
         // A column with no rows is described as GTK's directory surface is then.
         let collection = match status(app, depth) {
-            Some((said, _)) => collection.description(said.to_owned()),
+            Some((said, _)) => collection.description(said.into_owned()),
             None => collection,
         };
         let collection = match &app.columns.keys {
