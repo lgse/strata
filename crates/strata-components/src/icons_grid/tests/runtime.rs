@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use rune::{Cx, El, Env, Runtime, Tx, col, row};
+use rune::{Cx, El, Env, Mods, Runtime, Tx, WheelEvent, col, row};
 use strata_kit::look::Look;
 
 use crate::collection::element::{Collection, CollectionState};
@@ -33,6 +33,9 @@ struct Host {
     /// Details read while building tiles.
     detail_reads: Rc<Cell<usize>>,
     views: Rc<Cell<usize>>,
+    /// Wheels the host's `IconsGrid::on_wheel` heard, and whether it takes them.
+    wheels: usize,
+    takes_wheels: bool,
     w: f32,
     h: f32,
     /// A second grid over the same size, beside the first.
@@ -70,6 +73,8 @@ fn host(n: usize, w: f32, h: f32) -> Host {
         details: HashMap::new(),
         detail_reads: Rc::default(),
         views: Rc::default(),
+        wheels: 0,
+        takes_wheels: false,
         w,
         h,
         second: None,
@@ -118,6 +123,10 @@ fn grid(s: &Host) -> IconsGrid<Host> {
         if let SizeRequest::Step { to, .. } = r {
             s.size = to;
         }
+    })
+    .on_wheel(|s: &mut Host, _, _| {
+        s.wheels += 1;
+        s.takes_wheels
     })
 }
 
@@ -358,4 +367,48 @@ fn the_thumbnail_margin_is_whole_lines_of_tiles() {
         "a line or more past the viewport: {end} vs {shown:?}"
     );
     assert_eq!(end % per, 0, "whole lines of {per}: {end}");
+}
+
+/// The host's wheel hook hears every wheel over the grid, before the grid's own, which the
+/// base collection's `on_wheel` could not do (the grid's replaces it): a plain wheel still
+/// scrolls, Ctrl+Shift+wheel still resizes, and a wheel the host takes does neither.
+#[test]
+fn the_hosts_wheel_hook_hears_each_wheel_before_the_size_wheel() {
+    let resize = Mods {
+        ctrl: true,
+        shift: true,
+        ..Mods::default()
+    };
+    // (case, modifiers, the host takes it, scrolls, resizes)
+    let cases = [
+        ("a plain wheel", Mods::default(), false, true, false),
+        ("Ctrl+Shift+wheel", resize, false, false, true),
+        (
+            "Ctrl+Shift+wheel the host takes",
+            resize,
+            true,
+            false,
+            false,
+        ),
+    ];
+    for (case, mods, takes, scrolls, resizes) in cases {
+        let mut h = host(400, 900.0, 600.0);
+        h.takes_wheels = takes;
+        let mut rt = runtime(h, 1.0);
+        let v = rt.state.coll.viewport();
+        let (x, y) = (v.x + v.w / 2.0, v.y + v.h / 2.0);
+        rt.pointer_move(x, y);
+        rt.frame(DT);
+        rt.wheel_event(WheelEvent::new(0.0, -120.0).at(x, y).mods(mods));
+        for _ in 0..10 {
+            rt.frame(DT);
+        }
+        assert_eq!(rt.state.wheels, 1, "{case}: the host heard it");
+        assert_eq!(
+            rt.state.coll.scroll_offset() > 0.0,
+            scrolls,
+            "{case}: scrolled"
+        );
+        assert_eq!(rt.state.size != 64.0, resizes, "{case}: resized");
+    }
 }

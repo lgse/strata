@@ -669,6 +669,9 @@ impl<S: 'static> Collection<S> {
     /// ancestor of the collection never hears a wheel over its rows, since Rune offers a wheel
     /// only up to the nearest scroll view (Rune draft U-C3-3), so a view that claims a modified
     /// wheel (C3's Ctrl+Shift+wheel) does it here.
+    ///
+    /// It holds one handler: a later call replaces it. A component that sets its own (C3)
+    /// replaces its host's, and offers the host a hook of its own instead.
     pub fn on_wheel(mut self, f: impl Fn(&mut S, WheelEvent, &mut Tx) -> bool + 'static) -> Self {
         self.cfg.on_wheel = Some(Rc::new(f));
         self
@@ -692,6 +695,8 @@ impl<S: 'static> Collection<S> {
     /// its menu press, inside the viewport (a header line and the stuck header included, not
     /// a part above it). Columns (C2) cancels a slow-click rename pending in another column
     /// here, as Strata's `ViewState::cancel_click_rename` does.
+    ///
+    /// It holds one handler: a later call replaces it.
     pub fn on_press(mut self, f: impl Fn(&mut S, &PointerInput, &mut Tx) + 'static) -> Self {
         self.cfg.on_press = Some(Rc::new(f));
         self

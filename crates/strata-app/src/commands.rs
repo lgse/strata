@@ -458,7 +458,23 @@ fn hear(app: &mut App, event: &KeyEvent, heard: Heard, tx: &mut Tx) -> bool {
 /// but after the view's own keys, so a command cannot take a key that view's controller
 /// takes.
 pub(crate) fn in_view(collection: Collection<App>) -> Collection<App> {
-    collection.before_keys(|app: &mut App, event, tx| hear(app, event, Heard::BeforeView, tx))
+    in_view_with(collection, |_| {})
+}
+
+/// [`in_view`], telling `first` of each key before the registry reads it, for a view that has
+/// to know the keyboard reached it: a single pane's first visit ends on any key, a bare
+/// modifier or a repeat included, as GTK's `is_user_input` counts every key press in the pane.
+///
+/// `first` runs even when nothing then takes the key, and Rune then commits nothing, so
+/// `first` must change nothing the view draws (ending the visit draws nothing).
+pub(crate) fn in_view_with(
+    collection: Collection<App>,
+    first: impl Fn(&mut App) + 'static,
+) -> Collection<App> {
+    collection.before_keys(move |app: &mut App, event, tx| {
+        first(app);
+        hear(app, event, Heard::BeforeView, tx)
+    })
 }
 
 /// The root element's keys: what the focused element and those around it left. Rune asks

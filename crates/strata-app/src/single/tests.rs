@@ -11,8 +11,8 @@ use strata_core::model::Location;
 use crate::test_support::{
     PATIENCE, fixture,
     view::{
-        Shape, assert_browser_agrees, browser_holds, choose, field, hosted_in, open, press,
-        right_click, right_click_blank, seen, shift, wait,
+        Shape, assert_browser_agrees, browser_holds, choose, double_click, field, hosted_in, open,
+        press, right_click, right_click_blank, seen, shift, wait,
     },
 };
 
@@ -415,4 +415,44 @@ fn the_menus_rename_opens_the_editor_with_the_keyboard_in_icons() {
 fn the_menus_rename_opens_the_editor_with_the_keyboard_in_list() {
     let name = "the_menus_rename_opens_the_editor_with_the_keyboard_in_list";
     the_menus_rename_opens_the_editor_with_the_keyboard(&LIST, name);
+}
+
+/// A folder a pointer opened, where the browser places no cursor, shows its first row with
+/// the keyboard on it and nothing selected, as a GTK list view focuses its first row when it
+/// takes the keyboard (`keyboard_navigation/list-typed-file-path`, line 6); the next key goes
+/// on from it.
+fn a_folder_a_pointer_opened_starts_on_its_first_row(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+
+        double_click(&mut host, case.shape, "documents");
+
+        let first = wait(&mut host, case.shape, "the first row's cursor", |seen| {
+            let named = seen
+                .pane
+                .as_ref()
+                .is_some_and(|[name, _]| name == "documents");
+            named && seen.focused.is_some()
+        });
+        assert_eq!(first.focused.as_deref(), Some("notes.txt"));
+        assert!(first.selected.is_empty(), "{first:#?}");
+        press(&mut host, case.next.clone(), Mods::default());
+        assert_eq!(
+            seen(&host, case.shape).focused.as_deref(),
+            Some("report.md")
+        );
+    });
+}
+
+#[test]
+fn a_folder_a_pointer_opened_starts_on_its_first_row_in_icons() {
+    let name = "a_folder_a_pointer_opened_starts_on_its_first_row_in_icons";
+    a_folder_a_pointer_opened_starts_on_its_first_row(&ICONS, name);
+}
+
+#[test]
+fn a_folder_a_pointer_opened_starts_on_its_first_row_in_list() {
+    let name = "a_folder_a_pointer_opened_starts_on_its_first_row_in_list";
+    a_folder_a_pointer_opened_starts_on_its_first_row(&LIST, name);
 }
