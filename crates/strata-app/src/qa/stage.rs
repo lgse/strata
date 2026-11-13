@@ -12,7 +12,7 @@ use rune::ElementInfo;
 use strata_components::collection::element::LABEL;
 use strata_qa::Rect;
 
-use super::tree::{Drawn, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
+use super::tree::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
 use crate::{App, host::offscreen::Offscreen, shell};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
@@ -83,6 +83,19 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
     })
 }
 
+/// The keyed, named buttons drawn, as the snapshot presents those the tree leaves out.
+fn drawn_buttons(elements: &[ElementInfo]) -> Vec<DrawnButton> {
+    let shown = |element: &&ElementInfo| !element.exiting && element.role == "button";
+    let button = |element: &ElementInfo| {
+        Some(DrawnButton {
+            key: element.key.clone()?,
+            name: element.label.clone()?,
+            bounds: rect(element),
+        })
+    };
+    elements.iter().filter(shown).filter_map(button).collect()
+}
+
 /// What the snapshot reads beside the accessibility tree.
 fn drawn(host: &Offscreen) -> Drawn {
     let elements = host.elements();
@@ -100,6 +113,7 @@ fn drawn(host: &Offscreen) -> Drawn {
             .filter_map(|list| drawn_column(&elements, list))
             .collect(),
         labels: name_labels(&elements),
+        buttons: drawn_buttons(&elements),
         lists,
     }
 }

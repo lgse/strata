@@ -3,7 +3,7 @@
 use serde_json::json;
 use strata_qa::{Mark, Rect};
 
-use super::{Drawn, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
+use super::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, Shape, Snapshot};
 
 /// The Columns view's shape, as its probe states it.
 const COLUMNS: Shape = Shape {
@@ -55,6 +55,7 @@ fn a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else() {
         lists: vec!["columns-col-1".to_owned()],
         columns: Vec::new(),
         labels: labels.to_vec(),
+        buttons: Vec::new(),
     };
     let snapshot = Snapshot::read(&tree, &drawn);
 
@@ -112,6 +113,7 @@ fn drawn_folder() -> Drawn {
         lists: vec![column.list.clone()],
         columns: vec![column],
         labels: Vec::new(),
+        buttons: Vec::new(),
     }
 }
 
@@ -195,6 +197,7 @@ fn entries_of(tree: &serde_json::Value, list: &str) -> Vec<String> {
         lists: vec![list.to_owned()],
         columns: Vec::new(),
         labels: Vec::new(),
+        buttons: Vec::new(),
     };
     let snapshot = Snapshot::read(tree, &drawn);
     (0..)
@@ -235,4 +238,60 @@ fn a_groups_header_is_not_an_entry() {
                     { "role": "row", "key": "row-4", "name": "todo.txt" } ] } ] } ] } ] });
 
     assert_eq!(entries_of(&tree, "list"), ["archive", "todo.txt"]);
+}
+
+/// `keyboard_navigation/back-history-dropdown` lets go of a press held on Back after its
+/// history opened, when Rune's tree holds the menu alone: the button is presented from what
+/// is drawn, once, and a button the tree has is not presented again. With no modal open
+/// nothing is added.
+#[test]
+fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "menu", "name": "Context menu", "states": ["modal"], "children": [
+                { "role": "menu-item", "key": "pane-history-item2", "name": "documents" },
+            ] },
+            { "role": "button", "key": "header-search", "name": "Search" },
+        ],
+    });
+    let button = |key: &str, name: &str| DrawnButton {
+        key: key.to_owned(),
+        name: name.to_owned(),
+        bounds: bounds(0.0),
+    };
+    let drawn = Drawn {
+        buttons: vec![
+            button("icons-back", "Back (Alt+←)"),
+            button("header-search", "Search"),
+        ],
+        ..Drawn::default()
+    };
+
+    let snapshot = Snapshot::read(&tree, &drawn);
+
+    let buttons: Vec<_> = (0..)
+        .map_while(|index| snapshot.at(index))
+        .filter(|seen| seen.role() == "button")
+        .map(|seen| (seen.key.as_deref(), seen.name.as_str(), seen.bounds))
+        .collect();
+    assert_eq!(
+        buttons,
+        [
+            (Some("header-search"), "Search", None),
+            (Some("icons-back"), "Back (Alt+←)", Some(bounds(0.0))),
+        ]
+    );
+
+    let open = json!({
+        "role": "window",
+        "children": [{ "role": "button", "key": "header-search", "name": "Search" }],
+    });
+    let snapshot = Snapshot::read(&open, &drawn);
+    let named: Vec<_> = (0..)
+        .map_while(|index| snapshot.at(index))
+        .filter(|seen| seen.role() == "button")
+        .map(|seen| seen.name.as_str())
+        .collect();
+    assert_eq!(named, ["Search"], "nothing is added with no modal open");
 }
