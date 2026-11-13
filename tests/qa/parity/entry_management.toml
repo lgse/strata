@@ -6,17 +6,15 @@
 scenario = "clicking-inside-keeps-new-entry"
 run = "columns-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "clicking-inside-keeps-new-entry"
 run = "columns-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "delete-file-symlink-sizes-link"
@@ -102,161 +100,141 @@ blocker = "A7"
 scenario = "new-items-from-entry-menu"
 run = "columns-file-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "icons-file-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "list-file-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "columns-file-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "icons-file-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "list-file-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "columns-folder-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "icons-folder-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "list-folder-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "columns-folder-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "icons-folder-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "list-folder-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "columns-multiple-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "icons-multiple-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "list-multiple-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "columns-multiple-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "icons-multiple-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
 run = "list-multiple-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-in-empty-directory"
 run = "columns-file"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-in-empty-directory"
 run = "columns-folder"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "permanent-delete-symlinked-parent"
@@ -278,9 +256,8 @@ blocker = "A7"
 scenario = "rename-from-context-menu"
 run = "columns"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "rename-shortcuts-leave-location"
@@ -342,17 +319,15 @@ blocker = "A7"
 scenario = "undo-created-folder-trashes"
 run = "columns-default-name"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "undo-created-folder-trashes"
 run = "columns-typed-name"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A7"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "undo-restores-completed-move"

@@ -302,15 +302,26 @@ fn every_row_is_in_the_catalogs() {
 /// A row runs the command registered under its id, and is inert while no part has one. The
 /// list of rows that act grows as the parts that own the others land.
 #[test]
-fn five_rows_have_a_command_and_the_rest_are_inert() {
+fn the_rows_with_a_command_act_and_the_rest_are_inert() {
     hosted(
         "menus::tests",
-        "five_rows_have_a_command_and_the_rest_are_inert",
+        "the_rows_with_a_command_act_and_the_rest_are_inert",
         |host| {
             let mut live: Vec<&str> = ROWS.iter().map(|row| row.id).collect();
             live.dedup();
             live.retain(|id| commands::has(host.app(), id));
-            assert_eq!(live, ["open", "rename", "select-all", "refresh", "hidden"]);
+            assert_eq!(
+                live,
+                [
+                    "new-folder",
+                    "new-file",
+                    "open",
+                    "rename",
+                    "select-all",
+                    "refresh",
+                    "hidden"
+                ]
+            );
         },
     );
 }
