@@ -736,7 +736,7 @@ sequence only together with the alphabet's version, so the version is part of th
   column.
 - **Concerns:** seed `0x10` of `columns v1`, shrunk to 4 steps and parked in
   `tests/qa/fuzz/corpus/columns/`.
-- **State:** fixed by [F2](packages/F2.md)'s pull request in C5, the Columns component: a click
+- **State:** fixed by [F2](packages/F2.md)'s [#2368](https://github.com/lgse/strata/pull/2368) in C5, the Columns component: a click
   that reopens a folder's column gave it the keyboard and no cursor; it now puts the cursor on
   the column's first entry with nothing selected when the column has none
   (`focus_child` in `crates/strata-components/src/columns/view.rs`). A hosted test,
