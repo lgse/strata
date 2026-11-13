@@ -43,6 +43,7 @@ macro_rules! in_each_view {
 }
 
 mod menu_key;
+mod navigate_up;
 mod routing;
 mod views;
 

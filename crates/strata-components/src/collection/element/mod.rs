@@ -173,6 +173,13 @@
 //!   every window shift of a scroll run the view. Repro: `virtual_rows` of 1,000 rows beside a
 //!   `text("x").live_text(&label)`, scroll 120 frames of 7 pt: the view runs 7 times, and none
 //!   without the `live_text`. Ask: let live text stay with the remounted tree.
+//! - **U-C1f-7: `on_visible_rows` left at no rows.** A list mounted in the window's first
+//!   frames, with animations on and text laid out ahead of it in the tree, hears its rows
+//!   reported and then reported as none in one frame, and nothing after, though they show.
+//!   Here: at each layout, a list whose last report is empty and whose own viewport shows
+//!   lines takes the range from that layout and tells the host (`route::catch_up_visible`).
+//!   Rune packet entry 101, `docs/rune/upstream/rune/101-stale-visible-rows.md`; no
+//!   Rune-only repro yet.
 //!
 //! [U-C1f-1]: self#rune-drafts-not-filed
 //! [U-C1f-4]: self#rune-drafts-not-filed
