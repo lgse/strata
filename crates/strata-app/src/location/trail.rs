@@ -52,7 +52,10 @@ fn icon(folder: &Location, home: &Location) -> IconName {
         IconName::Home
     } else if is_filesystem_root(folder) {
         IconName::Drive
-    } else if folder.uri_value().is_some_and(|uri| uri.starts_with("trash://")) {
+    } else if folder
+        .uri_value()
+        .is_some_and(|uri| uri.starts_with("trash://"))
+    {
         IconName::Trash
     } else if folder.uri_value().is_some() {
         IconName::Network

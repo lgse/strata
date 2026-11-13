@@ -149,13 +149,12 @@ impl Part for Bar {
 
     // `filter_and_location_commands` in `src/ui/window/keyboard/commands.rs`:
     // `press.is(LOCATION)`, wherever the press lands.
-    const COMMANDS: &'static [Action<App>] =
-        &[Action::new("location", begin).command(LOCATION).keys(&[
-            Keys::at(
-                Stage::FilterAndLocationCommands,
-                &[LOCATION.ignoring(Modifiers::empty())],
-            ),
-        ])];
+    const COMMANDS: &'static [Action<App>] = &[Action::new("location", begin)
+        .command(LOCATION)
+        .keys(&[Keys::at(
+            Stage::FilterAndLocationCommands,
+            &[LOCATION.ignoring(Modifiers::empty())],
+        )])];
 
     fn keyboard(app: &App) -> Option<Holds> {
         app.location

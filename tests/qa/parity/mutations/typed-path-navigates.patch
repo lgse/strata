@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/location/intents.rs b/crates/strata-app/src/location/intents.rs
+--- a/crates/strata-app/src/location/intents.rs
++++ b/crates/strata-app/src/location/intents.rs
+@@ -60,7 +60,7 @@ fn open(app: &mut App, id: &str, via: Via, tx: &mut Tx) {
+ fn submit(app: &mut App, text: &str, tx: &mut Tx) {
+     shell::publish(app);
+     let browser = app.browser.clone();
+-    let opened = typed(text).and_then(|input| browser.navigate_input_located(&input, None));
++    let opened = typed(text).and_then(|_| Err::<(), _>(LocationValidationError::Missing));
+     shell::settle(app, tx);
+     match opened {
+         Ok(_) => give_back(app, tx),
