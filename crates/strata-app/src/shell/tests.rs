@@ -402,3 +402,17 @@ fn what_a_service_answers_at_once_from_a_parts_poll_is_applied_in_that_poll() {
         },
     );
 }
+
+/// GTK logs a saved keymap's unusable entries once, as its preference manager first builds
+/// the tables; here the process's first window does, and no later one.
+#[test]
+fn only_the_first_window_logs_the_saved_keymap() {
+    let test = "shell::tests::only_the_first_window_logs_the_saved_keymap";
+    crate::test_support::in_own_process(test, &[], || {
+        assert_eq!(
+            super::first_window_reports(),
+            Some(strata_desktop::settings::settings_path())
+        );
+        assert_eq!(super::first_window_reports(), None);
+    });
+}

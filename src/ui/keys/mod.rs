@@ -16,9 +16,9 @@ use gtk::{
 };
 pub(crate) use strata_desktop::keys::{
     Binding, CUSTOM_ACTIONS, Command, CommandKind, DIRECT_IN_TENXER, Digits, Group, Key, KeyPress,
-    Keymap, Keys, Map, Match, Matcher, Modifiers, Rejected, SHORTCUT_MODIFIERS, Shown,
-    TEXT_EDITING, bindings, custom_action_slot, digit_label, digit_value, direct_commands, label,
-    label_in, label_in_map, modifiers_label, modifiers_label_in, registry, search_text, shown,
+    Keymap, Keys, Map, Match, Matcher, Modifiers, SHORTCUT_MODIFIERS, Shown, TEXT_EDITING,
+    bindings, custom_action_slot, digit_label, digit_value, direct_commands, label, label_in,
+    label_in_map, modifiers_label, modifiers_label_in, registry, search_text, shown,
 };
 use strata_desktop::keys::{Context, Event, normalize, rewrite};
 #[cfg(test)]
