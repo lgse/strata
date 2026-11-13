@@ -979,7 +979,10 @@ fn execute(scenario: &Scenario, run: &Run, manifest: &Manifest) -> Outcome {
             outcome.last_tree = reply["result"].as_str().map(str::to_owned);
         }
         let _ = fs::create_dir_all(&artifacts);
-        if let Err(error) = screen::take_last(&display, &artifacts.join("screenshot.png")) {
+        let with_tree = outcome.last_tree.is_some();
+        if let Err(error) =
+            screen::take_last(&display, &artifacts.join("screenshot.png"), with_tree)
+        {
             outcome.errors.push(format!("artifacts: {error}"));
         }
     }

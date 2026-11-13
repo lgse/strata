@@ -9,7 +9,7 @@
 
 use std::{fs, path::Path};
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{Application, COMMAND_TIMEOUT, Display, target::Target};
 
@@ -28,23 +28,45 @@ pub(crate) fn take(
         return display.screenshot(destination);
     }
     let reply = application.send(&json!({ "query": "tree" }), COMMAND_TIMEOUT)?;
-    let tree = reply["result"].as_str().unwrap_or_default();
-    write_offscreen(
-        destination,
-        &format!("{DREW_NOTHING} Its accessibility tree as of this step follows.\n\n{tree}"),
-    )
+    write_offscreen(destination, &step_text(&reply))
 }
 
-/// The closing screenshot, after the application has stopped answering steps: on Rune it
-/// points at the run's `tree.txt`, which holds the last tree.
-pub(crate) fn take_last(display: &Display, destination: &Path) -> Result<(), String> {
+/// What a Rune `screenshot` step writes for the `query tree` reply: the tree, or what the
+/// application answered instead.
+pub(crate) fn step_text(reply: &Value) -> String {
+    match reply["result"].as_str() {
+        Some(tree) => {
+            format!("{DREW_NOTHING} Its accessibility tree as of this step follows.\n\n{tree}")
+        }
+        None => {
+            format!("{DREW_NOTHING} Asked for its accessibility tree, it answered:\n\n{reply}\n")
+        }
+    }
+}
+
+/// The closing screenshot, after the application has stopped answering steps. On Rune it says
+/// where the last tree is: the run's `tree.txt`, when the application still answered at the
+/// end (`with_tree`), and otherwise that there is none.
+pub(crate) fn take_last(
+    display: &Display,
+    destination: &Path,
+    with_tree: bool,
+) -> Result<(), String> {
     if !draws_offscreen() {
         return display.screenshot(destination);
     }
-    write_offscreen(
-        destination,
-        &format!("{DREW_NOTHING} Its last accessibility tree is tree.txt, beside this file.\n"),
-    )
+    write_offscreen(destination, &closing_text(with_tree))
+}
+
+pub(crate) fn closing_text(with_tree: bool) -> String {
+    if with_tree {
+        format!("{DREW_NOTHING} Its last accessibility tree is tree.txt, beside this file.\n")
+    } else {
+        format!(
+            "{DREW_NOTHING} The application no longer answered at the end, so no last tree \
+             was read and there is no tree.txt.\n"
+        )
+    }
 }
 
 fn draws_offscreen() -> bool {

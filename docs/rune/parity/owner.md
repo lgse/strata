@@ -144,7 +144,8 @@ are in force meanwhile. Source: the archived issue
   be, saying that it drew nothing, and the closing `screenshot.png` becomes a note pointing at
   `tree.txt`; or (b) add a software Vulkan driver (Mesa's lavapipe) to the pinned image so the
   Rune target renders real screenshots, which changes the image's environment inputs and so
-  needs a new base image built and published, and a change to the Rune host to render. No run
+  needs a new base image built and published, and a change to the Rune host to render. The
+  driver would land in the image the GTK runs share too. No run
   asserts on a screenshot, and visual baselines are out of scope for Rune (the plan's
   `toolkit` row): only failure artifacts are at stake. Meanwhile: (a), the coordinator's
   default of 2026-11-13, in force from H3's screenshot pull request. Source: H3's plan.

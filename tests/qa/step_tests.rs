@@ -24,7 +24,7 @@ use crate::{
     run::Outcome,
     runner_steps::{EachStep, ProcStep},
     scenario::{Header, Image, Scenario, load_scenario},
-    screen::{DREW_NOTHING, write_offscreen},
+    screen::{DREW_NOTHING, closing_text, step_text, write_offscreen},
     steps::{
         check_step, flag_names, increment, run_steps, slice, stem, substitute_notes,
         unknown_variable,
@@ -888,9 +888,22 @@ pub(crate) fn prefs_write_nested_tables_into_settings_toml() {
 pub(crate) fn a_rune_screen_is_its_tree_as_text_beside_the_image_it_cannot_take() {
     let directory = tempfile::tempdir().expect("a directory");
     let image = directory.path().join("after-drop.png");
-    let said = format!("{DREW_NOTHING} window role=\"frame\"\n");
+    let said = step_text(&json!({ "result": "window role=\"frame\"\n" }));
     write_offscreen(&image, &said).expect("the text");
     assert!(!image.exists(), "no image stands in for the screen");
     let text = fs::read_to_string(directory.path().join("after-drop.txt")).expect("the text");
-    assert_eq!(text, said);
+    assert!(
+        text.starts_with(DREW_NOTHING) && text.ends_with("window role=\"frame\"\n"),
+        "{text}"
+    );
+    let refused = step_text(&json!({ "error": "the window is gone" }));
+    assert!(
+        refused.contains("the window is gone"),
+        "an answer that is no tree is written: {refused}"
+    );
+    assert!(closing_text(true).contains("tree.txt"));
+    assert!(
+        closing_text(false).contains("no tree.txt"),
+        "no file is named that the run did not write"
+    );
 }
