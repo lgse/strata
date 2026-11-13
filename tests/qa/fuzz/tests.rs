@@ -44,6 +44,11 @@ use super::{
         the_projection_names_every_key_the_snapshot_has,
         two_streams_are_compared_only_when_they_answer_one_another,
     },
+    targets_tests::{
+        a_command_takes_one_target_or_gtk_and_rune_and_the_comparing_commands_take_both,
+        a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_own_folder,
+        each_target_is_held_to_itself_and_rune_to_the_first_gtk_replay_under_the_map,
+    },
 };
 
 /// The runner has its own harness, so a test runs only when it is listed here;
@@ -85,4 +90,7 @@ unit_tests! {
     a_perturbed_run_and_a_survey_of_parked_sequences_say_what_they_are,
     the_summary_says_how_long_the_target_went_on_changing,
     the_tree_s_alphabets_map_mask_and_corpus_load_as_a_run_loads_them,
+    a_command_takes_one_target_or_gtk_and_rune_and_the_comparing_commands_take_both,
+    each_target_is_held_to_itself_and_rune_to_the_first_gtk_replay_under_the_map,
+    a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_own_folder,
 }

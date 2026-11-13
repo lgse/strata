@@ -603,7 +603,7 @@ the catalogue. The parsers are in `tests/qa/fuzz/`: `alphabet.rs`,
 | `tests/qa/fuzz/corpus/<area>/parked` | Kept sequences parked against an issue: `v<version>-<seed> <code> <issue>`, sorted by version and seed. |
 | `tests/qa/fuzz/normalisation.map` | Fields the two targets may differ on: `<field> <exception code> <issue>`, sorted by field. |
 | `tests/qa/fuzz/calibration.mask` | Fields two replays on one target differ on: `<field> <cause> <issue>`, sorted by field. |
-| `target/qa-fuzz/<area>/<sequence>/` | A sequence's artifacts. |
+| `target/qa-fuzz/<area>/<targets>/<sequence>/` | A sequence's artifacts; `<targets>` is `gtk`, `rune` or `gtk-rune`. |
 
 ### Alphabet keys
 
