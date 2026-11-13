@@ -79,7 +79,7 @@ package = "A8"
 gate = "G2"
 status = "pending"
 reason = "scope"
-blocker = "the Appearance popover, at `open_menu` on its header button: no work package composes it (X1's button is inert), and its controls are the view switch (C3, C4), the preview toggle (C9), C20a's density sliders and the text size. Then C6: the location field at Ctrl+L (`field`)"
+blocker = "A8: a press on a column's empty space clears every column's selection and keeps the columns open, a contract change in `columns/` (line 20)"
 
 [[run]]
 scenario = "preview-blank-click-keeps-selection"

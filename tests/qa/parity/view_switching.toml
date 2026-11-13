@@ -8,15 +8,14 @@ run = "columns"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 3; then A10: the List headings' sort, at the Size heading on line 9"
+blocker = "A10: the List headings' sort, at the Size heading on line 9 (line 10); then A8: \"Customize columns\u2026\" (line 12)"
 
 [[run]]
 scenario = "appearance-menu-switches-view"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 3"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "column-autofit-stays-inside"
@@ -45,7 +44,7 @@ run = "columns"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 2"
+blocker = "H3: a List heading's parent is the heading strip, where GTK's is the heading's cell, so the drag at its edge (line 8) misses the column's edge; C4's tree or the QA backend's (line 9)"
 
 [[run]]
 scenario = "returning-to-columns-follows-selection"
@@ -79,17 +78,16 @@ host = "offscreen"
 scenario = "shortcut-round-trip-keeps-selection"
 run = "columns-us"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 10, after the view switch"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "shortcut-round-trip-keeps-selection"
 run = "columns-fr"
 package = "A8"
 status = "pending"
-reason = "scope"
-blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 10, after the view switch"
+reason = "rune"
+blocker = "docs/rune/upstream/rune/97-key-press-with-physical-key.md: the QA target's press has no key position, so Ctrl+3 under AZERTY, whose key types `\"`, is read as Ctrl+`\"` (line 22, its check on line 23); the window host names the US key for a chord (owner.md, B3, case 4)"
 
 [[run]]
 scenario = "switching-keeps-directory-and-sort"
