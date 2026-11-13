@@ -12,7 +12,8 @@
 //!
 //! [`folder_views`] is the model of `folder-views.toml`, the sort and icon size a folder
 //! remembers, and [`folder_views_path`], [`load_folder_views`] and [`save_folder_views`] find,
-//! read and save that file. When a save is scheduled is still `PreferenceManager`'s.
+//! read and save that file. [`FolderViewStore`] holds the values a process has and the
+//! bookkeeping of writing them; when a write is scheduled is each interface's.
 //!
 //! [`Saving`] is the bookkeeping of a save: an interface changes its [`Preferences`], commits,
 //! and awaits the save the commit hands back.
@@ -36,6 +37,7 @@ use crate::{
 mod corner_roundness;
 mod defaults;
 mod folder_view_file;
+mod folder_view_store;
 pub mod folder_views;
 mod keymap;
 mod list_columns;
@@ -56,6 +58,10 @@ use defaults::{
 };
 pub use folder_view_file::{
     FolderViewsSave, folder_views_path, load_folder_views, save_folder_views,
+};
+pub use folder_view_store::{
+    FolderViewStore, PendingWrite, SAVE_DELAY as FOLDER_VIEWS_SAVE_DELAY, SavedWrite,
+    USE_SAVE_DELAY as FOLDER_VIEWS_USE_SAVE_DELAY, UnreadableAtStartup, Written,
 };
 pub use keymap::KeymapOverrides;
 use list_columns::is_default_list_column_order;
