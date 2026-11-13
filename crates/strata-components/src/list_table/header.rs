@@ -54,7 +54,6 @@ pub(super) fn strip<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>,
     let menu_shared = shared.clone();
     let mut strip = row()
         .key(strip_key(&shared.key))
-        .role("row")
         .w_full()
         .h(tokens::heading_height(look))
         .pl(resolved.lead)
@@ -118,7 +117,8 @@ fn heading<S: 'static>(shared: &Rc<Shared<S>>, resolved: &Rc<Resolved>, s: &S, p
     let mut h = super::rows::justify(
         row()
             .key(heading_key(id.as_str()))
-            .role("columnheader")
+            // GTK's headings are buttons in a box over a list (`list_headings.rs`).
+            .role("button")
             .label(column.title.clone())
             .sorted(sorted.map(|d| d == SortDir::Ascending))
             .w(p.w)

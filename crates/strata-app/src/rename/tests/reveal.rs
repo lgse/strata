@@ -22,7 +22,7 @@ fn key(host: &mut Offscreen, key: Key, mods: Mods) {
 
 fn rows<'a>(node: &'a Value, found: &mut Vec<&'a Value>) {
     for child in node["children"].as_array().map_or(&[][..], Vec::as_slice) {
-        if child["role"] == "list-box-option" || child["role"] == "row" {
+        if child["role"] == "list-box-option" || child["role"] == "list-item" {
             found.push(child);
         }
         rows(child, found);

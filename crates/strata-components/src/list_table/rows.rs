@@ -63,7 +63,8 @@ impl Fonts {
     }
 }
 
-/// The cells' slot: one gridcell per shown column, at the resolved widths.
+/// The cells' slot: one cell per shown column, at the resolved widths. The cells take no role:
+/// a list item holds them, as GTK's holds labels (lgse/strata#2324).
 pub(super) fn content<S: 'static>(
     shared: &Rc<Shared<S>>,
     resolved: &Rc<Resolved>,
@@ -107,9 +108,10 @@ fn cells<S: 'static>(
         let cell = match &column.cell {
             None => {
                 let (icon, label) = parts.take().unwrap_or_else(|| (rune::el(), rune::el()));
+                // No role and so no node of its own: the item is named by the entry already.
                 row()
                     .key(key)
-                    .role("gridcell")
+                    .role("none")
                     .label(rcx.entry.name)
                     .w(p.w)
                     .h_full()
@@ -131,7 +133,6 @@ fn cells<S: 'static>(
                         let font = if cell.mono { fonts.mono } else { fonts.text };
                         text(t)
                             .key(key)
-                            .role("gridcell")
                             .w(p.w)
                             .px(pad)
                             .font(font)
@@ -143,7 +144,6 @@ fn cells<S: 'static>(
                     CellContent::El(e) => justify(
                         row()
                             .key(key)
-                            .role("gridcell")
                             .w(p.w)
                             .h_full()
                             .center_y()
