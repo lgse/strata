@@ -15,7 +15,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
-use strata_fs::services::entry_type;
+use strata_fs::services::{EntryType, entry_type};
 
 /// A file type's description, by its key in the table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -36,10 +36,7 @@ impl TypeGroup {
     /// it: strata-fs's `entry_type`, over the two fields it reads (its kind and its name), since
     /// a listing keeps no `FileEntry`.
     pub(crate) fn of_row(folder: &Location, kind: EntryKind, name: &str) -> Self {
-        let location = folder
-            .child(std::ffi::OsStr::new(name))
-            .unwrap_or_else(|| folder.clone());
-        Self::of(&entry(&location, kind, name))
+        Self::of(&entry(&in_folder(folder, name), kind, name))
     }
 
     /// The type of `entry`, as GTK's grouped List reads it.
@@ -80,6 +77,25 @@ impl TypeGroup {
     pub(crate) fn key(self) -> u64 {
         u64::from(self.0)
     }
+}
+
+/// strata-fs's `entry_type` of the entry of `kind` named `name` in `folder`, from the two
+/// fields it reads, as [`TypeGroup::of_row`] reads it: what the List view's Type column shows.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the List view's columns read it, in the pull request after this one"
+    )
+)]
+pub(crate) fn entry_type_of(folder: &Location, kind: EntryKind, name: &str) -> EntryType {
+    entry_type(&entry(&in_folder(folder, name), kind, name))
+}
+
+fn in_folder(folder: &Location, name: &str) -> Location {
+    folder
+        .child(std::ffi::OsStr::new(name))
+        .unwrap_or_else(|| folder.clone())
 }
 
 /// An entry at `location` with what `entry_type` reads, its kind and its name, and nothing else
