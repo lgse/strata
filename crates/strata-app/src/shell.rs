@@ -19,7 +19,13 @@ use strata_components::header::{
 };
 use strata_components::thumbnails::{Settings, ThumbnailStore};
 use strata_core::{i18n::tr, model::Location};
-use strata_desktop::settings::sort_preferences;
+use strata_desktop::{
+    keys::{
+        Keys,
+        bindings::{SEARCH, TAB_NEW},
+    },
+    settings::sort_preferences,
+};
 use strata_fs::{
     adapters::{LocalFileSource, LocalOperationProvider},
     app::{Browser, BrowserEvent},
@@ -31,19 +37,16 @@ use crate::{
     App, Built, PARTS,
     commands::{self, Live, On},
     folder_views,
+    location::labels::with_keys,
     settings::Saved,
     slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, Slot, View},
     startup::UiThread,
 };
 
-/// The header's accessible names, translated once: the language changes only on restart.
+/// The window buttons' accessible names, translated once: the language changes only on
+/// restart. The header's actions name their keys, so they are named at each run of the view.
 struct Labels {
     window: HeaderLabels,
-    toggle_sidebar: String,
-    new_tab: String,
-    search: String,
-    appearance: String,
-    settings: String,
 }
 
 impl Labels {
@@ -56,11 +59,6 @@ impl Labels {
                 maximize_or_restore: tr("Maximize or restore window"),
                 close: tr("Close window"),
             },
-            toggle_sidebar: tr("Toggle sidebar"),
-            new_tab: tr("New tab"),
-            search: tr("Search"),
-            appearance: tr("Appearance"),
-            settings: tr("Settings"),
         }
     }
 }
@@ -351,21 +349,41 @@ fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
     tracing::debug!(?action, ?outcome, "window button");
 }
 
-/// One of the header's five actions: the key its element ends with, its icon, its name, and
+/// One of the header's five actions: the key its element ends with, its icon, its face, and
 /// the command a press runs (`commands::run`). What the command does is whichever part
 /// registers it; until one does the button is drawn and inert.
 struct Button {
     key: &'static str,
     icon: IconName,
-    label: fn(&Labels) -> &str,
+    face: fn(&App) -> Face,
     command: &'static str,
+}
+
+/// What a header action shows assistive technology, with its keys as bound now: GTK's names
+/// (`Header::new` in `src/ui/window/composition/layout.rs`).
+pub(crate) struct Face {
+    pub(crate) name: String,
+    /// The tooltip, which is also the description, where it is not the name.
+    pub(crate) tooltip: Option<String>,
+    /// Whether a toggle button is on; None for a plain button.
+    pub(crate) checked: Option<bool>,
+}
+
+impl Face {
+    fn named(name: String) -> Self {
+        Self {
+            name,
+            tooltip: None,
+            checked: None,
+        }
+    }
 }
 
 /// Before the location bar.
 const LEADING: Button = Button {
     key: "sidebar-toggle",
     icon: IconName::Sidebar,
-    label: |labels| &labels.toggle_sidebar,
+    face: crate::sidebar::toggle_face,
     command: "toggle-sidebar",
 };
 
@@ -374,25 +392,39 @@ const TRAILING: [Button; 4] = [
     Button {
         key: "new-tab",
         icon: IconName::Plus,
-        label: |labels| &labels.new_tab,
+        // GTK names it plainly; only its tooltip names the keys.
+        face: |_| Face {
+            tooltip: Some(with_keys(
+                "New tab (%{keys})",
+                Some("New tab"),
+                Keys::One(TAB_NEW.shown()),
+            )),
+            ..Face::named(tr("New tab"))
+        },
         command: "tab-new",
     },
     Button {
         key: "search",
         icon: IconName::Search,
-        label: |labels| &labels.search,
+        face: |_| {
+            Face::named(with_keys(
+                "Search (%{keys})",
+                Some("Search"),
+                Keys::One(SEARCH.shown()),
+            ))
+        },
         command: "search",
     },
     Button {
         key: "appearance",
         icon: IconName::Menu,
-        label: |labels| &labels.appearance,
+        face: |_| Face::named(tr("Appearance")),
         command: "appearance",
     },
     Button {
         key: "settings",
         icon: IconName::Settings,
-        label: |labels| &labels.settings,
+        face: |_| Face::named(tr("Settings")),
         command: "settings",
     },
 ];
@@ -410,12 +442,21 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
     let labels = &app.window.labels;
     let action = |button: &Button| {
         let command = button.command;
-        header::action(look, button.icon, (button.label)(labels))
+        let face = (button.face)(app);
+        let action = match &face.tooltip {
+            Some(tooltip) => header::action(look, button.icon, tooltip).label(face.name),
+            None => header::action(look, button.icon, &face.name),
+        };
+        let action = action
             .on_press_tx(move |app: &mut App, tx: &mut Tx| {
                 commands::run(app, command, On::Focus, tx);
             })
             .build(&look.kit)
-            .key(format!("header-{}", button.key))
+            .key(format!("header-{}", button.key));
+        match face.checked {
+            Some(on) => action.checked(on),
+            None => action,
+        }
     };
     let header = Header::new("header", look).leading(action(&LEADING));
     let header = match location {

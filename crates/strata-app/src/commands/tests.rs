@@ -252,13 +252,7 @@ fn the_headers_buttons_wait_for_the_parts_that_own_their_commands() {
                 .collect();
             assert_eq!(
                 inert,
-                [
-                    "toggle-sidebar",
-                    "tab-new",
-                    "search",
-                    "appearance",
-                    "settings"
-                ]
+                ["tab-new", "search", "appearance", "settings"]
             );
         },
     );

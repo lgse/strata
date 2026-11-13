@@ -19,10 +19,10 @@
 //!   (`strata_fs::adapters::bookmarks`), read when the sidebar starts and again whenever the
 //!   store hears that the file changed.
 //! - **The width and the sections** start as the settings saved them; a section's heading
-//!   saves its own state.
+//!   saves its own state, and the header's toggle steps the width and saves it ([`width`]).
 //!
-//! The width toggle, reordering, drops, devices, the full Trash's icon, the `g` keycaps and
-//! the context menus are not here yet: `docs/rune/parity/packages/A3.md` lists them.
+//! Drops, devices, the full Trash's icon, the `g` keycaps and the context menus are not here
+//! yet: `docs/rune/parity/packages/A3.md` lists them.
 
 use std::io;
 
@@ -39,11 +39,15 @@ use strata_kit::look::Look;
 
 use crate::{
     App, shell,
+    commands::Action,
     slots::{self, Frame, Later, Listener, Part, Place, Setup},
 };
 
 mod places;
 mod reorder;
+mod width;
+
+pub(crate) use width::toggle_face;
 
 use places::{Environment, Listed, Navigation};
 
@@ -71,6 +75,8 @@ impl Part for Sidebar {
         build,
         focus: |app| app.sidebar.focus_key(),
     });
+
+    const COMMANDS: &'static [Action<App>] = width::COMMANDS;
 
     fn new(setup: &Setup<'_>) -> Self {
         Self {
