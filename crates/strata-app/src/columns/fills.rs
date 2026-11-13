@@ -2,8 +2,9 @@
 
 //! Metadata fills for Columns rows, one [`Fills`] for each open column, as GTK's Columns rows
 //! ask for them (`request_metadata` in `src/ui/browser/columns/rows/bind.rs`): every row near
-//! the viewport whose time, size or mode is unknown, and a folder's item count while sizes
-//! show (`columns_show_sizes`).
+//! the viewport whose time, a file's size or a folder's `listable` is unknown, and a folder's
+//! item count, or its mode, while sizes show (`columns_show_sizes`), as GTK's registration and
+//! then `schedule_refresh`'s test pass them ([`Fills::unfilled`]).
 //!
 //! - **Not while the column scrolls.** GTK asks for no fill while the column scrolled in the
 //!   last 150 ms (`track_listing_scrolling` in `src/ui/browser/columns/append/surface.rs`).
@@ -77,7 +78,7 @@ impl ColumnFills {
         let details = self.details;
         while self.columns.len() < len {
             self.columns.push(Column {
-                fills: Fills::new(details),
+                fills: Fills::unfilled(details),
                 folder: None,
                 moved_at: None,
                 moved: false,
@@ -95,6 +96,7 @@ impl Column {
             self.folder = Some(folder.clone());
             self.moved = false;
             self.moved_at = None;
+            self.last = 0..0;
         }
     }
 

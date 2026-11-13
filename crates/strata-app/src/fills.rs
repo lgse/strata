@@ -80,6 +80,18 @@ pub(crate) enum Details {
     Off,
 }
 
+/// Which rows near the viewport a view puts to the shared test at all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Register {
+    /// Every row: the Icons and List views.
+    Every,
+    /// A row whose time, a file's size or a folder's `listable` is unknown, or whose details
+    /// are asked: GTK's Columns rows register a request only then (`request_metadata` in
+    /// `src/ui/browser/columns/rows/bind.rs:254-257`, with `metadata_needs_fill` in
+    /// `src/ui/browser/entry.rs:21-27`), so a row that lacks only its mode is not asked.
+    Unfilled,
+}
+
 impl Details {
     fn of(self, entry: &FileEntry) -> bool {
         match self {
@@ -94,6 +106,7 @@ impl Details {
 pub(crate) struct Fills {
     /// Which rows are asked their details too.
     details: Details,
+    register: Register,
     /// The range the view last reported, and whether a poll has asked for it since.
     range: Range<usize>,
     fresh: bool,
@@ -131,8 +144,19 @@ impl Known {
 
 impl Fills {
     pub(crate) fn new(details: Details) -> Self {
+        Self::registering(details, Register::Every)
+    }
+
+    /// A Columns column's fills, which ask only for the rows GTK's Columns rows register
+    /// ([`Register::Unfilled`]).
+    pub(crate) fn unfilled(details: Details) -> Self {
+        Self::registering(details, Register::Unfilled)
+    }
+
+    fn registering(details: Details, register: Register) -> Self {
         Self {
             details,
+            register,
             range: 0..0,
             fresh: false,
             seen: None,
@@ -208,7 +232,7 @@ impl Fills {
         let entry = browser.entry_at(shown.depth, position)?;
         let id = shown.listing.id_at(index);
         let details = self.details.of(&entry);
-        if !needs_fill(&entry, details) {
+        if !self.registers(&entry, details) || !needs_fill(&entry, details) {
             self.asked.remove(&id);
             return None;
         }
@@ -219,6 +243,14 @@ impl Fills {
             browser.request((shown.depth, position), entry.location.clone(), details);
         }
         Some(entry.location)
+    }
+
+    /// Whether the view puts `entry` to the shared test at all ([`Register`]).
+    fn registers(&self, entry: &FileEntry, details: bool) -> bool {
+        match self.register {
+            Register::Every => true,
+            Register::Unfilled => metadata_needs_fill(entry) || details,
+        }
     }
 }
 

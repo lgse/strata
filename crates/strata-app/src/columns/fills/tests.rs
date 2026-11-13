@@ -36,21 +36,30 @@ fn a_scrolling_column_is_asked_for_once_it_settles() {
 }
 
 /// Another folder at the same depth starts unscrolled: its first range is asked for at once,
-/// however far down the last folder was, and a scroll still settling there is dropped.
+/// however far down the last folder was, whether the poll sees the new folder after its first
+/// range or before it, and a scroll still settling there is dropped.
 #[test]
 fn another_folder_in_a_column_is_asked_for_at_once() {
     let mut fills = ColumnFills::new(true);
     fills.fit(1);
-    first(&mut fills).visit(&Location::local("/a"));
-    fills.see(0, 0..10);
-    fills.see(0, 40..50);
-    assert!(first(&mut fills).settled(1.0).is_err(), "scrolled in /a");
+    let scrolled_in = |fills: &mut ColumnFills, folder: &str, clock: f64| {
+        first(fills).visit(&Location::local(folder));
+        fills.see(0, 0..10);
+        fills.see(0, 40..50);
+        assert!(first(fills).settled(clock).is_err(), "scrolled in {folder}");
+    };
 
+    scrolled_in(&mut fills, "/a", 1.0);
     fills.see(0, 0..10);
     first(&mut fills).visit(&Location::local("/b"));
+    assert_eq!(first(&mut fills).settled(1.01), Ok(()), "range, then /b");
+
+    scrolled_in(&mut fills, "/c", 2.0);
+    first(&mut fills).visit(&Location::local("/d"));
+    fills.see(0, 0..10);
     assert_eq!(
-        first(&mut fills).settled(1.01),
+        first(&mut fills).settled(2.01),
         Ok(()),
-        "a first range in /b"
+        "/d, then its range"
     );
 }
