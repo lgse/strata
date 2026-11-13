@@ -270,6 +270,9 @@ fn an_ungrouped_listing_keeps_the_browsers_order_and_builds_no_lookup() {
     assert_eq!(column.index_of(id), Some(2));
 }
 
+/// How a row comes back from the browser: the edit that carries it.
+type ReadAgain = fn(Row) -> Edit;
+
 /// `photo.png` with the time and size the browser knows, if any.
 fn photo(modified: Option<i64>, size: Option<u64>) -> FileEntry {
     let known = |value: Option<i64>| value.map_or(MetadataValue::Unknown, MetadataValue::Known);
@@ -311,7 +314,7 @@ fn a_row_keeps_its_thumbnail_key_until_a_known_time_or_size_changes() {
             false,
         ),
     ];
-    let edits: [(&str, fn(Row) -> Edit); 3] = [
+    let edits: [(&str, ReadAgain); 3] = [
         ("refill", |row| Edit::Refill(vec![(0, row)])),
         ("replace", |row| Edit::Replace(vec![row])),
         ("splice", |row| Edit::Splice(vec![(0, 1, vec![row])])),
