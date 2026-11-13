@@ -43,7 +43,7 @@ use crate::{
     listing::{Column, Words},
     menus::{self, Request},
     pane::{Applied, Pane},
-    rename, shell,
+    pane_header, rename, shell,
     slots::{At, Editing, Listener, Rows, Setup},
     surface::{self, Surface},
 };
@@ -225,17 +225,20 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
 }
 
 /// The view's element: a group keyed `<key>-pane`, named by the folder and described as
-/// the view, around the component's.
+/// the view, around the pane's header ([`pane_header`]) and the component's.
 pub(crate) fn group<V: SinglePane>(app: &App, component: El) -> El {
+    let title = title::<V>(app);
     col()
         .key(format!("{}-pane", V::KEY))
         .role("group")
-        .label(title::<V>(app))
+        .label(title.clone())
         .description(V::single(app).described.clone())
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .child(component)
+        .child(pane_header::bar(app, V::KEY, &title))
+        // What is left under the header: the component fills its parent's height.
+        .child(col().w_full().grow(1.0).min_h(0.0).child(component))
 }
 
 /// One poll of what the view says while it shows no entry, a read announced once it outlasts

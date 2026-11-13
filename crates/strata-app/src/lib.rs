@@ -63,6 +63,7 @@ mod sidebar;
 mod error_dialog;
 mod location;
 mod open_failed;
+mod pane_header;
 // A6 Menus, dialogs and keymap
 // A7 Entry management and undo
 mod new_item;
@@ -103,6 +104,7 @@ slots::parts! {
     location: location::Bar,
     error_dialog: error_dialog::ErrorDialog,
     open_failed: open_failed::OpenFailed,
+    pane_header: pane_header::PaneHeader,
     // A6 Menus, dialogs and keymap
     // A7 Entry management and undo
     undo: undo::Undo,

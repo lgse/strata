@@ -8,7 +8,7 @@
 use strata_components::location_bar::LocationLabels;
 use strata_core::i18n::tr;
 use strata_desktop::keys::{
-    self, Command, Keys,
+    self, Keys,
     bindings::{ENTER, ESCAPE, LOCATION},
 };
 
@@ -17,20 +17,34 @@ pub(super) fn current() -> LocationLabels {
         // GTK names neither the bar, nor the crumbs' box, nor the suggestions' list.
         bar: String::new(),
         crumbs: String::new(),
-        entry: with_keys("Location (%{keys})", "Location", LOCATION),
+        entry: with_keys(
+            "Location (%{keys})",
+            Some("Location"),
+            Keys::One(LOCATION.shown()),
+        ),
         placeholder: tr("Enter a path or URI…"),
-        navigate: with_keys("Navigate (%{keys})", "Navigate", ENTER),
-        cancel: with_keys("Cancel (%{keys})", "Cancel", ESCAPE),
+        navigate: with_keys(
+            "Navigate (%{keys})",
+            Some("Navigate"),
+            Keys::One(ENTER.shown()),
+        ),
+        cancel: with_keys(
+            "Cancel (%{keys})",
+            Some("Cancel"),
+            Keys::One(ESCAPE.shown()),
+        ),
         copy: tr("Copy path"),
         copied: tr("Path copied"),
         suggestions: String::new(),
     }
 }
 
-/// `message` with `command`'s keys, or `keyless` once nothing binds it (GTK's `KEYLESS`).
-fn with_keys(message: &str, keyless: &str, command: Command) -> String {
-    let label = keys::label(&Keys::One(command.shown()));
-    if label.is_empty() {
+/// `message` with `keys` as they are bound now, or `keyless` once nothing binds them (GTK's
+/// `with_keys` and its `KEYLESS` table, in `src/ui/shortcut_reference.rs`): a message with no
+/// keyless form says no keys.
+pub(crate) fn with_keys(message: &str, keyless: Option<&str>, keys: Keys) -> String {
+    let label = keys::label(&keys);
+    if let Some(keyless) = keyless.filter(|_| label.is_empty()) {
         return tr(keyless);
     }
     rust_i18n::t!(message, keys = label).into_owned()
