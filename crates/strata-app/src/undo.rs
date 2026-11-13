@@ -139,7 +139,12 @@ fn redo_last(app: &mut App) -> bool {
         return browser.redo_copy(generation, locations);
     }
     if let Some((generation, locations)) = browser.pending_redo_trash() {
-        return replay_existing(app, Replay::redo(generation), locations, Browser::redo_trash);
+        return replay_existing(
+            app,
+            Replay::redo(generation),
+            locations,
+            Browser::redo_trash,
+        );
     }
     false
 }
@@ -249,7 +254,10 @@ fn resume_move(browser: &Rc<Browser>, replay: Replay, sorted: Sorted, grouped: b
     }
     // The prompt's Cancel: nothing moves, and the entry stays.
     if collided > 0 {
-        tracing::debug!(collided, "an item is in the way of the replay, and no prompt asks");
+        tracing::debug!(
+            collided,
+            "an item is in the way of the replay, and no prompt asks"
+        );
         return;
     }
     let generation = replay.generation;

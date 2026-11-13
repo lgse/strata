@@ -56,7 +56,11 @@ fn chord(host: &mut Offscreen, letter: char, shift: bool) {
 fn wait_on_disk(host: &mut Offscreen, folder: &Path, name: &str, there: bool) {
     let path = folder.join(name);
     let reached = host.run_until(PATIENCE, |_| path.exists() == there);
-    assert!(reached, "{name} still {}", if there { "absent" } else { "there" });
+    assert!(
+        reached,
+        "{name} still {}",
+        if there { "absent" } else { "there" }
+    );
 }
 
 /// The entry the browser lists under `name`.
