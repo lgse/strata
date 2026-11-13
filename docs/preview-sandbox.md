@@ -982,8 +982,11 @@ directly back to software when its hardware attempts fail before output begins.
 A failure after playback starts fails closed rather than silently splicing a new
 backend into the stream. VA-API receives only safe `/dev/dri/renderD<digits>`
 nodes; Vulkan/Automatic may also receive `/dev/nvidia<digits>` and `/dev/nvidiactl`.
-Accelerated helpers receive read-only `/sys` for discovery. Software/image/PDF/
-thumbnail helpers receive no GPU devices or `/sys` mount.
+Accelerated helpers receive read-only `/sys` for discovery and, when present,
+read-only `/run/opengl-driver`, where NixOS publishes its Mesa, VA-API, and Vulkan
+drivers. The driver files it links to must sit under `STRATA_SANDBOX_ROOT`, as they
+do for a Nix package built with `/nix/store`. Software/image/PDF/thumbnail helpers
+receive no GPU devices, `/sys`, or driver mount.
 
 The conservative AMD Polaris default remains unchanged: an unset acceleration
 preference resolves to software for PCI IDs `0x67c0–0x67df`, `0x67e0–0x67ff`, or

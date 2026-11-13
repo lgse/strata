@@ -162,6 +162,7 @@ fn media_sandbox_exposes_only_supplied_gpu_devices_and_sysfs() {
     expected.extend(
         [
             "--ro-bind /sys /sys",
+            "--ro-bind-try /run/opengl-driver /run/opengl-driver",
             "preview-media /input.mkv /dev/stdout",
         ]
         .map(str::to_owned),
@@ -175,7 +176,7 @@ fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
     let devices = ["/dev/dri/renderD128".into(), "/dev/nvidia0".into()];
     let joined = media_preview(MediaPreviewBackend::Software, &devices).joined();
 
-    assert_contains_none(&joined, &["--dev-bind-try", "/sys"]);
+    assert_contains_none(&joined, &["--dev-bind-try", "/sys", "/run/opengl-driver"]);
     assert!(joined.ends_with("640x800 software"));
 }
 
@@ -191,6 +192,6 @@ fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
     .devices(&devices)
     .joined();
 
-    assert_contains_none(&joined, &["--dev-bind-try", "/sys"]);
+    assert_contains_none(&joined, &["--dev-bind-try", "/sys", "/run/opengl-driver"]);
     assert_contains_all(&joined, &["--cpu=10"]);
 }
