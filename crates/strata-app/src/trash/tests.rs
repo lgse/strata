@@ -477,3 +477,42 @@ fn a_confirmation_from_the_menu_gives_the_keyboard_back_to_the_listing() {
         },
     );
 }
+
+/// A retry asked while a confirmation is open, for the same items that confirmation then
+/// deletes, has nothing left to ask about and does not open.
+#[test]
+fn a_waiting_retry_for_what_was_just_deleted_does_not_open() {
+    hosted(
+        MODULE,
+        "a_waiting_retry_for_what_was_just_deleted_does_not_open",
+        |mut host| {
+            let folder = listed(&mut host);
+            let todo = folder.path().join("todo.txt");
+            let location = Location::local(&todo);
+            select(&mut host, &location);
+            key(&mut host, Key::Delete, shift());
+            wait_for_dialog(&mut host);
+
+            host.runtime().update(move |app: &mut App, _| {
+                let names = std::collections::HashSet::from(["todo.txt".to_owned()]);
+                app.trash.trashing = app.browser.entries_named(&names);
+                super::completed_with_errors(
+                    app,
+                    super::Failed {
+                        retryable: vec![location],
+                        others_failed: false,
+                    },
+                );
+                super::confirmed(app);
+            });
+            while host.turn() {}
+            assert!(host.run_until(PATIENCE, |_| !todo.exists()), "the delete");
+            wait_for_no_dialog(&mut host);
+            host.run_until(std::time::Duration::from_millis(300), |_| false);
+            assert!(
+                dialog(&host).is_none(),
+                "a retry opened for what was deleted"
+            );
+        },
+    );
+}

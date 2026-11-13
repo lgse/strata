@@ -130,17 +130,22 @@ impl Part for Trash {
 
     fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
         let queued = std::mem::take(&mut app.trash.queued);
-        let waiting = app.trash.waiting.take_if(|_| !app.trash.open);
+        let mut waiting = app.trash.waiting.take_if(|_| !app.trash.open);
         if queued.is_empty() && waiting.is_none() {
             return false;
         }
         for queued in queued {
             match queued {
-                Queued::Delete { entries, remote } => delete_confirmed(app, entries, remote),
+                Queued::Delete { entries, remote } => {
+                    if let Some((asked, _)) = &mut waiting {
+                        not_again(asked, &entries);
+                    }
+                    delete_confirmed(app, entries, remote);
+                }
                 Queued::Cancel { cursor, entries } => return_cursor(app, cursor, &entries),
             }
         }
-        if let Some((entries, kind)) = waiting {
+        if let Some((entries, kind)) = waiting.filter(|(entries, _)| !entries.is_empty()) {
             show(app, entries, kind);
         }
         shell::settle(app, tx);
@@ -415,6 +420,12 @@ fn cancelled(app: &mut App) {
         entries: confirm.entries.clone(),
     };
     app.trash.queued.push(queued);
+}
+
+/// Leaves out of a waiting confirmation what a confirmed delete is taking already: nothing is
+/// asked about twice.
+fn not_again(asked: &mut Vec<FileEntry>, deleting: &[FileEntry]) {
+    asked.retain(|entry| !deleting.iter().any(|gone| gone.location == entry.location));
 }
 
 fn delete_confirmed(app: &mut App, entries: Vec<FileEntry>, remote: bool) {
