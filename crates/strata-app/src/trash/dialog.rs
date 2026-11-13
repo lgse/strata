@@ -157,8 +157,10 @@ fn item_list(app: &App, confirm: &Confirm) -> El {
     list
 }
 
-/// The dialog, while one is open or closing.
+/// The dialogs, while one is open or closing: Empty Trash's ([`super::empty`]) and the delete
+/// confirmation.
 pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
+    super::empty::build(app, frame);
     let trash = &app.trash;
     let confirm = trash.confirm.as_ref()?;
     let (title, confirm_label) = confirm.title_and_confirm();
