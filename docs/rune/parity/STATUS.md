@@ -23,15 +23,15 @@ tracking moved here. The issues stay as an archive: each package file links its 
 | [H2](packages/H2.md) | Exception conventions in the runner | done | H1 | [#2171](https://github.com/lgse/strata/pull/2171) |
 | [B1](packages/B1.md) | Shell seams | done | None | [#2167](https://github.com/lgse/strata/pull/2167), [#2169](https://github.com/lgse/strata/pull/2169) |
 | [B2](packages/B2.md) | Shared state out of the GTK package | in progress | None | [#2168](https://github.com/lgse/strata/pull/2168), [#2170](https://github.com/lgse/strata/pull/2170), [#2172](https://github.com/lgse/strata/pull/2172), [#2178](https://github.com/lgse/strata/pull/2178), [#2188](https://github.com/lgse/strata/pull/2188), [#2195](https://github.com/lgse/strata/pull/2195), [#2197](https://github.com/lgse/strata/pull/2197) |
-| [B3](packages/B3.md) | Commands and key dispatch | in progress | B1; B2's key catalog | [#2200](https://github.com/lgse/strata/pull/2200), [#2204](https://github.com/lgse/strata/pull/2204), [#2207](https://github.com/lgse/strata/pull/2207), [#2210](https://github.com/lgse/strata/pull/2210), [#2214](https://github.com/lgse/strata/pull/2214); [#2227](https://github.com/lgse/strata/pull/2227) (open), [#2219](https://github.com/lgse/strata/pull/2219) (open) |
+| [B3](packages/B3.md) | Commands and key dispatch | done | B1; B2's key catalog | [#2200](https://github.com/lgse/strata/pull/2200), [#2204](https://github.com/lgse/strata/pull/2204), [#2207](https://github.com/lgse/strata/pull/2207), [#2210](https://github.com/lgse/strata/pull/2210), [#2214](https://github.com/lgse/strata/pull/2214), [#2219](https://github.com/lgse/strata/pull/2219), [#2227](https://github.com/lgse/strata/pull/2227), [#2237](https://github.com/lgse/strata/pull/2237) |
 | [F1](packages/F1.md) | Fuzz driver and GTK calibration | done | None | [#2181](https://github.com/lgse/strata/pull/2181) |
 
 ### Wave 1: first fan-out
 
 | ID | Package | State | Depends on | Pull requests |
 | --- | --- | --- | --- | --- |
-| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192), [#2199](https://github.com/lgse/strata/pull/2199), [#2202](https://github.com/lgse/strata/pull/2202), [#2208](https://github.com/lgse/strata/pull/2208), [#2211](https://github.com/lgse/strata/pull/2211), [#2220](https://github.com/lgse/strata/pull/2220), [#2221](https://github.com/lgse/strata/pull/2221), [#2223](https://github.com/lgse/strata/pull/2223) |
-| [A2](packages/A2.md) | List view | in progress | B1 | [#2205](https://github.com/lgse/strata/pull/2205), [#2206](https://github.com/lgse/strata/pull/2206), [#2212](https://github.com/lgse/strata/pull/2212), [#2213](https://github.com/lgse/strata/pull/2213), [#2215](https://github.com/lgse/strata/pull/2215), [#2216](https://github.com/lgse/strata/pull/2216), [#2217](https://github.com/lgse/strata/pull/2217), [#2222](https://github.com/lgse/strata/pull/2222), [#2224](https://github.com/lgse/strata/pull/2224), [#2225](https://github.com/lgse/strata/pull/2225), [#2226](https://github.com/lgse/strata/pull/2226), [#2228](https://github.com/lgse/strata/pull/2228); [#2229](https://github.com/lgse/strata/pull/2229) (open) |
+| [A1](packages/A1.md) | Icons view and thumbnails | in progress | B1 | [#2196](https://github.com/lgse/strata/pull/2196), [#2192](https://github.com/lgse/strata/pull/2192), [#2199](https://github.com/lgse/strata/pull/2199), [#2202](https://github.com/lgse/strata/pull/2202), [#2208](https://github.com/lgse/strata/pull/2208), [#2211](https://github.com/lgse/strata/pull/2211), [#2220](https://github.com/lgse/strata/pull/2220), [#2221](https://github.com/lgse/strata/pull/2221), [#2223](https://github.com/lgse/strata/pull/2223), [#2231](https://github.com/lgse/strata/pull/2231), [#2236](https://github.com/lgse/strata/pull/2236), [#2238](https://github.com/lgse/strata/pull/2238), [#2246](https://github.com/lgse/strata/pull/2246), [#2248](https://github.com/lgse/strata/pull/2248) |
+| [A2](packages/A2.md) | List view | in progress | B1 | [#2205](https://github.com/lgse/strata/pull/2205), [#2206](https://github.com/lgse/strata/pull/2206), [#2212](https://github.com/lgse/strata/pull/2212), [#2213](https://github.com/lgse/strata/pull/2213), [#2215](https://github.com/lgse/strata/pull/2215), [#2216](https://github.com/lgse/strata/pull/2216), [#2217](https://github.com/lgse/strata/pull/2217), [#2222](https://github.com/lgse/strata/pull/2222), [#2224](https://github.com/lgse/strata/pull/2224), [#2225](https://github.com/lgse/strata/pull/2225), [#2226](https://github.com/lgse/strata/pull/2226), [#2228](https://github.com/lgse/strata/pull/2228), [#2229](https://github.com/lgse/strata/pull/2229), [#2234](https://github.com/lgse/strata/pull/2234), [#2247](https://github.com/lgse/strata/pull/2247), [#2250](https://github.com/lgse/strata/pull/2250); [#2251](https://github.com/lgse/strata/pull/2251) (open) |
 | [A3](packages/A3.md) | Sidebar | not started | B1 | None |
 | [A4](packages/A4.md) | Tabs | not started | B1, B2 | None |
 | [A5](packages/A5.md) | Location bar | not started | B1 | None |
@@ -87,16 +87,16 @@ explained in [B3's file](packages/B3.md).
 
 The plan's checkpoints are where the owner looks at the numbers
 ([Checkpoints](README.md#checkpoints)). Each report gives five counts. These are running
-counts, retaken by the coordinator at the commit the table names, `strata-next` `0c3d86fff`
+counts, retaken by the coordinator at the commit the table names, `strata-next` `91970db38`
 (2026-11-12), with the command that produces each. The end-of-wave-0 checkpoint report is
-still owed: it is written when B2 and B3 close.
+still owed: B3 has closed, and the report is written when B2 closes.
 
-| Count | At `0c3d86fff` | Command |
+| Count | At `91970db38` | Command |
 | --- | --- | --- |
-| Runs by status and reason | 760 runs: 69 `required`, 0 `parallel`, 682 `pending` (678 `scope`, 3 `platform`, 1 `rune`), 9 `excluded`. A1: 16 `required` and 15 `pending` of 31; A2: 17 `required` and 12 `pending` of 29 | `./scripts/qa-parity.sh all --counts` |
+| Runs by status and reason | 760 runs: 73 `required`, 0 `parallel`, 678 `pending` (674 `scope`, 3 `platform`, 1 `rune`), 9 `excluded`. A1: 19 `required` and 12 `pending` of 31; A2: 18 `required` and 11 `pending` of 29 | `./scripts/qa-parity.sh all --counts` |
 | Twins by exception code | 0 of each code | The `twins` line of `./scripts/qa-parity.sh all --counts`; `./scripts/qa-parity.sh all --twins` lists each twin |
 | Normalisation rules by code | 0: `tests/qa/fuzz/normalisation.map` and `calibration.mask` hold comments and no rule | `./scripts/qa-fuzz.sh check` |
-| Open `divergence` and `oracle` findings | 13 entries, all open: 12 `oracle`, 0 `divergence`, and [#2179](https://github.com/lgse/strata/issues/2179), which carries none of the plan's codes | [`findings.md`](findings.md) |
+| Open `divergence` and `oracle` findings | 15 entries, all open: 13 `oracle`, 0 `divergence`, and [#2179](https://github.com/lgse/strata/issues/2179) and [#2218](https://github.com/lgse/strata/issues/2218), which carry none of the plan's codes | [`findings.md`](findings.md) |
 | Packet entries added | 2: entries 99 and 100, in the packet's "Added during parity work" section | `docs/rune/upstream/rune/README.md` |
 
 Both `qa-parity.sh` reports read the ledger and the scenario files on the host: they start no
@@ -112,6 +112,7 @@ The plan's three conditions:
 | B1 is merged | Met: [#2167](https://github.com/lgse/strata/pull/2167) and [#2169](https://github.com/lgse/strata/pull/2169) ([B1](packages/B1.md)) |
 | Two GTK runs of one fuzz seed agree | Met: F1's [#2181](https://github.com/lgse/strata/pull/2181) merged, with the calibration on GTK ([F1](packages/F1.md)) |
 
-B2 and B3 are wave 0 packages that are not done, and the checkpoint does not wait on them:
+B2 is a wave 0 package that is not done (B3 closed with
+[#2237](https://github.com/lgse/strata/pull/2237)), and the checkpoint does not wait on it:
 waves are dependency waves, and wave 1 packages start as their own dependencies finish
 ([`owner.md`](owner.md#ruled)).
