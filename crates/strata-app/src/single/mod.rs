@@ -277,7 +277,7 @@ pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> 
                 single.pane.set_layout_key(layout);
                 let applied = single.pane.apply(change, tx);
                 // A folder back at its remembered position arms no first visit.
-                single.first_visit.follow(applied);
+                single.first_visit.follow(applied, &single.pane);
                 if matches!(applied, Applied::Entered | Applied::Returned) {
                     // The GTK window gives a new listing the keyboard.
                     tx.focus(V::KEY, false);
