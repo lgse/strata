@@ -131,7 +131,11 @@ fn a_remembered_folders_size_leaves_the_default_alone() {
         chord(&mut host, '=');
         chord(&mut host, '=');
         assert_eq!(size(&host), 128.0, "two steps larger");
-        assert_eq!(default_in_memory(&mut host), 96, "the default after the steps");
+        assert_eq!(
+            default_in_memory(&mut host),
+            96,
+            "the default after the steps"
+        );
         chord(&mut host, '0');
         assert_eq!(size(&host), 96.0, "reset to the default");
 
