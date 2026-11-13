@@ -7,7 +7,7 @@ use rune::Tx;
 
 #[cfg(feature = "qa")]
 use super::Load;
-use super::{Columns, Hands, VIEW, intents, thumbs, view};
+use super::{Columns, Hands, VIEW, fills, intents, thumbs, view};
 #[cfg(feature = "qa")]
 use crate::slots::Probe;
 use crate::{
@@ -88,6 +88,7 @@ impl Part for Columns {
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = app.columns.watch_surface(clock, tx);
         let pruned = thumbs::poll(app, clock);
+        fills::poll(app, clock, tx);
         view(app).tick(app, clock, tx) | said | pruned
     }
 }
