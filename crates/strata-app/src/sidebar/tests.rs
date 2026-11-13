@@ -811,6 +811,7 @@ fn each_rows_menu_lists_gtks_rows_in_its_order() {
     use super::{
         menu::{self, CONNECT, CUSTOMIZE, OPEN_IN_TAB, PROPERTIES, UNPIN},
         places::{Navigation, Row},
+        trash::Contents,
     };
     let row = |item: ItemId, location: Location| Row {
         item,
@@ -841,7 +842,12 @@ fn each_rows_menu_lists_gtks_rows_in_its_order() {
             vec![vec![OPEN_IN_TAB], vec![UNPIN, PROPERTIES]],
         ),
     ] {
-        assert_eq!(menu::rows(&row), expected, "{:?}", row.item);
+        assert_eq!(
+            menu::rows(&row, Contents::Unknown),
+            expected,
+            "{:?}",
+            row.item
+        );
     }
 }
 
@@ -1030,6 +1036,45 @@ fn unpinning_the_open_place_leaves_no_row_marked() {
                 "no row is marked: {:?}",
                 host.app().sidebar.current
             );
+        },
+    );
+}
+
+/// The Trash menu offers "Empty Trash…" only once the Trash is known to hold something: an
+/// open menu takes the change the Trash's monitor hears, and the row asks to empty it. The
+/// Trash root is a folder of the test's own: a hosted test has no gvfs to list `trash:///`.
+#[test]
+fn the_trash_menu_offers_empty_trash_once_the_trash_holds_something() {
+    hosted_after(
+        MODULE,
+        "the_trash_menu_offers_empty_trash_once_the_trash_holds_something",
+        || {
+            let trash = home().join("seeded-trash");
+            std::fs::create_dir_all(&trash).expect("the Trash");
+            crate::trash::empty::use_test_root(&trash);
+        },
+        |mut host| {
+            right_click(&mut host, "sidebar-place-trash");
+            menu_lists(
+                &mut host,
+                &["Open in New Tab", "Unpin", "Properties"],
+                "Unpin",
+            );
+            std::fs::write(home().join("seeded-trash/old.txt"), "old").expect("an item");
+            let empty = menu_lists(
+                &mut host,
+                &["Open in New Tab", "Unpin", "Properties", "Empty Trash…"],
+                "Empty Trash…",
+            );
+            click(&mut host, &empty);
+            let asks = host.run_until(PATIENCE, |host| {
+                let tree = host.tree();
+                !all(&tree, &|node| {
+                    node["role"] == "dialog" && node["name"] == "Empty Trash?"
+                })
+                .is_empty()
+            });
+            assert!(asks, "Empty Trash… asks to empty the Trash");
         },
     );
 }
