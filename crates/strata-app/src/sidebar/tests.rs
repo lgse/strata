@@ -650,3 +650,156 @@ fn shift_and_super_with_up_and_down_move_between_the_rows() {
         },
     );
 }
+
+/// Presses `key` until `wanted` has the keyboard, at most `times` times: true when it did.
+fn press_until(host: &mut Offscreen, key: Key, wanted: &str, times: usize) -> bool {
+    for _ in 0..times {
+        if focused(&host.tree()).as_deref() == Some(wanted) {
+            return true;
+        }
+        press(host, key.clone(), Mods::default());
+        host.run_until(PATIENCE, |host| focused(&host.tree()).is_some());
+        idle(host);
+    }
+    focused(&host.tree()).as_deref() == Some(wanted)
+}
+
+/// Waits a few frames and checks that `key` still has the keyboard after `pressed`.
+fn focus_stays(host: &mut Offscreen, key: &str, pressed: &Key) {
+    for _ in 0..3 {
+        host.turn();
+        idle(host);
+    }
+    assert_eq!(
+        focused(&host.tree()).as_deref(),
+        Some(key),
+        "after {pressed:?}"
+    );
+}
+
+/// The default map's arrows in the header, as GTK's `top_bar_navigation` reads them: Right
+/// and Left move along it and stop at its ends, Up is taken, and Down goes back to the sidebar
+/// row Up left.
+#[test]
+fn the_arrows_move_along_the_header_and_down_returns_to_the_sidebar() {
+    hosted(
+        MODULE,
+        "the_arrows_move_along_the_header_and_down_returns_to_the_sidebar",
+        |mut host| {
+            let folder = fixture();
+            opened(folder.path(), &mut host);
+            shown(&mut host, "sidebar-place-home");
+            into_the_sidebar(&mut host);
+            press(&mut host, Key::Up, Mods::default());
+            focus_reaches(&mut host, TOGGLE, &Key::Up);
+
+            press(&mut host, Key::Left, Mods::default());
+            focus_stays(&mut host, TOGGLE, &Key::Left);
+            press(&mut host, Key::Up, Mods::default());
+            focus_stays(&mut host, TOGGLE, &Key::Up);
+            press(&mut host, Key::Right, Mods::default());
+            focus_reaches(&mut host, "location-crumb-0", &Key::Right);
+            press(&mut host, Key::Left, Mods::default());
+            focus_reaches(&mut host, TOGGLE, &Key::Left);
+
+            let last = crate::shell::header_last(host.app());
+            assert!(
+                press_until(&mut host, Key::Right, &last, 16),
+                "Right walks the header to {last}, not {:?}",
+                focused(&host.tree())
+            );
+            press(&mut host, Key::Right, Mods::default());
+            focus_stays(&mut host, &last, &Key::Right);
+
+            press(&mut host, Key::Down, Mods::default());
+            focus_reaches(&mut host, "sidebar-place-home", &Key::Down);
+        },
+    );
+}
+
+/// Down from the header with the sidebar hidden gives the keyboard to the files
+/// (`browser.focus_active`, where `return_to_sidebar` finds the sidebar unmapped).
+#[test]
+fn down_from_the_header_reaches_the_files_while_the_sidebar_is_hidden() {
+    hosted(
+        MODULE,
+        "down_from_the_header_reaches_the_files_while_the_sidebar_is_hidden",
+        |mut host| {
+            let folder = fixture();
+            opened(folder.path(), &mut host);
+            shown(&mut host, "sidebar-place-home");
+            let ctrl = Mods {
+                ctrl: true,
+                ..Mods::default()
+            };
+            press(&mut host, Key::Command('b'), ctrl);
+            press(&mut host, Key::Command('b'), ctrl);
+            let hidden = host.run_until(PATIENCE, |host| {
+                host.app().sidebar.state.width.shown() == Step::Hidden
+            });
+            assert!(hidden, "two steps hide the sidebar");
+            let view = crate::shell::view_focus(host.app()).expect("the view's key");
+            assert!(
+                press_until(&mut host, Key::Tab, TOGGLE, 4),
+                "Tab reaches the toggle, not {:?}",
+                focused(&host.tree())
+            );
+            press(&mut host, Key::Down, Mods::default());
+            focus_reaches(&mut host, view, &Key::Down);
+        },
+    );
+}
+
+/// Down from the header comes back to the row Up left once, as GTK's `return_to_sidebar`
+/// takes it, even an open pin a collapsed PINNED still shows; reached again without Up, Down
+/// goes to the sidebar's first element. Up leaves only from the first element, so the test
+/// plants the row it would remember.
+#[test]
+fn down_from_the_header_returns_to_the_remembered_row_once() {
+    hosted_after(
+        MODULE,
+        "down_from_the_header_returns_to_the_remembered_row_once",
+        || {
+            std::fs::create_dir_all(home().join("work")).expect("a pinned folder");
+            seed_pins(&pin(&home().join("work"), "Work"));
+            let file = settings_file();
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved =
+                "mode = \"theme\"\ntheme = \"azure-glow\"\nsidebar_pinned_collapsed = true\n";
+            std::fs::write(file, saved).expect("settings");
+        },
+        |mut host| {
+            opened(&home().join("work"), &mut host);
+            let marked = host.run_until(PATIENCE, |host| {
+                host.app().sidebar.current == Some(ItemId::Pin("0".into()))
+            });
+            assert!(marked, "the open folder's pin is marked");
+            shown(&mut host, "sidebar-pin-0");
+            assert!(host.app().sidebar.state.pinned_collapsed);
+            host.runtime().update(|app, _| {
+                app.sidebar.header_entry = Some("sidebar-pin-0".to_owned());
+            });
+            for (back, why) in [
+                (
+                    "sidebar-pin-0",
+                    "the remembered pin, shown in the collapsed section",
+                ),
+                (
+                    "sidebar-place-home",
+                    "the first element, the row being taken",
+                ),
+            ] {
+                assert!(
+                    press_until(&mut host, Key::Tab, TOGGLE, 8),
+                    "Tab reaches the toggle, not {:?}",
+                    focused(&host.tree())
+                );
+                press(&mut host, Key::Down, Mods::default());
+                let at = host.run_until(PATIENCE, |host| {
+                    focused(&host.tree()).as_deref() == Some(back)
+                });
+                assert!(at, "Down goes to {why}, not {:?}", focused(&host.tree()));
+            }
+        },
+    );
+}
