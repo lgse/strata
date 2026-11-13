@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget, ThumbKey};
 use strata_core::{
     i18n::tr,
-    model::{EntryKind as Kind, FileEntry, Location, ViewPreferences},
+    model::{EntryKind as Kind, FileEntry, Location, MetadataValue, ViewPreferences},
 };
 use strata_fs::app::compare_type_groups;
 
@@ -94,6 +94,40 @@ impl Words {
     }
 }
 
+/// What the browser knows of an entry beyond its name, as the views show it: the details line
+/// under an Icons tile, the List view's size column. Each is `None` until the browser knows it
+/// (a metadata fill) and for an entry that has none. [`crate::details`] makes the text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) struct Facts {
+    /// A file's size in bytes.
+    pub(crate) size: Option<u64>,
+    /// How many entries a folder holds.
+    pub(crate) child_count: Option<u64>,
+    /// A video's or a sound's length, in whole seconds.
+    pub(crate) duration_seconds: Option<u64>,
+    /// An image's width and height, in pixels.
+    pub(crate) dimensions: Option<(u32, u32)>,
+}
+
+impl Facts {
+    fn of(entry: &FileEntry) -> Self {
+        Self {
+            size: known(&entry.size),
+            child_count: known(&entry.child_count),
+            duration_seconds: known(&entry.duration_seconds),
+            dimensions: known(&entry.image_dimensions),
+        }
+    }
+}
+
+/// The value, when the browser knows it.
+pub(crate) fn known<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
+    match value {
+        MetadataValue::Known(value) => Some(*value),
+        MetadataValue::Unknown | MetadataValue::Unavailable => None,
+    }
+}
+
 /// What one row shows, copied from the browser's entry.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Row {
@@ -111,6 +145,7 @@ pub(crate) struct Row {
     /// Its file type, as the List view groups by it: read only while its folder is grouped
     /// ([`Column::group`]), as a MIME lookup for every row would cost every view.
     group: Option<TypeGroup>,
+    facts: Facts,
 }
 
 impl Row {
@@ -125,11 +160,16 @@ impl Row {
             thumbnail: crate::thumbnails::key_of(entry),
             entry_kind: entry.kind,
             group: None,
+            facts: Facts::of(entry),
         }
     }
 
     pub(crate) fn is_folder(&self) -> bool {
         self.kind.is_folder_like()
+    }
+
+    pub(crate) fn facts(&self) -> &Facts {
+        &self.facts
     }
 }
 
