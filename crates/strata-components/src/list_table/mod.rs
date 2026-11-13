@@ -106,9 +106,10 @@
 //! - **Built on C1e, not on rune-kit's Table** (owner ruling): Table's rows take presses
 //!   themselves, so a marquee, C1b's regions and row drags can't reach them, and it has no
 //!   reorder, visibility, groups or sideways scroll. The drafts below ask for what C4 needs.
-//! - **Headings aren't Tab stops** (owner ruling; a deviation from Strata, whose headings are
-//!   GTK buttons): as in rune-kit's Table, the grid is one focus stop. Assistive technology
-//!   presses a heading through its press action.
+//! - **Headings aren't Tab stops** (a deviation from Strata, whose headings are GTK buttons,
+//!   pending the owner's confirmation: `docs/rune/parity/owner.md`, A8): as in rune-kit's
+//!   Table, the grid is one focus stop. Assistive technology presses a heading through its
+//!   press action.
 //! - **Fit uses Rune's double press** (owner ruling; a deviation): Rune pairs presses within
 //!   its fixed 0.5 s on Linux (S5 U13), where Strata waits 400 ms.
 //! - **The sort click after a drag is suppressed by hand**: Rune presses an element whose own
