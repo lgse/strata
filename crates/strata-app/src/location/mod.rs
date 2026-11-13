@@ -147,6 +147,12 @@ impl Part for Bar {
         }))
     }
 
+    // `set_view_mode` calls `sync_displayed_location`: Columns names its deepest column, the
+    // other views the active one.
+    fn switched(app: &mut App, tx: &mut Tx) {
+        follow(app, tx);
+    }
+
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let polled = app.location.state.tick(clock, tx);
         let changed = polled.changed;

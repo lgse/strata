@@ -116,6 +116,8 @@ pub(crate) fn idle_view<S>(
         shows,
         focus: name,
         supports_type_grouping: false,
+        apply: |_, _, _| false,
+        returns: None,
         pointer_at: None,
         rows: Rows {
             position: |_, _| None,

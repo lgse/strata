@@ -24,9 +24,11 @@
 //! registration lines. A slot with no part adds nothing: no element, no node in the
 //! accessibility tree, no focus stop.
 //!
-//! Of the views, the one the saved `browser_mode` names is shown ([`View::shows`]), and the
-//! first registered when none answers to it. A view that is not shown is built and then left
-//! alone: it has no listener, and none of its hooks run.
+//! Of the views, the one the saved `browser_mode` names is shown at start ([`View::shows`]),
+//! and the first registered when none answers to it. A view that is not shown is built and
+//! then left alone: its listener hears nothing, and none of its hooks run. `shell::show_view`
+//! shows another while the window is open: the view that becomes shown is rebuilt from the
+//! browser, through its own [`View::apply`], and hears the browser from then on.
 //!
 //! # What a part writes
 //!
@@ -51,6 +53,7 @@
 //! | To act on the browser | A handler calls `shell::publish(app)` before it asks the browser to act on its cursor, and `shell::settle(app, tx)` when it is done |
 //! | To tell the browser what the user changed in it | [`Part::publish`], called before GLib dispatches and around every applied queue; [`Part::caught_up`], called once a queue is applied |
 //! | Its own timers | [`Part::poll`], called in Rune's `poll` after the queue is applied |
+//! | To follow the view shown when it changes | [`Part::switched`], called on every active part once the new view is rebuilt |
 //! | The keyboard | A part focuses its own element with `Tx::focus`. A field or a menu gives the keyboard back to the shown view: `shell::view_focus(app)` is the key for a component's `focus_return`. A view whose keyboard leaves it at its start (Left in the first column) calls `shell::leave_view_at_start(app, tx)`: the sidebar takes it at its [`Sidebar::focus`], and nothing happens when there is no sidebar |
 //! | The view, whichever is shown | `shell::shown_view(app)`. A part never names a view's module. The rename editor opens and polls through the shown view's [`Editing`]; a chosen menu row runs a command of the registry ([`crate::commands`]), which asks the view's [`Rows`] only for what differs from view to view; the QA backend reads its panes by the view's [`Probe`] |
 //! | The id of an entry | `shell::id_of(app, &location)`: the window's one table, which [`Setup::ids`] also hands a part for its listener |
@@ -132,7 +135,7 @@
 //! | A key the shown view's own controller takes (Escape, Delete, Space, Ctrl+A), as a command | Nothing: register it at the GTK dispatcher's stage that reads it. A view's collection asks the registry ahead of its own keys (`commands::in_view`), for every stage ahead of `ItemNavigation`, and the view keeps each key no command takes. A view built on a collection of its own calls `commands::in_view` on it once. A header button's or a menu row's command with no key is registered under the button's name (`shell.rs`) or the row's id (`menus.rs`) |
 //! | To save a setting | Nothing: `shell::saved(app).change(…)`, by the rules under [Saving a setting](#saving-a-setting) |
 //! | A `Browser` and a state for each tab | lgse/strata#2131, which opens with a `contract` change. There is one `Browser`, and one state for each part, made once in `App::new` |
-//! | To change the shown view while the window is open | lgse/strata#2140, with a `contract` change: a setter, and a listener and a rebuild from the browser for a view that starts hidden |
+//! | To change the shown view while the window is open | Nothing: `shell::show_view(app, mode, tx)`, which the view switch's commands call (`crate::appearance::views`) |
 //! | Another order within a slot | A `contract` change. The order is the registration lines', which is the packages', and a line is not moved from under its comment |
 //! | The stored names `grid` and `explorer` read in one place | The preference store's move, lgse/strata#2125: they are read in `src/ui/preferences/stored.rs` on the GTK side. Until then the Icons view's `shows` answers to `icons` and `grid`, and the List view's to `list` and `explorer` |
 //! | More of the Columns view than the listing and the handover | The listing a view shows is shared (`listing.rs`), and so is the cursor and selection handover (`handover.rs`), which Columns uses for each column and a single-pane view through `pane.rs`. What stays in `columns/` is the Columns component's own: `Listings` as its `ColumnSources`, the adapter that puts a change into `ColumnsState`, the active column and the mirror. A view that needs more of it opens a `contract` change |
@@ -190,6 +193,7 @@ use strata_desktop::settings::Preferences;
 use crate::{
     App,
     commands::{Action, Holds},
+    events::Change,
 };
 
 mod ids;
@@ -198,7 +202,7 @@ mod registry;
 
 pub(crate) use ids::Ids;
 pub(crate) use inbox::{Heard, Inbox, Later, Listener};
-pub(crate) use registry::{Entry, Registry};
+pub(crate) use registry::{Entry, Registry, ShownView};
 
 /// A place in the window. The module docs say where each is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -231,6 +235,8 @@ pub(crate) struct Setup<'a> {
     pub(crate) ids: &'a Ids,
     /// Where the callback of a service other than `Browser` queues: clone it into the state.
     pub(crate) later: &'a Later<App>,
+    /// Which view is shown, now and later: clone it into the state of what asks after start.
+    pub(crate) shown: &'a ShownView,
 }
 
 /// What a part builds its element with, for one run of the view.
@@ -262,6 +268,15 @@ pub(crate) struct View<S: 'static> {
     /// view alone). The one source of it: the shell tells the browser
     /// (`Browser::set_type_grouping`), and a view's pane follows the browser.
     pub(crate) supports_type_grouping: bool,
+    /// Applies one change its listener read out of the browser ([`crate::events`]), as the
+    /// listener's queued update does. The view that becomes shown is rebuilt through it from
+    /// [`crate::events::replay`]. True when the view has to run.
+    pub(crate) apply: fn(&mut S, Change, &mut Tx) -> bool,
+    /// For a view whose open folder's child column follows the selection, Columns: whether
+    /// the lone selected folder opens as that child when the view is shown after another, as
+    /// GTK's `rebuild_columns_view` asks (`columns_mirror_selection`). None for a view that
+    /// shows one folder.
+    pub(crate) returns: Option<fn(&S) -> bool>,
     pub(crate) pointer_at: Option<PointerAt<S>>,
     pub(crate) rows: Rows<S>,
     pub(crate) editing: Editing<S>,
@@ -413,6 +428,11 @@ pub(crate) trait Part: Sized + 'static {
 
     /// The queue of the browser's events has been applied, this part's updates among them.
     fn caught_up(_app: &mut App) {}
+
+    /// The window shows another view ([`shell::show_view`](crate::shell::show_view)), rebuilt
+    /// from the browser: what follows the view shown follows it, as the folder the location
+    /// bar names does (`sync_displayed_location`). The browser may say nothing then.
+    fn switched(_app: &mut App, _tx: &mut Tx) {}
 
     /// One poll: the part's own timers. True when the view has to run.
     fn poll(_app: &mut App, _clock: f64, _tx: &mut Tx) -> bool {

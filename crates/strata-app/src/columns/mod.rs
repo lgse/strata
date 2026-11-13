@@ -34,7 +34,7 @@ use crate::{
     events::{Added, Change, Marks, Moved},
     handover::{self, Held, Moving},
     listing::{Column, Edit, Load, Row},
-    slots::{Ids, Later},
+    slots::{Ids, Later, ShownView},
     surface::Surface,
 };
 
@@ -104,7 +104,12 @@ fn clicks(count: u8) -> ClickCount {
 }
 
 impl Columns {
-    fn with_settings(settings: &Preferences, ids: Ids, later: Later<App>) -> Self {
+    fn with_settings(
+        settings: &Preferences,
+        ids: Ids,
+        later: Later<App>,
+        shown: ShownView,
+    ) -> Self {
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
         Self {
@@ -114,7 +119,7 @@ impl Columns {
             held: Vec::new(),
             followed: None,
             moving: Moving::default(),
-            mirror: Mirror::new(settings.columns_mirror_selection),
+            mirror: Mirror::new(settings.columns_mirror_selection, shown),
             clicks: ClickModes::new(
                 clicks(settings.columns_file_clicks),
                 clicks(settings.columns_folder_clicks),
@@ -125,6 +130,11 @@ impl Columns {
             thumbs: Thumbs::new(later),
             fills: ColumnFills::new(settings.columns_show_sizes),
         }
+    }
+
+    /// Whether the selection's folder opens as the child column: the saved choice.
+    pub(crate) fn mirrors(&self) -> bool {
+        self.mirror.enabled()
     }
 
     /// How many columns both the listings and the view hold.

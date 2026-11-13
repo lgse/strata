@@ -39,7 +39,8 @@ use strata_core::i18n::tr;
 
 use self::first_visit::FirstVisit;
 use crate::{
-    App, commands, events,
+    App, commands,
+    events::{self, Change},
     listing::{Column, Words},
     menus::{self, Request},
     pane::{Applied, Pane},
@@ -272,21 +273,24 @@ pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> 
         let read = events::read(event, browser, &ids);
         heard.copied(read.copied);
         for change in read.changes {
-            heard.then(move |app: &mut App, tx: &mut Tx| {
-                let layout = V::layout_key(app);
-                let single = V::single_mut(app);
-                single.pane.set_layout_key(layout);
-                let applied = single.pane.apply(change, tx);
-                // A folder back at its remembered position arms no first visit.
-                single.first_visit.follow(applied, &single.pane);
-                if matches!(applied, Applied::Entered | Applied::Returned) {
-                    // The GTK window gives a new listing the keyboard.
-                    tx.focus(V::KEY, false);
-                }
-                true
-            });
+            heard.then(move |app: &mut App, tx: &mut Tx| apply::<V>(app, change, tx));
         }
     }))
+}
+
+/// Applies one change the listener read, or a rebuild's.
+pub(crate) fn apply<V: SinglePane>(app: &mut App, change: Change, tx: &mut Tx) -> bool {
+    let layout = V::layout_key(app);
+    let single = V::single_mut(app);
+    single.pane.set_layout_key(layout);
+    let applied = single.pane.apply(change, tx);
+    // A folder back at its remembered position arms no first visit.
+    single.first_visit.follow(applied, &single.pane);
+    if matches!(applied, Applied::Entered | Applied::Returned) {
+        // The GTK window gives a new listing the keyboard.
+        tx.focus(V::KEY, false);
+    }
+    true
 }
 
 /// Hands the browser what the view changed since it last agreed with it.
