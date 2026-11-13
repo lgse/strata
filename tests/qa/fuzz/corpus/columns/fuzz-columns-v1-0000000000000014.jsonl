@@ -1,0 +1,5 @@
+{"scenario":"fuzz-columns-v1-0000000000000014","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"shift+Up","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"F5","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"shift+Down","when":{"not":{"field":{"name":"Rename"}}}}
