@@ -53,6 +53,7 @@ mod keys;
 mod menu;
 mod places;
 mod reorder;
+mod trash;
 mod width;
 
 pub(crate) use width::toggle_face;
@@ -79,6 +80,8 @@ pub(crate) struct Sidebar {
     header_entry: Option<String>,
     /// A row's context menu ([`menu`]).
     menu: ContextMenuState,
+    /// What the Trash holds, for its menu ([`trash`]).
+    trash: trash::Probe,
     started: bool,
 }
 
@@ -110,6 +113,7 @@ impl Part for Sidebar {
             watch: None,
             header_entry: None,
             menu: ContextMenuState::default(),
+            trash: trash::Probe::default(),
             started: false,
         }
     }
@@ -122,6 +126,9 @@ impl Part for Sidebar {
         Some(Box::new(|event, _, heard| {
             if changes_active_place(event) {
                 heard.then(|app: &mut App, _: &mut Tx| app.sidebar.follow(&app.browser));
+            }
+            if trash::changes_contents(event) {
+                heard.then(|app: &mut App, _: &mut Tx| trash::refresh(app));
             }
         }))
     }
@@ -179,6 +186,7 @@ fn start(app: &mut App) {
     }));
     sidebar.pins = bookmarks::current();
     relist(app);
+    trash::start(app);
 }
 
 /// The store read the bookmarks file again, or could not.

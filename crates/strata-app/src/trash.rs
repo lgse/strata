@@ -48,6 +48,7 @@ use crate::{
 };
 
 mod dialog;
+pub(crate) mod empty;
 mod sizes;
 
 use dialog::{Confirm, Kind};
@@ -87,6 +88,8 @@ pub(crate) struct Trash {
     /// What the last Move to Trash asked for (`pending_delete_entries`): what a partial
     /// failure's retry may delete.
     trashing: Vec<FileEntry>,
+    /// Empty Trash's dialog ([`empty`]).
+    empty: empty::Empty,
 }
 
 /// A trash that some items failed (`OperationCompletedWithErrors`).
@@ -108,6 +111,7 @@ impl Part for Trash {
             sizing: None,
             opened: 0,
             trashing: Vec::new(),
+            empty: empty::Empty::default(),
         }
     }
 
@@ -129,10 +133,11 @@ impl Part for Trash {
     }
 
     fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
+        let emptying = empty::poll(app);
         let queued = std::mem::take(&mut app.trash.queued);
         let mut waiting = app.trash.waiting.take_if(|_| !app.trash.open);
         if queued.is_empty() && waiting.is_none() {
-            return false;
+            return emptying;
         }
         for queued in queued {
             match queued {
@@ -153,7 +158,7 @@ impl Part for Trash {
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
-        app.trash.open.then_some(Holds::Modal { field: false })
+        (app.trash.open || empty::holds(app)).then_some(Holds::Modal { field: false })
     }
 
     const COMMANDS: &'static [Action<App>] = &[
@@ -175,6 +180,8 @@ impl Part for Trash {
                     .ignoring(DELETE_MODIFIERS)],
             )
             .when(|_, at| !at.text())]),
+        // No key empties the Trash: the sidebar's Trash menu asks for it.
+        Action::new("empty-trash", empty::run),
     ];
 }
 

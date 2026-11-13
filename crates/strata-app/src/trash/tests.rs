@@ -516,3 +516,157 @@ fn a_waiting_retry_for_what_was_just_deleted_does_not_open() {
         },
     );
 }
+
+fn home() -> std::path::PathBuf {
+    std::path::PathBuf::from(std::env::var_os("HOME").expect("the test's home"))
+}
+
+/// A Trash of the test's own, holding `items` files and an empty folder, and the Trash root
+/// pointed at it: a hosted test has no gvfs to list `trash:///` with. The folder is empty
+/// because a plain folder refuses to delete a folder with something in it, where gvfs's Trash
+/// deletes a whole trashed item.
+fn seeded_trash(items: usize) -> std::path::PathBuf {
+    let trash = home().join("seeded-trash");
+    std::fs::create_dir_all(&trash).expect("the Trash");
+    for n in 0..items {
+        std::fs::write(trash.join(format!("item-{n}.txt")), "hello").expect("an item");
+    }
+    if items > 0 {
+        std::fs::create_dir_all(trash.join("folder")).expect("a folder");
+    }
+    super::empty::use_test_root(&trash);
+    trash
+}
+
+fn held(trash: &std::path::Path) -> usize {
+    std::fs::read_dir(trash).map_or(0, Iterator::count)
+}
+
+fn empty_trash(host: &mut Offscreen) {
+    host.runtime().update(|app: &mut App, tx| {
+        assert_eq!(run(app, "empty-trash", On::Focus, tx), Outcome::Ran);
+    });
+    while host.turn() {}
+}
+
+/// `confirm_empty_trash`: the Trash is measured, then "Empty Trash?" asks with Empty Trash
+/// focused; Escape keeps everything, and only the confirmation's Empty Trash empties it.
+#[test]
+fn empty_trash_asks_and_empties_only_when_confirmed() {
+    hosted_after(
+        MODULE,
+        "empty_trash_asks_and_empties_only_when_confirmed",
+        || {
+            seeded_trash(2);
+        },
+        |mut host| {
+            let trash = home().join("seeded-trash");
+            assert_eq!(held(&trash), 3);
+            empty_trash(&mut host);
+            let (name, focused) = wait_for_dialog(&mut host);
+            let confirming = host.run_until(PATIENCE, |host| {
+                dialog(host).is_some_and(|(name, _)| name == "Empty Trash?")
+            });
+            assert!(confirming, "the confirmation, not {name:?}");
+            let (_, focused_now) = dialog(&host).expect("the confirmation");
+            assert_eq!(
+                focused_now.as_deref(),
+                Some("Empty Trash"),
+                "first {focused:?}"
+            );
+            key(&mut host, Key::Escape, Mods::default());
+            wait_for_no_dialog(&mut host);
+            host.run_until(std::time::Duration::from_millis(300), |_| false);
+            assert_eq!(held(&trash), 3, "Escape emptied the Trash");
+
+            empty_trash(&mut host);
+            let confirming = host.run_until(PATIENCE, |host| {
+                dialog(host).is_some_and(|(name, _)| name == "Empty Trash?")
+            });
+            assert!(confirming, "the confirmation again");
+            key(&mut host, Key::Enter, Mods::default());
+            assert!(
+                host.run_until(PATIENCE, |_| held(&trash) == 0),
+                "the Trash still holds {}",
+                held(&trash)
+            );
+            wait_for_no_dialog(&mut host);
+            assert!(trash.exists(), "the Trash itself stays");
+        },
+    );
+}
+
+/// A press of Empty Trash that does not come from the confirmation on show empties nothing:
+/// not while the Trash is still being measured, and not once the dialog has closed.
+#[test]
+fn only_the_open_confirmation_empties_the_trash() {
+    hosted_after(
+        MODULE,
+        "only_the_open_confirmation_empties_the_trash",
+        || {
+            seeded_trash(1);
+        },
+        |mut host| {
+            let trash = home().join("seeded-trash");
+            host.runtime().update(|app: &mut App, tx| {
+                run(app, "empty-trash", On::Focus, tx);
+                super::empty::confirmed(app);
+                assert_eq!(super::empty::shown(app), Some((true, "measuring")));
+            });
+            let confirming = host.run_until(PATIENCE, |host| {
+                dialog(host).is_some_and(|(name, _)| name == "Empty Trash?")
+            });
+            assert!(confirming, "the confirmation");
+            key(&mut host, Key::Escape, Mods::default());
+            wait_for_no_dialog(&mut host);
+            host.runtime()
+                .update(|app: &mut App, _| super::empty::confirmed(app));
+            host.run_until(std::time::Duration::from_millis(300), |_| false);
+            assert_eq!(
+                held(&trash),
+                2,
+                "a press off the open confirmation emptied the Trash"
+            );
+        },
+    );
+}
+
+/// An empty Trash asks nothing: the measuring dialog closes when the walk finds nothing.
+#[test]
+fn an_empty_trash_asks_nothing() {
+    hosted_after(
+        MODULE,
+        "an_empty_trash_asks_nothing",
+        || {
+            seeded_trash(0);
+        },
+        |mut host| {
+            empty_trash(&mut host);
+            let closed = host.run_until(PATIENCE, |host| {
+                super::empty::shown(host.app()) == Some((false, "measuring"))
+            });
+            assert!(
+                closed,
+                "the measuring dialog closes: {:?}",
+                super::empty::shown(host.app())
+            );
+        },
+    );
+}
+
+/// A Trash that cannot be read says so (`finish_trash_summary`).
+#[test]
+fn a_trash_that_cannot_be_read_says_so() {
+    hosted_after(
+        MODULE,
+        "a_trash_that_cannot_be_read_says_so",
+        || super::empty::use_test_root(&home().join("no-such-trash")),
+        |mut host| {
+            empty_trash(&mut host);
+            let said = host.run_until(PATIENCE, |host| {
+                dialog(host).is_some_and(|(name, _)| name == "Unable to read Trash")
+            });
+            assert!(said, "the error, not {:?}", dialog(&host));
+        },
+    );
+}
