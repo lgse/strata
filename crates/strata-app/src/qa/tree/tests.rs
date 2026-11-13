@@ -423,6 +423,64 @@ fn a_button_behind_an_open_menu_is_presented_from_what_is_drawn() {
     );
 }
 
+/// `column_background/context-menu-keeps-column-target` waits for the pane holding a column
+/// header's Refresh button with the column's menu open: a button drawn inside a column
+/// presented from what is drawn hangs under that column's pane, as a column's header actions
+/// do in GTK's tree, and one drawn outside every column hangs off the window's root.
+#[test]
+fn a_button_behind_an_open_menu_hangs_under_the_column_it_is_drawn_in() {
+    let menu = json!({
+        "role": "window",
+        "children": [
+            { "role": "menu", "name": "folder", "states": ["modal"], "children": [
+                { "role": "menu-item", "key": "menu-item1", "name": "New Folder" },
+            ] },
+        ],
+    });
+    let button = |key: &str, x: f64| DrawnButton {
+        key: key.to_owned(),
+        name: key.to_owned(),
+        bounds: Rect {
+            x,
+            y: 44.0,
+            width: 20.0,
+            height: 20.0,
+        },
+    };
+    let drawn = Drawn {
+        buttons: vec![
+            button("columns-refresh", 250.0),
+            button("header-search", 400.0),
+        ],
+        ..drawn_folder()
+    };
+
+    let snapshot = Snapshot::read(&menu, &drawn);
+
+    let seen: Vec<_> = (0..).map_while(|index| snapshot.at(index)).collect();
+    let pane = seen
+        .iter()
+        .find(|seen| seen.mark == Some(Mark::Pane("Columns")))
+        .expect("the pane");
+    let parent_of = |key: &str| {
+        let button = seen
+            .iter()
+            .find(|seen| seen.key.as_deref() == Some(key))
+            .expect("the button");
+        button.parent.and_then(|index| snapshot.at(index))
+    };
+    assert_eq!(
+        parent_of("columns-refresh").map(|parent| parent.node.clone()),
+        Some(pane.node.clone()),
+        "a button drawn in the column hangs under its pane"
+    );
+    assert_eq!(
+        parent_of("header-search").and_then(|parent| parent.parent),
+        None,
+        "a button drawn outside every column hangs off the window's root"
+    );
+}
+
 #[test]
 fn an_entry_has_a_panel_with_its_own_box_and_nothing_else_does() {
     let row = [0.0, 80.0, 300.0, 26.0];

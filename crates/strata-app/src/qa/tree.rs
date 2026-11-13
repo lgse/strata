@@ -121,7 +121,9 @@ pub(super) struct Shape {
 /// It is presented with nothing else: it reads `sensitive` whatever it is (Rune's drawn
 /// elements say nothing of being disabled), it is not focusable and offers no click action,
 /// so a run that asserts a state of a button behind a menu needs an `a11y` twin. It hangs
-/// off the window's root: a target `within` a pane misses it, and `nth: -1` finds it first.
+/// under the pane of the drawn column whose box holds it, as a column's header actions do in
+/// GTK's tree (`panes_with` finds the pane holding it), and off the window's root otherwise,
+/// where a target `within` a pane misses it and `nth: -1` finds it first.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct DrawnButton {
     pub(super) key: String,
@@ -316,9 +318,12 @@ impl Snapshot {
             snapshot.add(tree, None, "window".to_owned());
         }
         snapshot.focus = snapshot.keyboard_focus();
+        let mut panes = Vec::new();
         if let Some(view) = &drawn.view {
             for column in &drawn.columns {
-                snapshot.add_hidden_column(column, view);
+                if let Some(pane) = snapshot.add_hidden_column(column, view) {
+                    panes.push((column.pane, pane));
+                }
             }
             for list in &drawn.lists {
                 snapshot.mark_column(list, view);
@@ -332,7 +337,7 @@ impl Snapshot {
             snapshot.add_icon(icon);
         }
         for button in &drawn.buttons {
-            snapshot.add_hidden_button(button);
+            snapshot.add_hidden_button(button, &panes);
         }
         drawn.sidebar.present(&mut snapshot);
         snapshot
@@ -345,11 +350,13 @@ impl Snapshot {
         }
     }
 
-    /// Presents a button an open menu keeps out of the tree, under the window. Not behind a
-    /// dialog, to stay cautious: GTK's dialogs are overlay layers that leave the window's
-    /// widgets in the tree, so a run aiming behind one fails on Rune rather than passing
-    /// falsely.
-    fn add_hidden_button(&mut self, button: &DrawnButton) {
+    /// Presents a button an open menu keeps out of the tree: under the pane of a column
+    /// presented from what is drawn (`panes`, each with its box) whose box holds the button's
+    /// centre, as a column's header actions sit in its pane in GTK's tree; else under the
+    /// window. Not behind a dialog, to stay cautious: GTK's dialogs are overlay layers that
+    /// leave the window's widgets in the tree, so a run aiming behind one fails on Rune rather
+    /// than passing falsely.
+    fn add_hidden_button(&mut self, button: &DrawnButton, panes: &[(Rect, usize)]) {
         let listed = |seen: &Seen| seen.key.as_deref() == Some(button.key.as_str());
         let menu = |seen: &Seen| seen.role == "menu" && seen.has_state("modal");
         let modal = self.nodes.iter().any(menu);
@@ -363,7 +370,15 @@ impl Snapshot {
             bounds: Some(button.bounds),
             ..Seen::default()
         };
-        self.push(0, &button.key, seen);
+        let (x, y) = button.bounds.centre();
+        let inside = |pane: &Rect| {
+            x >= pane.x && y >= pane.y && x < pane.x + pane.width && y < pane.y + pane.height
+        };
+        let parent = panes
+            .iter()
+            .find(|(pane, _)| inside(pane))
+            .map_or(0, |(_, index)| *index);
+        self.push(parent, &button.key, seen);
     }
 
     fn push(&mut self, parent: usize, segment: &str, seen: Seen) -> usize {
@@ -385,11 +400,12 @@ impl Snapshot {
         index
     }
 
-    /// Presents a column the tree left out, under the window, as the tree would hold it.
-    fn add_hidden_column(&mut self, column: &DrawnColumn, view: &Shape) {
+    /// Presents a column the tree left out, under the window, as the tree would hold it. The
+    /// index of its pane, when it was presented.
+    fn add_hidden_column(&mut self, column: &DrawnColumn, view: &Shape) -> Option<usize> {
         let listed = |seen: &Seen| seen.key.as_deref() == Some(column.list.as_str());
         if self.nodes.is_empty() || self.nodes.iter().any(listed) {
-            return;
+            return None;
         }
         let named = |role: &str, bounds: Rect| Seen {
             role: role.to_owned(),
@@ -423,6 +439,7 @@ impl Snapshot {
             };
             self.push(list, &row.key, seen);
         }
+        Some(pane)
     }
 
     /// Presents under each entry the box its content is drawn in, as a `panel`. A GTK row is a
