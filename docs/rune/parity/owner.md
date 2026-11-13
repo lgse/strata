@@ -559,7 +559,7 @@ Rulings of the owner on the parity work, oldest first.
   changed size is kept, and what a new default prunes. The sort's share of it goes there when
   [A10](packages/A10.md) needs it. The timer rule stays in each interface; the Rune side's is
   `crates/strata-app/src/folder_views.rs`. Moved by [A1](packages/A1.md)'s pull request
-  PRNUM.
+  [#2281](https://github.com/lgse/strata/pull/2281).
 
 ## Housekeeping
 
