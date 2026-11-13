@@ -489,8 +489,15 @@ fn body(app: &App, sidebar: Option<El>, files: Option<El>) -> El {
         });
     match sidebar {
         Some(sidebar) => {
+            // Beside the sidebar the files take what is left of the row's width.
+            let files = col()
+                .grow(1.0)
+                .h_full()
+                .min_w(0.0)
+                .min_h(0.0)
+                .children(files);
             let beside = row().w_full().grow(1.0).min_h(0.0).child(sidebar);
-            body.child(beside.children(files))
+            body.child(beside.child(files))
         }
         None => body.children(files),
     }
