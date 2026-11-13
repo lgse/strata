@@ -11,7 +11,10 @@ use strata_core::model::Location;
 use crate::{
     App,
     host::offscreen::Offscreen,
-    test_support::{PATIENCE, fixture, send_key, view::hosted_in},
+    test_support::{
+        PATIENCE, fixture, send_key,
+        view::{self, hosted_in},
+    },
 };
 
 mod guard;
@@ -105,5 +108,44 @@ fn return_presses_an_unreadable_folders_retry() {
             host.app().browser().with_column_entries(depth, <[_]>::len) == Some(1)
         });
         assert!(listed, "Return on Retry read the folder again");
+    });
+}
+
+/// C6's own buttons take Return in the component (`guard`'s `IN_THEIR_COMPONENT`): Copy path
+/// shows that it copied, and the parent's crumb opens the parent.
+#[test]
+fn return_presses_copy_path_and_a_crumb() {
+    let name = "return_presses_copy_path_and_a_crumb";
+    hosted_in(MODULE, "icons", name, |mut host| {
+        let folder = fixture();
+        let root = Location::local(folder.path());
+        host.app()
+            .open(Location::local(folder.path().join("documents")));
+        let opened = host.run_until(PATIENCE, |host| {
+            let tree = host.tree();
+            !view::all(&tree, &|node| node["key"] == "location-copy").is_empty()
+        });
+        assert!(opened, "documents");
+        idle(&mut host);
+
+        return_on(&mut host, "location-copy");
+        let copied = host.run_until(PATIENCE, |host| {
+            let tree = host.tree();
+            let copy = view::all(&tree, &|node| node["key"] == "location-copy");
+            copy.first()
+                .is_some_and(|node| view::text(node, "name") == "Path copied")
+        });
+        assert!(copied, "Return on Copy path copied it");
+
+        let tree = host.tree();
+        let crumbs = view::all(&tree, &|node| {
+            view::text(node, "key").starts_with("location-crumb-")
+        });
+        let parent = view::text(crumbs.last().expect("an ancestor's crumb"), "key");
+        return_on(&mut host, Box::leak(parent.into_boxed_str()));
+        let up = host.run_until(PATIENCE, |host| {
+            host.app().browser().active_location().as_ref() == Some(&root)
+        });
+        assert!(up, "Return on the parent's crumb opened it");
     });
 }

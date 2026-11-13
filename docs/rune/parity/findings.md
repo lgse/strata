@@ -525,3 +525,25 @@ sequence only together with the alphabet's version, so the version is part of th
   in a list, listbox, menu, tree or grid, or in one of C15's dialogs, or is on its exceptions
   list (the window's own buttons, an
   open question in [`owner.md`](owner.md), A5).
+
+### #2322: `scrolled-away-crumbs-and-columns-stay-reachable/columns` left focus nowhere once in a full Rune run
+
+- **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2322), filed on 2026-11-14 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in a full `./scripts/qa-parity.sh all --target rune` for
+  [#2321](https://github.com/lgse/strata/pull/2321)'s gate, the run failed at line 37: after the
+  resize to 640 (line 33) and Home onto bravo (line 35), Right on bravo left nothing with the
+  keyboard after 15 s (`focused` read null where charlie was wanted). The whole set again passed
+  163 of 163, and the run alone 11 of 11 after the change and 3 of 3 before it; the solo rounds
+  overwrote the failing run's artifacts.
+- **Concerns:** `locations/scrolled-away-crumbs-and-columns-stay-reachable/columns`, which
+  #2321 would have made `required`. The failure is in the Columns keyboard steps, before the run
+  reaches the crumbs #2321 changes; before #2321 the run stopped at line 52 and never reached
+  line 37 in a full run.
+- **Resembles:** [#2162](https://github.com/lgse/strata/issues/2162) (on GTK, an opened folder's
+  column does not take focus within 15 s) and [#2180](https://github.com/lgse/strata/issues/2180)
+  (on GTK, under load, a click that opens a folder leaves focus in two places). Not traced.
+- **State:** open, unowned. The run stays `pending` on `rune` with this as its blocker, by the
+  coordinator's ruling: the flaky allowance may not name a `required` run
+  ([`owner.md`](owner.md#h1-whole-corpus-ledger), H1 item 11).
