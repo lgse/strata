@@ -7,7 +7,8 @@
 //!   "Unable to open directory" (`handle_navigation_rejected` in `src/ui/browser/location.rs`).
 //! - **A location opened by its path**, typed into the location bar or asked for by a part,
 //!   that the browser refuses once it has looked (`LocationNavigationRejected`): "Unable to
-//!   open location" (`on_location_navigation_rejected` in `src/ui/browser/events.rs`).
+//!   open location" (`on_location_navigation_rejected` in `src/ui/browser/events.rs`). One the
+//!   location bar's text is refused for at once comes here too ([`typed_refused`]).
 //!
 //! The message is the browser's reason. When only permissions keep the user out and the
 //! browser offers the folder's `admin://` form, the dialog offers Open as Administrator, which
@@ -73,6 +74,12 @@ fn report(app: &mut App, opened: Opened, error: &LocationValidationError, admin:
         None => failure,
     };
     error_dialog::show(app, failure);
+}
+
+/// A typed location refused before it was opened (empty, not absolute, a bad URI): "Unable
+/// to open location", with no offer, as GTK's `submit_location` reports it.
+pub(crate) fn typed_refused(app: &mut App, error: &LocationValidationError) {
+    report(app, Opened::ByPath, error, None);
 }
 
 /// Nothing is drawn: the report is the error dialog's.
