@@ -345,6 +345,11 @@ pub(crate) struct Sidebar<S: 'static> {
     /// open place's row (`focus_active_place`).
     /// None while it can take none, as a hidden sidebar: the keyboard stays in the view.
     pub(crate) focus: fn(&S) -> Option<String>,
+    /// How much wider the sidebar would be at its full width than as it is drawn now: its full
+    /// width less its rail's while it is railed, else nothing. What the files' area keeps for
+    /// it, as GTK counts a railed sidebar at its full width "so columns still fit once it
+    /// expands" (`publish_column_width_limit` in `src/ui/preview/layout.rs`).
+    pub(crate) held_back: fn(&S) -> f32,
 }
 
 /// Tells a view the pointer moved over the body, to this place in window points.
