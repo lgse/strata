@@ -282,7 +282,7 @@ at run time; the GTK application does not link it, and only its tests enable the
 | | `Xkb` | How it follows GDK |
 | --- | --- | --- |
 | Names written | A declared key by the table. A direct-Unicode keysym as `U+0100`, a key with no name as `0x1a4`: both formatted here by the keysym's range, never from the library's own spelling of a number. A vendor key without its `XF86` prefix | GDK names no vendor key but XFree86's, and none of XFree86's keys named after the Linux kernel's key codes: both ranges are rules. Beyond them, 15 keys libxkbcommon names are written as numbers, and 16 are written by another name (`Eth`, `Ooblique`, `kappa`, `Henkan`) |
-| Names read | A declared key by the table. A vendor key with its prefix or without. A NUL in a name is refused before it reaches the library, whose binding would panic. A number is refused: `U20AC`, `0x61` | The two vendor ranges are refused, 31 more names libxkbcommon reads are refused by name (`guillemetleft`, `dead_lowline`), and two that only GDK reads are read (`SelectButton`, `WindowClear`) |
+| Names read | A declared key by the table. A vendor key with its prefix or without, and not with the prefix twice. A NUL in a name is refused before it reaches the library, whose binding would panic. A number is refused: `U20AC`, `0x61` | The two vendor ranges are refused, 31 more names libxkbcommon reads are refused by name (`guillemetleft`, `dead_lowline`), and two that only GDK reads are read (`SelectButton`, `WindowClear`) |
 | Characters | The table's, then the library's | 27 keys type another character for GDK or none, and 55 characters have another key |
 | Case | Through the character the key types, with the one-character mapping, and a direct-Unicode keysym always onto its character's own key | 114 keys in lower case and 141 in upper are in tables: keys GDK pairs by position with no character behind them, characters Unicode maps to more than one, and characters with a case that GDK leaves alone, such as the Roman numerals |
 | Accelerator strings | None read, none written, as on the table | The reader and the writer are the next step, in two functions of `keys/xkb.rs` that a session which has not read GTK's source fills in |
@@ -294,7 +294,12 @@ not name is saved and lost at the next start
 Two tests hold it: `tests/key_lookups.rs`, in the GTK application's test lane, compares it
 with GDK over every keysym, name and character and fails on a difference no rule covers,
 and `keys/xkb/tests.rs` holds what needs no GDK. `docs/testing.md`, "The key lookups and the
-test image", says how the tables follow the image's libraries.
+test image", says how the tables follow the image's libraries and the Rust toolchain.
+
+`keys::library_in_use()` names the libxkbcommon the process runs on, as the file the loader
+mapped (the library has no call that tells its version), for the interface to log when it
+installs the backend: a report that a key reads differently on the two interfaces starts
+with which library read it.
 
 `install` takes a second answer that is also the interface's own: `NeverFires`, whether a
 binding in a map's entry can ever fire there, which `label` uses to leave such a binding
