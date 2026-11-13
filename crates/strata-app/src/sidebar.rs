@@ -14,7 +14,8 @@
 //! - **The keyboard.** Left at the start of the view comes here (`shell::leave_view_at_start`),
 //!   onto the open place's row, else the first (`focus_active_place`). In 10xer mode the
 //!   component's `h`, Left and Backspace give it back to the view; in the default map the
-//!   arrows move it as GTK's `sidebar_navigation` does ([`keys`]).
+//!   arrows move it as GTK's `sidebar_navigation` does ([`keys`]), and in the window's header
+//!   as its `top_bar_navigation` does ([`header`]), back down to the row they left.
 //! - **The pins** come from GTK's bookmarks file, through the store both interfaces share
 //!   (`strata_fs::adapters::bookmarks`), read when the sidebar starts and again whenever the
 //!   store hears that the file changed.
@@ -44,6 +45,7 @@ use crate::{
     slots::{self, Frame, Later, Listener, Part, Place, Setup},
 };
 
+mod header;
 mod keys;
 mod places;
 mod reorder;
@@ -69,6 +71,8 @@ pub(crate) struct Sidebar {
     later: Later<App>,
     /// Held while the sidebar shows: the store calls only the watches still held.
     watch: Option<BookmarkWatch>,
+    /// The element Up left for the header's toggle, which Down from the header comes back to.
+    header_entry: Option<String>,
     started: bool,
 }
 
@@ -84,6 +88,10 @@ impl Part for Sidebar {
         keys::TO_DOWN,
         keys::TO_UP,
         keys::TO_RIGHT,
+        header::TO_LEFT,
+        header::TO_DOWN,
+        header::TO_UP,
+        header::TO_RIGHT,
     ];
 
     fn new(setup: &Setup<'_>) -> Self {
@@ -94,6 +102,7 @@ impl Part for Sidebar {
             current: None,
             later: setup.later.clone(),
             watch: None,
+            header_entry: None,
             started: false,
         }
     }
