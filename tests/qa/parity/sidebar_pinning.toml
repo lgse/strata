@@ -6,9 +6,8 @@
 scenario = "empty-pinned-section-stays-hidden"
 run = "columns"
 package = "A3"
-status = "pending"
-reason = "scope"
-blocker = "A3"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "folder-pins-order-and-bookmarks"
