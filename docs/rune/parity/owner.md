@@ -239,8 +239,9 @@ Source for all of these: [B3](packages/B3.md), "Design", and the archived issue
   Icons views open nothing and scroll nothing; its List view opens the menu of another
   entry, the one drawn where the cursor's row was last placed, and makes that entry the
   selection, so Move to Trash and Permanently delete are offered for a file the user did
-  not choose (finding [#2235](https://github.com/lgse/strata/issues/2235)). In every view a row partly in view gets its own menu,
-  where it is drawn. Two questions:
+  not choose (finding [#2235](https://github.com/lgse/strata/issues/2235)). A row partly in view was not part of the run: by
+  reading, such a row is drawn, and GTK opens its own menu at it in every view. Two
+  questions:
   1. The Rune interface's List view differs from GTK's on purpose: it opens nothing, as
      Columns and Icons do, because GTK's List behaviour is a fault. To confirm; and the bug
      on `main` is the owner's to file and schedule.

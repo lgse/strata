@@ -225,7 +225,8 @@ sequence only together with the alphabet's version, so the version is part of th
   crate's and lands on `main` first. Until then the tests that call it directly are not
   guarded: the GTK application's (`gtk_test` under `src/`), and those of `strata-fs`,
   `strata-desktop` and `strata-core`. No other crate of the Rune side runs a test in a
-  child.
+  child. The guard has one gap left: a test that gives the whole path of another test that
+  exists passes, because the child runs that other test, which leaves the marker.
 
 ### The updater shows "Interrupted system call" when a signal arrives during a download
 
@@ -311,7 +312,8 @@ sequence only together with the alphabet's version, so the version is part of th
   Columns view asks for a mapped row (`shown_row_at`) and has none. The mode views take the
   row's widget "mapped or not" (`item_widget`) and its last bounds, and hand that point to
   the trigger a right-click uses, which acts on whatever is drawn there. Why Icons then
-  opens nothing was not traced.
+  opens nothing was not traced. A row partly in view was not run: by reading it is mapped
+  in every view, so its own menu opens at it.
 - **Concerns:** `src/ui/browser/view_filter.rs:78`, `src/ui/browser/columns.rs:137`,
   `src/ui/browser_modes/context_menu.rs:70` and `src/ui/browser_modes/pane.rs:75`. No
   scenario presses the Menu key with the cursor out of view.

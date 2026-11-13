@@ -12,9 +12,10 @@
 //! - **A cursor scrolled out of view opens nothing, in every view.** GTK's Columns and Icons
 //!   views do the same. Its List view opens the menu of whichever entry is drawn where the
 //!   cursor's row was last placed, and selects it (finding lgse/strata#2235, seen in a run):
-//!   that is not copied. A row partly in view gets its own menu where it is drawn, as on
-//!   GTK. C21 can scroll a row in and open there; this host does not ask it to. Which
-//!   outcome is right is the owner's (`docs/rune/parity/owner.md`, B3).
+//!   that is not copied. A row partly in view gets its own menu where it is drawn, as GTK
+//!   does by a reading of its source (a row that is mapped). C21 can scroll a row in and
+//!   open there; this host does not ask it to. Which outcome is right is the owner's
+//!   (`docs/rune/parity/owner.md`, B3).
 //! - **Why a controller.** Where the menu opens is the collection's geometry, which only a
 //!   controller is handed. So the key is read after every stage of the chain ahead of the
 //!   view's own keys, where GTK's `context_menu_command` sits in the middle of it.
