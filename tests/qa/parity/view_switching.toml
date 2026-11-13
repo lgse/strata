@@ -22,9 +22,8 @@ blocker = "A8"
 scenario = "column-autofit-stays-inside"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "leaving-columns-names-the-shown-folder"
