@@ -40,6 +40,9 @@ fn toggle_hidden(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
 
 /// F5 reads every column again (`refresh_browser`); the pane menu's row reads its own.
 fn refresh(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
+    // A user's Reload also retries the Trash on mounts that refused it, as GTK's every Reload
+    // does (`ViewEdit::refresh`, the header's and the folder menu's Refresh).
+    strata_fs::adapters::trash_support::forget_all();
     match call.on {
         On::Row((depth, _)) | On::Column(depth) => app.browser.retry_column(depth),
         On::Focus => app.browser.refresh_all(),
