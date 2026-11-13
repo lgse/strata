@@ -594,3 +594,53 @@ sequence only together with the alphabet's version, so the version is part of th
   one. Meanwhile the headings stay as they are, and C4's docs call it a deviation pending the
   owner's confirmation. [A8](packages/A8.md) builds focusable headings only if the owner
   asks for them.
+
+### #2340: the thumbnail-size slider pages by 10 steps and steps onto its grid
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2340), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in the review of [#2336](https://github.com/lgse/strata/pull/2336). GTK's scale
+  (`set_increments(16.0, 1.0)` in `src/ui/browser_modes/icons_controls.rs`) pages 1 px and steps
+  16 from its value (65 to 81 after a drag); C20a's `Slider` pages its `Range`'s 10 steps and
+  lands a step on the next grid point (80), as its module docs choose.
+- **Concerns:** C20a's slider (`crates/strata-components/src/controls/slider/`), and through it
+  the Icons pane header's "Thumbnail size" ([A5](packages/A5.md)). No QA run reaches these keys.
+- **State:** open, C20a's, by the coordinator's placing; #2336 leaves C20a as it is.
+
+### #2341: a modal popover cannot also close on a wheel outside it and let the wheel through
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2341), filed on 2026-11-14
+  as the finding's reference and closed at once: its state is kept here. The issue's text
+  overstates the gap, as first drafted; this entry is the corrected record.
+- **Seen:** in the review of [#2336](https://github.com/lgse/strata/pull/2336). GTK closes the
+  Icons header's "Thumbnail size" popover on a wheel outside it and scrolls the grid
+  (`dismiss_on_outside_scroll`, `src/ui/scrolling/popover.rs`). A Rune popover made with
+  `El::modal` makes the outside inert, so a wheel outside neither closes it nor scrolls. A
+  popover that is not modal can do both, as the reviewer's probe showed: a full-window scrim
+  whose `on_wheel` closes it and returns false lets Rune's fallback scroll the viewport under
+  the point (`scroll_at_axis`, `runtime/input/pointer.rs`, which ignores what covers the point).
+  GTK scrolls only when the wheel is over the listing; over the sidebar or other chrome it only
+  closes the popover (`listing_ancestor` in `src/ui/scrolling/popover.rs`). So the scrim's
+  `on_wheel` takes the wheel (returns true) away from the listing. The sort popover
+  (`src/ui/browser/pane_header/sort_menu.rs:61`) is affected the same way.
+- **Concerns:** the "Thumbnail size" popover ([A5](packages/A5.md)), and every popover GTK
+  dismisses on an outside scroll, the sort popover among them.
+- **State:** open, narrowed. [A5](packages/A5.md)'s next pull request builds the plain popover
+  on that scrim, which closes on an outside press or wheel and takes every key; the gap left is
+  the modal's alone, Rune packet entry [104](../upstream/rune/104-outside-wheel-closes-a-popover.md),
+  not to be filed.
+
+### #2346: a view rebuilt during a staged publish can list rows twice
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2346), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What was seen, by reading** (in the review of [#2343](https://github.com/lgse/strata/pull/2343)):
+  - A view rebuilt from the browser while a large folder is still published in stages copies
+    every entry the column holds, including those not published yet. That is Rune's
+    `events::replay` (`with_column_entries`), and GTK's `rebuild_columns_from` and
+    `apply_snapshot` read the same snapshot.
+  - The `EntriesPublished` events still to come then insert their tails again.
+  - No scenario or seed reaches it.
+- **State:** open, set aside. The fix, for whoever meets it: a published-count accessor on
+  `Browser`, so that a rebuild copies only what has been published. GTK's fix, if taken up,
+  lands on `main`.

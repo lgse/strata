@@ -319,9 +319,8 @@ blocker = "Rune's window host delivers the Escape that breaks off a dead-key seq
 scenario = "valid-name-commits-remaining"
 run = "list"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A8: the view switch: Ctrl+2 on line 38, whose chord is B3's, switches nothing, so its check on line 39 fails. Every List step before it passes"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "window-accelerators-leave-rename"

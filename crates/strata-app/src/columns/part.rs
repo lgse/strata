@@ -11,12 +11,24 @@ use super::{Columns, Hands, VIEW, fills, intents, thumbs, view, width};
 #[cfg(feature = "qa")]
 use crate::slots::Probe;
 use crate::{
-    App, events,
+    App,
+    events::{self, Change},
     slots::{Editing, Listener, Part, Place, Rows, Setup, View},
 };
 
 /// The saved `browser_mode` that names this view.
 const MODE: &str = "columns";
+
+/// Applies one change the listener read, or a rebuild's.
+fn apply(app: &mut App, change: Change, tx: &mut Tx) -> bool {
+    let hands = &mut Hands {
+        browser: &app.browser,
+        look: &app.look,
+        tx,
+    };
+    app.columns.apply(change, hands);
+    true
+}
 
 impl Part for Columns {
     const PLACE: Place<App> = Place::View(View {
@@ -28,6 +40,8 @@ impl Part for Columns {
         shows: |mode| mode == MODE,
         focus: VIEW,
         supports_type_grouping: false,
+        apply,
+        returns: Some(|app| app.columns.mirrors()),
         pointer_at: Some(|app, at| app.columns.pointer_at(at)),
         rows: Rows {
             position: |app, (depth, id)| app.columns.position(depth, id),
@@ -57,7 +71,12 @@ impl Part for Columns {
     });
 
     fn new(setup: &Setup<'_>) -> Self {
-        Self::with_settings(setup.settings, setup.ids.clone(), setup.later.clone())
+        Self::with_settings(
+            setup.settings,
+            setup.ids.clone(),
+            setup.later.clone(),
+            setup.shown.clone(),
+        )
     }
 
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {
@@ -66,15 +85,7 @@ impl Part for Columns {
             let read = events::read(event, browser, &ids);
             heard.copied(read.copied);
             for change in read.changes {
-                heard.then(move |app: &mut App, tx: &mut Tx| {
-                    let hands = &mut Hands {
-                        browser: &app.browser,
-                        look: &app.look,
-                        tx,
-                    };
-                    app.columns.apply(change, hands);
-                    true
-                });
+                heard.then(move |app: &mut App, tx: &mut Tx| apply(app, change, tx));
             }
         }))
     }

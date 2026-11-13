@@ -8,7 +8,7 @@ run = "columns"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 3; then A10: the List headings' sort, at the Size heading on line 9"
 
 [[run]]
 scenario = "appearance-menu-switches-view"
@@ -16,7 +16,7 @@ run = "columns"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 3"
 
 [[run]]
 scenario = "column-autofit-stays-inside"
@@ -29,9 +29,8 @@ host = "offscreen"
 scenario = "leaving-columns-names-the-shown-folder"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "list-column-drag-applies-on-release"
@@ -46,39 +45,35 @@ run = "columns"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 2"
 
 [[run]]
 scenario = "returning-to-columns-follows-selection"
 run = "columns-empty-in-list"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "returning-to-columns-follows-selection"
 run = "columns-other-folder-in-icons"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "returning-to-columns-follows-selection"
 run = "columns-unmirrored-empty-in-list"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "returning-to-columns-follows-selection"
 run = "columns-unmirrored-other-folder-in-icons"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A8"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "shortcut-round-trip-keeps-selection"
@@ -86,7 +81,7 @@ run = "columns-us"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 10, after the view switch"
 
 [[run]]
 scenario = "shortcut-round-trip-keeps-selection"
@@ -94,7 +89,7 @@ run = "columns-fr"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A8: the Appearance popover, at `open_menu` on its header button on line 10, after the view switch"
 
 [[run]]
 scenario = "switching-keeps-directory-and-sort"
@@ -102,7 +97,7 @@ run = "columns"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A10: the Columns pane's sort button, \"Ascending — click to reverse\" on line 5"
 
 [[run]]
 scenario = "switching-keeps-pane-filter"
@@ -110,7 +105,7 @@ run = "columns-input"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A10: the pane filter, at Ctrl+F on line 2"
 
 [[run]]
 scenario = "switching-keeps-pane-filter"
@@ -118,4 +113,4 @@ run = "columns-result"
 package = "A8"
 status = "pending"
 reason = "scope"
-blocker = "A8"
+blocker = "A10: the pane filter, at Ctrl+F on line 2"

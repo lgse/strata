@@ -14,11 +14,13 @@
 //!   (`Browser::back_to`). While it is open the window's commands wait, as under GTK's
 //!   popover ([`Holds::Menu`]).
 //! - **The heading:** the folder's name, described by it, as GTK's heading label is.
+//! - **The Icons view's "Thumbnail size"** button and its popover ([`thumbnail_size`]), in the
+//!   actions row.
 //!
 //! The rest of GTK's header is other packages': the spinner and the truncated listing's hint,
-//! and the actions after the heading (leftovers, Empty Trash, Refresh, the Icons view's
-//! thumbnail size, the sort and the filter). They go in [`bar`]'s `actions` row, in GTK's
-//! order (`icons_controls` in `src/ui/browser_modes/icons_controls.rs`).
+//! and the other actions after the heading (leftovers, Empty Trash, Refresh, the sort and the
+//! filter). They go in [`bar`]'s `actions` row, in GTK's order (`icons_controls` in
+//! `src/ui/browser_modes/icons_controls.rs`).
 
 use rune::{Drag, El, KeyEvent, Phase, PointerEvent, Tx, row, text};
 use strata_components::{
@@ -42,6 +44,7 @@ use crate::{
 };
 
 mod history;
+mod thumbnail_size;
 
 #[cfg(test)]
 mod tests;
@@ -56,6 +59,7 @@ pub(crate) struct PaneHeader {
     swallow: bool,
     /// Back's box in window points, where the history opens under it.
     back: [f32; 4],
+    thumbnails: thumbnail_size::ThumbnailSize,
 }
 
 /// One of the three buttons: its key's end, its icon, its name, the key that names it, the
@@ -119,6 +123,11 @@ pub(crate) fn bar(app: &App, view: &str, title: &str) -> El {
         .description(title.to_owned());
     // Other packages' actions follow the heading here, in GTK's order (the module docs).
     let actions = row().key(format!("{view}-header-actions")).items_center();
+    let actions = if view == crate::icons::VIEW {
+        actions.child(thumbnail_size::button(app))
+    } else {
+        actions
+    };
     row()
         .key(format!("{view}-header"))
         .w_full()
@@ -237,6 +246,7 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     .on_intent(chosen)
     .on_dismiss(|app: &mut App, _| closed(app))
     .build(app, &app.look, frame.layer);
+    thumbnail_size::build(app, frame);
     Some(menu)
 }
 
@@ -250,18 +260,21 @@ impl Part for PaneHeader {
             held: None,
             swallow: false,
             back: [0.0; 4],
+            thumbnails: thumbnail_size::ThumbnailSize::new(),
         }
     }
 
-    /// A press on Back held long enough lists the history, and its release goes nowhere.
+    /// A press on Back held long enough lists the history, and its release goes nowhere; the
+    /// thumbnail size's slider follows the size.
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+        let followed = thumbnail_size::follow(app);
         let Some(since) = app.pane_header.held else {
-            return false;
+            return followed;
         };
         let left = history::HOLD - (clock - since);
         if left > 1e-6 {
             tx.wake_after(std::time::Duration::from_secs_f64(left));
-            return false;
+            return followed;
         }
         app.pane_header.held = None;
         app.pane_header.swallow = true;
@@ -270,6 +283,12 @@ impl Part for PaneHeader {
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
-        app.pane_header.menu.is_open().then_some(Holds::Menu)
+        if app.pane_header.menu.is_open() {
+            return Some(Holds::Menu);
+        }
+        app.pane_header
+            .thumbnails
+            .is_open()
+            .then_some(Holds::Popover)
     }
 }

@@ -4,7 +4,7 @@
 //! the count while collapsed, and a chevron at the right edge, which swaps between down and
 //! right rather than rotating. In the rail: the chevron alone, centred, with the section's
 //! name as its tooltip. Either way it is a button named after its section, with an expanded
-//! state and the count as its description. A click toggles the section without taking focus;
+//! state and the count as its description: both the host's words ([`super::SidebarLabels`]). A click toggles the section without taking focus;
 //! from the keyboard it is a stop in the list, toggled by Enter or Space (and 10xer `l`).
 
 use rune::{El, Key, KeyEvent, Tx, el, icon, row, text};
@@ -13,15 +13,6 @@ use strata_kit::slots::sidebar as slot;
 
 use super::intent::{Section, SidebarIntent};
 use super::rows::{Ctx, tenxer_key};
-
-/// The words a heading's description says: "3 items", "1 item".
-pub fn count_words(n: usize) -> String {
-    if n == 1 {
-        "1 item".into()
-    } else {
-        format!("{n} items")
-    }
-}
 
 /// Whether a heading draws its count: collapsed, with at least one row.
 pub(crate) fn shows_count(collapsed: bool, rows: usize) -> bool {
@@ -48,8 +39,8 @@ pub(crate) fn heading<S: 'static>(
     let mut h = row()
         .key(format!("{}-heading-{}", ctx.key, section.id()))
         .role("button")
-        .label(section.title())
-        .description(count_words(rows))
+        .label(ctx.labels.heading(section))
+        .description((ctx.labels.rows)(rows))
         .expanded(!collapsed)
         .w_full()
         .h(slot::heading_height(look))
@@ -65,13 +56,13 @@ pub(crate) fn heading<S: 'static>(
             slot::hover_fill(look)
         });
     if ctx.rail {
-        h = h.center().child(chevron).help(section.title());
+        h = h.center().child(chevron).help(ctx.labels.heading(section));
     } else {
         h = h
             .px(look.space.md)
             .gap(look.space.sm)
             .child(
-                text(section.title())
+                text(ctx.labels.heading(section))
                     .key("title")
                     .font(look.ty.heading)
                     .color(c.text_muted)

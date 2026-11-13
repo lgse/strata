@@ -15,8 +15,8 @@
 use rune::{Cx, El, Key, KeyEvent, Tx, col, el, row, text};
 use strata_components::contract::dnd::DropHover;
 use strata_components::sidebar::{
-    Device, DeviceGroup, DropSite, ItemId, LockState, Pin, Place, PlacesSidebar, Release,
-    SidebarData, SidebarIntent, SidebarState, Step, Via, WidthToggle,
+    Device, DeviceGroup, DropSite, ItemId, LockState, Pin, Place, PlacesSidebar, Release, Section,
+    SidebarData, SidebarIntent, SidebarLabels, SidebarState, Step, Via, WidthToggle,
 };
 use strata_kit::icons::IconName;
 
@@ -150,6 +150,21 @@ fn all_devices() -> Vec<DeviceGroup> {
     ]
 }
 
+/// The gallery's words for the sidebar, which Strata gives in the user's language.
+pub(crate) const LABELS: SidebarLabels<'static> = SidebarLabels {
+    pinned: "PINNED",
+    devices: "DEVICES",
+    rows: rows_text,
+};
+
+fn rows_text(rows: usize) -> String {
+    if rows == 1 {
+        "1 item".into()
+    } else {
+        format!("{rows} items")
+    }
+}
+
 impl Demo {
     fn data(&self) -> SidebarData<'_> {
         SidebarData {
@@ -157,6 +172,7 @@ impl Demo {
             pins: &self.pins,
             devices: &self.devices,
             current: self.current.as_ref(),
+            labels: LABELS,
         }
     }
 
@@ -244,7 +260,10 @@ impl Demo {
             SidebarIntent::SectionToggled { section, collapsed } => {
                 format!(
                     "{} {}",
-                    section.title(),
+                    match section {
+                        Section::Pinned => LABELS.pinned,
+                        Section::Devices => LABELS.devices,
+                    },
                     if collapsed { "collapsed" } else { "expanded" }
                 )
             }

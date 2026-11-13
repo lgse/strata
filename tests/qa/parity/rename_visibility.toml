@@ -6,6 +6,5 @@
 scenario = "committed-rename-stays-visible"
 run = "columns"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A8: the view switch at Ctrl+3 on line 17, whose List wait at line 18 fails"
+status = "required"
+host = "offscreen"
