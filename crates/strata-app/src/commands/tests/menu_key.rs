@@ -149,12 +149,10 @@ fn the_menu_key_opens_nothing_for_a_cursor_out_of_view(mode: &'static str, name:
         let (_folder, held) = many_files(&mut host);
         // Far enough that the list no longer builds the cursor's row.
         wheel(&mut host, -240.0, 30);
+        let gone = |host: &Offscreen| !drawn(host).contains(&"file-000".to_owned());
+        assert!(host.run_until(PATIENCE, gone), "{:?}", drawn(&host).first());
+        while host.turn() {}
         let shown = drawn(&host);
-        assert!(
-            !shown.contains(&"file-000".to_owned()),
-            "{:?}",
-            shown.first()
-        );
 
         for (key, mods) in [
             (Key::ContextMenu, Mods::default()),
