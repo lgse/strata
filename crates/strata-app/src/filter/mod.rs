@@ -154,9 +154,11 @@ fn bar(app: &App) -> FilterBar<App> {
         .as_ref()
         .map_or(0, |open| app.columns.listing_len(open.depth));
     let key = format!("{KEY}-{}", app.filter.serial);
-    FilterBar::new(key, |app: &App| &app.filter.state, |app: &mut App| {
-        &mut app.filter.state
-    })
+    FilterBar::new(
+        key,
+        |app: &App| &app.filter.state,
+        |app: &mut App| &mut app.filter.state,
+    )
     .labels(FilterLabels {
         field: column_name(),
         placeholder: placeholder(items),
@@ -197,7 +199,12 @@ fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
         None => Shows::InPlace,
     };
     app.filter.state.set_shows(shows);
-    if app.filter.open_in.as_ref().is_none_or(|open| open.depth != depth || open.folder != folder) {
+    if app
+        .filter
+        .open_in
+        .as_ref()
+        .is_none_or(|open| open.depth != depth || open.folder != folder)
+    {
         app.filter.serial += 1;
     }
     app.filter.open_in = Some(OpenIn { depth, folder });
@@ -323,9 +330,11 @@ fn search(app: &mut App, text: &str) {
     };
     let limits = limits(preferences);
     let later = app.filter.later.clone();
-    app.filter.session.update(input, text, limits, move |batch| {
-        later.then(move |app: &mut App, tx: &mut Tx| delivered(app, batch, tx));
-    });
+    app.filter
+        .session
+        .update(input, text, limits, move |batch| {
+            later.then(move |app: &mut App, tx: &mut Tx| delivered(app, batch, tx));
+        });
 }
 
 /// `search_limits` in `src/ui/preferences/input_settings.rs`: zero is no limit.
@@ -334,7 +343,7 @@ fn limits(preferences: &strata_desktop::settings::Preferences) -> SearchLimits {
         time_budget: (preferences.search_time_limit != 0)
             .then(|| Duration::from_secs(u64::from(preferences.search_time_limit))),
         max_entries: (preferences.search_entry_limit != 0)
-            .then(|| preferences.search_entry_limit as usize),
+            .then_some(preferences.search_entry_limit as usize),
     }
 }
 
@@ -595,7 +604,12 @@ fn refocus(app: &mut App, tx: &mut Tx) -> bool {
     if app.filter.refocus == Refocus::No {
         return false;
     }
-    let Some(open) = app.filter.open_in.as_ref().filter(|_| app.filter.state.is_open()) else {
+    let Some(open) = app
+        .filter
+        .open_in
+        .as_ref()
+        .filter(|_| app.filter.state.is_open())
+    else {
         app.filter.refocus = Refocus::No;
         return false;
     };
@@ -729,4 +743,3 @@ impl Part for Filter {
         app.filter.state.field_focused().then_some(Holds::Filter)
     }
 }
-

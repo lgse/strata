@@ -154,10 +154,9 @@ impl Columns {
     /// Columns view, whose cursor goes to the last entry (`select_all` in
     /// `src/ui/browser/view_state.rs`, through GTK's selection model).
     pub(crate) fn select_all(&mut self, depth: usize) {
-        let (Some(column), Some(state)) = (
-            self.listings.shown(depth),
-            self.state.column_mut(depth),
-        ) else {
+        let (Some(column), Some(state)) =
+            (self.listings.shown(depth), self.state.column_mut(depth))
+        else {
             return;
         };
         let Some(last) = column.len().checked_sub(1) else {

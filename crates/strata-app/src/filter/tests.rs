@@ -21,6 +21,10 @@ fn a_lone_slash_over_a_query_enters_and_any_other_edit_types() {
         ("été", "été/", Some("été")),
     ];
     for (before, after, entered) in cases {
-        assert_eq!(slash_over(before, after), entered, "{before:?} to {after:?}");
+        assert_eq!(
+            slash_over(before, after),
+            entered,
+            "{before:?} to {after:?}"
+        );
     }
 }

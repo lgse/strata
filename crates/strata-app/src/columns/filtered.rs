@@ -66,10 +66,9 @@ impl Columns {
 
     /// Column `depth`'s selection over its folder's rows: what closing the filter gives back.
     pub(crate) fn listing_position(&self, depth: usize) -> Position {
-        let (Some(column), Some(state)) = (
-            self.listings.columns.get(depth),
-            self.state.column(depth),
-        ) else {
+        let (Some(column), Some(state)) =
+            (self.listings.columns.get(depth), self.state.column(depth))
+        else {
             return Position::default();
         };
         state.collection.selection.position(column)

@@ -86,10 +86,9 @@ impl Columns {
     /// Selects entry `id` of column `depth` alone, with the cursor and the keyboard on it:
     /// what `Browser::select` does for the GTK views.
     pub(crate) fn select_only(&mut self, (depth, id): (usize, EntryId), look: &Look, tx: &mut Tx) {
-        let (Some(column), Some(state)) = (
-            self.listings.shown(depth),
-            self.state.column_mut(depth),
-        ) else {
+        let (Some(column), Some(state)) =
+            (self.listings.shown(depth), self.state.column_mut(depth))
+        else {
             return;
         };
         let Some(index) = column.index_of(id) else {
