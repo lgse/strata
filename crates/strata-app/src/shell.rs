@@ -40,7 +40,7 @@ use crate::{
     App, Built, PARTS, buttons,
     commands::{self, Live, On},
     events, folder_views,
-    location::labels::with_keys,
+    location::{self, labels::with_keys},
     settings::Saved,
     slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, ShownView, Slot, View},
     startup::UiThread,
@@ -703,8 +703,9 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         // What the focused element and those around it left of a key, ahead of Rune's own
         // focus navigation. The root takes no focus and no press for it.
         .on_key(commands::from_element)
-        .on_window_focus(|app: &mut App, focused, _: &mut Tx| {
+        .on_window_focus(|app: &mut App, focused, tx: &mut Tx| {
             app.window.active = focused;
+            location::window_focused(app, focused, tx);
         })
 }
 

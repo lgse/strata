@@ -50,7 +50,7 @@ run = "columns"
 package = "A5"
 status = "pending"
 reason = "scope"
-blocker = "A5: the location bar's path suggestions, at the `documents/` label on line 6; then a second window, at `launch` on line 8 (A21)"
+blocker = "A21: a second window, at `launch` on line 8. Line 6 first: the suggestion is a `list item` named `documents/` on Rune, a `label` in its row on GTK (an a11y twin or C6's row text, for whoever flips the run)"
 
 [[run]]
 scenario = "refresh-reconciles-external-changes"

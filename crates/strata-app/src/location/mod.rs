@@ -19,10 +19,11 @@
 //! A typed location that cannot be opened is reported on the window's error dialog
 //! ([`crate::open_failed`]).
 //!
-//! Not on this interface yet: path suggestions (an empty list answers each request),
-//! mounting a typed location that needs it, Copy path,
-//! a crumb's middle click (tabs and windows), drops on crumbs, and following the window's
-//! activation. `docs/rune/parity/packages/A5.md`, "Open", says who brings each.
+//! - **Path suggestions** ([`completion`]): GTK's planner, its folder listings off Rune's
+//!   thread; they close when the window loses its activation ([`window_focused`]).
+//!
+//! Not on this interface yet: mounting a typed location that needs it, Copy path,
+//! a crumb's middle click (tabs and windows), and drops on crumbs. `docs/rune/parity/packages/A5.md`, "Open", says who brings each.
 
 use rune::{El, Tx};
 use strata_components::location_bar::{LocationBar, LocationBarState, Trail};
@@ -34,15 +35,23 @@ use crate::{
     App,
     commands::{Action, Call, Holds, Keys, Outcome, Stage},
     shell,
-    slots::{Frame, Listener, Part, Place, Setup},
+    slots::{Frame, Later, Listener, Part, Place, Setup},
 };
 
+mod completion;
 mod intents;
 pub(crate) mod labels;
 mod trail;
 
 #[cfg(test)]
 mod tests;
+
+/// The window gained or lost its activation: the bar's suggestions follow it, as GTK's
+/// `set_window_presence` does (C6's U-C6-6).
+pub(crate) fn window_focused(app: &mut App, focused: bool, tx: &mut Tx) {
+    let polled = app.location.state.set_window_focused(focused);
+    intents::route(app, polled, tx);
+}
 
 /// The element key of the bar.
 const KEY: &str = "location";
@@ -54,6 +63,10 @@ pub(crate) struct Bar {
     crumbs: Vec<Location>,
     /// The folder the trail names.
     shown: Option<Location>,
+    /// The suggestions' listing in flight.
+    completing: completion::Completing,
+    /// Where a listing's answer comes back.
+    later: Later<App>,
 }
 
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
@@ -130,12 +143,14 @@ fn begin(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
 impl Part for Bar {
     const PLACE: Place<App> = Place::Location(build);
 
-    fn new(_: &Setup<'_>) -> Self {
+    fn new(setup: &Setup<'_>) -> Self {
         Self {
             state: LocationBarState::new(),
             trail: Trail::default(),
             crumbs: Vec::new(),
             shown: None,
+            completing: completion::Completing::default(),
+            later: setup.later.clone(),
         }
     }
 

@@ -4,7 +4,7 @@
 //! handlers (`src/ui/browser/location.rs`, `location/breadcrumbs.rs`).
 
 use rune::{TextEdit, Tx};
-use strata_components::location_bar::{Completions, LocationIntent, Polled, Via};
+use strata_components::location_bar::{LocationIntent, Polled, Via};
 use strata_fs::services::{LocationValidationError, sanitize_uri_credentials};
 
 use crate::{App, open_failed, shell};
@@ -15,14 +15,11 @@ pub(super) fn heard(app: &mut App, intent: LocationIntent, tx: &mut Tx) {
         LocationIntent::Open { id, via } => open(app, &id, via, tx),
         LocationIntent::Submit { text } => submit(app, &text, tx),
         LocationIntent::Cancelled => give_back(app, tx),
-        // No suggestions are listed yet. An answer is still owed: keys the bar holds back
-        // while it waits for one (Tab, Enter) run only once it lands.
         LocationIntent::Complete(query) => {
-            let answer = Completions::new(query.generation, Vec::new());
-            let polled = app.location.state.deliver(answer);
-            route(app, polled, tx);
+            let later = app.location.later.clone();
+            super::completion::complete(app, query, &later, tx);
         }
-        LocationIntent::CancelCompletion => {}
+        LocationIntent::CancelCompletion => app.location.completing.cancel(),
         other => tracing::debug!(?other, "the location bar asked for what is not ported yet"),
     }
 }
