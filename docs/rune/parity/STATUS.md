@@ -47,7 +47,7 @@ tracking moved here. The issues stay as an archive: each package file links its 
 
 | ID | Package | State | Depends on | Pull requests |
 | --- | --- | --- | --- | --- |
-| [A8](packages/A8.md) | View switching and appearance | in progress | A1, A2, B2 | None |
+| [A8](packages/A8.md) | View switching and appearance | in progress | A1, A2, B2 | [#2333](https://github.com/lgse/strata/pull/2333) |
 | [A9](packages/A9.md) | Pointer and click modes | not started | A1, A2 | None |
 | [A10](packages/A10.md) | Search, filter and sort | not started | A1, A2, B3 | None |
 | [A11](packages/A11.md) | 10xer mode | not started | A6, A10 | None |
@@ -87,13 +87,13 @@ explained in [B3's file](packages/B3.md).
 
 The plan's checkpoints are where the owner looks at the numbers
 ([Checkpoints](README.md#checkpoints)). Each report gives five counts. The table below holds
-running counts, retaken by the coordinator at the commit it names, `strata-next` `b8fccd53a`
+running counts, retaken by the coordinator at the commit it names, `strata-next` `4595b2444`
 (2026-11-13), with the command that produces each. The end-of-wave-0 report, below it, was
 written at `85cb36b77` and stays as written.
 
-| Count | At `b8fccd53a` | Command |
+| Count | At `4595b2444` | Command |
 | --- | --- | --- |
-| Runs by status and reason | 763 runs: 163 `required`, 0 `parallel`, 591 `pending` (583 `scope`, 6 `platform`, 2 `rune`), 9 `excluded`. Per package: A1 25 `required` and 8 `pending` of 33; A2 23 and 6 of 29; A3 10 and 11 of 21; A5 15 and 2 of 17; A6 4 and 44 of 48; A7 49 and 14 of 63; A8 1 and 33 of 34 | `./scripts/qa-parity.sh all --counts` |
+| Runs by status and reason | 763 runs: 167 `required`, 0 `parallel`, 587 `pending` (579 `scope`, 6 `platform`, 2 `rune`), 9 `excluded`. Per package: A1 25 `required` and 8 `pending` of 33; A2 23 and 6 of 29; A3 10 and 11 of 21; A5 15 and 2 of 17; A6 4 and 44 of 48; A7 49 and 14 of 63; A8 5 and 29 of 34 | `./scripts/qa-parity.sh all --counts` |
 | Twins by exception code | 0 of each code | The `twins` line of `./scripts/qa-parity.sh all --counts`; `./scripts/qa-parity.sh all --twins` lists each twin |
 | Normalisation rules by code | 0: `tests/qa/fuzz/normalisation.map` and `calibration.mask` hold comments and no rule | `./scripts/qa-fuzz.sh check` (in the pinned image) |
 | Open `divergence` and `oracle` findings | 24 entries. 13 `oracle`, all open. 5 `divergence`: 1 open ([#2331](https://github.com/lgse/strata/issues/2331)), 3 fixed ([#2254](https://github.com/lgse/strata/issues/2254), [#2277](https://github.com/lgse/strata/issues/2277), [#2324](https://github.com/lgse/strata/issues/2324)) and 1 worked around ([#2310](https://github.com/lgse/strata/issues/2310)). 1 `rune-gap`, worked around ([#2290](https://github.com/lgse/strata/issues/2290)). 5 that carry none of the plan's codes: 4 open ([#2179](https://github.com/lgse/strata/issues/2179), [#2218](https://github.com/lgse/strata/issues/2218), [#2269](https://github.com/lgse/strata/issues/2269), [#2322](https://github.com/lgse/strata/issues/2322)) and 1 fixed ([#2296](https://github.com/lgse/strata/issues/2296)) | [`findings.md`](findings.md) |
