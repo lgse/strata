@@ -4,11 +4,11 @@
 //! resize edge with the "Column width" caption, and the wash over it while a held file drag
 //! would drop into it.
 
-use std::rc::Rc;
+use std::{borrow::Cow, rc::Rc};
 
 use rune::{
-    Anim, Cursor, Drag, El, Phase, PointerButton, Spring, SpringPair, Transition, Tx, col, el, row,
-    text,
+    Anim, Color, Cursor, Drag, El, Phase, PointerButton, Spring, SpringPair, Transition, Tx, col,
+    el, row, text,
 };
 use rune_kit::{ControlSize, IconButton, IconButtonVariant, Spinner};
 use strata_kit::icons::IconName;
@@ -307,6 +307,30 @@ fn autofit<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S, depth: usize, scale: f32, 
     sh.emit(s, ColumnsIntent::Width(w), tx);
 }
 
+/// Column `key`'s header title: out of the tree, the list being named by it already, unless
+/// the host describes it ([`ColumnSources::title_description`]), when it is a `label` named by
+/// the folder and described by the host's words, as Strata's column heading is.
+fn title_label(
+    title: String,
+    described: Option<String>,
+    key: &str,
+    look: &Look,
+    color: Color,
+) -> El {
+    let label = text(title.clone())
+        .key(keys::title(key))
+        .font(tokens::header_title_font(look))
+        .color(color)
+        .truncate_middle()
+        .shrink()
+        .grow(1.0)
+        .min_w(0.0);
+    match described {
+        Some(described) => label.role("label").label(title).description(described),
+        None => label.a11y_hidden(),
+    }
+}
+
 /// Column `depth`'s header: its title (middle-ellipsized), a spinner while it loads, and in the
 /// targeted column the host's actions and, after the first column, the close button. The
 /// active column's header is marked (the paste destination). A secondary press on the title or
@@ -327,6 +351,10 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
     } else {
         String::new()
     };
+    let described = (depth < p.sources.len())
+        .then(|| p.sources.title_description(depth))
+        .flatten()
+        .map(Cow::into_owned);
     let color = if active {
         k.c.text_base
     } else {
@@ -344,18 +372,7 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
             [0.0, 0.0, tokens::edge_width(look), 0.0],
             tokens::fade(look, k.c.std_border, tokens::edge_opacity(look)),
         )
-        .child(
-            text(title)
-                .key(keys::title(&key))
-                // The list is named by it already.
-                .a11y_hidden()
-                .font(tokens::header_title_font(look))
-                .color(color)
-                .truncate_middle()
-                .shrink()
-                .grow(1.0)
-                .min_w(0.0),
-        );
+        .child(title_label(title, described, &key, look, color));
     if active {
         bar = bar.fill(tokens::header_fill(look)).child(
             el().pin(Some(0.0), Some(0.0), Some(0.0), None)
