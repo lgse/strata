@@ -25,8 +25,8 @@
 //!
 //! # What the table adds to the collection
 //!
-//! [`ListTable::collection`] sets the collection's roles ([`Roles::LISTBOX`]: a list of
-//! options, as GTK's List view is a `GtkListView` of list items, not a table), its row
+//! [`ListTable::collection`] sets the collection's roles ([`Roles::LIST`]: a list of items, as
+//! GTK's List view is a `GtkListView` of list items, not a table), its row
 //! height (`list.row.height`), its label (the name cut in the middle, so the extension stays
 //! visible; [`ListTable::label`] replaces it), its content (the cells) and its hit regions.
 //! [`ListTable::build`] adds the heading strip as the collection's header, and wraps it all in
@@ -92,11 +92,14 @@
 //!
 //! What GTK's List view gives it: GTK's List is a `GtkListView` of list items under a box of
 //! heading buttons (`src/ui/browser_modes/list_pane.rs`, `list_headings.rs`), not a table
-//! (finding lgse/strata#2324). The collection is a list box named by the host, heard as a
-//! `list`; each entry is an option named by its name, heard as a `list item`, with its cells'
-//! texts inside it and no cell roles, as GTK's row holds labels. Above it the headings are
-//! buttons named by their titles, the sorted one with its direction, the sortable ones pressed
-//! to sort. The cursor's option is the list's active descendant (C1e).
+//! (finding lgse/strata#2324). The collection is a list named by the host, which AT-SPI reports
+//! as a `list`; each entry is a list item named by its name, reported as a `list item`, with its
+//! cells' texts inside it and no cell roles, as GTK's row holds labels; the Name cell takes no
+//! role, so its name is not heard twice. (A `listbox` would be heard as a `list box`.) Above it
+//! the headings are buttons named by their titles, the sorted one with its direction, the
+//! sortable ones pressed to sort. The cursor's item is the list's active descendant (C1e). The
+//! collection is one focus stop that routes its own keys, so Rune's keys for a focus group of
+//! the `list` role do not reach its items.
 //!
 //! # Decisions and deviations
 //!
@@ -548,7 +551,7 @@ impl<S: 'static> ListTable<S> {
             viewport_path(base.scope()),
         );
         let edge_shared = shared.clone();
-        base.roles(Roles::LISTBOX)
+        base.roles(Roles::LIST)
             .on_scroll(move |p| {
                 feed.set(p);
                 bar.follow(p);

@@ -23,7 +23,7 @@ use super::keys::STATUS;
 
 /// The roles a collection and its rows take.
 ///
-/// Used by: C1e (the list and columns), C3 ([`Roles::GRID_CELLS`]), C4 ([`Roles::GRID_ROWS`]).
+/// Used by: C1e (the list and columns), C3 ([`Roles::GRID_CELLS`]), C4 ([`Roles::LIST`]).
 ///
 /// Fields may be added: start from a constant or [`Roles::new`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -63,7 +63,16 @@ impl Roles {
         header: "heading",
     };
 
-    /// A grid of rows, whose cells the content slot draws (C4).
+    /// A list of items, heard as AT-SPI's `list` and `list item`: C4, as GTK's List view is a
+    /// `GtkListView` (lgse/strata#2324).
+    pub const LIST: Roles = Roles {
+        container: "list",
+        line: None,
+        item: "listitem",
+        header: "heading",
+    };
+
+    /// A grid of rows, whose cells the content slot draws.
     pub const GRID_ROWS: Roles = Roles {
         container: "grid",
         line: None,

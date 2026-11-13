@@ -33,8 +33,8 @@ fn a_drawn_name_is_a_label_under_its_entry_and_under_nothing_else() {
             { "role": "button", "key": "row-9", "name": "not an entry" },
             { "role": "group", "name": "folder", "children": [
                 { "role": "list-box", "key": "columns-col-1", "children": [
-                    { "role": "list-box-option", "key": "row-1", "name": "archive" },
-                    { "role": "list-box-option", "key": "row-2", "name": "pictures" },
+                    { "role": "list-item", "key": "row-1", "name": "archive" },
+                    { "role": "list-item", "key": "row-2", "name": "pictures" },
                 ] },
             ] },
         ],
@@ -184,8 +184,8 @@ fn a_column_the_tree_holds_is_not_presented_twice() {
 /// The List view's shape, as its probe states it.
 const LIST: Shape = Shape {
     name: "List",
-    list: "list-box",
-    entry: "list-box-option",
+    list: "list",
+    entry: "list-item",
 };
 
 /// The names of the entries a snapshot of `tree` reads, with `list` the List table's key.
@@ -208,14 +208,14 @@ fn entries_of(tree: &serde_json::Value, list: &str) -> Vec<String> {
 fn a_tables_headings_row_is_not_an_entry() {
     let tree = json!({ "role": "window", "children": [
         { "role": "group", "name": "folder", "children": [
-            { "role": "list-box", "key": "list", "name": "folder", "children": [
+            { "role": "list", "key": "list", "name": "folder", "children": [
                 { "role": "group", "key": "list-headings-menu-trigger", "children": [
                     { "role": "group", "key": "list-headings", "children": [
                         { "role": "button", "key": "head-name", "name": "Name" } ] } ] },
                 { "role": "scroll-view", "key": "viewport", "children": [
                     { "role": "group", "key": "rows", "children": [
-                        { "role": "list-box-option", "key": "row-1", "name": "archive" },
-                        { "role": "list-box-option", "key": "row-2", "name": "readme.md" } ] } ] } ] } ] } ] });
+                        { "role": "list-item", "key": "row-1", "name": "archive" },
+                        { "role": "list-item", "key": "row-2", "name": "readme.md" } ] } ] } ] } ] } ] });
 
     assert_eq!(entries_of(&tree, "list"), ["archive", "readme.md"]);
 }
@@ -226,12 +226,12 @@ fn a_tables_headings_row_is_not_an_entry() {
 fn a_groups_header_is_not_an_entry() {
     let tree = json!({ "role": "window", "children": [
         { "role": "group", "name": "folder", "children": [
-            { "role": "list-box", "key": "list", "name": "folder", "children": [
+            { "role": "list", "key": "list", "name": "folder", "children": [
                 { "role": "group", "key": "rows", "children": [
-                    { "role": "list-box-option", "key": "head-8322393941", "name": "Folder" },
-                    { "role": "list-box-option", "key": "row-1", "name": "archive" },
+                    { "role": "list-item", "key": "head-8322393941", "name": "Folder" },
+                    { "role": "list-item", "key": "row-1", "name": "archive" },
                     { "role": "heading", "key": "head-52759", "name": "Text" },
-                    { "role": "list-box-option", "key": "row-4", "name": "todo.txt" } ] } ] } ] } ] });
+                    { "role": "list-item", "key": "row-4", "name": "todo.txt" } ] } ] } ] } ] });
 
     assert_eq!(entries_of(&tree, "list"), ["archive", "todo.txt"]);
 }
@@ -432,7 +432,7 @@ fn an_entry_has_a_panel_with_its_own_box_and_nothing_else_does() {
             { "role": "button", "key": "row-9", "name": "not an entry", "bounds": [0, 0, 20, 20] },
             { "role": "group", "name": "folder", "children": [
                 { "role": "list-box", "key": "columns-col-1", "children": [
-                    { "role": "list-box-option", "key": "row-1", "name": "archive", "bounds": row },
+                    { "role": "list-item", "key": "row-1", "name": "archive", "bounds": row },
                 ] },
             ] },
         ],
@@ -481,7 +481,7 @@ fn a_drawn_icon_is_an_image_under_its_entry_and_under_nothing_else() {
             { "role": "button", "key": "row-9", "name": "not an entry" },
             { "role": "group", "name": "folder", "children": [
                 { "role": "list-box", "key": "columns-col-1", "children": [
-                    { "role": "list-box-option", "key": "row-1", "name": "archive" },
+                    { "role": "list-item", "key": "row-1", "name": "archive" },
                 ] },
             ] },
         ],
