@@ -184,10 +184,6 @@ comments of 2026-11-12, unless another is named.
   windows" is: from another process GTK adopts five keys only, the sort and the icon size.
   Meanwhile: one `Saving` for the file in a process, and the Rune side follows nothing
   another process saves.
-- **Where policy that spans the settings and the per-folder views lives**
-  (`set_remember_folder_views`, `set_default_sort_options`, `set_folder_icons_size`,
-  `set_default_icons_size`). Meanwhile: in `src/ui`'s wrapper, which the Rune side would
-  re-implement.
 - **Where `active_omarchy_theme` lives**: the Omarchy variant methods need it, and it is
   neither a saved value nor bookkeeping. Meanwhile: in `src/ui`.
 - **A home for the exhaustive saved-preferences fixture** before `src/ui` is deleted; the
@@ -554,6 +550,16 @@ Rulings of the owner on the parity work, oldest first.
   bullets on a gallery scene, an accessibility golden and a script per component are
   suspended until the cleanup too is the coordinator's reading. `strata-components`' and `strata-app`'s own tests still run. Which test targets
   count as "the basic unit tests" (`--lib --bins --examples`) is the coordinator's reading.
+- **2026-11-12: the per-folder views' policy is shared.** Asked under B2 where the policy that
+  spans the settings and the per-folder views lives (`set_remember_folder_views`,
+  `set_default_sort_options`, `set_folder_icons_size`, `set_default_icons_size`), the owner
+  ruled that it moves into the shared crate, for both interfaces (relayed by the coordinator,
+  2026-11-12). It is `strata_desktop::settings::folder_view_policy`, a new file beside the
+  moved store, which `src/ui/preferences/folder_view_settings.rs` calls: the gate, where a
+  changed size is kept, and what a new default prunes. The sort's share of it goes there when
+  [A10](packages/A10.md) needs it. The timer rule stays in each interface; the Rune side's is
+  `crates/strata-app/src/folder_views.rs`. Moved by [A1](packages/A1.md)'s pull request
+  PRNUM.
 
 ## Housekeeping
 
