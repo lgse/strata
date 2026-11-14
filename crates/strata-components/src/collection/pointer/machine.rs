@@ -244,7 +244,7 @@ impl PointerMachine {
         match press.button {
             Button::Secondary => {
                 self.clicks.break_run();
-                secondary(press, entry, settings.secondary_keeps_no_anchor, s);
+                secondary(press, entry, settings.missing_anchor_stays, s);
                 true
             }
             Button::Middle => {
@@ -418,18 +418,18 @@ fn apply(s: &mut dyn Surface, mut op: impl FnMut(&mut Selection, &dyn EntrySourc
 }
 
 /// A secondary press selects an unselected entry alone and opens its menu; inside the
-/// selection it keeps the selection. With `keeps_no_anchor` a missing anchor stays missing.
+/// selection it keeps the selection. With `missing_stays` a missing anchor stays missing.
 fn secondary(
     press: &Press,
     entry: Option<(usize, EntryId)>,
-    keeps_no_anchor: bool,
+    missing_stays: bool,
     s: &mut dyn Surface,
 ) {
     if let Some((index, _)) = entry
         && !s.selection().is_selected_at(s.source(), index)
     {
         apply(s, |sel, src| {
-            sel.select_only_keeping_anchor(src, index, keeps_no_anchor)
+            sel.select_only_keeping_anchor(src, index, missing_stays)
         });
     }
     s.emit(Outcome::ContextMenu {
@@ -470,7 +470,10 @@ fn primary(
     let now = on_entry && !press.mods.alt;
     if shift {
         if now {
-            apply(s, |sel, src| sel.extend_to(src, index, range));
+            let stays = settings.missing_anchor_stays;
+            apply(s, |sel, src| {
+                sel.extend_keeping_anchor(src, index, range, stays)
+            });
         } else {
             g.deferred = Deferred::Extend(range);
         }
@@ -507,7 +510,12 @@ fn primary_release(
     match g.deferred {
         Deferred::None => {}
         Deferred::Toggle => apply(s, |sel, src| sel.toggle(src, index)),
-        Deferred::Extend(mode) => apply(s, |sel, src| sel.extend_to(src, index, mode)),
+        Deferred::Extend(mode) => {
+            let stays = settings.missing_anchor_stays;
+            apply(s, |sel, src| {
+                sel.extend_keeping_anchor(src, index, mode, stays)
+            });
+        }
     }
     let mods = g.press.mods;
     if mods.ctrl || mods.shift {

@@ -1022,13 +1022,14 @@ fn a_secondary_press_selects_an_unselected_entry_and_keeps_a_selection_it_lands_
     ));
 }
 
-/// Strata's search and filter results keep an anchor of their own, which a right-click
-/// never sets (`interactions.anchor` in `src/ui/inline_search/collection.rs`): with
-/// `secondary_keeps_no_anchor` on, a Shift+click after a right-click with no anchor selects
-/// its entry alone, and an anchor there was still stays (finding lgse/strata#2375).
+/// Strata's search and filter results keep an anchor of their own, which neither a
+/// right-click nor a Shift+press sets (`interactions.anchor` and `pointer_selection` in
+/// `src/ui/`): with `missing_anchor_stays` on, each Shift+click after a right-click with no
+/// anchor selects its entry alone, and an anchor there was still stays (findings
+/// lgse/strata#2375 and #2431).
 #[test]
-fn a_secondary_press_can_leave_a_missing_anchor_missing() {
-    let results = PointerSettings::default().secondary_keeps_no_anchor(true);
+fn a_missing_anchor_can_stay_missing_through_right_and_shift_clicks() {
+    let results = PointerSettings::default().missing_anchor_stays(true);
     let mut r = Rig::new(results);
     r.down_with(Button::Secondary, Some(1), Spot::Content, PLAIN);
     assert_eq!(r.selected(), [1]);
@@ -1036,6 +1037,13 @@ fn a_secondary_press_can_leave_a_missing_anchor_missing() {
     assert_eq!(r.f.sel.anchor(), None);
     r.wait(1.0).click(3, Spot::Content, SHIFT);
     assert_eq!(r.selected(), [3]);
+    assert_eq!(r.f.sel.anchor(), None);
+    r.wait(1.0).click(1, Spot::Content, SHIFT);
+    assert_eq!(r.selected(), [1]);
+    // A plain click sets the anchor, and Shift ranges from it as anywhere.
+    r.wait(1.0).click(2, Spot::Content, PLAIN);
+    r.wait(1.0).click(4, Spot::Content, SHIFT);
+    assert_eq!(r.selected(), [2, 3, 4]);
 
     let mut anchored = Rig::new(results);
     anchored.select(&[2]);

@@ -519,6 +519,25 @@ impl Selection {
         self.finish(changed)
     }
 
+    /// [`Selection::extend_to`], leaving a missing anchor missing when `missing_stays`: the
+    /// range then is the entry alone, as Strata's search results select it, whose own anchor
+    /// a Shift+press never sets (`pointer_selection`, finding lgse/strata#2431).
+    pub(crate) fn extend_keeping_anchor<S: EntrySource + ?Sized>(
+        &mut self,
+        source: &S,
+        index: usize,
+        mode: Extend,
+        missing_stays: bool,
+    ) -> Changed {
+        let missing = missing_stays && self.anchor.is_none();
+        let mut changed = self.extend_to(source, index, mode);
+        if missing {
+            self.anchor = None;
+            changed.anchor = false;
+        }
+        changed
+    }
+
     /// Selects the range from the anchor to the entry at `index` by `mode`, and moves the
     /// cursor there. The anchor stays; with no anchor, it starts at `index`.
     ///
