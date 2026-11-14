@@ -19,15 +19,28 @@
 //!   placed ([`crate::handover`], whose `adopt` and `hand_over` keep the two in step).
 //! - **`browser`:** the browser lists no entry twice, and selects none it does not list.
 //! - **`tree-view`:** each pane the snapshot reads out of the accessibility tree is a column
-//!   the view shows, with the same entries selected. The tree leaves out rows scrolled out of
-//!   sight, so only the rows it has are held to the view.
+//!   the view shows, by its name and in order, every column shown has one, and each has the
+//!   view's entries selected. The tree leaves out rows scrolled out of sight, so only the rows
+//!   it has are held to the view.
+//! - **`handover`:** no view, shown or hidden, holds a change of a selection the browser has
+//!   not taken: the shown view hands every change over before GLib dispatches, and a hidden
+//!   view does nothing at all.
+//! - **`keyboard`** ([`keyboard`]): who has the keyboard, against what the tree shows.
+//!
+//! Two reads are narrower than they look, and `docs/testing.md` says so too:
+//!
+//! - **A column still loading** is held to rows at the browser's positions, never to the
+//!   browser's whole listing: a large folder is published in stages, and the view lists what
+//!   has been published.
+//! - **The anchor** is compared as a view ranges from it: the anchor, or the cursor where
+//!   there is none. So no anchor and an anchor on the cursor read the same.
 
 use std::collections::HashSet;
 
 use strata_components::contract::{EntryId, EntrySource};
 use strata_core::model::FileEntry;
 use strata_fs::app::Browser;
-use strata_qa::PaneObservation;
+use strata_qa::{Observation, PaneObservation};
 
 use crate::{
     App,
@@ -46,13 +59,31 @@ impl Failures {
     }
 }
 
-/// Every invariant of the window as it is now, against the panes the snapshot read.
-pub(super) fn check(app: &App, panes: &[PaneObservation]) -> Vec<String> {
+mod keyboard;
+
+/// Every invariant of the window as it is now, against what the snapshot read and whether
+/// an element of the tree has the keyboard.
+pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<String> {
     let mut failures = Failures::default();
+    let shown = keyboard::Shown {
+        observation,
+        focused,
+    };
+    keyboard::check(app, &shown, &mut failures);
+    hidden_views(app, &mut failures);
     let Some(view) = shell::shown_view(app) else {
+        failures.fail("browser-view", "the window shows no view".to_owned());
         return failures.0;
     };
     let presented = (view.probe.presented)(app);
+    for depth in &presented.pending {
+        failures.fail(
+            "handover",
+            format!(
+                "column {depth}'s selection changed in the view, and the browser has not taken it"
+            ),
+        );
+    }
     let columns = Browsed::all(&app.browser);
     for column in &columns {
         column.holds_itself(&mut failures);
@@ -63,8 +94,25 @@ pub(super) fn check(app: &App, panes: &[PaneObservation]) -> Vec<String> {
             marks(shown, browsed, &mut failures);
         }
     }
-    tree(&presented, panes, &mut failures);
+    tree(&presented, &observation.panes, &mut failures);
     failures.0
+}
+
+/// A view that is not shown hears nothing and is changed by nothing until it is shown again,
+/// when it is rebuilt from the browser (`slots`, "The slots").
+fn hidden_views(app: &App, failures: &mut Failures) {
+    for view in shell::parts(app).hidden_views() {
+        let presented = (view.probe.presented)(app);
+        for depth in &presented.pending {
+            failures.fail(
+                "handover",
+                format!(
+                    "the hidden {} view changed column {depth}'s selection",
+                    view.probe.name
+                ),
+            );
+        }
+    }
 }
 
 /// One of the browser's columns, read once.
@@ -235,6 +283,10 @@ fn rows_of(app: &App, listing: &Column, browsed: &Browsed, failures: &mut Failur
             failures.fail("browser-view", format!("column {depth} shows {name} twice"));
         }
         let Some(position) = listing.position_of(id) else {
+            failures.fail(
+                "browser-view",
+                format!("column {depth} shows {name}, which has no position in its listing"),
+            );
             continue;
         };
         positions.push(position);
@@ -252,7 +304,8 @@ fn rows_of(app: &App, listing: &Column, browsed: &Browsed, failures: &mut Failur
     }
     positions.sort_unstable();
     let visible = browsed.visible();
-    if positions != visible {
+    // While it loads, the view lists what has been published of the browser's entries.
+    if !browsed.loading && positions != visible {
         failures.fail(
             "browser-view",
             format!(
@@ -350,21 +403,42 @@ fn marks(shown: &Shown<'_>, browsed: &Browsed, failures: &mut Failures) {
     }
 }
 
-/// The panes the snapshot read out of the tree against the columns the view shows.
+/// The panes the snapshot read out of the tree against the columns the view shows: each pane
+/// is the next column of its name, and every column has one. A column the strip has scrolled
+/// out of sight stays in the tree, as a narrow window shows (360 points with two columns).
 fn tree(presented: &Presented<'_>, panes: &[PaneObservation], failures: &mut Failures) {
-    if panes.len() != presented.shown.len() {
+    let mut columns = presented.shown.iter();
+    for pane in panes {
+        let name = &pane.name;
+        let mut passed = Vec::new();
+        let found = columns.find(|shown| {
+            let here = shown.column.title() == name;
+            if !here {
+                passed.push(shown.depth);
+            }
+            here
+        });
+        for depth in passed {
+            failures.fail(
+                "tree-view",
+                format!("column {depth} has no pane in the tree"),
+            );
+        }
+        let Some(shown) = found else {
+            failures.fail(
+                "tree-view",
+                format!("the tree has a pane {name} after the columns the view shows"),
+            );
+            return;
+        };
+        pane_of(pane, shown, failures);
+    }
+    for shown in columns {
+        let depth = shown.depth;
         failures.fail(
             "tree-view",
-            format!(
-                "the tree has {} panes, the view shows {} columns",
-                panes.len(),
-                presented.shown.len()
-            ),
+            format!("column {depth} has no pane in the tree"),
         );
-        return;
-    }
-    for (pane, shown) in panes.iter().zip(&presented.shown) {
-        pane_of(pane, shown, failures);
     }
 }
 

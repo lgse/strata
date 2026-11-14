@@ -1771,9 +1771,25 @@ browser's column by its depth and entries by name:
 
 | Invariant | Holds |
 | --- | --- |
-| `browser-view` | The view keeps a listing for each of the browser's columns, of the same folder, loading while it loads; Columns draws a column for each; the active column is the browser's; each listing shows the browser's entries that are not hidden, each under its entry's id and at its position, none twice; and each column shown has the browser's cursor, selection and Shift anchor, and says the selection is the cursor a load placed when the browser does. |
+| `browser-view` | The view keeps a listing for each of the browser's columns, of the same folder, loading while it loads; Columns draws a column for each; the active column is the browser's; each listing shows the browser's entries that are not hidden, each under its entry's id and at its position, none twice; and each column shown has the browser's cursor, selection and Shift anchor, and says the selection is the cursor a load placed when the browser does. A window that shows no view breaks it. |
 | `browser` | The browser lists no entry twice, and marks no position past its entries. |
-| `tree-view` | Each pane the snapshot reads out of the tree is a column the view shows, with the same entries selected, and no entry twice. The tree leaves out rows scrolled out of sight, so only the rows it has are held to the view. |
+| `tree-view` | Each pane the snapshot reads out of the tree is the next column of its name that the view shows, every column shown has a pane, and each pane has the view's entries selected, none twice. The tree leaves out rows scrolled out of sight, so only the rows it has are held to the view; a column the strip has scrolled out of sight stays in the tree (seen at 360 points wide with two columns). |
+| `handover` | No view, shown or hidden, holds a change of a selection the browser has not taken: the shown view hands every change over before GLib dispatches, and a view that is not shown does nothing until it is shown again. |
+| `keyboard` | An element has the keyboard. A part holds it for a menu exactly while the tree shows a menu, and for a modal layer exactly while it shows a dialog; one that holds it for an inline edit or the location bar does so only while a text field has it; and a text field with the keyboard is held for by some part. A plain popover's hold is held to nothing: the snapshot names no popover. |
+| `undo-redo` | The runner's own, on every target: after an Undo that changed the fixture tree, a Redo taken at once puts the tree back as it was before the Undo. It is checked from the stream (`tests/qa/fuzz/stream.rs`) and written into the Redo's observation. |
+
+What the checks leave out, on purpose:
+
+- **A column still loading** is held to rows at the browser's positions under
+  the browser's ids, never to the browser's whole listing: a large folder is
+  published in stages, and the view lists what has been published.
+- **The anchor** is compared as a view ranges from it, the anchor or the
+  cursor where there is none, so no anchor and an anchor on the cursor read the
+  same.
+- **Filter and search results** (A10) replace a column's rows while they
+  show, and by design the browser holds none of their selection, as on GTK.
+  Until a results column is exempted (only while it shows results, every
+  other check still made), a `FINDING` met while results show goes to F3.
 
 The lines go into the observation's `invariants`, which the comparator
 treats as it treats `criticals`: a broken invariant is a divergence at its

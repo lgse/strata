@@ -199,6 +199,16 @@ impl<'a, S> Registry<'a, S> {
         self.entries.get(self.shown?)?.view()
     }
 
+    /// The views that are not shown, which the QA backend's invariants hold to have done
+    /// nothing since they were hidden.
+    #[cfg(feature = "qa")]
+    pub(crate) fn hidden_views(self) -> impl Iterator<Item = &'a View<S>> {
+        let entries = self.entries.iter().enumerate();
+        entries
+            .filter(move |(index, _)| self.shown != Some(*index))
+            .filter_map(|(_, entry)| entry.view())
+    }
+
     /// Shows the view that answers to `mode` in place of the one shown. False when none
     /// answers to it, or when it is shown already.
     pub(crate) fn show(&mut self, mode: &str) -> bool {

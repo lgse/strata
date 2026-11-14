@@ -116,6 +116,9 @@ pub(crate) struct Presented<'a> {
     pub(crate) listings: Vec<&'a Column>,
     /// The columns shown with a cursor and a selection.
     pub(crate) shown: Vec<Shown<'a>>,
+    /// The depth of each column shown whose selection changed since the browser last took it
+    /// ([`Held`]): what the view has still to hand over.
+    pub(crate) pending: Vec<usize>,
 }
 
 /// Gives the browser's column what its collection changed since the browser last held it.

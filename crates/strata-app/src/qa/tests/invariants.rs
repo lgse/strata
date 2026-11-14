@@ -137,3 +137,50 @@ fn an_anchor_the_view_does_not_hold_breaks_them() {
         },
     );
 }
+
+/// The keyboard's holds follow a menu, a rename editor and a dialog as they open and close,
+/// and the view switched away from does nothing while it is hidden.
+#[test]
+fn the_holds_follow_what_opens_and_a_hidden_view_does_nothing() {
+    shown_in(
+        "columns",
+        "the_holds_follow_what_opens_and_a_hidden_view_does_nothing",
+        |backend, kept| {
+            for (step, then) in [
+                (
+                    json!({ "click": { "entry": "readme.md" }, "button": 3 }),
+                    json!({ "wait": { "menu_items": {} } }),
+                ),
+                (
+                    json!({ "key": "Escape" }),
+                    json!({ "wait": { "menu_items": null } }),
+                ),
+                (
+                    json!({ "key": "F2" }),
+                    json!({ "wait": { "field": { "focused": true, "name": "Rename" } } }),
+                ),
+                (
+                    json!({ "key": "Escape" }),
+                    json!({ "wait": { "focused": "readme.md" } }),
+                ),
+                (json!({ "key": "shift+Delete" }), json!({ "wait": { "dialog": true } })),
+                (
+                    json!({ "key": "Escape" }),
+                    json!({ "wait": { "not": { "dialog": true } } }),
+                ),
+                (
+                    json!({ "key": "ctrl+2" }),
+                    json!({ "wait": { "view_mode": "Icons" } }),
+                ),
+                (
+                    json!({ "key": "ctrl+1" }),
+                    json!({ "wait": { "view_mode": "Columns" } }),
+                ),
+            ] {
+                passes(backend, kept, &step);
+                passes(backend, kept, &then);
+                assert_eq!(failed(backend, kept), json!([]), "after {step}");
+            }
+        },
+    );
+}

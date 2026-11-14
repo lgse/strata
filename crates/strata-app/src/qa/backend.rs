@@ -528,8 +528,9 @@ impl Backend for Rune {
                 Some(Outcome::from(self.keyboard.borrow_mut().set_layout(keymap)))
             }
             Command::Invariants => {
-                let panes = scope.scene().observation.panes;
-                let failed = invariants::check(self.stage.borrow().app(), &panes);
+                let observation = scope.scene().observation;
+                let focused = scope.focused().is_some();
+                let failed = invariants::check(self.stage.borrow().app(), &observation, focused);
                 Some(Outcome {
                     result: serde_json::json!(failed),
                     ..Outcome::default()
