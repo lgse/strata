@@ -1031,7 +1031,7 @@ sequence only together with the alphabet's version, so the version is part of th
   name widened it. The rows were not at fault: their labels already end in an ellipsis.
 - **Concerns:** `crates/strata-components/src/context_menu/view.rs`, so every context menu with
   a header: the item and multi-selection menus. No scenario names a file that long.
-- **State:** fixed by [#PR](https://github.com/lgse/strata/pull/PR): C21 shortens each header
+- **State:** fixed by [#2404](https://github.com/lgse/strata/pull/2404): C21 shortens each header
   line in the middle at GTK's 30 characters, and when it shortened one, the menu's accessible
   description gives the header whole. rune-kit's group labels take no truncation, so the cut
   is made on the string before it reaches one.
