@@ -230,9 +230,6 @@ fn a_crumbs_middle_click_runs_open_in_tab_or_with_a_modifier_in_window() {
             let first = (shown_tab(host.app()), &Location::local(&documents));
             let root = Location::local(folder.path());
             let crumb = crumb_of(&host, folder.path());
-            press(&mut host, &crumb, PointerButton::Middle, Mods::default());
-            opened_in_a_tab(&mut host, 2, &root, first);
-
             let ctrl = Mods {
                 ctrl: true,
                 ..Mods::default()
@@ -241,16 +238,20 @@ fn a_crumbs_middle_click_runs_open_in_tab_or_with_a_modifier_in_window() {
                 shift: true,
                 ..Mods::default()
             };
-            idle(&mut host);
-            let crumb = crumb_of(&host, folder.path());
             for mods in [ctrl, shift] {
                 press(&mut host, &crumb, PointerButton::Middle, mods);
             }
             assert_eq!(
                 ran_so_far(),
-                [("open-in-window", root.clone()), ("open-in-window", root)]
+                [
+                    ("open-in-window", root.clone()),
+                    ("open-in-window", root.clone())
+                ]
             );
-            assert_eq!(tabs(host.app()).len(), 2, "no tab more");
+            assert_eq!(tabs(host.app()).len(), 1, "no tab for a new window");
+
+            press(&mut host, &crumb, PointerButton::Middle, Mods::default());
+            opened_in_a_tab(&mut host, 2, &root, first);
         },
     );
 }
