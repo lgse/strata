@@ -62,12 +62,16 @@ struct Opening {
     model: MenuModel,
 }
 
-/// The menu of entry `id` in column `depth` of the shown view, or of the selection it is
-/// part of.
-fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
+/// Entry `id` in column `depth` of the shown view, and what a menu opened on it acts on: the
+/// selection when the entry is in it, else the entry alone (`context_entries` in
+/// `src/ui/browser/context_menu.rs`). A filter's result and the results selected come first,
+/// as GTK asks `selected_search_results` before the browser.
+pub(crate) fn context_entries(
+    app: &App,
+    depth: usize,
+    id: EntryId,
+) -> Option<(FileEntry, Vec<FileEntry>)> {
     let rows = &shell::shown_view(app)?.rows;
-    // `context_entries` in `src/ui/browser/context_menu.rs`: a filter's result and the
-    // results selected first, as GTK asks `selected_search_results` before the browser.
     let (entry, entries) = match crate::filter::targets::at(app, depth, id) {
         Some(entry) => {
             let entries = crate::filter::targets::of_row(app, depth, id).unwrap_or_default();
@@ -89,6 +93,13 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
             (entry, entries)
         }
     };
+    Some((entry, entries))
+}
+
+/// The menu of entry `id` in column `depth` of the shown view, or of the selection it is
+/// part of.
+fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
+    let (entry, entries) = context_entries(app, depth, id)?;
     let model = self::entry(&EntryTarget {
         entry: &entry,
         entries: &entries,

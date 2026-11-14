@@ -636,3 +636,83 @@ fn a_tiles_icon_is_its_slot_not_its_frame_and_comes_first() {
         "the icon comes first"
     );
 }
+
+/// What `focusable` reads of each node named in `names`, in a column whose list, or the strip
+/// around it, is the focus stop that names an active descendant.
+fn focusable_in(stop: Stop, names: &[&str]) -> Vec<bool> {
+    let (strip, list) = match stop {
+        Stop::List => (
+            json!({}),
+            json!({ "actions": ["focus"], "activeDescendant": "row-1" }),
+        ),
+        Stop::Strip => (
+            json!({ "actions": ["focus"], "activeDescendant": "row-1" }),
+            json!({}),
+        ),
+        Stop::NamingNone => (json!({}), json!({ "actions": ["focus"] })),
+        Stop::None => (json!({}), json!({})),
+    };
+    let mut column = json!({ "role": "list-box", "key": "columns-col-1", "children": [
+        { "role": "list-box-option", "key": "row-1", "name": "archive" },
+        { "role": "label", "name": "not an entry" },
+    ] });
+    let mut around = json!({ "role": "group", "key": "columns-strip", "children": [
+        { "role": "group", "name": "folder", "children": [] },
+    ] });
+    for (node, extra) in [(&mut column, list), (&mut around, strip)] {
+        if let Some(extra) = extra.as_object() {
+            node.as_object_mut().expect("a node").extend(extra.clone());
+        }
+    }
+    around["children"][0]["children"] = json!([column]);
+    let tree = json!({
+        "role": "window",
+        "children": [around, { "role": "list-box-option", "key": "row-2", "name": "outside" }],
+    });
+    let drawn = Drawn {
+        view: Some(COLUMNS),
+        lists: vec!["columns-col-1".to_owned()],
+        ..Drawn::default()
+    };
+    let snapshot = Snapshot::read(&tree, &drawn);
+    names
+        .iter()
+        .map(|name| {
+            let seen = (0..)
+                .map_while(|index| snapshot.at(index))
+                .find(|seen| seen.name == *name)
+                .expect("the node");
+            snapshot.is_focusable(seen)
+        })
+        .collect()
+}
+
+/// Which element around a column's entries is the focus stop.
+#[derive(Clone, Copy, Debug)]
+enum Stop {
+    /// The list itself, naming its cursor's entry: the Icons and List views (C1).
+    List,
+    /// The strip around the columns: the Columns view (C2).
+    Strip,
+    /// A list that takes focus and names no active descendant.
+    NamingNone,
+    /// Nothing around the entries takes focus.
+    None,
+}
+
+#[test]
+fn an_entry_is_focusable_as_its_focus_stops_active_descendant() {
+    let names = ["archive", "not an entry", "outside"];
+    for (stop, archive) in [
+        (Stop::List, true),
+        (Stop::Strip, true),
+        (Stop::NamingNone, false),
+        (Stop::None, false),
+    ] {
+        assert_eq!(
+            focusable_in(stop, &names),
+            [archive, false, false],
+            "{stop:?}"
+        );
+    }
+}

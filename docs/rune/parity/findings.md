@@ -1079,7 +1079,21 @@ sequence only together with the alphabet's version, so the version is part of th
   `undo::tests::a_rename_is_undone_by_its_key_and_redone_by_either_of_redos` said
   "undo-target still absent" after its 30 s wait (`crates/strata-app/src/undo/tests.rs:59`).
   The branch did not touch undo. Alone, the test passed 3 of 3.
-- **Concerns:** that test, [A7](packages/A7.md)'s undo.
+  Seen again on 2026-11-14, in a full `mise run test-rune` for [A6](packages/A6.md)'s
+  [#2475](https://github.com/lgse/strata/pull/2475), run while a `./scripts/qa-parity.sh` gate loaded the machine:
+  `undo::tests::an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry` saw its
+  undo answer `Declined` where it expects `Ran` (`crates/strata-app/src/undo/tests.rs:156`).
+  The branch did not touch undo. Alone, the test passed.
+  A third, outside undo, seen in the review of the same pull request: in the full lane at a
+  load average of 13 to 20,
+  `sidebar::tests::the_arrows_move_along_the_header_and_down_returns_to_the_sidebar` failed
+  twice; alone, it passed 3 of 3. It has no owner.
+  A fourth, in this pull request's own lane at a load average of 33:
+  `sort::tests::a_columns_menu_sorts_its_own_column` said "the inner folder's column" after its
+  30 s wait (`crates/strata-app/src/sort/tests.rs:167`); alone, it passed 3 of 3. It has no
+  owner.
+- **Concerns:** those four tests: the two of [A7](packages/A7.md)'s undo, the sidebar's and
+  the sort's.
 - **What it suggests:** a hypothesis, by reading only, not verified: the test presses the redo
   chord once the undone name is back on disk, and the operation's completion may not have
   reached the undo stack by then, so the redo finds nothing to redo.
@@ -1661,3 +1675,35 @@ sequence only together with the alphabet's version, so the version is part of th
   `a11y` twins from [A6](packages/A6.md)'s [#2471](https://github.com/lgse/strata/pull/2471), which find the
   reference by its dialog's name, read the rows' cells, and search to bring the media rows
   into the tree.
+
+### #2469: the tab strip's close buttons are named "Close tab" in English in every language
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2469), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the review of [#2464](https://github.com/lgse/strata/pull/2464): each tab's
+  close button in the Rune window's strip is named "Close tab" in English, whatever the
+  language. GTK names it with the catalogs' "Close tab" (`src/ui/window/composition/tabs/strip.rs`),
+  which all thirteen languages translate.
+- **Why:** rune-kit's `TabStrip` labels the button itself (`rune-kit/src/shell/tab_strip/tab.rs:307`
+  at `2a44156`) and offers no way to set it: only the close icon and whether the button is a
+  Tab stop are settable, so C7's `BrowserTabs` cannot pass Strata's label.
+- **Concerns:** the strip's accessible names ([A4](packages/A4.md)'s done-when item 2) in the
+  twelve languages other than English. No run reads the name in another language.
+- **State:** open, no workaround. Rune packet entry
+  [39](../upstream/rune/39-kit-tab-strip.md), item 1 (U-C7-1), asks for `close_label`.
+
+### #2473: a close the window manager asks for is not refused while file operations run
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2473), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A4](packages/A4.md), reading GTK's close guard: GTK refuses every close of a
+  window while one of its tabs has a file operation running, and shows "File operations are
+  still active" (`close_guard::install` in `src/ui/window/composition/tabs.rs`). On Rune the
+  header's and the strip's Close and Ctrl+W on the last tab refuse the same way
+  (`shell::close_window`); a close from the window manager (its title bar, Alt+F4, the
+  compositor) does not.
+- **Why:** Rune's `App::on_close` runs before the window goes and cannot keep it (at
+  `2a44156`), and nothing else hears a close request.
+- **Concerns:** no run: no scenario closes a window with an operation running.
+- **State:** open, [A21](packages/A21.md)'s, to draft into the packet with the window's
+  lifecycle and to work around if it can.

@@ -220,6 +220,9 @@ impl<H: Host> Backend for Rune<H> {
         self.read(node, |_, seen| seen.mark).flatten()
     }
 
+    /// `focusable` is GTK's `is_focusable`: for an entry, that it is reachable as the active
+    /// descendant of a list that takes focus, since a Rune list keeps the one focus stop and
+    /// points at its current entry ([`Snapshot::is_focusable`](super::tree::Snapshot)).
     fn states(&self, node: &Node) -> States {
         self.read(node, |snapshot, seen| States {
             selected: seen.has_state("selected"),
@@ -229,7 +232,7 @@ impl<H: Host> Backend for Rune<H> {
             sensitive: !seen.has_state("disabled"),
             selectable: seen.has_state("selected") || seen.has_state("unselected"),
             editable: field::is_one(&seen.role) && !seen.has_state("read-only"),
-            focusable: seen.has_action("focus"),
+            focusable: snapshot.is_focusable(seen),
             busy: false,
             marked: filter::marked(snapshot.outlined(), seen),
         })
