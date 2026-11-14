@@ -22,8 +22,7 @@ pub(super) fn table(app: &App) -> ListTable<App> {
             table: &app.list.table,
             layout: &app.list.layout,
             widths: &app.list.widths,
-            // The browser's sort shows on its heading with A10's sorting.
-            sort: None,
+            sort: crate::sort::headings::shown(app),
             look: &app.look,
         },
         |app: &mut App| &mut app.list.table,
@@ -32,6 +31,7 @@ pub(super) fn table(app: &App) -> ListTable<App> {
     .cells_version(columns::cells_version)
     .on_layout(|app: &mut App, change, _| columns::keep_layout(app, change))
     .on_widths(|app: &mut App, widths, _| columns::keep_widths(app, widths))
+    .on_sort(|app: &mut App, intent, _| crate::sort::headings::pressed(app, intent))
 }
 
 /// The pane's collection, with the rows the viewport shows recorded for the fills.
