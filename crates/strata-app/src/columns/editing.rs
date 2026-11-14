@@ -38,7 +38,7 @@ impl Columns {
         tx: &mut Tx,
     ) -> Option<Polled> {
         let scope = self.scope(depth)?;
-        let column = self.listings.columns.get(depth)?;
+        let column = self.listings.shown(depth)?;
         let index = column.index_of(id)?;
         let entry = column.entry(index);
         let polled = editor.begin(&scope, id, entry.name, entry.kind, Initial::Stem);
@@ -51,8 +51,7 @@ impl Columns {
 
     /// Scrolls the row of entry `id` in column `depth` into view, just far enough.
     pub(crate) fn reveal_row(&self, (depth, id): (usize, EntryId), tx: &mut Tx) {
-        let (Some(scope), Some(column)) = (self.scope(depth), self.listings.columns.get(depth))
-        else {
+        let (Some(scope), Some(column)) = (self.scope(depth), self.listings.shown(depth)) else {
             return;
         };
         if let (Some(index), Some(state)) = (column.index_of(id), self.state.column(depth)) {
@@ -67,7 +66,7 @@ impl Columns {
             return Polled::default();
         };
         let parts = self.depth_of(&scope).and_then(|depth| {
-            let column = self.listings.columns.get(depth)?;
+            let column = self.listings.shown(depth)?;
             Some((column, &self.state.column(depth)?.collection))
         });
         match parts {
@@ -78,7 +77,7 @@ impl Columns {
 
     /// The entry `step` rows after `id` in column `depth`, as the view lists them.
     pub(crate) fn neighbour(&self, depth: usize, id: EntryId, step: isize) -> Option<EntryId> {
-        let column = self.listings.columns.get(depth)?;
+        let column = self.listings.shown(depth)?;
         let index = column.index_of(id)?.checked_add_signed(step)?;
         (index < column.len()).then(|| column.id_at(index))
     }
@@ -86,10 +85,9 @@ impl Columns {
     /// Selects entry `id` of column `depth` alone, with the cursor and the keyboard on it:
     /// what `Browser::select` does for the GTK views.
     pub(crate) fn select_only(&mut self, (depth, id): (usize, EntryId), look: &Look, tx: &mut Tx) {
-        let (Some(column), Some(state)) = (
-            self.listings.columns.get(depth),
-            self.state.column_mut(depth),
-        ) else {
+        let (Some(column), Some(state)) =
+            (self.listings.shown(depth), self.state.column_mut(depth))
+        else {
             return;
         };
         let Some(index) = column.index_of(id) else {
@@ -136,6 +134,10 @@ impl Columns {
         let Some(column) = self.listings.columns.get(depth) else {
             return;
         };
+        // The collection holds a filter's results, by their own ids.
+        if self.listings.hits_at(depth) {
+            return;
+        }
         let arrived = match self.state.column_mut(depth) {
             Some(state) => self.moving.arrived(column, &mut state.collection),
             None => self.moving.arriving(column),

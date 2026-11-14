@@ -12,7 +12,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 
 use super::intents;
-use crate::{App, commands, pane_header, rename, shell, surface};
+use crate::{App, commands, filter, pane_header, rename, shell, surface};
 
 /// The view's words, translated once: the language changes only on restart.
 pub(super) struct Labels(ColumnsLabels);
@@ -33,8 +33,11 @@ impl Labels {
 }
 
 /// What column `depth` says in place of rows while it shows none ([`crate::surface`]), and
-/// whether it draws it.
+/// whether it draws it. A filter's results say what the filter does.
 fn status(app: &App, depth: usize) -> Option<(Cow<'_, str>, bool)> {
+    if app.columns.listings.hits_at(depth) {
+        return filter::status(app).map(|said| (Cow::Owned(said), true));
+    }
     let listing = app.columns.listings.columns.get(depth)?;
     app.columns.surface.status(depth, listing)
 }
@@ -42,6 +45,9 @@ fn status(app: &App, depth: usize) -> Option<(Cow<'_, str>, bool)> {
 /// What a column draws in place of rows, as GTK's column draws it (`show_empty` and
 /// `show_error` in `src/ui/browser/presentation.rs`).
 fn shown_status(app: &App, depth: usize) -> Option<El> {
+    if app.columns.listings.hits_at(depth) {
+        return filter::status_element(app);
+    }
     let (said, _) = status(app, depth).filter(|(_, drawn)| *drawn)?;
     let listing = app.columns.listings.columns.get(depth)?;
     let failed = surface::failed(listing, depth);
@@ -96,5 +102,7 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .pointer_settings(|app: &App| PointerSettings::default().modes(app.columns.clicks))
     // GTK's column header actions, in its order (`pane_header::actions`).
     .header_actions(|app: &App, cx| pane_header::actions::column(app, &cx))
+    // The filter's Enter target among its results.
+    .marks(filter::marks)
     .on_intent(intents::heard)
 }

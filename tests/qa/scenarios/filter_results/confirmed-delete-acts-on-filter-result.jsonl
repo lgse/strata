@@ -1,0 +1,17 @@
+{"scenario":"confirmed-delete-acts-on-filter-result","modes":["columns","icons","list"],"layout":"us","mutation":null,"known_bug":null,"tree":{"a1.txt":"a1\n","a2.txt":"a2\n","a3.txt":"a3\n","a4.txt":"a4\n","b.md":"b\n"},"cost":{"columns":0.6,"icons":0.6,"list":0.6}}
+{"wait":{"entries":["a1.txt","a2.txt","a3.txt","a4.txt","b.md"],"dir":"$root"},"message":"the five fixture files listed"}
+{"select":{"entry":"a1.txt","dir":"$root"}}
+{"wait":{"focused":"a1.txt"},"message":"keyboard focus to reach 'a1.txt'"}
+{"key":"ctrl+f"}
+{"wait":{"field":{}},"message":"Ctrl+F to focus the filter field"}
+{"type":"a"}
+{"wait":{"matches":{"set":["a1.txt","a2.txt","a3.txt","a4.txt"]}},"message":"the filter 'a' to hide 'b.md'"}
+{"wait":{"present":{"result":"a3.txt"}},"message":"the 'a3.txt' result"}
+{"click":{"result":"a3.txt"}}
+{"wait":{"all":[{"state":{"target":{"result":"a3.txt"},"focused":true,"selected":true}},{"state":{"target":{"result":"a1.txt"},"selected":false}}]},"message":"a click to focus and select only the result 'a3.txt'"}
+{"key":"shift+Delete"}
+{"wait":{"dialog":"Permanently delete 1 item?"},"message":"Shift+Delete to ask before deleting 'a3.txt'"}
+{"click":{"dialog_button":"Permanently delete 1 item"}}
+{"wait":{"dialog":null},"message":"the confirmation to close"}
+{"wait":{"file":{"path":"$fixture/a3.txt","exists":false}},"message":"the picked result 'a3.txt' to be deleted"}
+{"fs":{"path":"a1.txt","text":"a1\n"},"timeout_ms":0,"message":"a1.txt, which the user did not pick, must survive"}

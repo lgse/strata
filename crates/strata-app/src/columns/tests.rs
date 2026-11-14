@@ -19,6 +19,7 @@ use crate::{
 };
 
 mod fills;
+mod filter;
 mod history;
 mod keys;
 mod letters;
