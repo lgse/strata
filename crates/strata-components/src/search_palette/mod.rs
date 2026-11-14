@@ -96,8 +96,9 @@
 //!   it in a new tab; the reveal chords (Super held too) open its folder; Escape closes. Home,
 //!   End and the paging keys are the editor's. Rune gives Return and Escape to an input-method
 //!   composition first. Ctrl+K and Ctrl+Shift+K pass through to the host's key map (probe P1).
-//! - **The pointer.** A click opens a result, a middle click opens it in a new tab, a
-//!   right-click highlights it and asks for the host's menu. Rows keep the field's keyboard and
+//! - **The pointer.** A click opens a result, a middle click opens it in a new tab unless the
+//!   host turns that off ([`SearchPalette::middle_click_opens`]), a right-click highlights it
+//!   and asks for the host's menu. Rows keep the field's keyboard and
 //!   tint on hover; the pointer never moves the highlight. A press acts only when it is released
 //!   on the result it was pressed on, as GTK's ListBox activates only when press and release
 //!   land on the same row: a press held while a batch moves another result into its row opens
@@ -225,7 +226,9 @@
 //!   couldn't attach. C18 made the same choice; one shared field is a follow-up.
 //! - **A new-tab key and a middle click** (owner ruling): Strata's palette has none. The host's
 //!   `open_in_new_tab` chords (Ctrl+Enter, Shift ignored) and a middle click send
-//!   `Open { new_tab: true }`.
+//!   `Open { new_tab: true }`. A host that keeps Strata's palette passes no chords
+//!   ([`SearchPalette::new_tab_keys`]) and `middle_click_opens(false)`: a middle click then
+//!   does nothing and the palette stays open.
 //! - **Matched characters on both lines**, from W1's `MatchedText` (the WP asks for it); Strata
 //!   highlights none. Coloured, not bold.
 //! - **A count live region** (owner ruling), hidden as Strata shows no count.

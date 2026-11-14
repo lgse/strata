@@ -56,6 +56,8 @@ pub(super) struct Ctx<S> {
     pub emit: Emit<S>,
     pub new_tab: Rc<[Chord]>,
     pub reveal: Rc<[Chord]>,
+    /// Whether a middle click opens a result ([`SearchPalette::middle_click_opens`]).
+    pub middle_opens: bool,
 }
 
 /// The palette: Ctrl+K search, Ctrl+Shift+K folder jump, or any other [`PaletteMode`], over
@@ -75,6 +77,7 @@ pub struct SearchPalette<S> {
     on_visible: Option<Visible<S>>,
     return_focus_on_open: Option<String>,
     reduced_motion: bool,
+    middle_opens: bool,
     emit: Emit<S>,
 }
 
@@ -97,6 +100,7 @@ impl<S: 'static> SearchPalette<S> {
             on_visible: None,
             return_focus_on_open: None,
             reduced_motion: false,
+            middle_opens: true,
             emit: Rc::new(|_, _, _| {}),
         }
     }
@@ -137,6 +141,14 @@ impl<S: 'static> SearchPalette<S> {
         self
     }
 
+    /// Whether a middle click on a result opens it in a new tab (the default). Off, a middle
+    /// click does nothing and the palette stays open with its query and highlight, as
+    /// Strata's palette, whose rows take no middle click.
+    pub fn middle_click_opens(mut self, opens: bool) -> Self {
+        self.middle_opens = opens;
+        self
+    }
+
     /// Opens and closes at once while true: pass `cx.is_reduced_motion()` (C15's rule).
     pub fn reduced_motion(mut self, reduced: bool) -> Self {
         self.reduced_motion = reduced;
@@ -168,6 +180,7 @@ impl<S: 'static> SearchPalette<S> {
             emit: self.emit.clone(),
             new_tab: self.new_tab.into(),
             reveal: self.reveal.into(),
+            middle_opens: self.middle_opens,
         };
         let mode = state.mode();
         let title = mode.map_or(String::new(), |m| m.title.clone());
@@ -348,6 +361,7 @@ fn results<S: 'static>(
         get,
         access: cx.access,
         thumbs: thumbs.filter(|_| mode.kind == ResultKind::Files),
+        middle_opens: cx.middle_opens,
     });
     let (key_rows, build_rows) = (shared.clone(), shared);
     let mut list = col()
@@ -405,6 +419,7 @@ struct Rows<S> {
     get: fn(&S) -> &PaletteState,
     access: fn(&mut S) -> &mut PaletteState,
     thumbs: Option<Thumbs<S>>,
+    middle_opens: bool,
 }
 
 impl<S: 'static> Rows<S> {
@@ -487,10 +502,14 @@ fn result_row<S: 'static>(
     // stays, the inner key changes) opens nothing and asks for no menu, for every button, as
     // GTK's ListBox activates only when press and release land on the same row. Rune has no
     // press-down hook for the right button to record the pressed result with instead.
+    let middle_opens = rows.middle_opens;
     let on_press = {
         let (press, open_id) = (handler.clone(), item.id.clone());
         move |s: &mut S, tx: &mut Tx| {
             let middle = tx.button() == PointerButton::Middle;
+            if middle && !middle_opens {
+                return;
+            }
             let via = if middle { Via::Middle } else { Via::Click };
             let polled = access(s).choose(&open_id, middle, via, tx);
             if let Some(emit) = press.get::<Emit<S>>() {
