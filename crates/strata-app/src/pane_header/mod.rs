@@ -15,7 +15,8 @@
 //!   popover ([`Holds::Menu`]).
 //! - **The heading:** the folder's name, described by it, as GTK's heading label is.
 //! - **The header's own actions** ([`actions`]): the Trash's "Empty Trash", "Refresh", and the
-//!   Icons view's "Thumbnail size" button and its popover ([`thumbnail_size`]), in GTK's order;
+//!   Icons view's "Thumbnail size" button and its popover ([`thumbnail_size`]), and the List
+//!   view's Columns button with its columns menu, which the view brings (C4's), in GTK's order;
 //!   [`actions`] serves a Columns column's header too, and names who brings the rest.
 //!
 //! The rest of GTK's header is other packages': the spinner and the truncated listing's hint,
@@ -114,8 +115,9 @@ const BUTTONS: [Button; 3] = [
     },
 ];
 
-/// The header over the listing of the view keyed `view`, for the folder named `title`.
-pub(crate) fn bar(app: &App, view: &str, title: &str) -> El {
+/// The header over the listing of the view keyed `view`, for the folder named `title`, with
+/// the view's own `actions` after the header's (the List view's Columns button).
+pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
     let look = &app.look;
     let navigation = BUTTONS
         .iter()
@@ -139,6 +141,7 @@ pub(crate) fn bar(app: &App, view: &str, title: &str) -> El {
     if view == crate::icons::VIEW {
         actions = actions.child(thumbnail_size::button(app));
     }
+    actions = actions.children(own);
     row()
         .key(format!("{view}-header"))
         .w_full()

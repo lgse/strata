@@ -183,7 +183,13 @@ pub(super) fn poll(app: &mut App, clock: f64) -> bool {
     thumbs.columns.resize(open, Synced::default());
     let restep = thumbs.step.replace(step) != Some(step);
     let mut pruned = false;
-    for (depth, listing) in app.columns.listings.columns.iter().enumerate().take(open) {
+    let listings = &app.columns.listings;
+    for (depth, listing) in listings.columns.iter().enumerate().take(open) {
+        // A filter's results draw their icons: the store finds a thumbnail's file through the
+        // browser's column, which does not list them.
+        if listings.hits_at(depth) {
+            continue;
+        }
         let (Some(id), Some(column)) = (thumbs.viewer.id_at(depth), thumbs.columns.get_mut(depth))
         else {
             continue;

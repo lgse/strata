@@ -329,3 +329,38 @@ fn a_location_that_could_not_be_opened_is_the_next_edits_text() {
         },
     );
 }
+
+/// The hierarchy menu holds the keyboard while it is open, as a menu: the window's commands
+/// wait for it, as GTK's dispatcher leaves a menu every key (finding lgse/strata#2407).
+#[test]
+fn the_hierarchy_menu_holds_the_keyboard_while_it_is_open() {
+    hosted(
+        MODULE,
+        "the_hierarchy_menu_holds_the_keyboard_while_it_is_open",
+        |mut host| {
+            let _folder = open(&mut host);
+            let holds = |host: &Offscreen| {
+                let app = host.app();
+                let parts = shell::parts(app);
+                let holds: Vec<_> = parts
+                    .active()
+                    .filter_map(|part| (part.keyboard)(app))
+                    .collect();
+                holds
+            };
+            assert_eq!(holds(&host), []);
+
+            let (x, y) = hover(&mut host, "location-crumbs");
+            host.runtime().secondary_down(x, y);
+            host.turn();
+            host.runtime().secondary_up(x, y);
+            idle(&mut host);
+
+            assert!(
+                host.app().location.state.menu().is_some(),
+                "the menu opened"
+            );
+            assert_eq!(holds(&host), [commands::Holds::Menu]);
+        },
+    );
+}
