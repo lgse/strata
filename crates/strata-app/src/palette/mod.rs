@@ -26,31 +26,43 @@
 //!   key is not followed yet, as GTK's is (finding lgse/strata#2470).
 //! - **No new tab:** GTK's palette takes neither Ctrl+Return nor a middle click (driven), so
 //!   the palette is given no new-tab chord and its middle click is off.
+//! - **The folder jump** ([`jump`]): the `jump_to_folder` command toggles the palette on the
+//!   folders visited before, as GTK's `jump-folder` action: Ctrl+Shift+K where no text field
+//!   has the keyboard (`window_commands` and `direct_commands`) and once the chain has left
+//!   the key (`after_yield`). Either command closes the palette whichever mode it is open in.
+//!   The history is strata-fs's [`NavigationHistory`], which each tab's browser fills with
+//!   the local folders its columns finish listing ([`visits`]). A result opens and reveals as
+//!   in Ctrl+K's mode.
 //!
-//! Not yet: the results' thumbnails, the header button's pressed look while it is open, and
-//! Ctrl+Shift+K's folder jump. `docs/rune/parity/packages/A10.md` keeps the list.
+//! Not yet: the results' thumbnails and the header button's pressed look while it is open.
+//! `docs/rune/parity/packages/A10.md` keeps the list.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use rune::{El, Tx};
 use strata_components::{
     context_menu::ContextMenuState,
     search_palette::{By, PaletteIntent, PaletteState, Polled, SearchPalette},
 };
-use strata_desktop::keys::{Modifiers, bindings::SEARCH};
-use strata_fs::services::SearchItem;
+use strata_desktop::keys::{
+    Map, Modifiers,
+    bindings::{JUMP_TO_FOLDER, SEARCH},
+};
+use strata_fs::services::{NavigationHistory, SearchItem};
 
 use crate::{
     App,
     commands::{Action, Call, Holds, Keys, Outcome, Situation, Stage},
     filter::session::Session,
     shell,
-    slots::{Frame, Later, Part, Place, Setup},
+    slots::{Frame, Later, Listener, Part, Place, Setup},
 };
 
 mod act;
+mod jump;
 pub(crate) mod menu;
 mod search;
+mod visits;
 
 #[cfg(test)]
 mod tests;
@@ -68,6 +80,10 @@ pub(crate) struct Palette {
     /// The result's menu ([`menu`]).
     menu: ContextMenuState,
     later: Later<App>,
+    /// The folders visited, for the jump: the process's one history.
+    history: Rc<NavigationHistory>,
+    /// This tab's columns whose folders have not finished listing ([`visits`]).
+    visits: visits::Visits,
 }
 
 impl Part for Palette {
@@ -81,7 +97,20 @@ impl Part for Palette {
             found: HashMap::new(),
             menu: ContextMenuState::default(),
             later: setup.later.clone(),
+            history: NavigationHistory::shared(),
+            visits: visits::Visits::default(),
         }
+    }
+
+    fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
+        Some(Box::new(|event, _, heard| {
+            if let Some(visit) = visits::Visit::of(event) {
+                heard.then(move |app: &mut App, _: &mut Tx| {
+                    visits::heard(app, visit);
+                    false
+                });
+            }
+        }))
     }
 
     fn poll(app: &mut App, _clock: f64, _tx: &mut Tx) -> bool {
@@ -94,15 +123,38 @@ impl Part for Palette {
     // `window_commands` reads Ctrl+K where no text field has the keyboard, and the window
     // action `search` reads it once the chain has left the key (`WINDOW_ACTIONS` in
     // `src/ui/window/keyboard.rs`).
-    const COMMANDS: &'static [Action<App>] =
-        &[Action::new("search", toggle).command(SEARCH).keys(&[
+    //
+    // GTK reads Ctrl+Shift+K at `window_commands` in the default map's binding, at
+    // `direct_commands` in the active map's, and as the window action `jump-folder` once the
+    // chain has left the key (`src/ui/window/keyboard/commands.rs`, `direct.rs`).
+    const COMMANDS: &'static [Action<App>] = &[
+        Action::new("search", toggle).command(SEARCH).keys(&[
             Keys::at(
                 Stage::WindowCommands,
                 &[SEARCH.ignoring(Modifiers::empty())],
             )
             .when(no_text),
             Keys::at(Stage::AfterYield, &[SEARCH.ignoring(Modifiers::empty())]),
-        ])];
+        ]),
+        Action::new("jump-folder", toggle_jump)
+            .command(JUMP_TO_FOLDER)
+            .keys(&[
+                Keys::at(
+                    Stage::WindowCommands,
+                    &[JUMP_TO_FOLDER.in_map(Map::Default)],
+                )
+                .when(no_text),
+                Keys::at(
+                    Stage::DirectCommands,
+                    &[JUMP_TO_FOLDER.ignoring(Modifiers::empty())],
+                )
+                .when(no_text),
+                Keys::at(
+                    Stage::AfterYield,
+                    &[JUMP_TO_FOLDER.ignoring(Modifiers::empty())],
+                ),
+            ]),
+    ];
 
     fn keyboard(app: &App) -> Option<Holds> {
         let palette = &app.palette;
@@ -145,6 +197,17 @@ fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
+/// Ctrl+Shift+K: opens the palette on the folders visited, or closes it. As for Ctrl+K, the
+/// key does nothing while a result's menu is open.
+fn toggle_jump(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+    if app.palette.menu.is_open() {
+        return Outcome::Ran;
+    }
+    let polled = app.palette.state.toggle(jump::mode());
+    route(app, polled, tx);
+    Outcome::Ran
+}
+
 fn route(app: &mut App, polled: Polled, tx: &mut Tx) {
     for intent in polled.intents {
         heard(app, intent, tx);
@@ -154,6 +217,7 @@ fn route(app: &mut App, polled: Polled, tx: &mut Tx) {
 /// What the palette asks.
 fn heard(app: &mut App, intent: PaletteIntent, tx: &mut Tx) {
     match intent {
+        PaletteIntent::Query(query) if jump::is_open(app) => jump::asked(app, &query, tx),
         PaletteIntent::Query(query) => search::asked(app, &query),
         PaletteIntent::Open { id, .. } => act::open(app, &id, tx),
         PaletteIntent::Reveal { id } => act::reveal(app, &id, tx),
