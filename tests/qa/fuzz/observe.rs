@@ -20,7 +20,7 @@ use std::{
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
-use super::project::{APP, CRITICALS, FS, RESULT, SETTINGS};
+use super::project::{APP, CRITICALS, FS, INVARIANTS, RESULT, SETTINGS};
 
 /// How rest is told. Calibration set these (`docs/testing.md`, "Calibration"): GTK goes on
 /// changing for up to about 220 ms after a reply with nothing to see in between, and the
@@ -162,6 +162,15 @@ pub(crate) fn at_rest(
     }
 }
 
+/// What went wrong at a step whether or not the replays agree on it: what GLib logged since
+/// the observation before, and the invariants that failed at rest (`docs/testing.md`,
+/// "Invariants"), which only a target that checks them reports.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Faults {
+    pub(crate) criticals: Vec<String>,
+    pub(crate) invariants: Vec<String>,
+}
+
 /// One step's observation: what the comparator reads is `value`, and the rest says how it
 /// was come by.
 #[derive(Clone, Debug, PartialEq)]
@@ -170,7 +179,7 @@ pub(crate) struct Observation {
     pub(crate) step: usize,
     /// The step as it was sent, or null for the launch.
     pub(crate) action: Value,
-    /// `result`, `criticals`, `app`, `fs` and `settings`.
+    /// `result`, `criticals`, `invariants`, `app`, `fs` and `settings`.
     pub(crate) value: Value,
     pub(crate) settled: bool,
     pub(crate) polls: u32,
@@ -183,7 +192,7 @@ impl Observation {
     pub(crate) fn new(
         (step, action): (usize, Value),
         outcome: Outcome,
-        criticals: Vec<String>,
+        faults: Faults,
         rested: Rested,
     ) -> Self {
         Self {
@@ -191,7 +200,8 @@ impl Observation {
             action,
             value: json!({
                 RESULT: outcome.name(),
-                CRITICALS: criticals,
+                CRITICALS: faults.criticals,
+                INVARIANTS: faults.invariants,
                 APP: rested.sample.app,
                 FS: rested.sample.fs,
                 SETTINGS: rested.sample.settings,
@@ -215,6 +225,11 @@ impl Observation {
 
     pub(crate) fn criticals(&self) -> usize {
         self.value[CRITICALS].as_array().map_or(0, Vec::len)
+    }
+
+    /// The invariants that failed at this step.
+    pub(crate) fn broken(&self) -> usize {
+        self.value[INVARIANTS].as_array().map_or(0, Vec::len)
     }
 
     /// One line of a stream file. The digests are what the plan calls the observation's

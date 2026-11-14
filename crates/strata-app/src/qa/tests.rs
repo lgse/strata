@@ -22,6 +22,7 @@ use crate::{
 };
 
 mod icon;
+mod invariants;
 mod ready;
 mod rename;
 mod replaced;

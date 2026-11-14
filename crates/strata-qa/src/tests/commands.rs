@@ -654,3 +654,21 @@ fn only_the_runner_sends_a_keymap_and_it_names_its_layouts() {
     assert!(parse_command(r#"{"keymap":{"layouts":"ru"}}"#).is_err());
     assert!(!COMMANDS.contains(&"keymap"));
 }
+
+#[test]
+fn only_the_runner_asks_for_the_invariants_and_with_nothing_else() {
+    assert_eq!(
+        parse_request(r#"{"invariants":{}}"#),
+        Ok(Command::Invariants)
+    );
+    for invalid in [
+        r#"{"invariants":true}"#,
+        r#"{"invariants":{"only":"browser"}}"#,
+        r#"{"invariants":{},"key":"Down"}"#,
+    ] {
+        let error = parse_request(invalid).expect_err("the step should be rejected");
+        assert!(error.contains("invariants"), "{invalid}: {error}");
+    }
+    assert!(parse_command(r#"{"invariants":{}}"#).is_err());
+    assert!(!COMMANDS.contains(&"invariants"));
+}

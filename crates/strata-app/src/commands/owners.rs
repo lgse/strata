@@ -43,7 +43,7 @@ pub(crate) enum Holds {
     /// A plain popover, such as the Icons header's thumbnail size: GTK's `gtk::Popover` takes
     /// every key while focus is in it, with or without modifiers, so no stage of the window's
     /// chain hears one ([`reach`]). Driven on GTK (`./scripts/qa-drive.sh`, XTest input, focus on
-    /// the popover's slider, 2026-11-14): Alt+Up, Ctrl+Alt+=, Delete with a selection and F5
+    /// the popover's slider, 2026-11-13): Alt+Up, Ctrl+Alt+=, Delete with a selection and F5
     /// did nothing, and Escape closed the popover, giving the button the keyboard. GTK's code
     /// suggests otherwise (`popover_navigation` and `focus_in_popover` in
     /// `src/ui/window/keyboard/`); the driven run settles it: no key from inside the popover

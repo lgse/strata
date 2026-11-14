@@ -513,7 +513,10 @@ a scenario: the runner's tests hold both lists to what
 `{"keymap":{"layouts":"us,ru","variants":"","group":1,"caps_lock":false}}` is
 a request the runner sends the Rune target after a `layout` step, since that
 target has no display to read the keymap from. It is not a scenario step: the
-runner refuses a scenario that writes it.
+runner refuses a scenario that writes it. `{"invariants":{}}` is the other
+such request: the fuzz driver sends it to the Rune target after each step at
+rest, and its `result` lists the invariants that failed (`docs/testing.md`,
+"Invariants"); the GTK target answers that it is not supported.
 
 A reply is `{"ok","app","changed","criticals","result","failures","error"}`:
 `ok` false with `error` stops the run; `failures` lists

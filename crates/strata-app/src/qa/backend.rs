@@ -20,6 +20,7 @@ use strata_qa::{
 use super::{
     field,
     input_log::InputLog,
+    invariants,
     keyboard::Keyboard,
     replaced::Replacements,
     stage::Stage,
@@ -74,6 +75,12 @@ impl Rune {
     pub(super) fn open(&self, folder: &std::path::Path) {
         let location = strata_core::model::Location::local(folder);
         self.stage.borrow().app().open(location);
+    }
+
+    /// The window's state, for a test to reach behind the steps.
+    #[cfg(test)]
+    pub(super) fn browser(&self) -> std::rc::Rc<strata_fs::app::Browser> {
+        self.stage.borrow().app().browser.clone()
     }
 
     pub(super) fn quitting(&self) -> bool {
@@ -513,12 +520,22 @@ impl Backend for Rune {
             .accessibility_action(&key, Action::Click, None)
     }
 
-    /// The one step of Rune's own: the keyboard layout, which the GTK application reads from
-    /// its display server.
-    async fn command(&self, _scope: &Scope<'_, Self>, command: &Command) -> Option<Outcome> {
-        let Command::Keymap(keymap) = command else {
-            return None;
-        };
-        Some(Outcome::from(self.keyboard.borrow_mut().set_layout(keymap)))
+    /// The two steps of Rune's own: the keyboard layout, which the GTK application reads from
+    /// its display server, and the invariants ([`invariants`]), which it does not check.
+    async fn command(&self, scope: &Scope<'_, Self>, command: &Command) -> Option<Outcome> {
+        match command {
+            Command::Keymap(keymap) => {
+                Some(Outcome::from(self.keyboard.borrow_mut().set_layout(keymap)))
+            }
+            Command::Invariants => {
+                let panes = scope.scene().observation.panes;
+                let failed = invariants::check(self.stage.borrow().app(), &panes);
+                Some(Outcome {
+                    result: serde_json::json!(failed),
+                    ..Outcome::default()
+                })
+            }
+            _ => None,
+        }
     }
 }

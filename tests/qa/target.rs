@@ -98,6 +98,16 @@ impl Target {
             } })),
         }
     }
+
+    /// The step that asks the application for the invariants it holds itself to at rest,
+    /// which the fuzz driver sends after every step (`docs/testing.md`, "Invariants"). Only
+    /// the Rune application checks any; the GTK one answers that it is not supported.
+    pub(crate) fn invariants_step(self) -> Option<Value> {
+        match self {
+            Self::Gtk => None,
+            Self::Rune => Some(json!({ "invariants": {} })),
+        }
+    }
 }
 
 /// The artifact folder of the target the environment names. A target it cannot name fails

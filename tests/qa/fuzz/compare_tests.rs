@@ -82,7 +82,8 @@ pub(crate) fn the_comparator_reports_the_first_field_outside_the_map_and_the_mas
     );
 }
 
-pub(crate) fn a_warning_or_a_lost_target_diverges_even_when_both_replays_show_it() {
+pub(crate) fn a_warning_a_broken_invariant_or_a_lost_target_diverges_even_when_both_replays_show_it()
+ {
     let warned = || {
         let mut stream = stream(&["archive", "documents", "pictures"]);
         stream.observations[2].value["criticals"] = json!(["Gtk-CRITICAL **: assertion failed"]);
@@ -94,6 +95,15 @@ pub(crate) fn a_warning_or_a_lost_target_diverges_even_when_both_replays_show_it
         found.title("columns"),
         r#"[fuzz columns] criticals after {"key":"Down"}"#
     );
+    let broken = || {
+        let mut stream = stream(&["archive", "documents", "pictures"]);
+        stream.observations[2].value["invariants"] = json!([
+            "browser-view: column 0's cursor is None in the view and Some(\"a\") in the browser"
+        ]);
+        stream
+    };
+    let found = compare(&broken(), &broken(), &Ignored::default()).expect("both broke it");
+    assert_eq!((found.step, found.field()), (2, "invariants"));
     let lost = || {
         let mut stream = stream(&["archive", "documents"]);
         stream.observations[1] = observation(1, Outcome::Crashed, "documents", &[]);
@@ -105,6 +115,7 @@ pub(crate) fn a_warning_or_a_lost_target_diverges_even_when_both_replays_show_it
     // No mask excuses either: a mask is for a field that does not agree with itself.
     let masked = masks(&["app.focused", "app.panes", "fs.todo.txt"]);
     assert!(compare(&warned(), &warned(), &masked).is_some());
+    assert!(compare(&broken(), &broken(), &masked).is_some());
 }
 
 pub(crate) fn a_step_not_at_rest_is_compared_by_its_outcome_alone() {
@@ -328,6 +339,7 @@ pub(crate) fn an_entry_is_refused_for_its_form_its_code_or_blinding_a_whole_root
         (field("settings"), "A whole root"),
         (field("result"), "A whole root"),
         (field("criticals"), "A whole root"),
+        (field("invariants"), "A whole root"),
         // An exception is not a mask.
         (one.replace("timing", "unsettled"), "the code is one of"),
     ];

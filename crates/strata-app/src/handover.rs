@@ -101,6 +101,23 @@ pub(crate) struct Shown<'a> {
     pub(crate) collection: &'a CollectionState,
 }
 
+/// What a view holds of the browser's columns, as the QA backend's invariants read it
+/// (`qa/invariants.rs`): borrowed from the view, which keeps nothing for it.
+#[cfg(feature = "qa")]
+#[derive(Default)]
+pub(crate) struct Presented<'a> {
+    /// The browser's column the view keeps the keyboard's cursor in: Columns' active column, a
+    /// single pane's shown one.
+    pub(crate) active: Option<usize>,
+    /// For a view that draws a column for each of the browser's, Columns: how many it draws.
+    /// None for a view that shows one folder.
+    pub(crate) strip: Option<usize>,
+    /// The listing the view keeps for each of the browser's columns, root first.
+    pub(crate) listings: Vec<&'a Column>,
+    /// The columns shown with a cursor and a selection.
+    pub(crate) shown: Vec<Shown<'a>>,
+}
+
 /// Gives the browser's column what its collection changed since the browser last held it.
 /// Call it before GLib dispatches and before any call that makes the browser act on its
 /// cursor, so the browser never works from a selection older than the view's.

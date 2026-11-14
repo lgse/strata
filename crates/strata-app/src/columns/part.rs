@@ -4,6 +4,7 @@
 //! example of [`crate::slots`].
 
 use rune::Tx;
+use strata_fs::app::VisibleDepths;
 
 #[cfg(feature = "qa")]
 use super::Load;
@@ -40,6 +41,7 @@ impl Part for Columns {
         shows: |mode| mode == MODE,
         focus: VIEW,
         supports_type_grouping: false,
+        rechecks: VisibleDepths::All,
         apply,
         returns: Some(|app| app.columns.mirrors()),
         pointer_at: Some(|app, at| app.columns.pointer_at(at)),
@@ -67,6 +69,7 @@ impl Part for Columns {
                 matches!(root, Some(Load::Listed | Load::Failed(_)))
             },
             lists: |app| app.columns.list_keys(),
+            presented: |app| app.columns.presented(),
         },
     });
 

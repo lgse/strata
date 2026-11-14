@@ -79,14 +79,28 @@ fn row_icons(elements: &[ElementInfo]) -> Vec<RowIcon> {
     elements.iter().filter(drawn).map(icon).collect()
 }
 
+/// The indices of the elements above the element at `index`, the nearest first.
+fn above_indices(elements: &[ElementInfo], index: usize) -> impl Iterator<Item = usize> + '_ {
+    let parent = elements.get(index).and_then(|element| element.parent);
+    std::iter::successors(parent, |at| elements.get(*at)?.parent)
+}
+
+/// The index of the list keyed `list`, as drawn, and of its pane: the nearest named element
+/// around the list.
+fn list_and_pane(elements: &[ElementInfo], list: &str) -> Option<(usize, usize)> {
+    let keyed = |element: &ElementInfo| element.key.as_deref() == Some(list);
+    let at = elements
+        .iter()
+        .position(|element| !element.exiting && keyed(element))?;
+    let pane = above_indices(elements, at).find(|outer| elements[*outer].label.is_some())?;
+    Some((at, pane))
+}
+
 /// The column whose list is keyed `list`, as drawn: its rows are the keyed, named elements
 /// directly under the list's rows, and its pane the nearest named element around the list.
 fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
-    let keyed = |element: &ElementInfo, key: &str| element.key.as_deref() == Some(key);
-    let at = elements
-        .iter()
-        .position(|element| !element.exiting && keyed(element, list))?;
-    let pane = above(elements, &elements[at]).find(|outer| outer.label.is_some())?;
+    let (at, pane) = list_and_pane(elements, list)?;
+    let pane = &elements[pane];
     let inside = |element: &&ElementInfo| {
         above(elements, element).any(|outer| std::ptr::eq(outer, &elements[at]))
     };
@@ -155,15 +169,34 @@ impl<'a> Candidate<'a> {
                 width,
                 height,
             },
+            column: None,
         })
     }
 }
 
 /// The keyed, named buttons drawn and in reach, as the snapshot presents those the tree
-/// leaves out.
-fn drawn_buttons(elements: &[ElementInfo]) -> Vec<DrawnButton> {
-    let button = |element| Candidate::of(element).button();
-    elements.iter().filter_map(button).collect()
+/// leaves out, each with the list of the column whose pane is among its ancestors: by the
+/// element tree, not by boxes, since a column scrolled out of the strip keeps its full box,
+/// over the sidebar for one.
+fn drawn_buttons(elements: &[ElementInfo], lists: &[String]) -> Vec<DrawnButton> {
+    let panes: Vec<(usize, &String)> = lists
+        .iter()
+        .filter_map(|list| Some((list_and_pane(elements, list)?.1, list)))
+        .collect();
+    let column = |index: usize| {
+        above_indices(elements, index).find_map(|outer| {
+            let pane = panes.iter().find(|(pane, _)| *pane == outer)?;
+            Some(pane.1.clone())
+        })
+    };
+    let button = |(index, element)| {
+        let button = Candidate::of(element).button()?;
+        Some(DrawnButton {
+            column: column(index),
+            ..button
+        })
+    };
+    elements.iter().enumerate().filter_map(button).collect()
 }
 
 /// What the snapshot reads beside the accessibility tree.
@@ -184,7 +217,7 @@ fn drawn(host: &Offscreen) -> Drawn {
             .collect(),
         labels: name_labels(&elements),
         icons: row_icons(&elements),
-        buttons: drawn_buttons(&elements),
+        buttons: drawn_buttons(&elements, &lists),
         sidebar: super::sidebar::Gaps::drawn(&elements),
         lists,
     }

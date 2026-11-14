@@ -8,7 +8,7 @@ use std::{cell::Cell, time::Duration};
 use serde_json::{Value, json};
 
 use super::{
-    observe::{Observation, Outcome, Rest, Rested, Sample, at_rest, digest},
+    observe::{Faults, Observation, Outcome, Rest, Rested, Sample, at_rest, digest},
     project::{self, Places, covers, differences, names_a_field, pattern_of, set_at, value_at},
     replay::{Header, Stream, answered, gone},
 };
@@ -118,12 +118,14 @@ pub(crate) fn an_entry_covers_its_field_and_what_is_below_it_at_a_boundary() {
         ("fs.documents/notes.txt", true),
         ("settings.show_hidden", true),
         ("settings.keymap.default", true),
-        // A whole root, the outcome and the warnings are never left out.
+        // A whole root, the outcome, the warnings and the invariants are never left out.
         ("app", false),
         ("fs", false),
         ("settings", false),
         ("result", false),
         ("criticals", false),
+        ("invariants", false),
+        ("invariants[]", false),
         ("app.panes[0].selected", false),
         ("app.rows", false),
         ("reply.ok", false),
@@ -387,7 +389,7 @@ pub(super) fn observation(
     Observation::new(
         (step, action),
         outcome,
-        Vec::new(),
+        Faults::default(),
         Rested {
             sample: Sample {
                 app: json!({
