@@ -1108,3 +1108,40 @@ fn the_headings_speak_the_users_language_and_the_list_has_no_name() {
         },
     );
 }
+
+/// Hiding the sidebar while one of its rows has the keyboard gives the keyboard to the view,
+/// where GTK's next keys reach the selection (finding lgse/strata#2406): no element of the
+/// tree had it, and every key went nowhere.
+#[test]
+fn hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view() {
+    hosted(
+        MODULE,
+        "hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view",
+        |mut host| {
+            let folder = fixture();
+            opened(folder.path(), &mut host);
+            shown(&mut host, "sidebar-place-home");
+            press(&mut host, Key::Left, Mods::default());
+            assert_eq!(focused(&host.tree()).as_deref(), Some("sidebar-place-home"));
+
+            let ctrl = Mods {
+                ctrl: true,
+                cmd: true,
+                ..Mods::default()
+            };
+            for _ in [Step::Rail, Step::Hidden] {
+                press(&mut host, Key::Text("b".to_owned()), ctrl);
+            }
+            idle(&mut host);
+
+            assert_eq!(host.app().sidebar.state.width.shown(), Step::Hidden);
+            let holder = focused(&host.tree());
+            assert!(
+                holder
+                    .as_deref()
+                    .is_some_and(|key| key.starts_with(crate::columns::VIEW)),
+                "the view has the keyboard: {holder:?}"
+            );
+        },
+    );
+}
