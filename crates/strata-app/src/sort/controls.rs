@@ -66,7 +66,8 @@ pub(crate) fn recent_direction(app: &App, view: &str) -> Option<El> {
     })
 }
 
-/// "Choose sort field", a toggle button pressed while its menu is open; in List, the label
+/// "Choose sort field", a button expanded while its menu is open, as the menu button GTK's
+/// toggle sits in; in List, the label
 /// in place of the icon while [`labelled`] says so.
 fn menu_button(app: &App, depth: usize, anchor: &str, list: bool, in_columns: bool) -> El {
     let look = &app.look;
@@ -88,11 +89,11 @@ fn menu_button(app: &App, depth: usize, anchor: &str, list: bool, in_columns: bo
             .label_with(move |font, ink| text(label).font(font).color(ink))
             .on_press_tx(press)
             .build(&look.kit)
-            .checked(pressed),
+            .expanded(pressed),
         None => header::action(look, IconName::Settings, &app.sort.labels.choose)
             .on_press_tx(press)
             .build(&look.kit)
-            .checked(pressed),
+            .expanded(pressed),
     }
 }
 
