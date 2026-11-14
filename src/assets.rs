@@ -143,16 +143,11 @@ pub mod icons {
     ];
 
     pub fn custom_emoji(name: &str) -> Option<&str> {
-        let emoji = name.strip_prefix("emoji:")?;
-        (!emoji.is_empty() && emoji.len() <= 64 && !emoji.chars().any(char::is_control))
-            .then_some(emoji)
+        strata_desktop::settings::custom_emoji(name)
     }
 
     pub fn is_customization_choice(name: &str) -> bool {
-        CUSTOMIZATION_CHOICES
-            .iter()
-            .any(|(icon_name, _)| *icon_name == name)
-            || custom_emoji(name).is_some()
+        strata_desktop::settings::is_icon_choice(name)
     }
 }
 
