@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/new_item.rs b/crates/strata-app/src/new_item.rs
+index 5373e92ec..742a3fb22 100644
+--- a/crates/strata-app/src/new_item.rs
++++ b/crates/strata-app/src/new_item.rs
+@@ -267,7 +267,7 @@ fn select(app: &mut App, depth: usize, position: usize, tx: &mut Tx) {
+         return;
+     }
+     let pending = app.new_item.pending.take();
+-    app.browser.reveal_created_entry(depth, position);
++    app.browser.select(depth, position);
+     shell::settle(app, tx);
+     app.new_item.pending = pending;
+ }
