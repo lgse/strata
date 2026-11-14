@@ -34,7 +34,7 @@ use strata_desktop::keys::bindings::{
 use crate::{
     App,
     commands::{Action, Call, Keys, Outcome, Situation, Stage},
-    rename,
+    rename, shell,
 };
 
 /// `cancel_rename`: an open rename ends without renaming.
@@ -59,10 +59,21 @@ fn escaped(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// `directory_enter_or_escape`'s Enter: the cursor's entry opens.
+/// `directory_enter_or_escape`'s Enter: the cursor's entry opens, in a child column in
+/// Columns and in place in a view that shows one folder (`BrowserView::activate_focused`).
 fn activated(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
-    app.browser.clone().activate_focused();
+    let browser = app.browser.clone();
+    if shows_columns(app) {
+        browser.activate_focused();
+    } else {
+        browser.activate_focused_in_place();
+    }
     Outcome::Ran
+}
+
+/// The Columns view is shown: the one the saved `browser_mode` names `columns`.
+fn shows_columns(app: &App) -> bool {
+    shell::shown_view(app).is_some_and(|view| (view.shows)("columns"))
 }
 
 /// `items_unfocused_for`: an Escape reaches the items only from the shown view's listing.

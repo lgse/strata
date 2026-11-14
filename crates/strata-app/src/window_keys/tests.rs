@@ -130,8 +130,8 @@ fn chord(host: &mut Offscreen, key: Key, ctrl: bool) {
 }
 
 /// A structural alias acts as the key it stands for where the view and the editor read the
-/// key alone: `o` opens the cursor's folder as Enter does, and Ctrl+[ ends a rename as
-/// Escape does, renaming nothing.
+/// key alone: `o` opens the cursor's folder as Enter does, in place in List, and Ctrl+[ ends
+/// a rename as Escape does, renaming nothing.
 #[test]
 fn structural_aliases_open_and_cancel_as_their_keys_do() {
     crate::test_support::hosted_after(
@@ -157,6 +157,11 @@ fn structural_aliases_open_and_cancel_as_their_keys_do() {
                     == Some(documents.clone())
             };
             assert!(host.run_until(PATIENCE, opened), "o opens documents");
+            assert_eq!(
+                host.app().browser().location_at(0),
+                Some(documents.clone()),
+                "in List, o opens in place, with no column of the root behind it"
+            );
 
             let listed_documents = |host: &Offscreen| {
                 let browser = host.app().browser();
