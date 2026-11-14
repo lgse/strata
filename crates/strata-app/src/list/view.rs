@@ -2,7 +2,7 @@
 
 //! The List table over the pane's listing and collection.
 
-use rune::{El, KeyEvent, Tx};
+use rune::El;
 use strata_components::{
     collection::element::Collection,
     list_table::{ListParts, ListTable},
@@ -63,12 +63,7 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
 const COLUMNS_BUTTON: &str = "list-columns-button";
 
 /// The Columns button and its menu, mounted into `layer`. C4 draws the button, so Return
-/// reaches it through the box around it, turned into the Space that presses it, as
-/// `buttons::on_return` does for the window's own.
+/// reaches it through the box around it.
 fn columns_button(app: &App, layer: &mut Vec<El>) -> El {
-    table(app)
-        .columns_button(app, layer)
-        .on_key(|_: &mut App, event: &KeyEvent, tx: &mut Tx| {
-            tx.focused() == Some(COLUMNS_BUTTON) && buttons::pressed(event, tx)
-        })
+    buttons::on_return_within(COLUMNS_BUTTON, table(app).columns_button(app, layer))
 }
