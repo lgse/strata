@@ -48,13 +48,24 @@ pub(super) struct ColumnFills {
 impl ColumnFills {
     /// Folder counts asked for while sizes show, else none.
     pub(super) fn new(show_sizes: bool) -> Self {
-        let details = match show_sizes {
+        let mut fills = Self {
+            details: Details::Off,
+            columns: Vec::new(),
+        };
+        fills.show_sizes(show_sizes);
+        fills
+    }
+
+    /// Sizes show, or no longer do: each open column asks for its folders' counts at the next
+    /// poll, or stops, as GTK's binding asks for them when the setting turns on
+    /// (`request_columns_folder_counts`).
+    pub(super) fn show_sizes(&mut self, show: bool) {
+        self.details = match show {
             true => Details::Folders,
             false => Details::Off,
         };
-        Self {
-            details,
-            columns: Vec::new(),
+        for column in &mut self.columns {
+            column.fills.set_details(self.details);
         }
     }
 

@@ -325,3 +325,69 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
         },
     );
 }
+
+/// The words the size badges show now in the Columns view: a badge drawn at no opacity (a
+/// row not hovered, selected or on the open path) shows nothing.
+fn badges(host: &Offscreen) -> Vec<String> {
+    host.elements()
+        .into_iter()
+        .filter(|element| !element.exiting && element.opacity > 0.0)
+        .filter(|element| element.key.as_deref() == Some("badge"))
+        .filter_map(|element| element.text)
+        .collect()
+}
+
+/// "Show sizes in Columns view" shows in Columns alone, checked while the setting is on: it
+/// saves the setting, the selected folder's badge shows its count, which the column asks for
+/// once sizes show, and pressed again it hides the badges. It closes the popover each time.
+#[test]
+fn show_sizes_saves_the_setting_and_the_columns_follow() {
+    hosted_with(
+        MODULE,
+        "columns",
+        "columns_show_sizes = false\n".to_owned(),
+        "popover::show_sizes_saves_the_setting_and_the_columns_follow",
+        |mut host| {
+            let folder = fixture();
+            open_in_columns(&mut host, folder.path());
+            press(&mut host, Key::Down, Mods::default());
+            let selected = |host: &Offscreen| view::browser_holds(host).0;
+            assert_eq!(selected(&host), ["documents"]);
+            assert!(badges(&host).is_empty(), "no badge while sizes are off");
+            open_popover(&mut host);
+            assert_eq!(
+                row(&host, "appearance-column-sizes"),
+                (
+                    "menu-item-check-box".to_owned(),
+                    "Show sizes in Columns view".to_owned(),
+                    String::new(),
+                    false,
+                    true
+                )
+            );
+
+            return_on(&mut host, "appearance-column-sizes");
+            wait_closed(&mut host, "Show sizes in Columns view");
+            assert!(shell::preferences(host.app()).columns_show_sizes);
+            let counted = host.run_until(PATIENCE, |host| {
+                badges(host).contains(&"3 items".to_owned())
+            });
+            assert!(counted, "the selected folder's badge: {:?}", badges(&host));
+
+            open_popover(&mut host);
+            assert!(row(&host, "appearance-column-sizes").3, "checked while on");
+            return_on(&mut host, "appearance-column-sizes");
+            wait_closed(&mut host, "Show sizes in Columns view");
+            assert!(!shell::preferences(host.app()).columns_show_sizes);
+            idle(&mut host);
+            assert!(badges(&host).is_empty(), "no badge once sizes are off");
+
+            press(&mut host, Key::Command('3'), ctrl());
+            open_popover(&mut host);
+            assert!(
+                node(&host, "appearance-column-sizes").is_none(),
+                "no Show sizes in List"
+            );
+        },
+    );
+}
