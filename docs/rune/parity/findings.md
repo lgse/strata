@@ -1169,3 +1169,90 @@ sequence only together with the alphabet's version, so the version is part of th
   the regroup (`appearance/popover.rs`), held by
   `appearance::tests::popover::group_by_file_type_regroups_the_list_and_hidden_files_shows_them`.
   The sequence joins the `views` corpus unparked with the alphabet's pull request.
+
+### #2411: Escape on a header button clears the selection on GTK, not on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2411), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet (v3, never merged), shrunk 3 of 3 GTK
+  against Rune from `fuzz-views-v3-000000000000000b`, and met by seed `0x14` too: End, Up, a
+  click on the header's Appearance button, Escape (the popover closes, and the keyboard goes
+  back to the button on both), Escape. GTK's selection is then `[]`, Rune's `[readme.md]`.
+- **Why:** GTK's window-level `dismissal` stage (`src/ui/window/keyboard/items.rs`) closes the
+  preview or clears the active column's selection on an Escape from anywhere outside text.
+  Rune clears a selection on Escape only through the view's own keys, while the view has the
+  keyboard; nothing answers Escape at the `Dismissal` stage.
+- **Not the snapshot:** GTK driven (`./scripts/qa-drive.sh`, 2026-11-13): after the second
+  Escape nothing is drawn selected, the focus ring stays on the Appearance button, and Return
+  there opens the popover again.
+- **Concerns:** the window's keys, [A6](packages/A6.md)'s (keymap), noted in its file. The
+  sequence is parked in `tests/qa/fuzz/corpus/views/`, and the `views` alphabet from v4 sends
+  Escape only while a pane has the keyboard.
+- **State:** open, [A6](packages/A6.md)'s.
+
+### #2412: after hidden files are toggled, GTK's List extends a Shift range from its first row
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2412), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet (v3, never merged), shrunk 3 of 3 GTK
+  against Rune from `fuzz-views-v3-0000000000000005`, and met by seed `0x02` too. In Columns:
+  Down, Ctrl+period, Down, Down (onto `.hidden.txt`), Ctrl+period, Ctrl+period, Down, Up (onto
+  `readme.md`); then the Appearance popover's List row, and Shift+Up. GTK selects `archive`,
+  `documents`, `pictures` and `.hidden.txt`, a range from the folder's first row, which the
+  user never anchored; Rune selects `.hidden.txt` and `readme.md`. Without the switch to List,
+  GTK's Shift+Up in Columns selects `.hidden.txt` and `readme.md` too.
+- **Not the snapshot:** GTK driven (`./scripts/qa-drive.sh`, 2026-11-13): the four rows are
+  drawn selected, and the next Shift+Down extends the same range from `archive` to
+  `readme.md`.
+- **Concerns:** GTK's List view's Shift anchor after a view switch. Rune's views take the
+  browser's anchor ([#2354](https://github.com/lgse/strata/issues/2354)), and agree with GTK's
+  Columns. The sequence is parked in `tests/qa/fuzz/corpus/views/`.
+- **State:** open, set aside: no Rune change. A fix is `main`'s, from a bug issue there.
+
+### #2414: two Downs at the Icons grid's edge make GTK open the selected folder in Columns
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2414), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet (v3, never merged), shrunk 3 of 3 GTK
+  against Rune from `fuzz-views-v3-000000000000000c`, and met by seed `0x13` too. On the
+  canonical fixture every tile is on the grid's one row: Ctrl+2, Down, Down, then the
+  Appearance popover's Columns row. GTK opens `archive` as the child column (`app.matches`
+  `[]`); Rune shows the root alone.
+- **Why:** each arrow GTK's Icons view takes commits the selection (`commit_selection` in
+  `src/ui/window/keyboard/items.rs`), even at the grid's edge where nothing moves. After two,
+  the cursor the folder's load placed counts as the user's choice, and the switch back to
+  Columns opens the lone selected folder (`follow_selection_on_return`, in the browser both
+  interfaces share). Rune's Icons grid ignores a press at its edge (`owner.md`, A1 item 1), so
+  the load cursor stays one and nothing opens. Driven on GTK (`./scripts/qa-drive.sh`,
+  2026-11-13): nothing moves on screen at either Down; with one Down, or none, Columns opens
+  nothing.
+- **Concerns:** the Icons view's keys at the grid's edge ([A1](packages/A1.md)'s area, noted in
+  its file). The sequence is parked in `tests/qa/fuzz/corpus/views/`, and the `views`
+  alphabet from v4 sends no Up or Down in Icons.
+- **State:** open, with the owner ([`owner.md`](owner.md#a1-icons-view-and-thumbnails), A1
+  item 12), placed by the coordinator on 2026-11-13. Meanwhile Rune's grid ignores the press.
+
+### #2415: GTK draws no cursor after a view switch or an open in Icons, and its next Down lands on the first entry
+
+- **Code:** `oracle`, by the coordinator's ruling of 2026-11-13, which the owner may reopen
+  ([`owner.md`](owner.md#a8-view-switching-and-appearance), A8 item 2).
+  [Issue](https://github.com/lgse/strata/issues/2415), filed on 2026-11-13 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet (v3, never merged), shrunk 3 of 3 GTK
+  against Rune:
+  - `fuzz-views-v3-0000000000000009`: Ctrl+3, a double click on `documents`, Ctrl+1, Down.
+    `app.focused` is `notes.txt` on GTK and `report.md` on Rune.
+  - `fuzz-views-v3-0000000000000011`: the Appearance popover's Icons row, a double click on
+    `documents`, Down. The selection is `[notes.txt]` on GTK and `[]` on Rune.
+- **Driven on GTK** (`./scripts/qa-drive.sh`, 2026-11-13): in List, GTK draws its cursor on
+  `notes.txt`, and Down moves to `report.md`. Shown in Columns by Ctrl+1, or opened in Icons,
+  it draws none, though its snapshot still names `notes.txt` (`main` bug
+  [#2361](https://github.com/lgse/strata/issues/2361), as in
+  [#2356](https://github.com/lgse/strata/issues/2356)), and its next Down lands on `notes.txt`
+  and selects it. Rune keeps the cursor on `notes.txt` in both, so its Down moves on from it:
+  to `report.md` in Columns, and nowhere in Icons, where the grid's one row is its edge.
+- **Concerns:** GTK's keyboard cursor after a view switch and an open in Icons. The sequences
+  are parked in `tests/qa/fuzz/corpus/views/`.
+- **State:** open, set aside: no Rune change, by the coordinator's ruling, as with
+  [#2367](https://github.com/lgse/strata/issues/2367). GTK drops the cursor its List view
+  showed, a fault for `main`, from a bug issue there.

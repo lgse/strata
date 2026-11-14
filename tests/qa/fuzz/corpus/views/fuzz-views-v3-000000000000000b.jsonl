@@ -1,0 +1,6 @@
+{"scenario":"fuzz-views-v3-000000000000000b","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"End"}
+{"key":"Up","when":{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"key":"Escape","when":{"present":{"role":"radio menu item","name":"Columns"}}}
+{"key":"Escape"}

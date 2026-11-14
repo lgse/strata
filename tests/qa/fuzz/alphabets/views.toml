@@ -19,14 +19,25 @@
 #   none of (`list.toml`'s note); folders are opened by Right in Columns and by a double click.
 # - Right and Left outside Columns: Left leaves a single pane for the sidebar (`list.toml`).
 # - Renames, menus and files made behind the application: the per-view alphabets have them.
+# - Up, Down and their Shift extensions in Icons: on the canonical fixture every tile is on
+#   the grid's one row, so each is an edge press, where GTK and Rune part by the owner's open
+#   A1 items 1 and 3 (`owner.md`; lgse/strata#2414). The `icons` alphabet covers Icons'
+#   arrows; this one's job is the switch.
+# - Escape, Alt+Up and Alt+Left while the keyboard is outside the panes (on the header's
+#   Appearance button after the popover closes): GTK's Escape clears the selection from there
+#   (lgse/strata#2411, A6's), and its Alt+Up and Alt+Left leave the keyboard there (`owner.md`,
+#   A1 item 4).
 #
 # Version 1 was the first draft, never merged: its smoke tier met the plain popover's
 # `app.dialog` (lgse/strata#2405, ruled and in the map), Up off a first row, and one sequence
 # broke F3's browser-view invariant (lgse/strata#2386, since fixed). Version 2, never merged
-# either, had the Up guard; its smoke tier met lgse/strata#2408, parked. Version 3 keeps Right
-# off the empty `archive`.
+# either, had the Up guard; its smoke tier met lgse/strata#2408, parked. Version 3, never
+# merged either, kept Right off the empty `archive`; its smoke tier met lgse/strata#2410 (fixed),
+# #2411, #2412, #2414 and #2415, parked in tests/qa/fuzz/corpus/views, and owner.md's A1 items 3
+# and 4. Version 4 keeps Icons off the vertical arrows, and Escape, Alt+Up and Alt+Left to the
+# panes.
 area = "views"
-version = 3
+version = 4
 about = "Columns, Icons and List on the canonical fixture, type to search off: the view switched by Ctrl+1, Ctrl+2, Ctrl+3 and by the Appearance popover's rows, Group by file type and Hidden files from the popover and by Ctrl+period, with arrows, Home, End, Shift extension and Escape between switches, folders opened by Right in Columns and by a double click, and the parent and Back"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
@@ -82,14 +93,15 @@ steps = ['{"key":"ctrl+period"}']
 [[action]]
 name = "down"
 weight = 8
-steps = ['{"key":"Down"}']
+steps = ['{"key":"Down","when":{"not":{"view_mode":"Icons"}}}']
 
 # Up off a folder's first row takes the keyboard out of the rows on GTK and stays on the row
-# on Rune (`owner.md`, A1 item 3): the guard `columns.toml` has.
+# on Rune (`owner.md`, A1 item 3): the guard `columns.toml` has, and no Up in Icons, whose
+# tiles are all on the first row.
 [[action]]
 name = "up"
 weight = 5
-steps = ['{"key":"<key>","when":{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}}']
+steps = ['{"key":"<key>","when":{"all":[{"not":{"view_mode":"Icons"}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}]}}']
 choose.key = ["Up", "shift+Up"]
 
 [[action]]
@@ -101,12 +113,12 @@ choose.key = ["Home", "End"]
 [[action]]
 name = "extend"
 weight = 2
-steps = ['{"key":"shift+Down"}']
+steps = ['{"key":"shift+Down","when":{"not":{"view_mode":"Icons"}}}']
 
 [[action]]
 name = "escape"
 weight = 2
-steps = ['{"key":"Escape"}']
+steps = ['{"key":"Escape","when":{"focused_pane":true}}']
 
 # Right opens the folder under the keyboard in Columns, as the child column. Not on
 # `archive`, the fixture's one empty folder: in it, shown in Icons, Down takes GTK's keyboard
@@ -125,9 +137,9 @@ choose.folder = ["documents", "pictures"]
 [[action]]
 name = "parent"
 weight = 2
-steps = ['{"key":"alt+Up","when":{"not":{"directory":"$root"}}}']
+steps = ['{"key":"alt+Up","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}']
 
 [[action]]
 name = "back"
 weight = 2
-steps = ['{"key":"alt+Left","when":{"not":{"directory":"$root"}}}']
+steps = ['{"key":"alt+Left","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}']

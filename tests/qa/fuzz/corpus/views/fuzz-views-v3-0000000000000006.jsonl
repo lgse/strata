@@ -1,0 +1,4 @@
+{"scenario":"fuzz-views-v3-0000000000000006","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+3"}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"check menu item","name":"Group by file type"},"when":{"all":[{"view_mode":"List"},{"present":{"role":"check menu item","name":"Group by file type"}}]}}

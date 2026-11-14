@@ -437,6 +437,19 @@ the orchestrating session, 2026-11-12):
    the sequence is parked (`tests/qa/fuzz/corpus/views`, `v2-000000000000000c`). Source:
    [A8](packages/A8.md)'s `views` alphabet, 2026-11-13, placed by the coordinator; A1 is
    closed.
+12. **An arrow at the Icons grid's edge, and the load cursor** (finding
+   [#2414](https://github.com/lgse/strata/issues/2414)), a consequence of item 1. On the
+   canonical fixture, type to search off, every tile is on the grid's one row: Ctrl+2, Down,
+   Down, then Columns from the Appearance popover. GTK opens `archive`, the selection its load
+   placed, as the child column; Rune shows the root alone. Each arrow GTK's Icons view takes
+   commits the selection (`commit_selection`, `src/ui/window/keyboard/items.rs`) even where
+   nothing moves, and after two the load cursor counts as a choice, which the switch back to
+   Columns opens (`follow_selection_on_return`, in the shared browser). Rune's grid ignores a
+   press at its edge, by item 1. Should an edge press in Icons commit the load cursor as a
+   choice, as GTK's does, given item 1? Meanwhile: Rune's grid ignores it, the sequence is
+   parked (`tests/qa/fuzz/corpus/views`, `v3-000000000000000c`), and the `views` alphabet sends
+   no Up or Down in Icons. Source: [A8](packages/A8.md)'s `views` alphabet, 2026-11-13, placed
+   by the coordinator.
 
 ### A2: List view
 
@@ -523,6 +536,18 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    headings stay off the Tab order, or take focus and sort on Return and Space as GTK's do?
    Meanwhile: they stay as they are; no scenario Tabs onto a heading. Source: A8's agent,
    2026-11-13, by the coordinator's ruling.
+2. **Down after a view switch or an open in Icons** (finding
+   [#2415](https://github.com/lgse/strata/issues/2415)), ruled `oracle` by the coordinator on
+   2026-11-13; the owner may reopen it. A folder opened in List shows its cursor on its first
+   entry on both. Shown in Columns by Ctrl+1, or opened in Icons by a double click, GTK draws
+   no cursor though its snapshot names one (`main` bug
+   [#2361](https://github.com/lgse/strata/issues/2361)), and its next Down lands on the first
+   entry; Rune keeps the cursor, and its Down moves on from it. The coordinator's reading: GTK
+   drops the cursor its List view showed, a fault for `main`, as with the withdrawn
+   [#2367](https://github.com/lgse/strata/issues/2367). Should Rune instead copy GTK, a view
+   rebuilt or freshly opened keeping no cursor while nothing is selected? Meanwhile: Rune keeps
+   the cursor, and the sequences are parked (`tests/qa/fuzz/corpus/views`). Source: A8's
+   `views` alphabet, 2026-11-13.
 
 ### A3: Sidebar
 

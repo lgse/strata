@@ -2,6 +2,12 @@
 #
 #   v<version>-<seed> <code> <issue>
 #
-# Version 2 was A8's second draft, never merged: its lines are each finding's sequence shrunk
-# GTK against Rune, named for the smoke seed that met it.
+# Versions 2 and 3 were A8's drafts, never merged: their lines are each finding's sequence
+# shrunk GTK against Rune, named for the smoke seed that met it. `v3-0000000000000006`, the
+# sequence of lgse/strata#2410, is in the corpus unparked: that finding is fixed.
 v2-000000000000000c divergence lgse/strata#2408
+v3-0000000000000005 oracle lgse/strata#2412
+v3-0000000000000009 oracle lgse/strata#2415
+v3-000000000000000b divergence lgse/strata#2411
+v3-000000000000000c divergence lgse/strata#2414
+v3-0000000000000011 oracle lgse/strata#2415

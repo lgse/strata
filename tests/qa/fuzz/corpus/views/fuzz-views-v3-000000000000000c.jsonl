@@ -1,0 +1,6 @@
+{"scenario":"fuzz-views-v3-000000000000000c","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+2"}
+{"key":"Down"}
+{"key":"Down"}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"radio menu item","name":"Columns"},"when":{"present":{"role":"radio menu item","name":"Columns"}}}
