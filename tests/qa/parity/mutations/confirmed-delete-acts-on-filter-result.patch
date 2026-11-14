@@ -1,13 +1,9 @@
 diff --git a/crates/strata-app/src/filter/targets.rs b/crates/strata-app/src/filter/targets.rs
 --- a/crates/strata-app/src/filter/targets.rs
 +++ b/crates/strata-app/src/filter/targets.rs
-@@ -23,7 +23,8 @@
- /// The column showing results, while one does.
- fn showing(app: &App) -> Option<usize> {
+@@ -25,3 +25,4 @@
      let open = app.filter.open_in.as_ref()?;
 -    open.place.shows_hits(app, open.depth).then_some(open.depth)
 +    (open.place == super::place::Where::Columns && open.place.shows_hits(app, open.depth))
 +        .then_some(open.depth)
  }
- 
- /// What the results' column shows, and their selection.
