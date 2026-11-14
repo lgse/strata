@@ -102,17 +102,18 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         .child(edge(sh, st, depth, c.serial, &key, scale, look));
     let resizing = st.resize.as_ref().is_some_and(|r| r.depth == depth);
     if st.edge_hover == Some(depth) || resizing {
+        let caption = look.resize_caption();
         shell = shell.child(
             text(sh.labels.width.clone())
                 .key(keys::caption(&key))
                 .role("tooltip")
                 .font(look.kit.ty.small)
-                .color(look.kit.c.text_base)
+                .color(caption.ink)
                 .px(look.space.sm)
                 .py(look.space.xxs)
                 .radius(look.round(look.kit.radius.sm))
-                .fill(look.kit.c.surface_float)
-                .border(tokens::caption_border(look), look.kit.c.border_muted)
+                .fill(caption.fill)
+                .border(tokens::caption_border(look), look.kit.c.border_base)
                 .pin(
                     None,
                     Some(tokens::header_height(look) + look.space.sm),

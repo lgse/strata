@@ -210,6 +210,27 @@ impl Look {
     pub fn round(&self, base: f32) -> f32 {
         crate::shape::scale_radius(base, self.roundness)
     }
+
+    /// The colours of the caption over a resize edge while it is hovered or dragged (C2's
+    /// "Column width", C9's divider), as Strata's `.resize-caption` draws them: the accent,
+    /// written in the background (`@strata_accent`, `@strata_bg`).
+    ///
+    /// Not Kit's `surface_float`: that is an inverted tooltip surface, the text's own colour
+    /// in a Strata theme, so Strata's text on it can't be read.
+    pub fn resize_caption(&self) -> Caption {
+        Caption {
+            fill: self.kit.c.bg_accent,
+            ink: self.kit.c.text_inverse,
+        }
+    }
+}
+
+/// A caption's fill and the colour of its text: [`Look::resize_caption`].
+#[derive(Clone, Copy, Debug, PartialEq, Hash)]
+#[non_exhaustive]
+pub struct Caption {
+    pub fill: Color,
+    pub ink: Color,
 }
 
 /// The light fallback, so a state holding a `Look` can derive `Default`.
