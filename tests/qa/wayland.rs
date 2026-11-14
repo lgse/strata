@@ -2,7 +2,9 @@
 
 //! `STRATA_QA_DISPLAY=wayland`: a private headless sway in the run's runtime directory,
 //! with no input devices of its own and no XWayland. The application sends its input
-//! through Wayland virtual devices instead of XTEST.
+//! through Wayland virtual devices instead of XTEST. For strata-rune it is the session host:
+//! `qa-parity.sh` runs a ledger row with `host = "session"` on it, and the binary serves
+//! from a real window there.
 
 use std::{
     fs::{self, File},
@@ -17,6 +19,8 @@ use crate::{
 };
 
 pub(crate) const SWAY_SOCKET_VARIABLE: &str = "SWAYSOCK";
+/// What has strata-rune's QA mode serve from a real window: the session host.
+pub(crate) const WINDOW_VARIABLE: &str = "STRATA_QA_WINDOW";
 const SWAY_START_TIMEOUT: Duration = Duration::from_secs(15);
 /// Xvfb's screen.
 const SCREEN: (u32, u32) = (1440, 900);

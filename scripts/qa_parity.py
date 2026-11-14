@@ -44,8 +44,10 @@ ALLOWANCES = "slice.toml"
 GATES = {"g1": ("G1",), "g2": ("G2",), "g3": ("G3",), "slice": ("G1", "G2", "G3")}
 EVERY = "all"
 MODES = ("columns", "icons", "list")
-# The host this command can start. A `session` run needs a real window in a compositor.
+# The hosts a run takes on Rune: offscreen, or a real window in a private sway.
 OFFSCREEN = "offscreen"
+SESSION = "session"
+HOSTS = (OFFSCREEN, SESSION)
 # The runner's line for a failed test and its closing count of them, tests/qa/harness.rs.
 FAILED = re.compile(r"^test (\S+) \.\.\. FAILED\b")
 RESULT = re.compile(r"^test result: FAILED\. \d+ passed; (\d+) failed;")
@@ -114,34 +116,45 @@ def named(run: dict, scenario: str | None) -> bool:
     return scenario in (None, run["scenario"], twin_scenario(run))
 
 
-def selected(ledger: dict, selection: str, status: str, scenario: str | None = None) -> list[str]:
+def selected(ledger: dict, selection: str, status: str, scenario: str | None = None,
+             on_host: str | None = None) -> list[str]:
     """The `<scenario>/<run>` names of a selection's runs with the status, in ledger order.
 
-    With `scenario`, only that scenario's runs, or the runs that twin stands in for.
+    With `scenario`, only that scenario's runs, or the runs that twin stands in for. With
+    `on_host`, only the runs that take, or will need, that host on Rune.
     """
 
     return [name(run) for run in chosen(ledger, selection)
-            if run["status"] == status and named(run, scenario)]
+            if run["status"] == status and named(run, scenario)
+            and on_host in (None, host(run))]
 
 
-def deciding(ledger: dict, selection: str, target: str, scenario: str | None = None) -> list[str]:
+def host(run: dict) -> str:
+    """The host a run takes on Rune. A required run names it; a parallel one names it only
+    when its twin needs the session host, and a pending one when it will need that host."""
+
+    return run.get("host", OFFSCREEN)
+
+
+def deciding(ledger: dict, selection: str, target: str, scenario: str | None = None,
+             on_host: str | None = None) -> list[str]:
     """What must pass on a target for the selection's runs at parity, in ledger order: each
-    required run, and for each parallel run its scenario on GTK and its twin on Rune."""
+    required run, and for each parallel run its scenario on GTK and its twin on Rune. With
+    `on_host`, only the runs that take that host on Rune."""
 
     on_rune = target == "rune"
     return [run["twin"] if on_rune and run["status"] == "parallel" else name(run)
             for run in chosen(ledger, selection)
-            if run["status"] in AT_PARITY and named(run, scenario)]
+            if run["status"] in AT_PARITY and named(run, scenario)
+            and on_host in (None, host(run))]
 
 
 def needs_session(ledger: dict, selection: str, scenario: str | None = None) -> list[str]:
-    """The selection's runs at parity this command cannot start: the session host's. A
-    required run names its host; a parallel one names it only when its twin needs it."""
+    """The selection's runs at parity on the session host, which qa-parity.sh runs on Rune
+    in a private sway (docs/testing.md, "The session host")."""
 
-    implied = {"required": None, "parallel": OFFSCREEN}
     return [name(run) for run in chosen(ledger, selection)
-            if run["status"] in AT_PARITY and named(run, scenario)
-            and run.get("host", implied[run["status"]]) != OFFSCREEN]
+            if run["status"] in AT_PARITY and named(run, scenario) and host(run) == SESSION]
 
 
 def mode(run: dict) -> str:
@@ -334,17 +347,11 @@ def display(path: Path) -> str:
 
 
 def report_selected(ledger: dict, args: argparse.Namespace) -> int:
-    """Prints a selection's runs, one a line: with `--on`, what must pass on that target,
-    and otherwise the runs with the status. Exits 3 when a run at parity needs a host this
-    command cannot start."""
+    """Prints a selection's runs, one a line: with `--on`, what must pass on that target, and
+    otherwise the runs with the status; on `--host` alone when it is given."""
 
-    at_parity = args.on is not None or args.status in AT_PARITY
-    if at_parity and (beyond := needs_session(ledger, args.selection, args.scenario)):
-        print(f"{len(beyond)} required or parallel run(s) of {args.selection} name the session "
-              f"host, which qa-parity.sh cannot start yet: {', '.join(beyond)}", file=sys.stderr)
-        return 3
-    runs = (deciding(ledger, args.selection, args.on, args.scenario) if args.on
-            else selected(ledger, args.selection, args.status, args.scenario))
+    runs = (deciding(ledger, args.selection, args.on, args.scenario, args.host) if args.on
+            else selected(ledger, args.selection, args.status, args.scenario, args.host))
     for run in runs:
         print(run)
     return 0
@@ -358,6 +365,8 @@ def main(arguments: list[str] | None = None) -> int:
                         help="instead of the runs with a status: what must pass on this target, "
                              "the required runs and, for each parallel run, its scenario on gtk "
                              "and its twin on rune")
+    parser.add_argument("--host", choices=HOSTS,
+                        help="only the runs that take, or will need, this host on Rune")
     parser.add_argument("--scenario", help="only this scenario's runs, or a twin's pair")
     parser.add_argument("--counts", action="store_true",
                         help="instead of the runs: the selection's counts by status and reason")

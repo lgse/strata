@@ -30,12 +30,16 @@ RUN mkdir /build-gtk && cd /build-gtk \
     && install -Dm755 build/gtk/libgtk-4.so.1.2200.5 /opt/patched-gtk/libgtk-4.so.1.2200.5
 
 FROM package-indexes AS runtime
+# sway, Xwayland and lavapipe are the Rune target's session host's (docs/testing.md, "The
+# session host"). Arch gives sway the file capability cap_sys_nice, which a container that
+# drops it refuses to exec, even with no new privileges: it is removed.
 RUN sh /opt/strata-install-packages.sh install \
         at-spi2-core bubblewrap ca-certificates cantarell-fonts dbus diffutils ffmpeg \
         fontconfig gobject-introspection-runtime gst-libav gst-plugins-base \
         gst-plugins-good gtk4 gtksourceview5 imagemagick libheif librsvg poppler-glib \
-        python-gobject strace xorg-server-xvfb xorg-xauth \
+        python-gobject strace sway vulkan-swrast xorg-server-xvfb xorg-xauth xorg-xwayland \
     && rm -rf /var/cache/pacman/pkg/* \
+    && setcap -r /usr/bin/sway \
     && test "$(pacman -Q gtk4)" = 'gtk4 1:4.22.5-1' \
     && command -v cmp >/dev/null
 COPY --from=gtk-build /opt/patched-gtk/libgtk-4.so.1.2200.5 /usr/lib/libgtk-4.so.1.2200.5

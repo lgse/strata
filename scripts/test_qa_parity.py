@@ -211,16 +211,43 @@ class SelectionTests(unittest.TestCase):
                          (0, "context-menu-keeps-selection/columns\n", ""))
         self.assertEqual(run_main("A2", "--status", "pending"), (0, "rename-with-f2/list-keyboard\n", ""))
 
-    def test_a_required_run_on_the_session_host_is_refused_and_not_run_offscreen(self):
+    def test_a_required_run_on_the_session_host_is_listed_apart_from_the_offscreen_ones(self):
         with edited("keyboard_navigation", 'package = "A1"\nstatus = "required"\nhost = "offscreen"',
                     'package = "A1"\nstatus = "required"\nhost = "session"'):
             self.assertEqual(qa_parity.needs_session(load(), "A1"), ["escape-clears-selection/icons"])
-            status, printed, errors = run_main("keyboard_navigation")
-            self.assertEqual((status, printed), (3, ""))
-            self.assertIn("escape-clears-selection/icons", errors)
-            # The gate does not name the run, and a survey runs no required run.
-            self.assertEqual(run_main("g2")[0], 0)
-            self.assertEqual(run_main("A1", "--status", "pending"), (0, "", ""))
+            status, every, errors = run_main("A1", "--on", "rune")
+            self.assertEqual((status, errors), (0, ""))
+            self.assertIn("escape-clears-selection/icons\n", every)
+            self.assertEqual(run_main("A1", "--on", "rune", "--host", "session"),
+                             (0, "escape-clears-selection/icons\n", ""))
+            status, offscreen, _ = run_main("A1", "--on", "rune", "--host", "offscreen")
+            self.assertEqual(status, 0)
+            self.assertNotIn("escape-clears-selection/icons", offscreen)
+            self.assertEqual(sorted((offscreen + "escape-clears-selection/icons\n").splitlines()),
+                             sorted(every.splitlines()))
+            # GTK has one host: the target's runs are all its own.
+            self.assertEqual(run_main("A1", "--on", "gtk")[1], every)
+
+    def test_a_pending_run_that_will_need_the_session_host_is_surveyed_there(self):
+        with edited("inline_renaming", 'package = "A2"\nstatus = "pending"\n',
+                    'package = "A2"\nstatus = "pending"\nhost = "session"\n'):
+            pending = run_main("A2", "--status", "pending")
+            self.assertEqual(pending, (0, "rename-with-f2/list-keyboard\n", ""))
+            self.assertEqual(run_main("A2", "--status", "pending", "--host", "session"), pending)
+            self.assertEqual(run_main("A2", "--status", "pending", "--host", "offscreen"), (0, "", ""))
+        # A pending run that names no host is surveyed offscreen.
+        self.assertEqual(run_main("A2", "--status", "pending", "--host", "offscreen"),
+                         (0, "rename-with-f2/list-keyboard\n", ""))
+        self.assertEqual(run_main("A2", "--status", "pending", "--host", "session"), (0, "", ""))
+
+    def test_the_script_surveys_by_host_and_refuses_the_session_host_on_gtk(self):
+        script = (REPOSITORY / "scripts/qa-parity.sh").read_text(encoding="utf-8")
+        for listing in ('list --status "$status" --host offscreen', 'list --status "$status" --host session'):
+            self.assertIn(listing, script)
+        refused = subprocess.run([str(REPOSITORY / "scripts/qa-parity.sh"), "A8", "--host", "session",
+                                  "--target", "gtk"], capture_output=True, text=True, check=False)
+        self.assertEqual((refused.returncode, refused.stdout), (2, ""))
+        self.assertIn("takes no --target gtk", refused.stderr)
 
 
 class CountTests(unittest.TestCase):
@@ -589,9 +616,6 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(reserved & set(names), set())
         self.assertEqual(len(names), len(set(names)))
 
-    def test_every_required_run_of_the_committed_ledger_runs_on_the_offscreen_host(self):
-        self.assertEqual(qa_parity.needs_session(qa_parity.load(), "all"), [])
-
     def test_the_committed_ledger_passes_this_reader_as_it_passes_the_runners(self):
         ledger = qa_parity.load()
         planned = qa_parity_check.planned(qa_parity.SCENARIOS)
@@ -621,7 +645,8 @@ class RepositoryTests(unittest.TestCase):
         counts = subprocess.run([*command, "slice", "--counts"], capture_output=True, text=True, check=True)
         self.assertEqual(counts.stdout, qa_parity.counts(qa_parity.load(), "slice") + "\n")
         # The counts are the whole selection's: an option that narrows a run is refused.
-        for narrowed in (["--scenario", "shift-click-range"], ["--pending"], ["--parallel"], ["--target", "rune"]):
+        for narrowed in (["--scenario", "shift-click-range"], ["--pending"], ["--parallel"], ["--target", "rune"],
+                         ["--host", "session"]):
             for arguments in (["slice", "--counts", *narrowed], ["slice", *narrowed, "--counts"],
                               ["slice", "--twins", *narrowed]):
                 refused = subprocess.run([*command, *arguments], capture_output=True, text=True, check=False)
@@ -636,6 +661,13 @@ class RepositoryTests(unittest.TestCase):
             self.assertIn(variable, script)
         for folder in re.findall(r'=> "(target/qa-artifacts[a-z-]*)"', target):
             self.assertIn(folder, script)
+        # The session host's batch runs on the runner's private sway, where strata-rune opens
+        # its window.
+        runner = (REPOSITORY / "tests/qa.rs").read_text(encoding="utf-8")
+        display = re.search(r'DISPLAY_VARIABLE: &str = "([A-Z_]+)"', runner).group(1)
+        self.assertIn(f'{display}="$display"', script)
+        self.assertIn("display=wayland", script)
+        self.assertIn('list --on rune --host session', script)
 
 
 if __name__ == "__main__":
