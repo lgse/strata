@@ -960,7 +960,7 @@ sequence only together with the alphabet's version, so the version is part of th
   Rune can block hover under a cover (packet 105) or let a modal background route a wheel
   (packet 104). [A8](packages/A8.md)'s, noted in `popover.rs`'s module docs.
 
-### #2386: a column that is not active loses its load-cursor mark in the Rune view
+### #2386: a column that is not active loses its load-cursor (provisional) mark in the Rune view
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2386), filed on
   2026-11-13 as the finding's reference and closed at once: its state is kept here.
@@ -969,15 +969,26 @@ sequence only together with the alphabet's version, so the version is part of th
   column's only, and `events::marks` (`crates/strata-app/src/events.rs`) reads it for every
   column. So when the browser reports a column's marks again while another is active (a file
   written into its folder, hidden files toggled), `handover::adopt` clears the column's
-  provisional flag, and the view takes the browser's load cursor for a fill. Seed `0x07` of
+  provisional flag, and the view takes the browser's load cursor for a fill. This is the
+  load cursor, the selection a load made on its own, not a column's loading state. Seed `0x07` of
   `calibration v3` shows it in three steps: launch, Return on `archive`, a file written into
   the root.
 - **What a user sees:** nothing found. Delete, rename and open act on the browser's
-  selection, which is right; the view's flag decides only a 10xer verb's targets
-  (`Selection::targets`), and Rune has no 10xer yet.
-- **Concerns:** seed `0x03` of `columns v3` and seed `0x07` of `calibration v3`, parked.
-- **State:** open, [F3](packages/F3.md)'s. The fix reads each column's own load cursor in
-  `events::marks`, a `contract` change.
+  selection, which is right. The view's flag decides a 10xer verb's targets
+  (`Selection::targets`), and Rune has no 10xer yet. `Selection::move_cursor` reads it too,
+  for the Ctrl+Left and Ctrl+Right nudge and the 10xer moves, but a move happens in the
+  column that has the keyboard, which is the active one, and so never in a column the flag
+  was lost in. The conclusion stands.
+- **Concerns:** seed `0x03` of `columns v3` and seed `0x07` of `calibration v3`, parked
+  until the fix.
+- **State:** fixed by [F3](packages/F3.md)'s [#2398](https://github.com/lgse/strata/pull/2398). `events::marks` reads each
+  column's own load cursor: a selection the browser does not count as a fill
+  (`Browser::filled_entries`). A hosted test holds it,
+  `qa::tests::invariants::a_column_keeps_its_load_cursor_when_its_folder_changes_while_another_is_active`,
+  and fails without the fix. `columns v3` `0x03` is unparked, and the corpus replay holds it to
+  agreeing on both targets. `calibration v3` `0x07` is taken out of the corpus: it agrees on
+  Rune, but the `calibration` alphabet does not agree across targets (type to search is on),
+  so a differential replay could not hold it.
 
 ### #2387: the browser's Shift anchor outlives its entry and comes back with it
 

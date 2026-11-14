@@ -224,10 +224,11 @@ impl Reader<'_> {
             anchor: browser
                 .selection_anchor_position(depth)
                 .and_then(|position| self.id_at(depth, position)),
-            // The browser says so of its active column only, and only a column it made
-            // active loads with a cursor.
-            provisional: browser.active_depth() == Some(depth)
-                && browser.selection_is_load_cursor(),
+            // A selection that is no fill is the cursor a load placed. Every column keeps
+            // its own, after another column is made active too, where
+            // `Browser::selection_is_load_cursor` says so of the active column only
+            // (finding lgse/strata#2386).
+            provisional: !positions.is_empty() && browser.filled_entries(depth).is_empty(),
         }
     }
 
