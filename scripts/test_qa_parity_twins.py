@@ -75,15 +75,17 @@ class TwinTests(unittest.TestCase):
                 self.assertEqual(qa_parity.deciding(ledger, "all", "gtk", scenario), gtk)
                 self.assertEqual(qa_parity.deciding(ledger, "all", "rune", scenario), rune)
 
-    def test_a_parallel_run_whose_twin_needs_the_session_host_is_refused(self):
+    def test_a_parallel_run_whose_twin_needs_the_session_host_runs_its_twin_there(self):
         with paired(row=PARALLEL.replace('status = "parallel"\n', 'status = "parallel"\nhost = "session"\n')):
             self.assertEqual(qa_parity.needs_session(load(), "A1"), ["escape-clears-selection/icons"])
-            for target in ("gtk", "rune"):
-                status, printed, errors = run_main("A1", "--on", target)
-                self.assertEqual((status, printed), (3, ""))
-                self.assertIn("escape-clears-selection/icons", errors)
+            self.assertEqual(run_main("A1", "--on", "rune", "--host", "session"), (0, f"{TWIN}/icons\n", ""))
+            status, offscreen, _ = run_main("A1", "--on", "rune", "--host", "offscreen")
+            self.assertEqual(status, 0)
+            self.assertNotIn(TWIN, offscreen)
+            self.assertIn("escape-clears-selection/icons\n", run_main("A1", "--on", "gtk")[1])
         with paired():
             self.assertEqual(qa_parity.needs_session(load(), "all"), [])
+            self.assertEqual(run_main("A1", "--on", "rune", "--host", "session"), (0, "", ""))
 
     def test_the_twins_are_listed_with_what_a_review_or_a_checkpoint_audits(self):
         with paired():
