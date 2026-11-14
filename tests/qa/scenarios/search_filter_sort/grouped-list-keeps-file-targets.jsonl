@@ -23,7 +23,7 @@
 {"click":{"search_result":"0000.TXT"}}
 {"key":"Escape"}
 {"wait":{"not":{"field":{}}},"message":"filter is dismissed"}
-{"click":{"role":"button","name":"Appearance"}}
+{"click":{"role":"toggle button","name":"Appearance"}}
 {"wait":{"present":{"role":"check menu item","name":"Group by file type"}},"message":"grouping option is available"}
 {"click":{"role":"check menu item","name":"Group by file type"}}
 {"wait":{"absent":{"role":"check menu item","name":"Group by file type"}},"message":"grouping menu closes automatically"}

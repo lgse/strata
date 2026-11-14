@@ -1398,7 +1398,17 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Why, not yet known:** on GTK the selection Up placed is still the cursor the navigation
   placed, which `follow_selection_on_return` does not open; on Rune it counts as a choice by
   then. The same steps part the same way on Rune without #2425's fix (replayed on both), so it
-  is older than that fix. Not driven on GTK yet.
+  is older than that fix.
+- **Driven on GTK** (`./scripts/qa-drive.sh`, 2026-11-14): after the popover's Columns row,
+  GTK's root column shows `documents` selected with the focus ring on it and no child column
+  on screen; the next Down moves to `pictures` and opens its column. Without the hidden-files
+  toggles GTK ends the same way.
+- **On Rune, probed in a hosted test** (2026-11-14): in List alone, with no view switch, a
+  folder opened and then Alt+Up leaves `Browser::selection_is_load_cursor` false, with
+  `documents` selected; it was true in the folder before the Up. So the view hands the
+  browser the cursor Up placed as a choice, where GTK keeps it the navigation's. Where, not
+  yet found: the single pane's `settle` (`pane.rs`), through a remembered position coming back
+  or a cursor the collection placed itself (`handover::placed`).
 - **Concerns:** the view switch's return to Columns ([A8](packages/A8.md)'s). The sequence is
   parked in `tests/qa/fuzz/corpus/views/`.
 - **State:** open, A8's.
@@ -1417,6 +1427,23 @@ sequence only together with the alphabet's version, so the version is part of th
   by the coordinator's ruling, which the owner may reopen ([`owner.md`](owner.md), A10):
   C1e's `PointerSettings::missing_anchor_stays` covers a Shift+press as well as a secondary
   press, and the pane's results turn it on; Columns leaves it off.
+
+### #2429: the header's Appearance button is a button holding a toggle button on GTK
+
+- **Code:** `oracle`, by the coordinator's ruling of 2026-11-14, which the owner may reopen
+  ([`owner.md`](owner.md#a8-view-switching-and-appearance), A8 item 3); filed as `divergence`.
+  [Issue](https://github.com/lgse/strata/issues/2429), filed on 2026-11-14 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** by [A10](packages/A10.md)'s `search_filter_sort/grouped-list-keeps-file-targets/list`,
+  which stopped on Rune at line 26, a click on `{"role":"button","name":"Appearance"}`.
+  GTK's tree, driven (`./scripts/qa-drive.sh`): a `GtkMenuButton role="button"` named
+  "Appearance" holding a `GtkToggleButton role="toggle button"` of the same name. Rune's header
+  has the toggle button alone. Thirty-two shared steps aim at the toggle button, which both
+  have.
+- **State:** closed by the coordinator's ruling: the pair is GTK's widget structure, not
+  behaviour a user meets, so Rune adds no outer node, and line 26 of the scenario aims at the
+  toggle button as the others do ([A8](packages/A8.md)'s pull request; the scenario's ledger
+  row is A10's).
 
 ### #2441: closing a Columns column's Sort by menu leaves the keyboard on its button on GTK, on the view on Rune
 
