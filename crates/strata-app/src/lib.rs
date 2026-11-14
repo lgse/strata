@@ -68,6 +68,7 @@ mod open_failed;
 mod pane_header;
 mod popover;
 // A6 Menus, dialogs and keymap
+mod run;
 // A7 Entry management and undo
 mod new_item;
 mod rename_failed;
@@ -112,6 +113,7 @@ slots::parts! {
     open_failed: open_failed::OpenFailed,
     pane_header: pane_header::PaneHeader,
     // A6 Menus, dialogs and keymap
+    run: run::Run,
     // A7 Entry management and undo
     undo: undo::Undo,
     new_item: new_item::NewItem,

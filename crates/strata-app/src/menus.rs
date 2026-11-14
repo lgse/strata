@@ -33,7 +33,7 @@ use strata_components::{
 };
 use strata_core::{
     i18n::{count, tr},
-    model::{ArchiveFormat, EntryKind, FileEntry, Location, MetadataValue},
+    model::{ArchiveFormat, EntryKind, FileEntry, Location},
 };
 use strata_desktop::keys::{self, Command, Keys, Map, Shown, bindings as key};
 
@@ -416,11 +416,6 @@ fn is_file(entry: &FileEntry) -> bool {
     matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink)
 }
 
-/// `entry_is_regular_executable` in `src/ui/browser/desktop.rs`.
-fn runs(entry: &FileEntry) -> bool {
-    is_file(entry) && matches!(entry.mode, MetadataValue::Known(mode) if mode & 0o111 != 0)
-}
-
 fn section(rows: &[(Row, bool)], typing: bool) -> Section {
     let shown = rows.iter().filter(|(_, shown)| *shown);
     Section::new(shown.map(|(row, _)| row.item(typing)))
@@ -459,7 +454,7 @@ fn single(target: &EntryTarget<'_>) -> MenuModel {
             (OPEN_WITH, true),
             // `entry_supports_quick_preview` in `src/ui/preview.rs`, for a local file.
             (PREVIEW, is_file(entry)),
-            (RUN, runs(entry)),
+            (RUN, crate::run::runs(entry)),
             (TERMINAL, folder),
         ],
         typing,
