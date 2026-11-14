@@ -153,6 +153,25 @@ impl Pane {
         self.columns.get(self.shown?)
     }
 
+    /// What the pane holds of the browser's columns: every listing, and the one shown with
+    /// its collection.
+    #[cfg(feature = "qa")]
+    pub(crate) fn presented(&self) -> handover::Presented<'_> {
+        let shown = self.shown.and_then(|depth| {
+            Some(Shown {
+                depth,
+                column: self.columns.get(depth)?,
+                collection: &self.collection,
+            })
+        });
+        handover::Presented {
+            active: self.shown,
+            strip: None,
+            listings: self.columns.iter().collect(),
+            shown: shown.into_iter().collect(),
+        }
+    }
+
     /// Whether the folder shown has been read: a first visit waits on it, and the QA probe's
     /// `ready` reads it.
     pub(crate) fn load(&self) -> Option<&Load> {

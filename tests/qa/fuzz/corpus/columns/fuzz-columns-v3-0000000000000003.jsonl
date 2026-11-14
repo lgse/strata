@@ -1,0 +1,51 @@
+{"scenario":"fuzz-columns-v3-0000000000000003","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"Return","when":{"any":[{"focused":"archive"},{"focused":"documents"},{"focused":"pictures"}]}}
+{"key":"shift+Up","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"shift+Home","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Right","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Up","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
+{"key":"BackSpace","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"shift+Home","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"ctrl+period","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Menu","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}
+{"key":"k","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
+{"key":"Up","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
+{"key":"Menu","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}
+{"key":"l","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"ctrl+period","when":{"not":{"field":{"name":"Rename"}}}}
+{"fs":{"path":"documents/fuzz-b.txt","write":"fuzz\n"}}
+{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"renamed","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"click":{"entry":"report.md"},"when":{"all":[{"present":{"entry":"report.md"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"fs":{"path":"documents/fuzz-b.txt","write":"fuzz\n"}}
+{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"x","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Up","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Up","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
+{"key":"k","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt", "fuzz-b.txt"]}}}]}}
+{"key":"End","when":{"not":{"field":{"name":"Rename"}}}}
+{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"Rename"},"when":{"present":{"menu_item":"Rename"}}}
+{"type":"-3","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"ctrl+period","when":{"not":{"field":{"name":"Rename"}}}}
+{"type":"-4","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Escape","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"renamed","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Escape","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"BackSpace","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"F5","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"ctrl+period","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Escape"}
+{"key":"shift+End","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"h","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}

@@ -185,6 +185,12 @@ pub enum Command {
     /// not among [`COMMANDS`]: the runner sends it to such a target after a `layout` step,
     /// which it runs itself, and only [`parse_request`] reads it.
     Keymap(Keymap),
+    /// The checks a backend makes of what it holds against what it shows: `{"invariants":{}}`,
+    /// which the fuzz runner sends after a step has come to rest. Like [`Command::Keymap`] it
+    /// is no scenario step and not among [`COMMANDS`]: only [`parse_request`] reads it. The
+    /// result is the list of what failed, empty when every check holds. A backend that makes
+    /// none, as the GTK application's, answers that the step is not supported.
+    Invariants,
 }
 
 /// A keyboard layout as `setxkbmap` is given one, with the group and the lock that are on.

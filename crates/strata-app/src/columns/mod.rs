@@ -394,6 +394,26 @@ impl Columns {
             .map_while(|depth| self.state.column_key(depth))
             .collect()
     }
+
+    /// What the view holds of the browser's columns: every listing, and each column the strip
+    /// draws with its collection.
+    pub(crate) fn presented(&self) -> handover::Presented<'_> {
+        let shown = (0..self.open())
+            .filter_map(|depth| {
+                Some(handover::Shown {
+                    depth,
+                    column: self.listings.columns.get(depth)?,
+                    collection: &self.state.column(depth)?.collection,
+                })
+            })
+            .collect();
+        handover::Presented {
+            active: Some(self.state.active()),
+            strip: Some(self.state.len()),
+            listings: self.listings.columns.iter().collect(),
+            shown,
+        }
+    }
 }
 
 #[cfg(test)]

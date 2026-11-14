@@ -189,7 +189,8 @@ pub(crate) fn the_ledger_reader_accepts_and_refuses_what_the_shared_table_says()
     }
 }
 
-pub(crate) fn the_target_picks_the_binary_and_only_rune_is_told_the_layout() {
+pub(crate) fn the_target_picks_the_binary_and_only_rune_is_told_the_layout_or_asked_its_invariants()
+{
     assert_eq!(Target::named(None), Ok(Target::Gtk));
     assert_eq!(Target::named(Some("")), Ok(Target::Gtk));
     assert_eq!(Target::named(Some("gtk")), Ok(Target::Gtk));
@@ -246,4 +247,12 @@ pub(crate) fn the_target_picks_the_binary_and_only_rune_is_told_the_layout() {
         );
         assert!(crate::protocol::parse_command(&step).is_err(), "{step}");
     }
+    // Only Rune is asked for its invariants, by a step no scenario could write either.
+    assert_eq!(Target::Gtk.invariants_step(), None);
+    let step = Target::Rune.invariants_step().expect("a step").to_string();
+    assert_eq!(
+        crate::protocol::parse_request(&step),
+        Ok(crate::protocol::Command::Invariants)
+    );
+    assert!(crate::protocol::parse_command(&step).is_err(), "{step}");
 }

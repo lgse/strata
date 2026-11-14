@@ -959,3 +959,41 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** left as it is, by the owner's ruling of 2026-11-13 (to the coordinator), until
   Rune can block hover under a cover (packet 105) or let a modal background route a wheel
   (packet 104). [A8](packages/A8.md)'s, noted in `popover.rs`'s module docs.
+
+### #2386: a column that is not active loses its load-cursor mark in the Rune view
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2386), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `browser-view` invariant, on Rune. The browser keeps a
+  load cursor for each column, but `Browser::selection_is_load_cursor` reports the active
+  column's only, and `events::marks` (`crates/strata-app/src/events.rs`) reads it for every
+  column. So when the browser reports a column's marks again while another is active (a file
+  written into its folder, hidden files toggled), `handover::adopt` clears the column's
+  provisional flag, and the view takes the browser's load cursor for a fill. Seed `0x07` of
+  `calibration v3` shows it in three steps: launch, Return on `archive`, a file written into
+  the root.
+- **What a user sees:** nothing found. Delete, rename and open act on the browser's
+  selection, which is right; the view's flag decides only a 10xer verb's targets
+  (`Selection::targets`), and Rune has no 10xer yet.
+- **Concerns:** seed `0x03` of `columns v3` and seed `0x07` of `calibration v3`, parked.
+- **State:** open, [F3](packages/F3.md)'s. The fix reads each column's own load cursor in
+  `events::marks`, a `contract` change.
+
+### #2387: the browser's Shift anchor outlives its entry and comes back with it
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2387), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `browser-view` invariant, on Rune. The browser keeps the
+  Shift anchor by location, and nothing clears it when its entry leaves the listing; when the
+  entry comes back (Undo of a Move to Trash, Redo of a new folder) the anchor is on it again.
+  The view moved its anchor to the cursor when the entry left, as GTK's does, so the two
+  disagree until a reload makes the view take the browser's anchor.
+- **Run on both targets:** click `todo.txt`, Delete, Ctrl+Z, F5, Shift+Up. GTK and Rune both
+  select `pictures`, `readme.md` and `todo.txt`, a range from the entry anchored before it
+  was deleted; without F5, both select `pictures` and `readme.md`. So the fault is the shared
+  browser's, and Rune agrees with GTK on what the user sees.
+- **Concerns:** seeds `0x04` and `0x05` of `entries v1`, parked in
+  `tests/qa/fuzz/corpus/entries/`.
+- **State:** open, set aside, its sequences parked. The fault is `strata-fs`'s, in the
+  browser both interfaces share, so GTK has it too: its fix belongs on `main`, from a bug
+  issue there, and reaches `strata-next` by merge. The coordinator places it.

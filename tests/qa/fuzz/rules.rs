@@ -124,8 +124,8 @@ fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {
     if !project::names_a_field(field) {
         return Err(format!(
             "{field:?} names no field an entry may leave out: a key of app, a path of fs or \
-             a key of settings, with a list written []. A whole root, result and criticals \
-             are not left out"
+             a key of settings, with a list written []. A whole root, result, criticals and \
+             invariants are not left out"
         ));
     }
     if !codes.contains(code) {

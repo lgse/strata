@@ -10,7 +10,7 @@ use crate::{
         the_ledger_excludes_only_the_runs_the_owner_ruled_out,
         the_ledger_reader_accepts_and_refuses_what_the_shared_table_says,
         the_parity_ledger_accounts_for_every_run_of_every_scenario_folder,
-        the_target_picks_the_binary_and_only_rune_is_told_the_layout,
+        the_target_picks_the_binary_and_only_rune_is_told_the_layout_or_asked_its_invariants,
     },
     scenario_tests::{
         a_cost_gives_each_run_label_a_positive_number,
@@ -100,5 +100,5 @@ unit_tests! {
     the_ledger_allows_only_the_flaky_run_and_the_stale_patch_it_was_given,
     an_allowance_for_nothing_real_or_with_nothing_behind_it_is_refused,
     an_allowance_with_a_missing_or_an_unknown_field_does_not_parse,
-    the_target_picks_the_binary_and_only_rune_is_told_the_layout,
+    the_target_picks_the_binary_and_only_rune_is_told_the_layout_or_asked_its_invariants,
 }

@@ -1,0 +1,11 @@
+# The entry-management alphabet's sequences parked against their findings
+# (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# The line reads as the end of the kept file's name, sorted by version and seed. See
+# docs/testing.md, "Fuzzing". Both are F3's browser-view invariant on Rune: the browser's
+# Shift anchor outlives an entry that was removed and comes back with it, after Ctrl+Z (0x05)
+# and Ctrl+Y (0x04). GTK does the same; the sequences are the seeds'.
+v1-0000000000000004 oracle lgse/strata#2387
+v1-0000000000000005 oracle lgse/strata#2387
