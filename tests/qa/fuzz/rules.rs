@@ -12,10 +12,18 @@
 //!
 //! Both are one entry to a line, `<field> <code> <issue>`, sorted by field, so two branches
 //! that each add a line merge cleanly. A line that starts with `#` is a comment.
+//!
+//! A rule of the map may name the values it excuses, after the issue:
+//! `<field> <code> <issue> {"gtk":<value>,"rune":[<value>, …]}`. It then leaves out only a
+//! difference between GTK's value and one of Rune's on that field, every other difference on
+//! it still counting: an owner's ruling on one deviation, kept narrow
+//! (`app.dialog`'s, lgse/strata#2405: GTK's popovers are no dialogs, Rune's plain ones are).
 
 use std::{fs, path::Path};
 
-use super::{DATA, project};
+use serde_json::Value;
+
+use super::{DATA, project, project::Difference};
 use crate::{
     REPOSITORY,
     twins::{PLATFORM, TWIN_BEARING},
@@ -40,6 +48,29 @@ pub(crate) struct Entry {
     pub(crate) field: String,
     pub(crate) code: String,
     pub(crate) issue: String,
+    /// The values a rule of the map excuses on its field, when it names them.
+    pub(crate) only: Option<Only>,
+}
+
+/// A difference a rule excuses: GTK's value `gtk` against one of Rune's `rune`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Only {
+    pub(crate) gtk: Value,
+    pub(crate) rune: Vec<Value>,
+}
+
+impl Only {
+    /// Whether `difference` is GTK's value against one of Rune's: `gtk_left` says which side
+    /// GTK's stream is, when the comparison knows.
+    fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
+        let is = |gtk: &Value, rune: &Value| *gtk == self.gtk && self.rune.contains(rune);
+        let (left, right) = (&difference.left, &difference.right);
+        match gtk_left {
+            Some(true) => is(left, right),
+            Some(false) => is(right, left),
+            None => is(left, right) || is(right, left),
+        }
+    }
 }
 
 /// The fields one comparison leaves out.
@@ -53,9 +84,16 @@ impl Ignored {
     /// What the tree holds. The rules count only between two targets, so a comparison of
     /// one target with itself is given `same_target` and leaves them out.
     pub(crate) fn load(same_target: bool) -> Result<Self, String> {
+        let masks = read(MASK, &CAUSES)?;
+        if let Some(entry) = masks.iter().find(|entry| entry.only.is_some()) {
+            return Err(format!(
+                "{DATA}/{MASK}: {} names values: only a rule of the map may",
+                entry.field
+            ));
+        }
         let mut ignored = Self {
             rules: read(MAP, &exceptions())?,
-            masks: read(MASK, &CAUSES)?,
+            masks,
         };
         if same_target {
             ignored.rules.clear();
@@ -63,11 +101,26 @@ impl Ignored {
         Ok(ignored)
     }
 
+    /// Whether every difference on `field` is left out: a mask, or a rule that names no
+    /// values.
     pub(crate) fn covers(&self, field: &str) -> bool {
         self.rules
             .iter()
             .chain(&self.masks)
+            .filter(|entry| entry.only.is_none())
             .any(|entry| project::covers(&entry.field, field))
+    }
+
+    /// Whether `difference` is left out: its field is covered, or a rule names its values.
+    /// `gtk_left` says which side GTK's stream is, when the comparison knows.
+    pub(crate) fn excuses(&self, difference: &Difference, gtk_left: Option<bool>) -> bool {
+        self.covers(&difference.field)
+            || self.rules.iter().any(|entry| {
+                entry.only.as_ref().is_some_and(|only| {
+                    project::covers(&entry.field, &difference.field)
+                        && only.excuses(difference, gtk_left)
+                })
+            })
     }
 }
 
@@ -117,10 +170,17 @@ pub(crate) fn parse(text: &str, codes: &[&str]) -> Result<Vec<Entry>, String> {
 }
 
 fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {
-    let columns: Vec<&str> = line.split_whitespace().collect();
+    let mut rest = line.trim();
+    let mut columns: Vec<&str> = Vec::new();
+    while columns.len() < 3 && !rest.is_empty() {
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        columns.push(&rest[..end]);
+        rest = rest[end..].trim_start();
+    }
     let [field, code, issue] = columns.as_slice() else {
         return Err("an entry is <field> <code> <issue>".to_owned());
     };
+    let only = (!rest.is_empty()).then(|| only(rest)).transpose()?;
     if !project::names_a_field(field) {
         return Err(format!(
             "{field:?} names no field an entry may leave out: a key of app, a path of fs or \
@@ -143,6 +203,31 @@ fn entry(line: &str, codes: &[&str]) -> Result<Entry, String> {
         field: (*field).to_owned(),
         code: (*code).to_owned(),
         issue: (*issue).to_owned(),
+        only,
+    })
+}
+
+/// The values after an entry's issue: `{"gtk":<value>,"rune":[<value>, …]}`.
+fn only(text: &str) -> Result<Only, String> {
+    let wrong = || {
+        format!(
+            "the values an entry names are {{\"gtk\":<value>,\"rune\":[<value>, …]}}, not {text:?}"
+        )
+    };
+    let value: Value = serde_json::from_str(text).map_err(|_| wrong())?;
+    let object = value
+        .as_object()
+        .filter(|object| object.len() == 2)
+        .ok_or_else(wrong)?;
+    let (Some(gtk), Some(Value::Array(rune))) = (object.get("gtk"), object.get("rune")) else {
+        return Err(wrong());
+    };
+    if rune.is_empty() {
+        return Err(wrong());
+    }
+    Ok(Only {
+        gtk: gtk.clone(),
+        rune: rune.clone(),
     })
 }
 

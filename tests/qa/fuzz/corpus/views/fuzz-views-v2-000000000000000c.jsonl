@@ -1,0 +1,4 @@
+{"scenario":"fuzz-views-v2-000000000000000c","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"Right","when":{"view_mode":"Columns"}}
+{"key":"ctrl+2"}
+{"key":"Down"}
