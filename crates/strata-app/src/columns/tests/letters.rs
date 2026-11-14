@@ -2,7 +2,7 @@
 
 //! What a plain letter does in the Columns view, by the saved "Type to search" choice.
 
-use super::{MODULE, fixture, open, press, save_settings, seen, wait};
+use super::{MODULE, fixture, open, press, save_settings, wait};
 use crate::test_support::hosted_after;
 
 /// `keyboard_navigation/arrow-keys-move-focus-remaining` (`columns-hjkl`): its header turns
@@ -50,7 +50,10 @@ fn with_type_to_search_on_a_letter_moves_nothing() {
 
             press(&mut host, "j");
 
-            assert_eq!(seen(&host).focused.as_deref(), Some("archive"));
+            // The letter opens the filter on it (type-to-search) and moves no cursor.
+            let focused = host.app().browser.focused_item();
+            let name = focused.map(|(_, _, entry)| entry.display_name);
+            assert_eq!(name.as_deref(), Some("archive"));
         },
     );
 }

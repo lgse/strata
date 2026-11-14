@@ -44,7 +44,7 @@ use strata_core::{
 };
 use strata_desktop::keys::{
     Keys as KeyLabels, Map,
-    bindings::{ESCAPE_ANY, FILTER},
+    bindings::{ESCAPE, ESCAPE_ANY, FILTER},
     label_in_map,
 };
 use strata_fs::services::{SEARCH_RESULT_LIMIT, SearchItem, SearchLimits};
@@ -727,11 +727,9 @@ impl Part for Filter {
                 Stage::FilterAndLocationCommands,
                 &[FILTER.in_map(Map::Default)],
             )]),
-        Action::new("filter-dismiss", dismiss).keys(&[Keys::at(
-            Stage::FilterAndLocationCommands,
-            &[ESCAPE_ANY],
-        )
-        .when(on_results)]),
+        Action::new("filter-dismiss", dismiss)
+            .command(ESCAPE)
+            .keys(&[Keys::at(Stage::FilterAndLocationCommands, &[ESCAPE_ANY]).when(on_results)]),
         Action::new("type-to-search", typed).keys(&[Keys {
             stage: Stage::TextInput,
             reads: Reads::Press(typing::reads),
