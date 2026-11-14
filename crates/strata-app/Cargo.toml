@@ -61,6 +61,8 @@ xkbcommon = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
+# The catalog's listed constants, for the shortcut reference's coverage test.
+strata-desktop = { workspace = true, features = ["xkb-keys", "test-support"] }
 strata-test-support.workspace = true
 tempfile.workspace = true
 toml.workspace = true

@@ -367,6 +367,26 @@ Source for all of these: [B3](packages/B3.md), "Design", and the archived issue
   open, since rune-kit's menu rows take no secondary press. It may be an accident of GTK's
   popover rather than a choice; no scenario reads it. Should the Rune interface run the row
   as GTK does? Meanwhile: it does nothing, and no run waits on it. Source: A6, 2026-11-14.
+- **The shortcut reference's tables: a copy, or shared with the key catalog** (ruled by the
+  coordinator on 2026-11-14; the owner may reopen it). GTK's reference lists its rows from
+  const tables in `src/ui/shortcut_reference.rs`. They are free of GTK, but they belong to
+  none of the four stores that the owner's ruling of 2026-11-11 lets move. The Rune
+  interface has a copy of the default map's tables (`crates/strata-app/src/shortcuts/contents.rs`),
+  in the way A5's `with_keys` and the menus' rows are copies. So a change to a table on
+  `main` does not reach Rune by merge. A test holds both sides to the catalog's listed
+  commands, so a command added to the catalog fails on Rune until the copy has its row. A
+  row that is reworded or reordered does not fail. Should the toolkit-free tables move into
+  `strata_desktop::keys` with the key catalog, so that changes on `main` reach Rune by
+  merge? Meanwhile: the copy stands. Source: A6, 2026-11-14.
+- **The shortcut reference's accessibility: C19's table, or GTK's labels** (finding
+  [#2466](https://github.com/lgse/strata/issues/2466); ruled by the coordinator on
+  2026-11-14; the owner may reopen it). GTK's reference is a dialog that holds a title label
+  and rows of two labels, and it builds every row. C19's names the dialog and hides the
+  title, lists the rows as a table with row headers and cells, and builds only the rows near
+  the viewport. Should C19 keep its table, or present GTK's flat labels, as
+  [#2324](https://github.com/lgse/strata/issues/2324) did for C4? Meanwhile: the table
+  stands, and the two runs that read the reference pass on Rune by `a11y` twins.
+  Source: A6, 2026-11-14.
 
 ### A1: Icons view and thumbnails
 

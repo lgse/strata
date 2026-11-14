@@ -1669,3 +1669,24 @@ sequence only together with the alphabet's version, so the version is part of th
   run checks it: the scenarios use the default key.
 - **State:** open, A10's. The fix is a converter from a catalog binding to a `rune::Chord`,
   for `reveal_keys`, or a C17 hook that hands the host each key before the field's editor.
+
+### #2466: the Rune shortcut reference is a table of cells where GTK's is labels
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2466), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** what a screen reader hears of the shortcut reference (F1). GTK has a
+  visible `label` "Keyboard shortcuts" in a dialog of that name, and each row is a box of two
+  `label`s, the action and its keys (`src/ui/shortcut_footer/build.rs`, `catalog.rs`), with
+  every row built. C19's `ShortcutReference` names the dialog and hides its title, so the
+  name is not heard twice; its rows are a `table`, each section's title a `row header` and
+  each shortcut a `table row` of two `table cell`s; and it builds only the rows near the
+  viewport (`crates/strata-components/src/footer/reference/view.rs`).
+- **Concerns:** `dialogs_and_menus/shortcut-reference-search-keeps-editing-chords/columns`
+  (the title at line 3, the Preview media rows' keys at lines 4 to 7, rows below the
+  viewport) and `keymap/saved-keymap-applies-at-launch/columns` (the title at line 19, the
+  Rename row's labels at line 20).
+- **State:** the coordinator ruled on 2026-11-14 that C19's table stays; the owner may reopen
+  it ([`owner.md`](owner.md#a6-menus-dialogs-and-keymap)). Both runs are `parallel` under
+  `a11y` twins from [A6](packages/A6.md)'s [#2471](https://github.com/lgse/strata/pull/2471), which find the
+  reference by its dialog's name, read the rows' cells, and search to bring the media rows
+  into the tree.
