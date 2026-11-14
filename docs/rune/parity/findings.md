@@ -1216,7 +1216,11 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** the window's keys, [A6](packages/A6.md)'s (keymap), noted in its file. The
   sequence is parked in `tests/qa/fuzz/corpus/views/`, and the `views` alphabet from v4 sends
   Escape only while a pane has the keyboard.
-- **State:** open, [A6](packages/A6.md)'s.
+- **State:** fixed by [A6](packages/A6.md)'s pull request [#2452](https://github.com/lgse/strata/pull/2452): an Escape outside text closes the
+  peek or clears the active column's selection at the `dismissal` stage, as on GTK
+  (`crates/strata-app/src/window_keys.rs`). Driven on GTK again on 2026-11-14 with a click
+  on the Appearance button: the second Escape clears the selection and the focus ring stays
+  on the button. `fuzz-views-v3-000000000000000b` agrees in 4 replays and is unparked.
 
 ### #2412: after hidden files are toggled, GTK's List extends a Shift range from its first row
 
@@ -1345,7 +1349,13 @@ sequence only together with the alphabet's version, so the version is part of th
   [#2411](https://github.com/lgse/strata/issues/2411), noted in its file. In Columns the same
   Escape closes a column a user sees; not driven. The sequence is parked in
   `tests/qa/fuzz/corpus/views/`.
-- **State:** open, [A6](packages/A6.md)'s, which drives the cause on GTK when it starts.
+- **State:** fixed by [A6](packages/A6.md)'s pull request [#2452](https://github.com/lgse/strata/pull/2452). Driven on GTK on 2026-11-14: in
+  Columns, with nothing selected in the open column, Escape closes it, and the keyboard goes
+  to its folder in the column before; in List nothing visible changes, as the column closed
+  is one List does not show. Rune reads an Escape that reaches the listing with nothing to
+  clear at the `item_navigation` stage and calls the browser's `escape()`
+  (`crates/strata-app/src/window_keys.rs`). `fuzz-views-v4-000000000000000f` agrees in 4
+  replays and is unparked.
 
 ### #2427: grouping by file type moves a load's cursor to the first row shown on GTK
 
@@ -1542,6 +1552,23 @@ sequence only together with the alphabet's version, so the version is part of th
   `tests/qa/fuzz/corpus/columns/`. The Columns alphabet's upkeep is [F2](packages/F2.md)'s
   and [F4](packages/F4.md)'s: for example, aim an entry click only while no menu is open.
 - **State:** open, set aside for the alphabet's upkeep.
+
+### #2451: a secondary press on an open menu's row runs the row on GTK and does nothing on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2451), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A6](packages/A6.md), checking a remark of its survey. Driven on GTK
+  (`./scripts/qa-drive.sh`, List view): right-click `todo.txt`, then right-click the menu's
+  Rename row. The menu closes and the rename starts. On Rune, a probe of C21's menu
+  (`strata-components`) pressing and releasing the secondary button on a row runs nothing,
+  and the menu stays open. rune-kit's menu rows take no secondary press, so Rune's
+  `secondary_target` finds no handler from the row up.
+- **Not the same as** the feature map's "pressing the secondary button, moving onto a menu
+  row, and releasing does not run the row" ([#1621](https://github.com/lgse/strata/issues/1621)),
+  where the press starts outside the menu.
+- **Concerns:** no scenario or fuzz alphabet yet.
+- **State:** open, for the owner: whether the Rune interface runs a row on a secondary
+  press, as GTK's popover does ([`owner.md`](owner.md#a6-menus-dialogs-and-keymap)).
 
 ### #2454: a double-click right after a dialog over the view closes does nothing on Rune
 

@@ -69,6 +69,8 @@ mod pane_header;
 mod popover;
 // A6 Menus, dialogs and keymap
 mod run;
+// The keys the GTK window reads after a view's or a field's own.
+mod window_keys;
 // A7 Entry management and undo
 mod new_item;
 mod rename_failed;
