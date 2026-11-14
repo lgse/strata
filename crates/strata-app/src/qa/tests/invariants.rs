@@ -167,7 +167,8 @@ fn an_anchor_the_view_does_not_hold_breaks_them() {
     );
 }
 
-/// The keyboard's holds follow a menu, a rename editor and a dialog as they open and close,
+/// The keyboard's holds follow a menu, a rename editor, a dialog and the Appearance popover
+/// (which shows as a dialog) as they open and close,
 /// and the view switched away from does nothing while it is hidden.
 #[test]
 fn the_holds_follow_what_opens_and_a_hidden_view_does_nothing() {
@@ -194,6 +195,14 @@ fn the_holds_follow_what_opens_and_a_hidden_view_does_nothing() {
                 ),
                 (
                     json!({ "key": "shift+Delete" }),
+                    json!({ "wait": { "dialog": true } }),
+                ),
+                (
+                    json!({ "key": "Escape" }),
+                    json!({ "wait": { "not": { "dialog": true } } }),
+                ),
+                (
+                    json!({ "click": { "name": "Appearance", "role": "toggle button" } }),
                     json!({ "wait": { "dialog": true } }),
                 ),
                 (

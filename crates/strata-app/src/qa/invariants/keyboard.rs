@@ -7,13 +7,14 @@
 //! have the keyboard, or the next key goes nowhere.
 //!
 //! - Something in the tree has the keyboard.
-//! - A part holds it for a menu exactly while the tree shows a menu, for a modal layer
-//!   exactly while it shows a dialog, and for an inline edit or the location bar only while a
-//!   text field has the keyboard.
+//! - A part holds it for a menu exactly while the tree shows a menu, and for a modal layer
+//!   only while it shows a dialog. A dialog the tree shows is held for by a modal layer or by
+//!   a plain popover: the Appearance popover shows as one. A part holds it for an inline edit
+//!   or the location bar only while a text field has the keyboard.
 //! - A text field with the keyboard is held for by some part.
 //!
-//! A plain popover's hold ([`Holds::Popover`]) is not held to anything: the snapshot names no
-//! popover.
+//! A plain popover's hold ([`Holds::Popover`]) needs no surface: the snapshot names no
+//! popover, and not every popover shows as a dialog.
 
 use strata_qa::Observation;
 
@@ -77,7 +78,16 @@ impl Surface {
         }
     }
 
+    /// Whether `hold` holds the keyboard for this surface while it shows.
     fn held_by(self, hold: Holds) -> bool {
+        match self {
+            Self::Menu => hold == Holds::Menu,
+            Self::Dialog => matches!(hold, Holds::Modal { .. } | Holds::Popover),
+        }
+    }
+
+    /// Whether `hold` says this surface shows: a popover may show as no dialog.
+    fn shown_by(self, hold: Holds) -> bool {
         match self {
             Self::Menu => hold == Holds::Menu,
             Self::Dialog => matches!(hold, Holds::Modal { .. }),
@@ -85,16 +95,17 @@ impl Surface {
     }
 }
 
-/// A hold for `surface` exactly while the tree shows one.
+/// A hold for `surface` while the tree shows one, and one shown while a hold says it shows.
 fn surface(holds: &[(Holds, &str)], surface: Surface, open: bool, failures: &mut Failures) {
-    let held = holds.iter().find(|(hold, _)| surface.held_by(*hold));
+    let held = holds.iter().any(|(hold, _)| surface.held_by(*hold));
+    let owed = holds.iter().find(|(hold, _)| surface.shown_by(*hold));
     let word = surface.word();
-    match (held, open) {
-        (Some((_, part)), false) => failures.fail(
+    match (owed, held, open) {
+        (Some((_, part)), _, false) => failures.fail(
             "keyboard",
             format!("{part} holds the keyboard for {word}, and the tree shows none"),
         ),
-        (None, true) => failures.fail(
+        (_, false, true) => failures.fail(
             "keyboard",
             format!("the tree shows {word}, and no part holds the keyboard for it"),
         ),
