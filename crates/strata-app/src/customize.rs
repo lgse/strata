@@ -140,6 +140,17 @@ fn open(app: &mut App, path: PathBuf, name: String, folder: bool) {
     customize.open = true;
 }
 
+/// The item an open dialog customizes.
+#[cfg(test)]
+pub(crate) fn customizing(app: &App) -> Option<&std::path::Path> {
+    let customize = &app.customize;
+    customize
+        .item
+        .as_ref()
+        .filter(|_| customize.open)
+        .map(|item| item.path.as_path())
+}
+
 /// Done, Escape, the close button and a click outside.
 fn close(app: &mut App) {
     app.customize.open = false;
