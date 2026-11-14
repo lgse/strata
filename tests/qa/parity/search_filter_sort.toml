@@ -89,9 +89,8 @@ host = "offscreen"
 scenario = "grouped-list-keeps-file-targets"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A8: the header's Appearance button, a `button` on GTK and a `toggle button` on Rune, at line 26"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "hidden-files-toggle"
