@@ -795,7 +795,16 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** seed `0x10` of `columns v2`, shrunk to 2 steps (Shift+End over the root, then a
   right-click on `documents`), confirmed 3 of 3 and the same in 24 of 24 GTK replays; seeds
   `0x10`, `0x11` and `0x14` of `columns v3`. All parked in `tests/qa/fuzz/corpus/columns/`.
-- **State:** open, [A6](packages/A6.md)'s (menus), noted in its file.
+- **Why:** GTK's selection menu has an Open row (`MultipleOpenOptions`), but hides it until its
+  open-with lookup finds a default application the entries share, and shows it only then
+  (`prepare_open_with` in `src/ui/browser/context_menu/open_with.rs`). In the fixture none is
+  found.
+- **State:** fixed by [A6](packages/A6.md)'s pull request #PR2A, which leaves the row out as GTK does
+  when the lookup finds none. The lookup is [A14](packages/A14.md)'s, which shows the row when
+  it finds a shared default. Replayed GTK against Rune: `columns v2` `0x10` and `columns v3`
+  `0x10` agree and are unparked. `0x11` and `0x14` of `columns v3` now part later, at a click
+  an open menu covers on one target only, and are parked against
+  [#2445](https://github.com/lgse/strata/issues/2445).
 
 ### #2365: a location suggestion is a named list item on Rune, where GTK's row holds a label
 
@@ -1444,3 +1453,20 @@ sequence only together with the alphabet's version, so the version is part of th
   behaviour a user meets, so Rune adds no outer node, and line 26 of the scenario aims at the
   toggle button as the others do ([A8](packages/A8.md)'s pull request; the scenario's ledger
   row is A10's).
+
+### #2445: a click aimed at an entry lands inside an open menu on one target only
+
+- **Code:** `exception` (`toolkit`). [Issue](https://github.com/lgse/strata/issues/2445), filed
+  on 2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** replaying the Columns pilot's parked sequences once #2358 was fixed. A fuzz step
+  clicks an entry by name with a context menu open. On GTK, the Menu key opened the menu over
+  `todo.txt`, so a Shift+click aimed at it lands in the menu: the menu stays open, and the
+  next keys move in it. On Rune the same menu opens where `todo.txt` is not covered, so the
+  click lands outside and the menu closes.
+- **Why:** each toolkit places the popup by its own geometry. Driven on GTK
+  (`./scripts/qa-drive.sh`, 2026-11-14), a Shift+click on an entry outside the open menu
+  closes it, takes no selection and leaves the keyboard on the cursor's entry, as Rune does.
+- **Concerns:** seeds `0x11` and `0x14` of `columns v3` (steps 43 and 42), parked in
+  `tests/qa/fuzz/corpus/columns/`. The Columns alphabet's upkeep is [F2](packages/F2.md)'s
+  and [F4](packages/F4.md)'s: for example, aim an entry click only while no menu is open.
+- **State:** open, set aside for the alphabet's upkeep.
