@@ -19,9 +19,8 @@
 //!   drops the values that now equal it, and turning them back on drops those that came to
 //!   equal it meanwhile ([`Prune`]).
 //!
-//! The sort's policy (`resolve_folder_sort`, `set_folder_sort_options`, `reset_folder_sort`
-//! and `set_default_sort_options` in the GTK file) goes beside the size's when an interface
-//! needs it: [`Prune`] already prunes a sort.
+//! The sort's policy is beside it, in [`super::folder_sort_policy`]; [`Prune`] prunes a sort
+//! when folders' views are remembered again.
 
 use crate::model::{Location, SortOptions};
 

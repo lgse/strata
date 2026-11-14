@@ -13,6 +13,7 @@ use crate::{
 use strata_desktop::settings::{
     FOLDER_VIEWS_SAVE_DELAY as SAVE_DELAY, FOLDER_VIEWS_USE_SAVE_DELAY as USE_SAVE_DELAY,
     FolderViewStore as SharedStore, UnreadableAtStartup, Written,
+    folder_sort_policy::{self as sort_policy, DefaultSort},
     folder_view_policy::{self as policy, IconsSizeKept},
 };
 // The tests name the path here.
@@ -21,7 +22,7 @@ pub(in crate::ui) use strata_desktop::settings::folder_views_path;
 use super::{
     MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, PreferenceManager, SHARED_MANAGER,
     folder_views::{FolderKey, FolderViews, TakenViews, key_for_location},
-    parse_preferences, settings_path, store_sort,
+    parse_preferences, settings_path,
     trashed::TrashedValues,
 };
 use crate::storage::writer;
@@ -125,18 +126,12 @@ impl PreferenceManager {
             return FolderSort::Unremembered;
         };
         let store = self.folder_view_store();
-        let (touched, sort) = {
-            let mut shared = store.shared.borrow_mut();
-            let views = shared.views_mut();
-            (opened && views.touch(&key), views.view(&key).sort)
-        };
+        let (sort, touched) =
+            sort_policy::folder_sort(store.shared.borrow_mut().views_mut(), &key, opened);
         if touched {
             self.schedule_folder_views_write(store, USE_SAVE_DELAY);
         }
-        match sort {
-            Some((key, direction, comparison)) => FolderSort::Saved(key, direction, comparison),
-            None => FolderSort::Default,
-        }
+        sort
     }
 
     /// A sort equal to the default is not stored, so the folder follows later defaults.
@@ -156,25 +151,17 @@ impl PreferenceManager {
         location: &Location,
         options: crate::model::SortOptions,
     ) {
-        if options.0.stored_name().is_none() {
-            return;
+        let kept = sort_policy::keep_folder_sort(&self.preferences.borrow(), location, options);
+        if let Some(kept) = kept {
+            self.change_folder_views(Affects::Sorts, |views| kept.apply(views));
         }
-        let Some(key) = self.remembered_key(location) else {
-            return;
-        };
-        let sort = Some(options).filter(|sort| *sort != self.default_sort_options());
-        self.change_folder_views(Affects::Sorts, |views| {
-            views.update(&key, |view| view.sort = sort)
-        });
     }
 
     pub(in crate::ui) fn reset_folder_sort(&self, location: &Location) {
-        let Some(key) = self.remembered_key(location) else {
-            return;
-        };
-        self.change_folder_views(Affects::Sorts, |views| {
-            views.update(&key, |view| view.sort = None)
-        });
+        let forgotten = sort_policy::forget_folder_sort(&self.preferences.borrow(), location);
+        if let Some(forgotten) = forgotten {
+            self.change_folder_views(Affects::Sorts, |views| forgotten.apply(views));
+        }
     }
 
     pub(in crate::ui) fn default_sort(&self) -> (SortKey, SortDirection) {
@@ -191,12 +178,14 @@ impl PreferenceManager {
     }
 
     pub(in crate::ui) fn set_default_sort_options(&self, options: crate::model::SortOptions) {
-        if !store_sort(&mut self.preferences.borrow_mut(), options) {
+        let set =
+            sort_policy::set_default_sort_options(&mut self.preferences.borrow_mut(), options);
+        let DefaultSort::Stored(prune) = set else {
             return;
-        }
+        };
         self.save_preferences();
-        if self.remember_folder_views() {
-            self.change_folder_views(Affects::Sorts, |views| views.prune_default_sort(options));
+        if let Some(prune) = prune {
+            self.change_folder_views(Affects::Sorts, |views| prune.apply(views));
         }
     }
 
