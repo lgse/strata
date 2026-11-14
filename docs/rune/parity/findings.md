@@ -1013,6 +1013,6 @@ sequence only together with the alphabet's version, so the version is part of th
   Strata's text sat on a fill of nearly its own colour, in light themes as in dark.
 - **Concerns:** `crates/strata-components/src/columns/column.rs` and
   `crates/strata-components/src/preview_drawer/divider.rs`; no scenario reads colours.
-- **State:** fixed by PR_LINK: both captions take
+- **State:** fixed by [#2400](https://github.com/lgse/strata/pull/2400): both captions take
   `Look::resize_caption`, Kit's `bg_accent` and `text_inverse` (Strata's accent and
   background), and draw no border, as GTK does; `columns.caption.border` now defaults to 0.
