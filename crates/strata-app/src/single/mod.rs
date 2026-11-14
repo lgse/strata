@@ -362,6 +362,11 @@ pub(crate) fn apply<V: SinglePane>(app: &mut App, change: Change, tx: &mut Tx) -
     true
 }
 
+/// A modal layer opened over the view: the pane's pointer gesture ends.
+pub(crate) fn end_gestures<V: SinglePane>(app: &mut App) {
+    V::single_mut(app).pane.parts_mut().1.end_gestures();
+}
+
 /// Hands the browser what the view changed since it last agreed with it.
 pub(crate) fn publish<V: SinglePane>(app: &mut App) {
     let browser = app.browser.clone();

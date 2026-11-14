@@ -284,6 +284,9 @@ pub(crate) struct View<S: 'static> {
     /// shows one folder.
     pub(crate) returns: Option<fn(&S) -> bool>,
     pub(crate) pointer_at: Option<PointerAt<S>>,
+    /// Ends the pointer's gestures in every collection the view shows: a modal layer opened
+    /// over it, as GTK's grab ends them (`shell::poll`).
+    pub(crate) end_gestures: fn(&mut S),
     pub(crate) rows: Rows<S>,
     pub(crate) editing: Editing<S>,
     #[cfg(feature = "qa")]

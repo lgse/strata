@@ -77,6 +77,7 @@ impl Part for Icons {
         apply: single::apply::<Self>,
         returns: None,
         pointer_at: None,
+        end_gestures: single::end_gestures::<Self>,
         rows: single::rows::<Self>(),
         editing: single::editing::<Self>(),
         #[cfg(feature = "qa")]

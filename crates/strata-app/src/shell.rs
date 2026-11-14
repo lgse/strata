@@ -97,6 +97,8 @@ pub(crate) struct Window {
     /// Where each folder was left, one memory for the single-pane views, as GTK's one
     /// history ([`pane::Memory`]).
     restore: pane::Memory,
+    /// Whether a modal layer was open at the last poll ([`grab`]).
+    grab: grab::Grab,
 }
 
 /// The window's own share of an event: the columns or the active one changed, so the window
@@ -211,6 +213,7 @@ impl App {
             thumbnails,
             folder_views,
             restore: pane::Memory::default(),
+            grab: grab::Grab::default(),
         };
         Self::assemble(look, browser, window, built)
     }
@@ -786,6 +789,7 @@ pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if !app.window.events.is_empty() {
         ran |= settle(app, tx);
     }
+    grab::follow(app);
     ran
 }
 
@@ -856,5 +860,6 @@ pub(crate) fn live_keys(app: &App) -> &Live {
     live
 }
 
+mod grab;
 #[cfg(test)]
 mod tests;

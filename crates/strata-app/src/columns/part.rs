@@ -45,6 +45,7 @@ impl Part for Columns {
         apply,
         returns: Some(|app| app.columns.mirrors()),
         pointer_at: Some(|app, at| app.columns.pointer_at(at)),
+        end_gestures: |app| app.columns.end_gestures(),
         rows: Rows {
             position: |app, (depth, id)| app.columns.position(depth, id),
             neighbour: |app, (depth, id), step| app.columns.neighbour(depth, id, step),
