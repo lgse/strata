@@ -639,6 +639,14 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    accessible name GTK lacks and nothing more. Should it be unnamed, as GTK's is? Source:
    A10, 2026-11-14.
 
+3. **Where the search-root rule lives** (ruled by the coordinator on 2026-11-14; the owner
+   may reopen it). Ctrl+K searches Home and the mounted local drives, by GTK's rule in
+   `src/ui/window/devices.rs` (`search_roots`, `local_device_roots`, `MountRoot::local_path`
+   and `MountListing::has_own_row`). Since nothing under `src/ui` moves, the Rune side ports
+   it into `crates/strata-app/src/palette/roots.rs`, with GTK's unit cases, and the two copies
+   must now change together. Should the rule move to a shared crate later, with GTK calling
+   it? Source: A10, 2026-11-14.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
