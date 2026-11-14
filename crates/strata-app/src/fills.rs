@@ -164,6 +164,12 @@ impl Fills {
         }
     }
 
+    /// Which rows are asked their details now: the next poll asks the range again.
+    pub(crate) fn set_details(&mut self, details: Details) {
+        self.details = details;
+        self.fresh = true;
+    }
+
     /// The view's visible range changed. Nothing is asked until the next poll.
     pub(crate) fn see(&mut self, range: Range<usize>) {
         if range != self.range {

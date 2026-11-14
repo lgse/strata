@@ -15,7 +15,10 @@ use strata_components::{
     contract::{EntryId, EntrySource},
 };
 
-use crate::listing::{Column, Words};
+use crate::{
+    details,
+    listing::{Column, Words},
+};
 
 /// The open columns, root first, and the words for what a row is.
 pub(super) struct Listings {
@@ -111,6 +114,15 @@ impl ColumnSources for Listings {
             return None;
         }
         self.columns.get(depth + 1)?.from()
+    }
+
+    /// GTK's size badge (`column_size_text`, `entry_size` in `src/ui/browser_modes`): a
+    /// folder's item count, a file's size, or none while the browser does not know it.
+    fn badge(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
+        let column = self.columns.get(depth)?;
+        let row = column.row_of(column.id_at(index))?;
+        let text = details::size_cell(row.is_folder(), row.facts());
+        (!text.is_empty()).then_some(Cow::Owned(text))
     }
 
     fn description(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {

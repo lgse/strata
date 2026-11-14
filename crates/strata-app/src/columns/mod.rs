@@ -138,6 +138,12 @@ impl Columns {
         }
     }
 
+    /// "Show sizes in Columns view" changed: the open columns ask for their folders' counts,
+    /// or stop. The badges follow the saved setting at the next build.
+    pub(crate) fn show_sizes(&mut self, show: bool) {
+        self.fills.show_sizes(show);
+    }
+
     /// Whether the selection's folder opens as the child column: the saved choice.
     pub(crate) fn mirrors(&self) -> bool {
         self.mirror.enabled()

@@ -12,7 +12,7 @@ use strata_components::{
 use strata_core::i18n::tr;
 
 use super::intents;
-use crate::{App, commands, filter, pane_header, rename, surface};
+use crate::{App, commands, filter, pane_header, rename, shell, surface};
 
 /// The view's words, translated once: the language changes only on restart.
 pub(super) struct Labels(ColumnsLabels);
@@ -68,6 +68,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
         },
     )
     .labels(app.columns.labels.0.clone())
+    // "Show sizes in Columns view", read at each build: the popover's row changes it live.
+    .show_sizes(|app: &App| shell::preferences(app).columns_show_sizes)
     .collection(|app, depth, collection| {
         let collection = collection
             .empty(move |app: &App| shown_status(app, depth))
