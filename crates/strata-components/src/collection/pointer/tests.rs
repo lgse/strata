@@ -1022,6 +1022,28 @@ fn a_secondary_press_selects_an_unselected_entry_and_keeps_a_selection_it_lands_
     ));
 }
 
+/// Strata's search and filter results keep an anchor of their own, which a right-click
+/// never sets (`interactions.anchor` in `src/ui/inline_search/collection.rs`): with
+/// `secondary_keeps_no_anchor` on, a Shift+click after a right-click with no anchor selects
+/// its entry alone, and an anchor there was still stays (finding lgse/strata#2375).
+#[test]
+fn a_secondary_press_can_leave_a_missing_anchor_missing() {
+    let results = PointerSettings::default().secondary_keeps_no_anchor(true);
+    let mut r = Rig::new(results);
+    r.down_with(Button::Secondary, Some(1), Spot::Content, PLAIN);
+    assert_eq!(r.selected(), [1]);
+    assert_eq!(r.f.sel.cursor(), Some(id(1)));
+    assert_eq!(r.f.sel.anchor(), None);
+    r.wait(1.0).click(3, Spot::Content, SHIFT);
+    assert_eq!(r.selected(), [3]);
+
+    let mut anchored = Rig::new(results);
+    anchored.select(&[2]);
+    let anchor = anchored.f.sel.anchor();
+    anchored.down_with(Button::Secondary, Some(6), Spot::Content, PLAIN);
+    assert_eq!(anchored.f.sel.anchor(), anchor);
+}
+
 #[test]
 fn ctrl_shift_ranges_by_the_setting() {
     // browser/selection: Shift+click selects every entry from the range anchor to the clicked entry.

@@ -434,17 +434,21 @@ impl Selection {
     /// does, and leaves an anchor there was where it was: the selection a context menu opens
     /// on, which Strata makes without moving the Shift anchor (`focus_context_entry`, finding
     /// lgse/strata#2355). With no anchor, the anchor goes to the entry, as Strata's selection
-    /// takes the cursor for one it lacks (`set_selection` in `strata-fs`).
+    /// takes the cursor for one it lacks (`set_selection` in `strata-fs`), unless
+    /// `missing_stays`: Strata's search results keep an anchor of their own, which a
+    /// right-click never sets (finding lgse/strata#2375).
     pub(crate) fn select_only_keeping_anchor<S: EntrySource + ?Sized>(
         &mut self,
         source: &S,
         index: usize,
+        missing_stays: bool,
     ) -> Changed {
-        let Some(anchor) = self.anchor else {
+        let anchor = self.anchor;
+        if anchor.is_none() && !missing_stays {
             return self.select_only(source, index);
-        };
+        }
         let mut changed = self.select_only(source, index);
-        self.anchor = Some(anchor);
+        self.anchor = anchor;
         changed.anchor = false;
         changed
     }

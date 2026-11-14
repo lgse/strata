@@ -193,3 +193,64 @@ fn rename_field(host: &crate::host::offscreen::Offscreen) -> Option<String> {
     });
     Some(crate::test_support::view::text(fields.first()?, "value"))
 }
+
+/// GTK's results keep an anchor of their own, which a right-click never sets: with none, the
+/// next Shift+click selects the clicked result alone (finding lgse/strata#2375).
+fn a_right_click_leaves_the_results_without_an_anchor(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let names = ["a1.txt", "a2.txt", "a3.txt", "a4.txt", "b.md"];
+        let folder = crate::test_support::folder_of(&names);
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, Key::Text("f".to_owned()), ctrl());
+        type_text(&mut host, "a");
+        wait(&mut host, case.shape, "the four results", |seen| {
+            seen.names().len() == 4
+        });
+
+        let menu = crate::test_support::view::right_click(&mut host, case.shape, "a1.txt");
+        assert_eq!(menu.as_deref(), Some("a1.txt"), "no menu on the result");
+        press(&mut host, Key::Escape, Mods::default());
+        shift_click(&mut host, case, "a3.txt");
+
+        assert_eq!(seen(&host, case.shape).selected, ["a3.txt"]);
+    });
+}
+
+/// A click on the result named `name` with Shift held.
+fn shift_click(host: &mut crate::host::offscreen::Offscreen, case: &Case, name: &str) {
+    let tree = host.tree();
+    let results = crate::test_support::view::all(&tree, &|node| {
+        node["role"] == case.shape.entry && node["name"] == name
+    });
+    let bounds = &results.first().expect("the result")["bounds"];
+    let at = |index: usize| bounds[index].as_f64().expect("a bound");
+    #[expect(clippy::cast_possible_truncation, reason = "window points")]
+    let (x, y) = ((at(0) + at(2) / 2.0) as f32, (at(1) + at(3) / 2.0) as f32);
+    let shift = crate::test_support::view::shift();
+    host.runtime()
+        .physical_input(rune::PhysicalInput::Modifiers(shift));
+    crate::test_support::view::idle(host);
+    host.runtime().pointer_move(x, y);
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    host.runtime()
+        .physical_input(rune::PhysicalInput::Modifiers(Mods::default()));
+    crate::test_support::view::idle(host);
+}
+
+#[test]
+fn a_right_click_leaves_the_tiles_without_an_anchor() {
+    a_right_click_leaves_the_results_without_an_anchor(
+        &ICONS,
+        "filter::a_right_click_leaves_the_tiles_without_an_anchor",
+    );
+}
+
+#[test]
+fn a_right_click_leaves_the_rows_without_an_anchor() {
+    a_right_click_leaves_the_results_without_an_anchor(
+        &LIST,
+        "filter::a_right_click_leaves_the_rows_without_an_anchor",
+    );
+}

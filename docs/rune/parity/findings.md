@@ -842,10 +842,10 @@ sequence only together with the alphabet's version, so the version is part of th
   - In a filtered Columns column both select `a1.txt` to `a3.txt`: GTK's Columns branch does
     anchor the right-clicked result. No divergence there.
 - **Concerns:** the results of the filter in Icons and List; no scenario steps through it.
-- **State:** open, [A10](packages/A10.md)'s (search, filter and sort). The way out is C1e's: a
-  setting that lets a collection's secondary press leave a missing anchor missing, which the
-  pane's results turn on. That is a component's behaviour, so a `contract` change, put to the
-  coordinator; until then the pane's results anchor as the browser's views do.
+- **State:** fixed, by [A10](packages/A10.md)'s `contract` pull request PRNUMBER: C1e's
+  `PointerSettings::secondary_keeps_no_anchor`, off by default, leaves a missing anchor
+  missing on a secondary press, and the pane's results turn it on
+  (`single::tests::filter::a_right_click_leaves_the_*_without_an_anchor`).
 
 ### #2379: Shift+Tab from a Columns column stops on its header's actions on GTK, on the sidebar on Rune
 
