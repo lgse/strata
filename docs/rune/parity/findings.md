@@ -1131,6 +1131,37 @@ sequence only together with the alphabet's version, so the version is part of th
   `appearance::tests::popover::group_by_file_type_regroups_the_list_and_hidden_files_shows_them`.
   The sequence joins the `views` corpus unparked with the alphabet's pull request.
 
+### #2422: the folder menu's Select All over filter results selects the hidden listing on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2422), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A10](packages/A10.md), asked by #2416's review, GTK driven in List and Icons
+  (`./scripts/qa-drive.sh`): with a filter's results in the place of the pane's listing, the
+  results' empty-space menu's Select All (`state.select_all`, `folder_menu.rs`, which outside
+  Columns is `browser.select_all`) selects every entry of the hidden listing and no result;
+  Escape then gives the listing back all selected. Ctrl+A in the results selects the results
+  (`select_all_search_results`) and leaves the listing alone.
+- **Concerns:** the filter in Icons and List; no scenario steps through it.
+- **State:** open, set aside. Rune's pane menu does as GTK does (`single::rows`' `select_all`)
+  until the owner rules on it; Ctrl+A in the results is C1e's own key and selects them on
+  both.
+
+### #2423: Tab in a rename on a filter result moves the hidden listing's cursor on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2423), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A10](packages/A10.md), asked by #2416's review, GTK driven in List and Icons
+  (`./scripts/qa-drive.sh`). With the pane's filter results showing, Tab or Shift+Tab in a
+  rename on a result commits it, and then `advance_rename` (`inline_edit.rs`) moves the
+  browser's cursor (`move_selection`) in the listing under the results. No editor shows
+  there, and the renamed result keeps the keyboard, as `renamed-filter-result-keeps-focus`'s
+  `tab` runs expect. When the filter closes, the listing's cursor has moved one entry from
+  where it was before the filter, and its selection has gone.
+- **Concerns:** the filter in every view; the scenario checks the result only.
+- **State:** open, set aside. Rune's Tab on a result only commits (`rename::advance` asks
+  `filter::targets` first), and the browser's selection from before the filter stays: the
+  scenario's visible behaviour, without the hidden move.
+
 ### #2420: closing a filter restores a load-cursor mark the browser no longer has on Rune
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2420), filed on

@@ -142,3 +142,28 @@ fn focused_field(host: &Offscreen) -> bool {
                 .is_some_and(|states| states.iter().any(|state| state == "focused"))
         })
 }
+
+/// After a view switch kept the filter, Escape in its field closes it, and no part holds
+/// the keyboard as a filter any more.
+#[test]
+fn escape_after_a_view_switch_releases_the_filters_hold() {
+    hosted(
+        MODULE,
+        "filter::escape_after_a_view_switch_releases_the_filters_hold",
+        |mut host| {
+            let _folder = filtered_to_photo(&mut host);
+            press(&mut host, "ctrl+2");
+            let switched = host.run_until(PATIENCE, |host| {
+                seen(host).panes.is_empty() && focused_field(host)
+            });
+            assert!(switched, "Icons has no focused filter field");
+            assert_eq!(<Filter as Part>::keyboard(host.app()), Some(Holds::Filter));
+
+            press(&mut host, "Escape");
+
+            let closed = host.run_until(PATIENCE, |host| fields(host).is_empty());
+            assert!(closed, "the filter stayed: {:?}", fields(&host));
+            assert_eq!(<Filter as Part>::keyboard(host.app()), None);
+        },
+    );
+}
