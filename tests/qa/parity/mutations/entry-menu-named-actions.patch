@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/menus.rs b/crates/strata-app/src/menus.rs
+index c5682e731..b14748f20 100644
+--- a/crates/strata-app/src/menus.rs
++++ b/crates/strata-app/src/menus.rs
+@@ -458,7 +458,7 @@ fn single(target: &EntryTarget<'_>) -> MenuModel {
+         .section(section(&[(GROUP, true)], typing))
+         .section(open)
+         .section(section(
+-            &[(CUT, true), (COPY, true), (DUPLICATE, true), (RENAME, true)],
++            &[(COPY, true), (CUT, true), (DUPLICATE, true), (RENAME, true)],
+             typing,
+         ))
+         .section(section(&[(MOVE_TO, true), (COPY_TO, true)], typing))

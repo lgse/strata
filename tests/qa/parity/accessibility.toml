@@ -6,65 +6,57 @@
 scenario = "appearance-options-expose-chosen"
 run = "columns-icons"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "appearance-options-expose-chosen"
 run = "columns-hidden"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "empty-directory-focus-and-tab-order"
 run = "columns-keyboard"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "empty-directory-focus-and-tab-order"
 run = "icons-keyboard"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "empty-directory-focus-and-tab-order"
 run = "list-keyboard"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "empty-directory-focus-and-tab-order"
 run = "columns-pointer"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "empty-directory-focus-and-tab-order"
 run = "icons-pointer"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "empty-directory-focus-and-tab-order"
 run = "list-pointer"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "fields-and-sliders-named"
@@ -72,7 +64,7 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A10: Ctrl+K's search palette (line 9); then A6: the F1 reference, Connect to server and the Compress dialog"
 
 [[run]]
 scenario = "fields-and-sliders-named"
@@ -80,31 +72,28 @@ run = "icons"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A10: Ctrl+K's search palette (line 9); then A6: the F1 reference"
 
 [[run]]
 scenario = "focus-order-reaches-files"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "focus-order-reaches-files"
 run = "icons"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "focus-order-reaches-files"
 run = "list"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "icon-only-buttons-named"
@@ -118,17 +107,15 @@ blocker = "A6"
 scenario = "icon-only-buttons-named"
 run = "icons"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "icon-only-buttons-named"
 run = "list"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "listing-names-descriptions-selection"
@@ -160,7 +147,7 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A17: the Properties dialog on Alt+Return (line 4)"
 
 [[run]]
 scenario = "settings-choice-buttons-expose-value"
