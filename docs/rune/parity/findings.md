@@ -1658,6 +1658,6 @@ sequence only together with the alphabet's version, so the version is part of th
   Rename row's labels at line 20).
 - **State:** the coordinator ruled on 2026-11-14 that C19's table stays; the owner may reopen
   it ([`owner.md`](owner.md#a6-menus-dialogs-and-keymap)). Both runs are `parallel` under
-  `a11y` twins from [A6](packages/A6.md)'s pull request for the reference, which find the
+  `a11y` twins from [A6](packages/A6.md)'s [#2471](https://github.com/lgse/strata/pull/2471), which find the
   reference by its dialog's name, read the rows' cells, and search to bring the media rows
   into the tree.
