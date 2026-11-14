@@ -437,7 +437,9 @@ pub(crate) const fn rows<V: SinglePane>() -> Rows<App> {
             None => V::single_mut(app).pane.select_only(depth, id),
         },
         // Select All in a single pane is the browser's (`select_all` in
-        // `src/ui/browser/view_state.rs`): the view adopts it.
+        // `src/ui/browser/view_state.rs`): the view adopts it. GTK's does so under a filter's
+        // results too, where the listing it selects is not shown (finding lgse/strata#2422); Ctrl+A
+        // in the results is their own key.
         select_all: |app, depth| app.browser.select_all(depth),
         reveal: reveal_row::<V>,
     }
