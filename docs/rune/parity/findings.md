@@ -1143,8 +1143,11 @@ sequence only together with the alphabet's version, so the version is part of th
     the drag and stays open; Rune's closes, and the keyboard goes nowhere. This is a
     divergence of its own (a drag across an open menu), and not as local as the hidden
     sidebar.
-  - Seed `0x0e`: Unpin of the focused row. Neither target's next keys show an effect, and
-    GTK's QA snapshot does not say where its keyboard is, so no difference has been shown.
+  - Seed `0x0e`: Unpin of the focused row. Driven on GTK (`qa-drive.sh`, 2026-11-14): Left
+    into the sidebar, the Menu key, Unpin on `Home`. GTK draws the keyboard's ring on the next
+    row, `Trash`; Down then moves it to `Network`, and the Menu key opens `Network`'s menu.
+    On Rune no element has the keyboard. So the divergence stands: GTK gives the keyboard to
+    the row after the one that went.
 - **State:** the hidden sidebar fixed by [F3](packages/F3.md)'s
   [#2409](https://github.com/lgse/strata/pull/2409): the toggle gives the shown view the keyboard when it hides the sidebar with the
   keyboard in it (`sidebar/width.rs`), held by
