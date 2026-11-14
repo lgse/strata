@@ -842,7 +842,7 @@ sequence only together with the alphabet's version, so the version is part of th
   - In a filtered Columns column both select `a1.txt` to `a3.txt`: GTK's Columns branch does
     anchor the right-clicked result. No divergence there.
 - **Concerns:** the results of the filter in Icons and List; no scenario steps through it.
-- **State:** fixed, by [A10](packages/A10.md)'s `contract` pull request PRNUMBER: C1e's
+- **State:** fixed, by [A10](packages/A10.md)'s `contract` pull request [#2428](https://github.com/lgse/strata/pull/2428): C1e's
   `PointerSettings::secondary_keeps_no_anchor`, off by default, leaves a missing anchor
   missing on a secondary press, and the pane's results turn it on
   (`single::tests::filter::a_right_click_leaves_the_*_without_an_anchor`).
