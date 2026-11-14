@@ -260,7 +260,13 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
     ))
     .name(tr(filter::pane::SEARCH_RESULTS))
     .settings(single.keys.clone())
-    .settings(PointerSettings::default().modes(single.clicks))
+    // GTK's results keep an anchor of their own, which a right-click never sets
+    // (finding lgse/strata#2375).
+    .settings(
+        PointerSettings::default()
+            .modes(single.clicks)
+            .secondary_keeps_no_anchor(true),
+    )
     .marks(filter::pane::marks)
     .empty(filter::pane::status)
     .on_intent(filter::pane::heard)
