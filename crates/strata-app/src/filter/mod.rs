@@ -73,14 +73,14 @@ mod descent;
 mod hits;
 pub(crate) mod pane;
 mod place;
-mod session;
+pub(crate) mod session;
 mod switch;
 pub(crate) mod targets;
 mod typing;
 
 use pane::PaneHits;
 use place::Where;
-use session::{Batch, Input, Session};
+use session::{Batch, Input, Scope, Session};
 
 #[cfg(test)]
 mod tests;
@@ -381,13 +381,13 @@ fn search(app: &mut App, text: &str) {
         .column_preferences(open.depth)
         .unwrap_or_else(|| app.browser.preferences())
         .show_hidden;
+    let recursive = preferences.filter_include_subfolders;
     let input = Input {
-        root,
+        scope: Scope::Folder { root, recursive },
         show_hidden,
-        recursive: preferences.filter_include_subfolders,
     };
     let limits = limits(preferences);
-    app.filter.pane.recursive = input.recursive;
+    app.filter.pane.recursive = recursive;
     let later = app.filter.later.clone();
     app.filter
         .session
@@ -397,7 +397,7 @@ fn search(app: &mut App, text: &str) {
 }
 
 /// `search_limits` in `src/ui/preferences/input_settings.rs`: zero is no limit.
-fn limits(preferences: &strata_desktop::settings::Preferences) -> SearchLimits {
+pub(crate) fn limits(preferences: &strata_desktop::settings::Preferences) -> SearchLimits {
     SearchLimits {
         time_budget: (preferences.search_time_limit != 0)
             .then(|| Duration::from_secs(u64::from(preferences.search_time_limit))),
@@ -663,6 +663,17 @@ fn toggled(app: &mut App, depth: usize, tx: &mut Tx) {
 /// A new item in column `depth`: GTK empties the column's filter first, so the new row is
 /// not hidden (`begin_new_entry_inner`).
 pub(crate) fn clear_for_new_item(app: &mut App, depth: usize, tx: &mut Tx) {
+    empty_at(app, depth, tx);
+}
+
+/// A reveal in column `depth`, such as the search palette's: GTK empties the column's filter
+/// first, so the revealed entry shows (`prepare_reveal` in `src/ui/browser/events/reveal.rs`).
+pub(crate) fn clear_for_reveal(app: &mut App, depth: usize, tx: &mut Tx) {
+    empty_at(app, depth, tx);
+}
+
+/// Empties the filter's query when it is open in column `depth`.
+fn empty_at(app: &mut App, depth: usize, tx: &mut Tx) {
     let here = app
         .filter
         .open_in

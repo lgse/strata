@@ -34,25 +34,22 @@ host = "offscreen"
 scenario = "global-search-arrows-keep-typing"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "global-search-finds-file-under-home"
 run = "columns-us"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "global-search-finds-file-under-home"
 run = "columns-ru-only"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "global-search-preview-follows-neighbor"
@@ -60,23 +57,21 @@ run = "columns"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A15: the preview drawer, at `preview` on line 15"
 
 [[run]]
 scenario = "global-search-reveal-visited-list"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "global-search-reveal"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "grouped-list-first-visit-starts-at-first-row"

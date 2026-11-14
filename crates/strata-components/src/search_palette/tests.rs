@@ -510,3 +510,66 @@ fn an_option_holds_its_name_and_its_path_as_labels() {
         "the option's name and full path are labels"
     );
 }
+
+/// A host that turns the middle click off, and hears every intent.
+struct QuietHost {
+    look: Look,
+    palette: PaletteState,
+    heard: Vec<PaletteIntent>,
+}
+
+fn quiet_view(h: &QuietHost, _cx: &mut Cx<QuietHost>) -> El {
+    let mut layer = Vec::new();
+    SearchPalette::new(
+        "p",
+        |h: &QuietHost| &h.palette,
+        |h: &mut QuietHost| &mut h.palette,
+    )
+    .middle_click_opens(false)
+    .on_intent(|h: &mut QuietHost, intent, _| h.heard.push(intent))
+    .build(&h.look, h, &mut layer);
+    rune_kit::root(rune::col().w_full().h_full(), layer)
+}
+
+// Strata's palette rows take no middle click: with `middle_click_opens(false)` it opens
+// nothing, and the palette stays open with its query and highlight.
+#[test]
+fn a_middle_click_opens_nothing_when_the_host_turns_it_off() {
+    let mut palette = PaletteState::new();
+    let g = query(&palette.open(search())).generation;
+    let _ = palette.set_query("re");
+    let host = QuietHost {
+        look: Look::fallback(false),
+        palette,
+        heard: Vec::new(),
+    };
+    let mut rt = Runtime::new(host, quiet_view, (960.0, 640.0), Env::new(false, 1.0));
+    rt.update(|h, _| {
+        let _ = h.palette.deliver(
+            Answer::new(g + 1, items(&["report.md", "readme.md"])),
+            &mut Tx::default(),
+        );
+    });
+    rt.frame(1.0 / 60.0);
+    let row = rt
+        .elements()
+        .into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some(option_key("p", 1).as_str()))
+        .expect("the second option");
+    let [x, y, w, h] = row.visible;
+    rt.button_down(x + w / 2.0, y + h / 2.0, rune::PointerButton::Middle);
+    rt.button_up(x + w / 2.0, y + h / 2.0, rune::PointerButton::Middle);
+    rt.frame(1.0 / 60.0);
+    let state = &rt.state.palette;
+    assert!(state.is_open(), "the palette stays open");
+    assert_eq!(state.edit.text, "re", "its query stays");
+    assert_eq!(state.highlighted(), Some(0), "its highlight stays");
+    assert!(
+        !rt.state
+            .heard
+            .iter()
+            .any(|intent| matches!(intent, PaletteIntent::Open { .. })),
+        "nothing opens: {:?}",
+        rt.state.heard
+    );
+}
