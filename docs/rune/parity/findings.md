@@ -1392,11 +1392,20 @@ sequence only together with the alphabet's version, so the version is part of th
   input moves the cursor or the selection, and a single pane that shows it off its first row
   moves it there (`pane::Memory`, `single::first_visit`). The parked sequence is in the corpus
   unparked.
-- **Remaining, by GTK's code, not driven:** a first visit in a grouped List, then Ctrl+1.
-  GTK's Columns, with no cursor in the browser, rings its first row, `notes.txt`; Rune's shows
-  the browser's `spreadsheet.csv`. Fixing it gives Columns' active column the same rule, a
-  `contract` change in `columns/`.
-- **State:** open, A8's, for the Columns case.
+- **Remaining in Columns, driven on GTK** (`./scripts/qa-drive.sh`, 2026-11-14): in List with
+  "Group by file type" on, a double click on `documents` (the first visit: the ring on
+  `spreadsheet.csv`, nothing selected), then Ctrl+1, then Down.
+  - Ctrl+1: GTK's Columns rings its first row, `notes.txt`, nothing selected; Rune's shows the
+    browser's `spreadsheet.csv`.
+  - Down: GTK's selects `notes.txt` in place, the ring staying on it, since its browser holds
+    no cursor and a cursorless column's first key picks its first row; GTK's List, whose
+    widget has a focus row of its own, moves on instead.
+  - Matching it needs both halves: the single panes' rule for Columns' active column, and the
+    first key selecting the cursor's row in place while the mark holds, key handling in
+    `columns/`, possibly with a hook in C2's keyboard. The rule alone would only move the
+    difference to the next key. Left by the coordinator's ruling of 2026-11-14, for its narrow
+    path.
+- **State:** fixed in List and Icons; the Columns residual is open.
 
 ### #2422: the folder menu's Select All over filter results selects the hidden listing on GTK
 
