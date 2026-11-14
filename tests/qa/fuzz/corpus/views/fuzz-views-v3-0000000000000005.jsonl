@@ -1,0 +1,12 @@
+{"scenario":"fuzz-views-v3-0000000000000005","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"Down"}
+{"key":"ctrl+period"}
+{"key":"Down"}
+{"key":"Down"}
+{"key":"ctrl+period"}
+{"key":"ctrl+period"}
+{"key":"Down"}
+{"key":"Up","when":{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"radio menu item","name":"List"},"when":{"present":{"role":"radio menu item","name":"List"}}}
+{"key":"shift+Up","when":{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}}

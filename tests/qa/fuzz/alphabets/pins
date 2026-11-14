@@ -22,3 +22,10 @@ list v3 53cac7ac7cdfa46c
 # tests/qa/fuzz/corpus/location.
 location v2 c074595ff2aab0b4
 sidebar v1 4acfcd20a194fff5
+# views: versions 1 and 2 were A8's drafts, never merged: version 1's smoke tier met the plain
+# popover's app.dialog (lgse/strata#2405), Up off a first row, and #2386, since fixed;
+# version 2's, with the Up guard, met lgse/strata#2408, parked in tests/qa/fuzz/corpus/views.
+# Version 3 kept Right off the empty archive; its smoke tier met lgse/strata#2410 (fixed),
+# #2411, #2412, #2414 and #2415, parked there too. Version 4 keeps Icons off the vertical
+# arrows, and Escape, Alt+Up and Alt+Left to the panes.
+views v4 210c390e3e8d5f35

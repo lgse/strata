@@ -1,0 +1,7 @@
+{"scenario":"fuzz-views-v4-000000000000000f","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"Home"}
+{"key":"Escape","when":{"focused_pane":true}}
+{"key":"ctrl+2"}
+{"key":"Escape","when":{"focused_pane":true}}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}}]}}
+{"key":"alt+Left","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}

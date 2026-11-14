@@ -1,0 +1,8 @@
+{"scenario":"fuzz-views-v4-0000000000000002","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"Up","when":{"all":[{"not":{"view_mode":"Icons"}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}]}}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
+{"key":"shift+Up","when":{"all":[{"not":{"view_mode":"Icons"}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}]}}
+{"key":"ctrl+3"}
+{"key":"shift+Up","when":{"all":[{"not":{"view_mode":"Icons"}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}]}}

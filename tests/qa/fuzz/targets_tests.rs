@@ -27,6 +27,7 @@ fn entry(field: &str, code: &str) -> Entry {
         field: field.to_owned(),
         code: code.to_owned(),
         issue: "lgse/strata#1".to_owned(),
+        only: None,
     }
 }
 

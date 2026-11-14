@@ -1,0 +1,10 @@
+{"scenario":"fuzz-views-v4-000000000000000e","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+3"}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"check menu item","name":"Group by file type"},"when":{"all":[{"view_mode":"List"},{"present":{"role":"check menu item","name":"Group by file type"}}]}}
+{"key":"ctrl+2"}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}}]}}
+{"key":"alt+Up","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}}]}}
+{"key":"ctrl+3"}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}
