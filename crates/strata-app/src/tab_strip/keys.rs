@@ -3,7 +3,7 @@
 //! The tab commands, as GTK's `TabWindow::handle_key` reads them: at the window's first
 //! stage, from anywhere but a modal layer (the registry cuts the stage there), each taking
 //! its key whether or not it did anything. `tab-new` is the header's and the strip's New
-//! tab too.
+//! tab too. `open-in-tab` is read later, from the listing (`open.rs`).
 
 use rune::Tx;
 use strata_desktop::keys::{
@@ -109,4 +109,5 @@ pub(super) const COMMANDS: &[Action<App>] = &[
         reads: Reads::Digits(TAB_NUMBERS),
         when: |_, _| true,
     }]),
+    super::open::OPEN_IN_TAB,
 ];

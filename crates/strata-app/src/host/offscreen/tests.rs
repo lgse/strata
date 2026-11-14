@@ -74,7 +74,7 @@ fn a_launch_opens_its_directory_and_titles_the_window_for_it() {
                 (Some(nested.as_os_str()), nested.clone(), "Reports — Strata"),
                 (Some("Reports".as_ref()), nested.clone(), "Reports — Strata"),
                 (Some(uri.as_ref()), nested.clone(), "Reports — Strata"),
-                (None, home.clone().into(), "home — Strata"),
+                (None, home.clone().into(), "~ — Strata"),
             ];
             for (argument, directory, title) in cases {
                 host.app().open(Location::local(folder.path()));

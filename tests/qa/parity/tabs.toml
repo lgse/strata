@@ -6,17 +6,15 @@
 scenario = "breadcrumb-opens-new-tab"
 run = "columns"
 package = "A4"
-status = "pending"
-reason = "scope"
-blocker = "A4"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "breadcrumb-opens-new-tab"
 run = "list"
 package = "A4"
-status = "pending"
-reason = "scope"
-blocker = "A4"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "ctrl-drop-on-tab-copies"

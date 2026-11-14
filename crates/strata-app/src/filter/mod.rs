@@ -122,8 +122,11 @@ pub(crate) struct Filter {
     typed: String,
     /// The query a `/` was typed over, until its results settle and its first match opens.
     descent: Option<String>,
-    /// A `/` opened a folder: the field takes the keyboard back once its column is there.
+    /// A `/` opened a folder, or the tab came back with the keyboard in the field: the field
+    /// takes the keyboard back once its column is there.
     refocus: Refocus,
+    /// The field had the keyboard when the tab was hidden.
+    back_to_field: bool,
     /// Counts the columns the filter opened in, for the bar's key.
     serial: u64,
     /// Counts the edits waiting for the debounce and the stops: a wait that ends after a later
@@ -791,6 +794,7 @@ impl Part for Filter {
             typed: String::new(),
             descent: None,
             refocus: Refocus::No,
+            back_to_field: false,
             serial: 0,
             edits: 0,
             debounce: Rc::default(),
@@ -845,6 +849,14 @@ impl Part for Filter {
 
     fn switched(app: &mut App, tx: &mut Tx) {
         switch::follow(app, tx);
+    }
+
+    fn tab_hidden(app: &mut App, tx: &mut Tx) {
+        switch::tab_hidden(app, tx);
+    }
+
+    fn tab_shown(app: &mut App, _: &mut Tx) {
+        switch::tab_shown(app);
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
