@@ -355,7 +355,7 @@ pane name) where the check reads a pane.
 | `{"entry":"a.txt","dir":...}`, `{"entry_gone":"a.txt"}` | The entry is listed, or no longer. |
 | `{"focused":"a.txt"}` | The focused entry's name; `true` for any, `null` for none; `{"one_of":[...]}`. |
 | `{"focused_pane":true}`, `{"focused_in_matches":true}` | A pane holds focus; the focused name is among the matches. |
-| `{"matches":NAMES,"dir":...}` | The search results, else the pane's entries. |
+| `{"matches":NAMES,"dir":...}` | A filter's search results, else the pane's entries. A list named "Search results" inside a dialog, such as the Rune search palette's, is not one. |
 | `{"visible":NAMES,"dir":...}`, `{"visible_top":NAMES}` | Rows wholly inside the pane's viewport; rows a `visible_top` note listed. |
 | `{"scroll_value":{"at_least":N},"dir":...}` | The pane's first showing scroll bar's value. |
 | `{"view_mode":"Icons"}`, `{"window_width":420}` | The first pane's presentation; the window's width. |
@@ -559,7 +559,8 @@ The `app` keys are exactly these:
   `{"name","text","caret","selection","focused"}` (`selection` is
   `[start, end]` or null), or null. Caret and selection come from
   `gtk::Editable`, so they are the offsets AT-SPI's text interface reports.
-- `matches`: the deepest pane's search results, or else its entries.
+- `matches`: the deepest pane's search results, or else its entries. A list named
+  "Search results" inside a dialog (the Rune search palette's) is not a pane's.
 
 The snapshot, every target, and the input log belong to the window the run
 started with; reach a floating chooser through a `toplevel` target.
