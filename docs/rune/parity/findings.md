@@ -1585,6 +1585,6 @@ sequence only together with the alphabet's version, so the version is part of th
   the run passes.
 - **Concerns:** `executable-requires-confirmation/columns` (line 9), and any double-click
   soon after a dialog over the view closes.
-- **State:** fixed by [A6](packages/A6.md)'s #PRA: a part that starts answering
+- **State:** fixed by [A6](packages/A6.md)'s [#2461](https://github.com/lgse/strata/pull/2461): a part that starts answering
   `Holds::Modal` ends the shown view's pointer gestures (`shell/grab.rs`), as GTK's grab
   does, and `executable-requires-confirmation/columns` is `required`.
