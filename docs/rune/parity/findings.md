@@ -1116,4 +1116,3 @@ sequence only together with the alphabet's version, so the version is part of th
   the regroup (`appearance/popover.rs`), held by
   `appearance::tests::popover::group_by_file_type_regroups_the_list_and_hidden_files_shows_them`.
   The sequence joins the `views` corpus unparked with the alphabet's pull request.
-
