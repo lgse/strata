@@ -1084,7 +1084,11 @@ sequence only together with the alphabet's version, so the version is part of th
   `undo::tests::an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry` saw its
   undo answer `Declined` where it expects `Ran` (`crates/strata-app/src/undo/tests.rs:156`).
   The branch did not touch undo. Alone, the test passed.
-- **Concerns:** those two tests, [A7](packages/A7.md)'s undo.
+  A third, outside undo, seen in the review of the same pull request: in the full lane at a
+  load average of 13 to 20,
+  `sidebar::tests::the_arrows_move_along_the_header_and_down_returns_to_the_sidebar` failed
+  twice; alone, it passed 3 of 3. It has no owner.
+- **Concerns:** those three tests: the two of [A7](packages/A7.md)'s undo, and the sidebar's.
 - **What it suggests:** a hypothesis, by reading only, not verified: the test presses the redo
   chord once the undone name is back on disk, and the operation's completion may not have
   reached the undo stack by then, so the redo finds nothing to redo.
