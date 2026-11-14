@@ -1299,8 +1299,11 @@ sequence only together with the alphabet's version, so the version is part of th
   the stale position back over the one the user left.
 - **Concerns:** the view switch ([A8](packages/A8.md)'s). The sequences are parked in
   `tests/qa/fuzz/corpus/views/`.
-- **State:** open, A8's: a fix is one memory for the window's single-pane views, kept by the
-  shell, and no remembering on a rebuild, in a pull request of its own.
+- **State:** fixed by [A8](packages/A8.md): one memory for the window's single-pane views, held
+  by the shell (`pane::Memory`), and nothing remembered while a view shown again is rebuilt.
+  `appearance::tests::a_folder_comes_back_by_back_where_another_view_left_it` and
+  `a_folder_comes_back_by_the_parent_where_another_view_left_it` hold it. Its four sequences
+  are no longer parked: the corpus replay holds them to agreeing on both targets.
 
 ### #2426: Escape with nothing selected closes the deepest column on GTK
 
