@@ -1732,7 +1732,7 @@ sequence only together with the alphabet's version, so the version is part of th
     [106](../upstream/rune/106-quiet-layout-loses-a-move.md).
 - **Concerns:** `tabs/reopen-closed-tabs/columns` (required), and any click in a tab just
   opened.
-- **State:** fixed in strata-app by A4's pull request: a new tab's sidebar starts before its
+- **State:** fixed in strata-app by [#2478](https://github.com/lgse/strata/pull/2478): a new tab's sidebar starts before its
   first frame (`Sidebar::tab_shown`), so the files never lay out at x=0. 30 of 30 runs pass
   loaded and 30 of 30 unloaded. The Rune gap stays: any other move laid out while feedback is
   quiet can still lose its `on_layout` report.
