@@ -974,8 +974,11 @@ sequence only together with the alphabet's version, so the version is part of th
   `calibration v3` shows it in three steps: launch, Return on `archive`, a file written into
   the root.
 - **What a user sees:** nothing found. Delete, rename and open act on the browser's
-  selection, which is right; the view's flag decides only a 10xer verb's targets
-  (`Selection::targets`), and Rune has no 10xer yet.
+  selection, which is right. The view's flag decides a 10xer verb's targets
+  (`Selection::targets`), and Rune has no 10xer yet. `Selection::move_cursor` reads it too,
+  for the Ctrl+Left and Ctrl+Right nudge and the 10xer moves, but a move happens in the
+  column that has the keyboard, which is the active one, and so never in a column the flag
+  was lost in. The conclusion stands.
 - **Concerns:** seed `0x03` of `columns v3` and seed `0x07` of `calibration v3`, parked
   until the fix.
 - **State:** fixed by [F3](packages/F3.md)'s [#2398](https://github.com/lgse/strata/pull/2398). `events::marks` reads each
