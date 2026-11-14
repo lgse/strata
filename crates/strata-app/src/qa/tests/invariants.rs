@@ -100,6 +100,35 @@ fn a_column_left_with_its_load_cursor_keeps_it() {
     );
 }
 
+/// The browser reports a column's marks again while another is active, here for a file
+/// written into the root after Return opened `archive`: the root keeps its load cursor in
+/// the view as in the browser (finding lgse/strata#2386; seed 0x07 of `calibration v3`).
+#[test]
+fn a_column_keeps_its_load_cursor_when_its_folder_changes_while_another_is_active() {
+    shown_in(
+        "columns",
+        "a_column_keeps_its_load_cursor_when_its_folder_changes_while_another_is_active",
+        |backend, kept| {
+            passes(backend, kept, &json!({ "wait": { "focused": "archive" } }));
+            passes(backend, kept, &json!({ "key": "Return" }));
+            passes(
+                backend,
+                kept,
+                &json!({ "wait": { "directory": "archive" } }),
+            );
+            let root = backend.browser().location_at(0).expect("the root");
+            let root = root.native_path().expect("a local folder").to_owned();
+            std::fs::write(root.join("fuzz-a.txt"), "fuzz\n").expect("a file behind the window");
+            passes(
+                backend,
+                kept,
+                &json!({ "wait": { "present": { "entry": "fuzz-a.txt" } } }),
+            );
+            assert_eq!(failed(backend, kept), json!([]));
+        },
+    );
+}
+
 /// The browser given a Shift anchor the view does not hold, as a handover that lost one
 /// leaves it (findings lgse/strata#2354 and lgse/strata#2355): after a reload the view takes
 /// the browser's, and a Shift range starts from an entry the user did not anchor.
