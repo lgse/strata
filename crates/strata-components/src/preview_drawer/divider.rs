@@ -174,16 +174,16 @@ pub(super) fn overlays<S: 'static>(
     look: &Look,
 ) -> Vec<El> {
     let k = &look.kit;
+    let colors = look.resize_caption();
     let caption = |key: &'static str| {
         text(shared.labels.divider.clone())
             .key(key)
             .font(k.ty.small)
-            .color(k.c.text_base)
+            .color(colors.ink)
             .px(look.space.sm)
             .py(look.space.xxs)
             .radius(look.round(k.radius.sm))
-            .fill(k.c.surface_float)
-            .border(1.0, k.c.border_muted)
+            .fill(colors.fill)
     };
     let mut out = Vec::new();
     if st.hint && !st.dragging {
