@@ -14,8 +14,9 @@
 //!   listing when it closes.
 //! - **The start** (`run_program`). The program starts in its own folder, with no input and
 //!   its output dropped, under the environment Strata was started with
-//!   (`child_environment::restore_command`). A thread waits for it, so it never lingers as a
-//!   zombie. If it cannot start, "Unable to run program" says why.
+//!   (`child_environment::restore_command`). It starts on a thread of its own, which then
+//!   waits for it, so it never lingers as a zombie (`spawn_reaped`). If it cannot start,
+//!   "Unable to run program" says why, once the thread has answered.
 //!
 //! Left out, with what brings each back:
 //!
@@ -24,11 +25,13 @@
 //!   asks. The lookup, and opening every other file, are A14's
 //!   (`docs/rune/parity/packages/A14.md`).
 //! - **A shell script (`.sh`)**, which GTK runs in a terminal (`program_command`): the
-//!   terminal is A14's. Here Run on one starts nothing and logs why.
+//!   terminal is A14's. Here Run on one starts nothing and says "Unable to run program",
+//!   "Unable to open terminal", until A14 replaces it with the terminal.
 
 use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::mpsc,
 };
 
 use rune::Tx;
@@ -45,7 +48,7 @@ use crate::{
     commands::{Action, Call, Holds, On, Outcome},
     error_dialog::{self, Error},
     shell,
-    slots::{At, Frame, Listener, Part, Place, Setup},
+    slots::{At, Frame, Later, Listener, Part, Place, Setup},
 };
 
 /// The program a confirmation asks about.
@@ -57,6 +60,7 @@ struct Asked {
 }
 
 pub(crate) struct Run {
+    later: Later<App>,
     /// The confirmation, kept after it closes for its closing motion.
     asked: Option<Asked>,
     open: bool,
@@ -66,8 +70,9 @@ pub(crate) struct Run {
 impl Part for Run {
     const PLACE: Place<App> = Place::Dialogs(build);
 
-    fn new(_: &Setup<'_>) -> Self {
+    fn new(setup: &Setup<'_>) -> Self {
         Self {
+            later: setup.later.clone(),
             asked: None,
             open: false,
             opened: 0,
@@ -161,33 +166,54 @@ fn confirmed(app: &mut App) {
     let Some(path) = app.run.asked.as_ref().map(|asked| asked.path.clone()) else {
         return;
     };
-    if let Err(error) = start(&path) {
-        tracing::warn!(%error, "unable to run program");
-        error_dialog::show(
-            app,
-            Error::new(tr("Unable to run program"), error.to_string()),
-        );
-    }
-}
-
-/// `program_command` and `spawn_reaped`: starts the program and waits for it on a thread
-/// of its own.
-fn start(path: &Path) -> std::io::Result<()> {
-    if is_shell_script(path) {
+    if is_shell_script(&path) {
         tracing::warn!(
             path = %path.display(),
             "a shell script runs in a terminal, which this interface does not open yet"
         );
-        return Ok(());
+        failed(app, tr("Unable to open terminal"));
+        return;
     }
-    let mut child = program_command(path).spawn()?;
+    let later = app.run.later.clone();
+    if let Err(error) = start(&path, later) {
+        failed(app, error.to_string());
+    }
+}
+
+/// "Unable to run program", with why.
+fn failed(app: &mut App, detail: String) {
+    tracing::warn!(%detail, "unable to run program");
+    error_dialog::show(app, Error::new(tr("Unable to run program"), detail));
+}
+
+/// `program_command` and `spawn_reaped`: the program starts on a thread of its own, which
+/// then waits for it. Nothing runs when the thread cannot start; a start that fails on it
+/// comes back through GLib, and `later` shows it.
+fn start(path: &Path, later: Later<App>) -> std::io::Result<()> {
+    let mut command = program_command(path);
+    let (answer, answered) = mpsc::channel();
     std::thread::Builder::new()
         .name("process-reaper".into())
-        .spawn(move || {
-            if let Err(error) = child.wait() {
-                tracing::warn!(%error, pid = child.id(), "unable to reap child process");
+        .spawn(move || match command.spawn() {
+            Ok(mut child) => {
+                let _ = answer.send(Ok(()));
+                if let Err(error) = child.wait() {
+                    tracing::warn!(%error, pid = child.id(), "unable to reap child process");
+                }
+            }
+            Err(error) => {
+                let _ = answer.send(Err(error.to_string()));
             }
         })?;
+    glib::MainContext::default().spawn_local(async move {
+        let started = gio::spawn_blocking(move || answered.recv()).await;
+        if let Ok(Ok(Err(detail))) = started {
+            later.then(move |app: &mut App, _: &mut Tx| {
+                failed(app, detail);
+                true
+            });
+        }
+    });
     Ok(())
 }
 
