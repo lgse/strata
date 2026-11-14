@@ -1097,7 +1097,7 @@ sequence only together with the alphabet's version, so the version is part of th
   keyboard in it (`sidebar/width.rs`), held by
   `sidebar::tests::hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view`.
   The drag and Unpin cases are open, their seeds parked in `tests/qa/fuzz/corpus/sidebar/`
-  by F3's third pull request.
+  by F3's [#2432](https://github.com/lgse/strata/pull/2432).
 
 ### #2407: the location bar's hierarchy menu holds no keyboard on Rune
 
