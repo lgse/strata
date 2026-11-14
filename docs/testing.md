@@ -1091,7 +1091,7 @@ blocker = "A1"
 | `package` | Every entry | The work package that owns the run: an id of the parity plan (`A7`, `H4`), or the slice's package that took the run to `required` (`V7` for gate G1, `V8` for G2, `V9` for G3). "Who owns a run", below, says which |
 | `gate` | The Columns runs of the slice's seven folders, and no other | `G1`, `G2` or `G3`: what `slice`, `g1`, `g2` and `g3` select (`docs/rune/slice/README.md`) |
 | `status` | Every entry | `required`, `parallel`, `pending` or `excluded` |
-| `host` | A `required` entry; a `parallel` or `pending` one may name it | `offscreen`, the Rune host every required run uses today, or `session`, a real window in a headless compositor. On a `parallel` entry it is the host the twin runs on, `offscreen` when it names none. On a `pending` entry it says which host the run will need, and nothing asks for it |
+| `host` | A `required` entry; a `parallel` or `pending` one may name it | `offscreen`, the Rune host most required runs use, or `session`, a real window in a headless compositor ("The session host", below). On a `parallel` entry it is the host the twin runs on, `offscreen` when it names none. On a `pending` entry it says which host the run will need, and nothing asks for it |
 | `exception`, `twin`, `ref` | A `parallel` entry | The exception the run stands under, the twin's run that stands in for it on Rune (`<scenario>-rune/<run>`), and the exception's record. "Twins", below |
 | `reason`, `blocker` | A `pending` entry | Why the run does not pass on Rune yet, and what someone can act on |
 | `ruling` | An `excluded` entry | The owner ruling that left the run out |
@@ -1101,8 +1101,7 @@ edit neighbouring entries merge without a conflict.
 
 - `status = "required"`: passes on both targets, and `qa-parity.sh` runs it. A
   run moves here only once it has passed on both, three times running, in the
-  pinned image. `qa-parity.sh` refuses a selection with a required run on the
-  `session` host until it can start that host.
+  pinned image. On Rune it runs on the host its entry names.
 - `status = "parallel"`: the shared file cannot pass on Rune under a named
   exception, and a twin beside it does. It carries the `exception`, the
   `twin` and the `ref`, and `qa-parity.sh` runs it with the required runs:
@@ -1120,6 +1119,28 @@ edit neighbouring entries merge without a conflict.
 - `status = "excluded"`: left out of the migration by an owner ruling, which
   `ruling` cites. It runs on GTK only. The nine `visual_baselines` runs are
   the only ones, and a unit test holds the list to them.
+
+#### The session host
+
+A run whose entry says `host = "session"` needs what the offscreen host lacks:
+window focus, the system clipboard, drags through a compositor. On Rune
+`qa-parity.sh` runs it in a batch of its own on the runner's private headless
+sway (`STRATA_QA_DISPLAY=wayland`, above under "Wayland and input methods"),
+where `strata-rune --qa` opens its window and serves the protocol from it
+(`STRATA_QA_WINDOW=1`, which the runner sets on that display;
+`crates/strata-app/src/qa/session.rs`). Input crosses the compositor through
+Wayland's virtual keyboard and pointer, on the US layout only. The run takes
+the same file on GTK, on Xvfb as every GTK run does.
+
+```bash
+./scripts/qa-parity.sh A8                   # each Rune run on the host its entry names
+./scripts/qa-parity.sh A8 --host session    # every Rune run of A8 on the session host
+```
+
+`--host session` runs a selection's Rune runs there whatever host their
+entries name, to see whether an offscreen run also passes in a real window.
+`mise run test-platform window::qa` drives the same host outside the image,
+in W3's private session.
 
 #### Who owns a run
 
