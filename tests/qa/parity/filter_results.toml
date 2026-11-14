@@ -252,7 +252,7 @@ run = "columns-one-click"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "Opening a file (`BrowserEvent::OpenRequested`), which no package ports yet, at line 13"
+blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
 
 [[run]]
 scenario = "filtered-file-click-previews"
