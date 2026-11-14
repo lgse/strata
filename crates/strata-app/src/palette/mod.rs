@@ -23,7 +23,7 @@
 //!   `reveal_location` does. The palette's field reads Alt+Return itself (C17's reveal
 //!   chord): Rune's single-line field takes Return with any modifier, so the window's
 //!   commands never hear it there. A keymap that binds `open_containing_folder` to another
-//!   key is not followed yet (`docs/rune/parity/packages/A10.md`, "Open").
+//!   key is not followed yet, as GTK's is (finding lgse/strata#2470).
 //! - **No new tab:** GTK's palette takes neither Ctrl+Return nor a middle click (driven), so
 //!   the palette is given no new-tab chord and its middle click is off.
 //!
