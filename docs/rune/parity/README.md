@@ -700,7 +700,7 @@ Checkpoints are where the owner looks at the numbers.
 | Checkpoint | Passes when |
 | --- | --- |
 | End of wave 0 | H1 lists 760 runs, each with a package. B1 is merged. Two GTK runs of one fuzz seed agree |
-| End of wave 1 | Icons and List pass the slice's folders. The Columns fuzz pilot is clean. One drag run and one clipboard run pass on the session host |
+| End of wave 1 | Icons and List pass the slice's folders. The Columns fuzz pilot is clean. One drag run passes on the session host; the clipboard run is [A12](packages/A12.md)'s, by the owner's ruling of 2026-11-14 |
 | End of wave 2 | No `scope` run is left outside wave 3's folders. Every merged area has its alphabet in the long-run tier |
 | End of wave 3 | Drag and clipboard round trips with a second process pass on the session host. A portal open and save pass on `strata-rune` |
 | Exit | The six criteria below |
@@ -796,8 +796,10 @@ Three remain. The first two wait on what the gaps turn out to be.
 - **No coordinator.** The owner delegates each package by hand. The coordinator's duties go
   to the package agents and to tasks the owner hands out, and there is no stale-claim timer.
 - **Golden images on Rune.** Not in scope. The planned package for Rune visual baselines,
-  H6, is dropped, and the test image gets no software Vulkan driver. The 9
-  `visual_baselines` runs are `excluded`: they run on GTK only.
+  H6, is dropped. The test image has a software Vulkan driver, lavapipe, for the session host
+  only, by the owner's ruling of 2026-11-14 ([`owner.md`](owner.md#ruled)): Rune golden
+  images stay out of scope. The 9 `visual_baselines` runs are `excluded`: they run on GTK
+  only.
 
 ## Issue map
 

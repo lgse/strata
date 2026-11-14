@@ -460,11 +460,14 @@ never validation evidence, and must be recorded in the handoff with the
 container run it replaced. The QA runner is not wired into
 `scripts/test-headless.py`.
 
-### Wayland and input methods (host runs)
+### Wayland and input methods
 
-Two optional parts of a host run reproduce bugs the pinned image cannot reach,
-such as input-method composition (issue #1715). Neither is validation evidence,
-and the pinned image has neither sway nor fcitx5.
+Two optional parts of a run reproduce bugs Xvfb cannot reach, such as
+input-method composition (issue #1715). The pinned image has sway, Xwayland
+and lavapipe, a software Vulkan driver, for the Rune target's session host
+("The session host", below, by the owner's ruling of 2026-11-14), and no
+fcitx5 and no `grim`. So for the GTK application the Wayland display is a host
+run's, and neither part is validation evidence there.
 
 - `STRATA_QA_DISPLAY=wayland` gives every run a private headless sway
   (`WLR_BACKENDS=headless`, no input devices, no XWayland, software rendering)
@@ -475,7 +478,8 @@ and the pinned image has neither sway nor fcitx5.
   where the window-manager-less X display leaves it, and `screenshot` uses
   `grim`. `layout` steps other than `us` and pixel sampling (pixel
   predicates and drop samples) are X11-only and fail with a message. It needs
-  `sway`, `swaymsg`, and `grim`.
+  `sway` and `swaymsg`, and `grim` for a screenshot. strata-rune serves from a
+  real window there (`STRATA_QA_WINDOW=1`, which the display sets).
 - A header's `"input_method": "<name>"` (with `session_bus`) starts a private
   fcitx5 on the run's display and bus, with a profile holding the US keyboard
   and that input method; Ctrl+Space switches to it. Choose the toolkit path
