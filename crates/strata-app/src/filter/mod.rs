@@ -40,7 +40,7 @@ use strata_components::{
 };
 use strata_core::{
     i18n::{count, tr},
-    model::Location,
+    model::{FileEntry, Location},
 };
 use strata_desktop::keys::{
     Keys as KeyLabels, Map,
@@ -60,6 +60,7 @@ use crate::{
 mod descent;
 mod hits;
 mod session;
+pub(crate) mod targets;
 mod typing;
 
 use session::{Batch, Input, Session};
@@ -95,8 +96,8 @@ pub(crate) struct Filter {
     state: FilterState,
     open_in: Option<OpenIn>,
     session: Session,
-    /// Each result's location, and whether it is a folder, by its id.
-    found: HashMap<EntryId, (Location, bool)>,
+    /// Each result's entry, by its id: what a command acts on ([`targets`]).
+    found: HashMap<EntryId, FileEntry>,
     /// The field's text after its last edit: what tells a `/` typed into it.
     typed: String,
     /// The query a `/` was typed over, until its results settle and its first match opens.
@@ -105,6 +106,9 @@ pub(crate) struct Filter {
     refocus: Refocus,
     /// Counts the columns the filter opened in, for the bar's key.
     serial: u64,
+    /// Counts the edits waiting for the debounce and the stops: a wait that ends after a later
+    /// one began, or after the filter stopped, searches nothing.
+    edits: u64,
     debounce: Rc<RefCell<Option<glib::SourceId>>>,
     later: Later<App>,
     ids: Ids,
@@ -177,8 +181,12 @@ fn route(app: &mut App, polled: Polled, tx: &mut Tx) {
 
 /// Opens the filter in the targeted column, empty or on `query`: Ctrl+F, the toggle, a key
 /// typed in the listing. False where there is no column to open it in.
+fn in_columns(app: &App) -> bool {
+    shell::shown_view(app).is_some_and(|view| (view.shows)("columns"))
+}
+
 fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
-    if !shell::shown_view(app).is_some_and(|view| (view.shows)("columns")) {
+    if !in_columns(app) {
         return false;
     }
     let depth = app.columns.targeted();
@@ -297,12 +305,19 @@ fn schedule(app: &mut App, text: String) {
     if let Some(earlier) = app.filter.debounce.borrow_mut().take() {
         earlier.remove();
     }
+    // A batch for an older text is no answer from now on, as GTK's `expect_query` makes it.
+    app.filter.session.expect(&text);
+    app.filter.edits += 1;
+    let edit = app.filter.edits;
     let later = app.filter.later.clone();
     let waiting = app.filter.debounce.clone();
     let source = glib::timeout_add_local_once(DEBOUNCE, move || {
         waiting.borrow_mut().take();
         later.then(move |app: &mut App, _: &mut Tx| {
-            search(app, &text);
+            // Queued before a later edit, or before the filter stopped: not this text's turn.
+            if app.filter.edits == edit {
+                search(app, &text);
+            }
             false
         });
     });
@@ -353,7 +368,8 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
     let (Some(open), true) = (app.filter.open_in.clone(), app.filter.state.is_open()) else {
         return false;
     };
-    if batch.generation != app.filter.session.generation() {
+    let current = app.filter.state.text().trim() == batch.query;
+    if batch.generation != app.filter.session.generation() || !current {
         return false;
     }
     let items = eligible(app, &batch);
@@ -364,8 +380,8 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
     app.filter.found = items
         .iter()
         .map(|item| {
-            let (location, folder) = hits::target_of(item);
-            (app.filter.ids.of(&location), (location, folder))
+            let entry = hits::entry_of(item);
+            (app.filter.ids.of(&entry.location), entry)
         })
         .collect();
     let mut hits = Column::new(open.folder.clone(), true, None);
@@ -416,6 +432,7 @@ fn stop(app: &mut App) {
     if let Some(waiting) = app.filter.debounce.borrow_mut().take() {
         waiting.remove();
     }
+    app.filter.edits += 1;
     app.filter.session.cancel();
     app.filter.found.clear();
     app.filter.descent = None;
@@ -488,13 +505,13 @@ pub(crate) fn open_hit(app: &mut App, depth: usize, id: EntryId) {
     if open.is_none_or(|open| open.depth != depth) {
         return;
     }
-    let Some((location, folder)) = app.filter.found.get(&id).cloned() else {
+    let Some(entry) = app.filter.found.get(&id).cloned() else {
         return;
     };
-    if folder {
-        app.browser.navigate(location);
+    if entry.is_directory() {
+        app.browser.navigate(entry.location);
     } else {
-        app.browser.open_location(location);
+        app.browser.open_location(entry.location);
     }
 }
 
@@ -513,14 +530,14 @@ pub(crate) fn hit_intent(
         }
         // One click opens a folder among the results whatever the click settings, as GTK's
         // "filtered folders keep one-click open" (`filtered_click_kind`); a file's preview is
-        // A15's. A click closes no column, and a result is not renamed in place yet.
+        // A15's. A click closes no column. A slow second click renames as on any row, the
+        // rename finding the result through [`targets`].
         Intent::Clicked { id } => {
-            if app.filter.found.get(id).is_some_and(|(_, folder)| *folder) {
+            if app.filter.found.get(id).is_some_and(FileEntry::is_directory) {
                 open_hit(app, depth, *id);
             }
             true
         }
-        Intent::BeginRename { .. } => true,
         _ => false,
     }
 }
@@ -687,6 +704,7 @@ impl Part for Filter {
             descent: None,
             refocus: Refocus::No,
             serial: 0,
+            edits: 0,
             debounce: Rc::default(),
             later: setup.later.clone(),
             ids: setup.ids.clone(),
@@ -736,6 +754,13 @@ impl Part for Filter {
             when: types_to_search,
         }]),
     ];
+
+    // The field is drawn in Columns only, for now: in another view it holds no keyboard.
+    fn switched(app: &mut App, _: &mut Tx) {
+        if !in_columns(app) {
+            app.filter.state.edit.focused = false;
+        }
+    }
 
     fn keyboard(app: &App) -> Option<Holds> {
         app.filter.state.field_focused().then_some(Holds::Filter)

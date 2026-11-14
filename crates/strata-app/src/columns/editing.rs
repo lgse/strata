@@ -38,7 +38,7 @@ impl Columns {
         tx: &mut Tx,
     ) -> Option<Polled> {
         let scope = self.scope(depth)?;
-        let column = self.listings.columns.get(depth)?;
+        let column = self.listings.shown(depth)?;
         let index = column.index_of(id)?;
         let entry = column.entry(index);
         let polled = editor.begin(&scope, id, entry.name, entry.kind, Initial::Stem);
@@ -51,8 +51,7 @@ impl Columns {
 
     /// Scrolls the row of entry `id` in column `depth` into view, just far enough.
     pub(crate) fn reveal_row(&self, (depth, id): (usize, EntryId), tx: &mut Tx) {
-        let (Some(scope), Some(column)) = (self.scope(depth), self.listings.columns.get(depth))
-        else {
+        let (Some(scope), Some(column)) = (self.scope(depth), self.listings.shown(depth)) else {
             return;
         };
         if let (Some(index), Some(state)) = (column.index_of(id), self.state.column(depth)) {
@@ -67,7 +66,7 @@ impl Columns {
             return Polled::default();
         };
         let parts = self.depth_of(&scope).and_then(|depth| {
-            let column = self.listings.columns.get(depth)?;
+            let column = self.listings.shown(depth)?;
             Some((column, &self.state.column(depth)?.collection))
         });
         match parts {

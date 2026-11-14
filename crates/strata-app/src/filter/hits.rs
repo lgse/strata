@@ -27,8 +27,3 @@ pub(super) fn entry_of(item: &SearchItem) -> FileEntry {
         recent_uri: None,
     }
 }
-
-/// Where result `item` is, and whether opening it navigates there.
-pub(super) fn target_of(item: &SearchItem) -> (Location, bool) {
-    (Location::local(item.path.clone()), item.is_directory)
-}

@@ -281,6 +281,17 @@ fn begin_focused(app: &mut App, tx: &mut Tx) -> bool {
         return false;
     }
     new_item::cancel(app);
+    // While a filter's results show, F2 renames the result under their cursor, and nothing
+    // when none is (`begin_rename` asks `selected_search_result` first).
+    if crate::filter::targets::selected(app).is_some() {
+        return match crate::filter::targets::under_cursor(app) {
+            Some((depth, entry)) => {
+                let naming = naming_of(&entry);
+                open(app, depth, entry, naming, tx)
+            }
+            None => false,
+        };
+    }
     match app.browser.rename_item() {
         Some((depth, _, entry)) => {
             let naming = naming_of(&entry);
@@ -297,11 +308,20 @@ pub(crate) fn begin_on(app: &mut App, depth: usize, id: EntryId, tx: &mut Tx) {
         return;
     }
     new_item::cancel(app);
-    let position = host(app).and_then(|view| (view.rows.position)(app, (depth, id)));
-    if let Some(entry) = position.and_then(|position| app.browser.entry_at(depth, position)) {
+    if let Some(entry) = entry_of(app, depth, id) {
         let naming = naming_of(&entry);
         open(app, depth, entry, naming, tx);
     }
+}
+
+/// Entry `id` of column `depth`: a filter's result there, or the browser's entry the view's
+/// row is.
+fn entry_of(app: &App, depth: usize, id: EntryId) -> Option<FileEntry> {
+    if let Some(result) = crate::filter::targets::at(app, depth, id) {
+        return Some(result);
+    }
+    let position = host(app).and_then(|view| (view.rows.position)(app, (depth, id)))?;
+    app.browser.entry_at(depth, position)
 }
 
 /// A folder or file just created, `entry` in column `depth`: the editor opens on it with
@@ -410,8 +430,7 @@ fn advance(app: &mut App, (depth, id): (usize, EntryId), step: isize, tx: &mut T
     if let Some(follow_now) = view.editing.follow_now {
         follow_now(app);
     }
-    let position = (view.rows.position)(app, (depth, next));
-    if let Some(entry) = position.and_then(|position| app.browser.entry_at(depth, position)) {
+    if let Some(entry) = entry_of(app, depth, next) {
         let naming = naming_of(&entry);
         open(app, depth, entry, naming, tx);
     }

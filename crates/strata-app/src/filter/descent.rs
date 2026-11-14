@@ -53,9 +53,10 @@ pub(super) fn finish(app: &mut App, tx: &mut Tx) {
     let Some(id) = app.filter.state.target(results(app)) else {
         return;
     };
-    let Some((folder, true)) = app.filter.found.get(&id).cloned() else {
+    let Some(folder) = app.filter.found.get(&id).filter(|entry| entry.is_directory()) else {
         return;
     };
+    let folder = folder.location.clone();
     app.filter.state.edit.replace_text("");
     let polled = app.filter.state.text_edited(Default::default());
     route(app, polled, tx);

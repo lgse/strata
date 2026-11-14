@@ -143,6 +143,12 @@ impl Session {
         self.listen(receiver, deliver);
     }
 
+    /// The text the field holds now, before its wait ends: a batch for any other query is
+    /// dropped as it arrives (GTK's `expect_query`).
+    pub(crate) fn expect(&self, query: &str) {
+        self.0.query.replace(query.trim().to_owned());
+    }
+
     /// Asks the worker for more candidates of `query`, when the shown results fell short of
     /// the cap after the interface's own checks (`eligible_results`).
     pub(crate) fn more(&self, query: &str, count: usize) {

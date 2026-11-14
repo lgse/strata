@@ -144,5 +144,9 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
 /// Opens the entry of a row as a click on it does: what the context menu's Open asks
 /// (`open_context_entry` in `src/ui/browser/context_menu/item_menu.rs`).
 pub(super) fn clicked_open(app: &mut App, (depth, id): At) {
+    if app.columns.shows_hits(depth) {
+        filter::open_hit(app, depth, id);
+        return;
+    }
     app.activate(depth, id, Activation::Click);
 }
