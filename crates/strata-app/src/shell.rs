@@ -41,6 +41,7 @@ use crate::{
     commands::{self, Live, On},
     events, folder_views,
     location::{self, labels::with_keys},
+    pane,
     settings::Saved,
     slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, ShownView, Slot, View},
     startup::UiThread,
@@ -93,6 +94,9 @@ pub(crate) struct Window {
     thumbnails: ThumbnailStore,
     /// The per-folder views, one store for the process ([`crate::folder_views`]).
     folder_views: folder_views::Kept,
+    /// Where each folder was left, one memory for the single-pane views, as GTK's one
+    /// history ([`pane::Memory`]).
+    restore: pane::Memory,
 }
 
 /// The window's own share of an event: the columns or the active one changed, so the window
@@ -187,6 +191,7 @@ impl App {
             applied: (0, 0),
             thumbnails,
             folder_views,
+            restore: pane::Memory::default(),
         };
         Self::assemble(look, browser, window, built)
     }
@@ -337,6 +342,11 @@ impl Window {
     }
 }
 
+/// Where each folder was left, which the single-pane views share.
+pub(crate) fn restore_memory(app: &App) -> &pane::Memory {
+    &app.window.restore
+}
+
 /// The window's thumbnails, as a view's build reads them.
 pub(crate) fn thumbnails(app: &App) -> &ThumbnailStore {
     &app.window.thumbnails
@@ -382,7 +392,10 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
         .and_then(|_| app.browser.follow_selection_on_return());
     app.window.parts = parts;
     app.window.shown.follow(parts);
+    // What the view showed last before it was switched away is stale: it is not remembered.
+    app.window.restore.set_replaying(true);
     rebuild(app, view, tx);
+    app.window.restore.set_replaying(false);
     let opens = view.returns.is_some_and(|mirrors| mirrors(app));
     if let Some((depth, location)) = child.filter(|_| opens) {
         app.browser.show_child(depth, location);
