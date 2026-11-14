@@ -77,7 +77,9 @@
 //!   the cells of the rows on screen, as Strata measures its bound cells.
 //! - A right-click on the strip opens the columns menu at the pointer;
 //!   [`ListTableState::open_columns_menu`] opens it from elsewhere ("Customize columns…"), and
-//!   [`ListTable::columns_button`] is the pane header's Columns button.
+//!   [`ListTable::columns_button`] is the pane header's Columns button. Their words (the
+//!   button's name, the heading, why Name cannot be hidden, the reset) arrive as data,
+//!   [`ListTable::labels`]; the defaults are English.
 //! - A press on the strip's blank space is the collection's: on empty space at the top of the
 //!   rows, so a drag from it draws a band (C1e's header rule).
 //!
@@ -318,6 +320,35 @@ use crate::contract::EntrySource;
 use crate::scroll::{BarLook, Target, overlay};
 use resolve::{Inputs, Resolved, resolve};
 
+/// The words of the columns menu and its button, which the host translates; the defaults are
+/// English.
+///
+/// Used by: hosts.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ListTableLabels {
+    /// The Columns button's name and help ("Columns").
+    pub button: String,
+    /// The menu's heading ("COLUMNS").
+    pub heading: String,
+    /// Why the primary column's item is disabled. None says "The {title} column cannot be
+    /// hidden" with the column's title.
+    pub fixed: Option<String>,
+    /// The item that restores the default columns ("Reset to default columns").
+    pub reset: String,
+}
+
+impl Default for ListTableLabels {
+    fn default() -> Self {
+        Self {
+            button: "Columns".into(),
+            heading: "COLUMNS".into(),
+            fixed: None,
+            reset: "Reset to default columns".into(),
+        }
+    }
+}
+
 /// What the table reads from the host's state, in one accessor.
 ///
 /// Used by: hosts.
@@ -358,6 +389,7 @@ pub(crate) struct Shared<S> {
     on_layout: Option<LayoutFn<S>>,
     on_widths: Option<WidthsFn<S>>,
     sideways: Vec<SidewaysFn<S>>,
+    labels: Rc<ListTableLabels>,
 }
 
 impl<S> Clone for Shared<S> {
@@ -373,6 +405,7 @@ impl<S> Clone for Shared<S> {
             on_layout: self.on_layout.clone(),
             on_widths: self.on_widths.clone(),
             sideways: self.sideways.clone(),
+            labels: self.labels.clone(),
         }
     }
 }
@@ -415,6 +448,7 @@ impl<S: 'static> ListTable<S> {
                 on_layout: None,
                 on_widths: None,
                 sideways: Vec::new(),
+                labels: Rc::new(ListTableLabels::default()),
             },
         }
     }
@@ -424,6 +458,12 @@ impl<S: 'static> ListTable<S> {
     /// entry, its state or the layout.
     pub fn cells_version(mut self, f: impl Fn(&S, &RowCx<'_>) -> u64 + 'static) -> Self {
         self.shared.cells_version = Some(Rc::new(f));
+        self
+    }
+
+    /// The words of the columns menu and its button, translated.
+    pub fn labels(mut self, labels: ListTableLabels) -> Self {
+        self.shared.labels = Rc::new(labels);
         self
     }
 

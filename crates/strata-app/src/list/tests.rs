@@ -206,5 +206,6 @@ fn tab_carries_a_rename_over_a_group_boundary_in_the_order_shown() {
     });
 }
 
+mod menu;
 mod saved;
 mod thumbs;

@@ -31,6 +31,17 @@ pub(crate) fn taking_return(key: impl Into<String>, button: El) -> El {
     button.key(key)
 }
 
+/// The box `around`, holding the button keyed `key` that a component draws, so it cannot take
+/// [`on_return`]: a plain Return while that button has the keyboard presses it, through the
+/// box's own `on_key`.
+pub(crate) fn on_return_within(key: &'static str, around: El) -> El {
+    #[cfg(test)]
+    tests::taking_return(key);
+    around.on_key(move |_: &mut crate::App, event: &KeyEvent, tx: &mut Tx| {
+        tx.focused() == Some(key) && pressed(event, tx)
+    })
+}
+
 /// What a button's key handler does with `event`: true when it took it.
 pub(crate) fn pressed(event: &KeyEvent, tx: &mut Tx) -> bool {
     if event.key != Key::Enter || event.mods != Mods::default() {
