@@ -1088,7 +1088,12 @@ sequence only together with the alphabet's version, so the version is part of th
   load average of 13 to 20,
   `sidebar::tests::the_arrows_move_along_the_header_and_down_returns_to_the_sidebar` failed
   twice; alone, it passed 3 of 3. It has no owner.
-- **Concerns:** those three tests: the two of [A7](packages/A7.md)'s undo, and the sidebar's.
+  A fourth, in this pull request's own lane at a load average of 33:
+  `sort::tests::a_columns_menu_sorts_its_own_column` said "the inner folder's column" after its
+  30 s wait (`crates/strata-app/src/sort/tests.rs:167`); alone, it passed 3 of 3. It has no
+  owner.
+- **Concerns:** those four tests: the two of [A7](packages/A7.md)'s undo, the sidebar's and
+  the sort's.
 - **What it suggests:** a hypothesis, by reading only, not verified: the test presses the redo
   chord once the undone name is back on disk, and the operation's completion may not have
   reached the undo stack by then, so the redo finds nothing to redo.
