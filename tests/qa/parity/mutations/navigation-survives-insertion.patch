@@ -1,13 +1,23 @@
 diff --git a/crates/strata-app/src/listing.rs b/crates/strata-app/src/listing.rs
-index 23009258a..839e52a4e 100644
+index 23009258a..d82452251 100644
 --- a/crates/strata-app/src/listing.rs
 +++ b/crates/strata-app/src/listing.rs
-@@ -390,7 +390,7 @@ impl Column {
-     /// publishes them; rows anywhere else move the ones after them.
-     fn insert(&mut self, position: usize, rows: Vec<Row>) {
-         // A grouped listing places a row by its type, not at the end.
--        if position < self.rows.len() || self.grouping.is_some() {
-+        if self.grouping.is_some() {
-             self.rows.splice(position..position, rows);
-             self.index();
-             return;
+@@ -369,13 +369,17 @@ impl Column {
+                 }
+             }
+             Edit::Splice(splices) => {
++                let mut removing = false;
+                 for (position, removed, mut rows) in splices {
+                     self.keep_keys(&mut rows);
+                     let start = position.min(self.rows.len());
+                     let end = start.saturating_add(removed).min(self.rows.len());
++                    removing |= removed > 0;
+                     self.rows.splice(start..end, rows);
+                 }
+-                self.index();
++                if removing {
++                    self.index();
++                }
+             }
+             Edit::Refill(updates) => {
+                 for (position, row) in updates {
