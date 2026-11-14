@@ -1113,4 +1113,6 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** the Icons view's keys in an empty folder ([A1](packages/A1.md)'s area). The
   sequence is parked in `tests/qa/fuzz/corpus/views` (`v2-000000000000000c`), and the `views`
   alphabet from v3 keeps Right off `archive`.
-- **State:** open; for the coordinator to place with A1's area.
+- **State:** open, with the owner ([`owner.md`](owner.md#a1-icons-view-and-thumbnails), A1
+  item 11), placed by the coordinator on 2026-11-13: GTK's move looks like its directional
+  focus falling through, so Rune does not copy it meanwhile, and the sequence stays parked.

@@ -425,6 +425,18 @@ the orchestrating session, 2026-11-12):
    same `zoom_shortcut` stage). The coordinator suggests [A6](packages/A6.md) or a window
    package take both, the wheel calling A1's thumbnail commands. Meanwhile: the wheel works
    over the grid only, and the text size does not change on Rune.
+11. **Down in an empty Icons view** (finding
+   [#2408](https://github.com/lgse/strata/issues/2408)). On the canonical fixture, type to
+   search off: Right on `archive` in Columns (the fixture's one empty folder), Ctrl+2, Down.
+   GTK's keyboard leaves the pane for the footer's "F1 Shortcuts" button: driven with
+   `./scripts/qa-drive.sh`, its widget tree's focus line and the focus ring on screen are on
+   that button after the Down, and Alt+Up brings it back. Rune's stays in the pane. GTK's move
+   looks like its directional focus falling through an empty grid rather than a designed
+   behaviour. Should Down in an empty Icons view keep the keyboard in the pane (Rune today,
+   and GTK's move is then a `main` bug), or leave it as GTK does? Meanwhile: Rune's stays, and
+   the sequence is parked (`tests/qa/fuzz/corpus/views`, `v2-000000000000000c`). Source:
+   [A8](packages/A8.md)'s `views` alphabet, 2026-11-13, placed by the coordinator; A1 is
+   closed.
 
 ### A2: List view
 
