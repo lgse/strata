@@ -843,7 +843,8 @@ sequence only together with the alphabet's version, so the version is part of th
     anchor the right-clicked result. No divergence there.
 - **Concerns:** the results of the filter in Icons and List; no scenario steps through it.
 - **State:** fixed, by [A10](packages/A10.md)'s `contract` pull request [#2428](https://github.com/lgse/strata/pull/2428): C1e's
-  `PointerSettings::secondary_keeps_no_anchor`, off by default, leaves a missing anchor
+  `PointerSettings::missing_anchor_stays` (named `secondary_keeps_no_anchor` until
+  #2431's fix), off by default, leaves a missing anchor
   missing on a secondary press, and the pane's results turn it on
   (`single::tests::filter::a_right_click_leaves_the_*_without_an_anchor`).
 
@@ -1401,3 +1402,18 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** the view switch's return to Columns ([A8](packages/A8.md)'s). The sequence is
   parked in `tests/qa/fuzz/corpus/views/`.
 - **State:** open, A8's.
+
+### #2431: a Shift+click in pane filter results with no anchor anchors there on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2431), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in #2428's review, by scenario probes on both targets in Icons and List: right-click
+  `a1.txt` in the results, Escape, Shift+click `a3.txt`, Shift+click `a1.txt`. GTK selects
+  `a1.txt` alone; Rune selected `a1.txt` to `a3.txt`. GTK's results keep an anchor of their
+  own, which a press sets to what `pointer_selection` returns, the anchor it was given for a
+  Shift+press (`src/ui/collection_interaction.rs`); C1e's Shift+press with no anchor started
+  one at its entry. In Columns both range.
+- **State:** fixed, by [A10](packages/A10.md)'s `contract` pull request [#2434](https://github.com/lgse/strata/pull/2434), to match GTK
+  by the coordinator's ruling, which the owner may reopen ([`owner.md`](owner.md), A10):
+  C1e's `PointerSettings::missing_anchor_stays` covers a Shift+press as well as a secondary
+  press, and the pane's results turn it on; Columns leaves it off.
