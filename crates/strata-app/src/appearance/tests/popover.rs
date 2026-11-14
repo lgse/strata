@@ -271,7 +271,9 @@ fn the_stepper_changes_the_text_size_and_stays_open() {
 }
 
 /// In List, Group by file type is sensitive: it saves the setting, the List view groups the
-/// folder shown with the cursor where it was, and the popover closes. Hidden files shows them, checked, and closes it.
+/// folder shown with the cursor where it was, and the popover closes with the keyboard on its
+/// button (finding lgse/strata#2410). Hidden files shows them, checked, and closes it the same
+/// way.
 #[test]
 fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
     hosted_with(
@@ -295,6 +297,11 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
             return_on(&mut host, "appearance-group");
             wait_closed(&mut host, "Group by file type");
             assert!(shell::preferences(host.app()).group_by_type);
+            assert_eq!(
+                focused(&mut host).as_deref(),
+                Some(BUTTON),
+                "the keyboard stays on the Appearance button through the regroup, as on GTK"
+            );
             let browser = host.app().browser().clone();
             assert!(
                 browser.shows_type_groups(0),
@@ -320,6 +327,7 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
             return_on(&mut host, "appearance-hidden");
             wait_closed(&mut host, "Hidden files");
             assert!(browser.preferences().show_hidden);
+            assert_eq!(focused(&mut host).as_deref(), Some(BUTTON));
             open_popover(&mut host);
             assert!(row(&host, "appearance-hidden").3, "Hidden files is checked");
         },

@@ -1099,3 +1099,21 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** fixed by [F3](packages/F3.md)'s [#2409](https://github.com/lgse/strata/pull/2409): the part holds
   `Holds::Menu` while the menu is open, held by
   `location::tests::the_hierarchy_menu_holds_the_keyboard_while_it_is_open`.
+
+### #2410: after "Group by file type", GTK's keyboard is on the Appearance button, Rune's in the List
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2410), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet (v3, never merged), shrunk 3 of 3 GTK
+  against Rune from `fuzz-views-v3-0000000000000006`, and first in 7 of its 20 smoke seeds:
+  Ctrl+3, a click on the header's Appearance button, a click on "Group by file type". GTK's
+  popover closes and leaves the keyboard on the Appearance button, as Escape does; Rune's
+  regroup rebuilt the List view, which took the keyboard. `app.focused` is `null` on GTK and
+  the cursor's entry on Rune.
+- **Not the snapshot:** GTK driven (`./scripts/qa-drive.sh`, 2026-11-13): its widget tree's
+  focus line and the focus ring on screen are on the Appearance button after the click.
+- **State:** fixed by [A8](packages/A8.md): the Group row gives the button the keyboard after
+  the regroup (`appearance/popover.rs`), held by
+  `appearance::tests::popover::group_by_file_type_regroups_the_list_and_hidden_files_shows_them`.
+  The sequence joins the `views` corpus unparked with the alphabet's pull request.
+
