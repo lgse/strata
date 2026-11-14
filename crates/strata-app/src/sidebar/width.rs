@@ -32,12 +32,23 @@ pub(super) const TOGGLE: Action<App> = Action::new("toggle-sidebar", stepped)
     )]);
 
 /// One press of the toggle, from what shows: GTK's `SidebarMode::next`.
-fn stepped(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+///
+/// Hiding the sidebar while one of its rows has the keyboard gives the keyboard to the shown
+/// view, where GTK's keys go on reaching the view's selection (finding lgse/strata#2406):
+/// otherwise the key of an element no longer drawn keeps it, and every key goes nowhere.
+fn stepped(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     if !app.sidebar.started {
         super::start(app);
     }
     let step = app.sidebar.state.width.advance();
     shell::saved(app).change(|settings| save(settings, step));
+    let in_sidebar = tx.focused().is_some_and(|key| key.starts_with(super::KEY));
+    if step == Step::Hidden
+        && in_sidebar
+        && let Some(view) = shell::view_focus(app)
+    {
+        tx.focus(view, true);
+    }
     Outcome::Ran
 }
 
