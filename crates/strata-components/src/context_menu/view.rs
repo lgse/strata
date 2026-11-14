@@ -8,6 +8,7 @@
 //! find the surfaces by that order: an El's key can't be read once built.
 //! `layer_order_is_runekits` (tests) fails if a Rune bump changes it.
 
+use std::borrow::Cow;
 use std::rc::Rc;
 
 use rune::{El, Key, KeyEvent, Mods, Tx, el};
@@ -16,6 +17,7 @@ use strata_kit::look::Look;
 
 use super::model::Section;
 use crate::contract::Point;
+use crate::location_bar::elide_middle;
 
 /// Strata's menu corners before roundness (`.item-context-menu`, 9 px).
 pub(super) const RADIUS: f32 = 9.0;
@@ -23,6 +25,20 @@ pub(super) const RADIUS: f32 = 9.0;
 pub(super) const MIN_WIDTH: f32 = 160.0;
 /// The widest a menu grows to show its rows whole; past it, labels end in an ellipsis.
 pub(super) const MAX_WIDTH: f32 = 360.0;
+/// The longest header line drawn whole, in characters; a longer one is shortened in the middle
+/// (Strata's `ITEM_CONTEXT_SUMMARY_MAX_CHARS`, its header labels' `max_width_chars`).
+pub(super) const HEADER_CHARS: usize = 30;
+
+/// A header line as the menu draws it. rune-kit's group labels never shrink or ellipsize, so a
+/// line is cut before it reaches one, or the menu would widen to show it whole.
+fn shown(line: &str) -> Cow<'_, str> {
+    elide_middle(line, HEADER_CHARS)
+}
+
+/// Whether the menu draws a line of `header` shortened.
+fn shortens(header: &[String]) -> bool {
+    header.iter().any(|l| matches!(shown(l), Cow::Owned(_)))
+}
 
 type Select<S> = Rc<dyn Fn(&mut S, &[usize], &mut Tx)>;
 /// Open the submenu at a path: from the pointer (`false`), or from the keys, which then send
@@ -81,8 +97,11 @@ impl<S: 'static> Render<'_, S> {
             .min_width(widths[0]);
         let dismiss = self.on_dismiss.clone();
         menu = menu.on_close(move |s: &mut S| dismiss(s));
-        let mut entries: Vec<MenuEntry> =
-            self.header.iter().cloned().map(MenuEntry::Label).collect();
+        let mut entries: Vec<MenuEntry> = self
+            .header
+            .iter()
+            .map(|l| MenuEntry::Label(shown(l).into_owned()))
+            .collect();
         let body = self.entries(self.sections, &[], self.key, self.open, &mut rows);
         if !entries.is_empty() && !body.is_empty() {
             entries.push(MenuEntry::Separator);
@@ -251,6 +270,11 @@ impl<S: 'static> Render<'_, S> {
         if let Some(name) = name {
             e = e.label(name);
         }
+        // Assistive technology hears a header line the menu shortened whole, as GTK's labels
+        // give theirs.
+        if depth == 0 && shortens(self.header) {
+            e = e.description(self.header.join("\n"));
+        }
         if depth > 0
             && let Some(row) = rows.iter().find(|r| r.path == self.open[..depth])
         {
@@ -377,10 +401,12 @@ pub(super) fn width(look: &Look, header: &[String], sections: &[Section]) -> f32
         ..k.ty.small_medium
     };
     // Rows: 12 pt before, 6 after, 8 between parts. Labels: 12 pt either side.
+    let labels = sections.iter().filter_map(|s| s.label.as_deref());
     let mut w: f32 = header
         .iter()
-        .chain(sections.iter().filter_map(|s| s.label.as_ref()))
-        .map(|l| 24.0 + measure(l, k.ty.small_medium))
+        .map(|l| shown(l))
+        .chain(labels.map(Cow::from))
+        .map(|l| 24.0 + measure(&l, k.ty.small_medium))
         .fold(0.0, f32::max);
     for item in super::model::items(sections) {
         let mut text = measure(&item.label, k.ty.ui_compact);

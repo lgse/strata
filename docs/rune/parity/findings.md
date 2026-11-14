@@ -1001,3 +1001,58 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside, its sequences parked. The fault is `strata-fs`'s, in the
   browser both interfaces share, so GTK has it too: its fix belongs on `main`, from a bug
   issue there, and reaches `strata-next` by merge. The coordinator places it.
+
+### #2397: the "Column width" caption can't be read on the Rune interface
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2397), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the owner, in Columns in a dark theme: resting on or dragging a column's edge
+  showed the caption as a light box whose text could not be seen. C9's divider caption, over
+  the preview drawer's edge and inside its minimum outline, had the same fault. GTK draws both
+  as `.resize-caption` (`src/style.css`): the accent, written in the background
+  (`@strata_accent`, `@strata_bg`), with no border.
+- **Why:** both captions filled with Kit's `surface_float` and wrote in `text_base`. rune-kit's
+  `surface_float` is the palette's foreground, an inverted tooltip surface that its own
+  tooltip pairs with inverse text, and strata-kit leaves it at `from_palette`'s value, so
+  Strata's text sat on a fill of nearly its own colour, in light themes as in dark.
+- **Concerns:** `crates/strata-components/src/columns/column.rs` and
+  `crates/strata-components/src/preview_drawer/divider.rs`; no scenario reads colours.
+- **State:** fixed by [#2400](https://github.com/lgse/strata/pull/2400): both captions take
+  `Look::resize_caption`, Kit's `bg_accent` and `text_inverse` (Strata's accent and
+  background), and draw no border, as GTK does; `columns.caption.border` now defaults to 0.
+
+### #2403: a long file name widens the context menu on the Rune interface
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2403), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the owner: a right-click on a file with a long name opened a menu as wide as the
+  name. GTK's item menu shows the name and the compact path as header labels shortened in the
+  middle past 30 characters (`ITEM_CONTEXT_SUMMARY_MAX_CHARS`, `EllipsizeMode::Middle`, in
+  `src/ui/browser/context_menu/item_options.rs`), so its menu keeps its usual width; the
+  labels keep their whole text for assistive technology.
+- **Why:** C21 draws its header as rune-kit group labels, whose text never shrinks or
+  ellipsizes, and the menu surface takes only a least width, so a header line as wide as the
+  name widened it. The rows were not at fault: their labels already end in an ellipsis.
+- **Concerns:** `crates/strata-components/src/context_menu/view.rs`, so every context menu with
+  a header: the item and multi-selection menus. No scenario names a file that long.
+- **State:** fixed by [#2404](https://github.com/lgse/strata/pull/2404): C21 shortens each header
+  line in the middle at GTK's 30 characters, and when it shortened one, the menu's accessible
+  description gives the header whole. rune-kit's group labels take no truncation, so the cut
+  is made on the string before it reaches one.
+
+### #2401: a `strata-app` undo test failed once under load
+
+- **Code:** none of the plan's: a flaky Rune-side unit test, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2401), filed on 2026-11-13 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in a full `mise run test-rune` for [A8](packages/A8.md)'s "Show sizes in Columns
+  view" gate, while a `./scripts/qa-parity.sh all` build loaded the machine:
+  `undo::tests::a_rename_is_undone_by_its_key_and_redone_by_either_of_redos` said
+  "undo-target still absent" after its 30 s wait (`crates/strata-app/src/undo/tests.rs:59`).
+  The branch did not touch undo. Alone, the test passed 3 of 3.
+- **Concerns:** that test, [A7](packages/A7.md)'s undo.
+- **What it suggests:** a hypothesis, by reading only, not verified: the test presses the redo
+  chord once the undone name is back on disk, and the operation's completion may not have
+  reached the undo stack by then, so the redo finds nothing to redo.
+- **State:** placed by the coordinator, 2026-11-13: unowned flake beside #2322; if it recurs
+  outside load, it goes to whoever next works in undo.
