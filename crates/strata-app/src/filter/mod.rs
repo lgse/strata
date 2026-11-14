@@ -660,6 +660,17 @@ fn toggled(app: &mut App, depth: usize, tx: &mut Tx) {
 /// A new item in column `depth`: GTK empties the column's filter first, so the new row is
 /// not hidden (`begin_new_entry_inner`).
 pub(crate) fn clear_for_new_item(app: &mut App, depth: usize, tx: &mut Tx) {
+    empty_at(app, depth, tx);
+}
+
+/// A reveal in column `depth`, such as the search palette's: GTK empties the column's filter
+/// first, so the revealed entry shows (`prepare_reveal` in `src/ui/browser/events/reveal.rs`).
+pub(crate) fn clear_for_reveal(app: &mut App, depth: usize, tx: &mut Tx) {
+    empty_at(app, depth, tx);
+}
+
+/// Empties the filter's query when it is open in column `depth`.
+fn empty_at(app: &mut App, depth: usize, tx: &mut Tx) {
     let here = app
         .filter
         .open_in
