@@ -101,6 +101,9 @@ pub(crate) struct Pane {
     grouped: bool,
     /// Where each folder was left, for when it shows again.
     restore: Restore,
+    /// The revision a remembered position left the collection at when it came back: handed to
+    /// the browser as no choice ([`handover::hand_back`]), unless the user changed it since.
+    restored: Option<Held>,
 }
 
 /// The groups of `column`'s rows as it shows them: one for each run of a file type, headed by
@@ -142,6 +145,7 @@ impl Pane {
             moving: Moving::default(),
             grouped: false,
             restore: Restore::default(),
+            restored: None,
         }
     }
 
@@ -484,7 +488,8 @@ impl Pane {
 
     /// After the rows changed: the collection catches up with them, and then the browser's
     /// cursor and selection stand, but for a cursor the collection placed itself
-    /// ([`handover::placed`]) and a remembered position that came back ([`restore`]).
+    /// ([`handover::placed`]) and a remembered position that came back ([`restore`]), which
+    /// the browser is then given as no choice.
     fn settle(&mut self, marks: &Marks, tx: &mut rune::Tx) {
         let before = self.collection.selection.cursor();
         let restoring = self.collection.restore_pending();
@@ -495,7 +500,9 @@ impl Pane {
         if restored {
             if let Some(column) = self.shown.and_then(|depth| self.columns.get(depth)) {
                 restore::fall_back(column, &mut self.collection, marks.cursor);
+                restore::keep_provisional(column, &mut self.collection, marks);
             }
+            self.restored = Some(Held::of(&self.collection));
         } else if !handover::placed(before, &self.collection) {
             self.adopt(marks);
         }
@@ -532,7 +539,10 @@ impl Pane {
             column,
             collection: &self.collection,
         };
-        handover::hand_over(&shown, browser, &mut self.held);
+        match self.restored.take() == Some(Held::of(&self.collection)) {
+            true => handover::hand_back(&shown, browser, &mut self.held),
+            false => handover::hand_over(&shown, browser, &mut self.held),
+        }
     }
 
     /// Selects entry `id` of column `depth` alone, with the cursor on it.
