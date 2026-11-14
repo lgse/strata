@@ -3,6 +3,7 @@
 //! Defaults for settings a file omits.
 
 use super::*;
+pub(super) use strata_desktop::window_controls::default_window_buttons_visible as default_window_buttons;
 
 impl Default for Preferences {
     fn default() -> Self {
@@ -27,9 +28,9 @@ impl Default for Preferences {
             tenxer_mode: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
-            window_show_close: true,
-            window_show_minimize: false,
-            window_show_maximize: false,
+            window_show_close: default_window_buttons(),
+            window_show_minimize: default_window_buttons(),
+            window_show_maximize: default_window_buttons(),
             reduce_motion: false,
             element_glow: true,
             file_icon_colors: FileIconColors::default(),

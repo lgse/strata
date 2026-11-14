@@ -15,3 +15,4 @@ use strata_core::{i18n, storage, trusted_command, util};
 pub mod build_info;
 pub mod portal_setup;
 pub mod services;
+pub mod window_controls;

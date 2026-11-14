@@ -57,7 +57,7 @@ use defaults::{
     default_file_clicks, default_folder_clicks, default_frame_density, default_full_volume,
     default_icons_thumbnail_size, default_release_channel, default_search_entry_limit,
     default_search_time_limit, default_sidebar_order, default_sort_direction, default_sort_key,
-    default_video_preview_backend,
+    default_video_preview_backend, default_window_buttons,
 };
 #[cfg(test)]
 use desktop_scale::text_scale_factor_from_xft_dpi;
@@ -165,11 +165,11 @@ pub(in crate::ui) struct Preferences {
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
     show_keybinding_hints: bool,
-    #[serde(default = "default_enabled")]
+    #[serde(default = "default_window_buttons")]
     window_show_close: bool,
-    #[serde(default)]
+    #[serde(default = "default_window_buttons")]
     window_show_minimize: bool,
-    #[serde(default)]
+    #[serde(default = "default_window_buttons")]
     window_show_maximize: bool,
     #[serde(default)]
     reduce_motion: bool,
