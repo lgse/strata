@@ -997,3 +997,19 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside, its sequences parked. The fault is `strata-fs`'s, in the
   browser both interfaces share, so GTK has it too: its fix belongs on `main`, from a bug
   issue there, and reaches `strata-next` by merge. The coordinator places it.
+
+### #2401: a `strata-app` undo test failed once under load
+
+- **Code:** none of the plan's: a flaky Rune-side unit test, labelled `testing`.
+  [Issue](https://github.com/lgse/strata/issues/2401), filed on 2026-11-13 as the finding's
+  reference and closed at once: its state is kept here.
+- **Seen:** in a full `mise run test-rune` for [A8](packages/A8.md)'s "Show sizes in Columns
+  view" gate, while a `./scripts/qa-parity.sh all` build loaded the machine:
+  `undo::tests::a_rename_is_undone_by_its_key_and_redone_by_either_of_redos` said
+  "undo-target still absent" after its 30 s wait (`crates/strata-app/src/undo/tests.rs:59`).
+  The branch did not touch undo. Alone, the test passed 3 of 3.
+- **Concerns:** that test, [A7](packages/A7.md)'s undo.
+- **What it suggests:** by reading only, not verified: the test presses the redo chord once the
+  undone name is back on disk, and the operation's completion may not have reached the undo
+  stack by then, so the redo finds nothing to redo.
+- **State:** open, [A7](packages/A7.md)'s area (closed); for the coordinator to place.
