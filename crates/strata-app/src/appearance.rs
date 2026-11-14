@@ -8,6 +8,8 @@
 //! - **The text size** ([`text_size`]): Ctrl+plus, Ctrl+=, Ctrl+minus and Ctrl+0, saved as
 //!   `text_size`, which the look follows.
 //! - **The Appearance popover** ([`popover`]), from the header's Appearance button.
+//! - **The Frame and Content densities** ([`density`]): the popover's sliders, saved as
+//!   `frame_density` and `browser_density`, which the look follows.
 //!
 //! The view switch's and the text size's commands are the window's own (`commands::own`),
 //! for the popover's rows and the keys alike; the part holds the popover.
@@ -20,6 +22,7 @@ use crate::{
     slots::{Frame, Part, Place, Setup},
 };
 
+pub(crate) mod density;
 mod popover;
 pub(crate) mod text_size;
 pub(crate) mod views;
@@ -28,6 +31,7 @@ pub(crate) use popover::face;
 
 pub(crate) struct Appearance {
     popover: popover::State,
+    density: density::Sliders,
 }
 
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
@@ -41,6 +45,7 @@ impl Part for Appearance {
     fn new(_: &Setup<'_>) -> Self {
         Self {
             popover: popover::State::translated(),
+            density: density::Sliders::translated(),
         }
     }
 

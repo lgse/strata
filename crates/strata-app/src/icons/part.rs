@@ -86,6 +86,7 @@ impl Part for Icons {
             roles: ("grid", "grid-cell"),
             listed: single::listed::<Self>,
             lists: single::lists::<Self>,
+            presented: single::presented::<Self>,
         },
     });
 

@@ -27,10 +27,13 @@ pub(crate) const APP_KEYS: [&str; 10] = [
 /// What an observation holds beside `app`, in the order fields are compared.
 pub(crate) const RESULT: &str = "result";
 pub(crate) const CRITICALS: &str = "criticals";
+/// The invariants a target holds itself to at rest that failed (`docs/testing.md`,
+/// "Invariants").
+pub(crate) const INVARIANTS: &str = "invariants";
 pub(crate) const APP: &str = "app";
 pub(crate) const FS: &str = "fs";
 pub(crate) const SETTINGS: &str = "settings";
-pub(crate) const ROOTS: [&str; 5] = [RESULT, CRITICALS, APP, FS, SETTINGS];
+pub(crate) const ROOTS: [&str; 6] = [RESULT, CRITICALS, INVARIANTS, APP, FS, SETTINGS];
 /// How an observation writes the fixture directory's name, which is random in every run.
 const ROOT: &str = "$root";
 
@@ -257,7 +260,8 @@ pub(crate) fn covers(entry: &str, field: &str) -> bool {
 
 /// Whether an entry names something a map or a mask may leave out: an `app` key or what is
 /// below it, a path of the tree, a key of the settings. A whole root is refused, and so
-/// are `result` and `criticals`: one line must not blind a run. A list is written `[]`.
+/// are `result`, `criticals` and `invariants`: one line must not blind a run. A list is
+/// written `[]`.
 pub(crate) fn names_a_field(entry: &str) -> bool {
     let parts = parts(entry);
     let below_root = match parts.as_slice() {

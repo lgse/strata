@@ -86,6 +86,10 @@ impl Examined {
         self.streams.iter().map(Stream::criticals).sum()
     }
 
+    fn broken(&self) -> usize {
+        self.streams.iter().map(Stream::broken).sum()
+    }
+
     /// Why a target went away in some replay.
     fn gone(&self) -> Option<&str> {
         self.streams
@@ -93,13 +97,22 @@ impl Examined {
             .find_map(|stream| stream.gone.as_deref())
     }
 
-    /// A GLib critical or a lost target is a finding whether or not the replays agree on it.
+    /// A GLib critical, a broken invariant or a lost target is a finding whether or not the
+    /// replays agree on it.
     fn finding(&self) -> Option<String> {
-        match (self.gone(), self.criticals()) {
-            (Some(gone), _) => Some(format!("the target was lost: {}", first_line(gone))),
-            (None, 0) => None,
-            (None, criticals) => Some(format!("{criticals} GLib warnings or worse")),
+        if let Some(gone) = self.gone() {
+            return Some(format!("the target was lost: {}", first_line(gone)));
         }
+        let faults = [
+            (self.criticals(), "GLib warnings or worse"),
+            (self.broken(), "invariants broken"),
+        ];
+        let said: Vec<String> = faults
+            .into_iter()
+            .filter(|(count, _)| *count > 0)
+            .map(|(count, what)| format!("{count} {what}"))
+            .collect();
+        (!said.is_empty()).then(|| said.join(", "))
     }
 
     fn differing(&self) -> Vec<&Comparison> {
@@ -472,6 +485,7 @@ impl Run {
         }
         add("unsettled", stream.unsettled());
         add("criticals", stream.criticals());
+        add("invariants", stream.broken());
     }
 
     /// An outcome's count on every target together, or on the one named.
@@ -562,12 +576,14 @@ impl Run {
     fn outcomes(&self, target: Option<&str>) -> String {
         let count = |name: &str| self.counted(target, name);
         format!(
-            "{} refused, {} skipped, {} failed, {} unsettled, {} GLib warnings or worse",
+            "{} refused, {} skipped, {} failed, {} unsettled, {} GLib warnings or worse, {} \
+             invariants broken",
             count(Outcome::Refused.name()),
             count(Outcome::Skipped.name()),
             count(Outcome::Failed.name()),
             count("unsettled"),
             count("criticals"),
+            count("invariants"),
         )
     }
 
@@ -741,7 +757,10 @@ impl Evidence<'_> {
     fn has_finding(&self) -> bool {
         self.replays.iter().any(|replayed| {
             let stream = &replayed.stream;
-            stream.gone.is_some() || stream.criticals() > 0 || stream.unsettled() > 0
+            stream.gone.is_some()
+                || stream.criticals() > 0
+                || stream.broken() > 0
+                || stream.unsettled() > 0
         })
     }
 

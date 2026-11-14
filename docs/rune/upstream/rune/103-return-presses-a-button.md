@@ -6,7 +6,7 @@
 | Drafts | A5 of the parity plan (`docs/rune/parity/packages/A5.md`); finding [lgse/strata#2310](https://github.com/lgse/strata/issues/2310) |
 | Affects | Every button of Strata's Rune interface: the pane header's, an unreadable folder's Retry, the window header's actions; strata-components' dialogs (C15) already route around it |
 | Retires | `crates/strata-app/src/buttons.rs` (`on_return`), and C15's `Route::Press` for Return in `crates/strata-components/src/dialog/keys.rs` |
-| Checked | By reading at `2a44156` (2026-11-14): `takes_return` in `runtime/input/focus.rs` (lines 121-128) and the key-routing table in `crates/rune/README.md`; and in `strata-app`'s hosted tests `buttons::tests`, which fail with the workaround switched off |
+| Checked | By reading at `2a44156` (2026-11-13): `takes_return` in `runtime/input/focus.rs` (lines 121-128) and the key-routing table in `crates/rune/README.md`; and in `strata-app`'s hosted tests `buttons::tests`, which fail with the workaround switched off |
 | Status | Drafted, not filed. Workaround in force: a focused button's `on_key` sends the Space that presses it for a plain Return |
 
 Paste from here.

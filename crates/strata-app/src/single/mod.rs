@@ -439,6 +439,12 @@ pub(crate) fn lists<V: SinglePane>(app: &App) -> Vec<String> {
     }
 }
 
+/// What the view holds of the browser's columns: the probe's.
+#[cfg(feature = "qa")]
+pub(crate) fn presented<V: SinglePane>(app: &App) -> crate::handover::Presented<'_> {
+    pane::<V>(app).presented()
+}
+
 mod first_visit;
 
 #[cfg(test)]

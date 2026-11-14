@@ -507,7 +507,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2310: Return does not press a focused button on the Rune interface
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2310), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** by [A5](packages/A5.md) while testing the pane header (#2307): Return on a focused
   Back did nothing where Space pressed it. GTK's buttons take Return and Space alike; on Rune it
   holds for every button.
@@ -529,7 +529,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2322: `scrolled-away-crumbs-and-columns-stay-reachable/columns` left focus nowhere once in a full Rune run
 
 - **Code:** none of the plan's: a flaky Rune run, labelled `testing`.
-  [Issue](https://github.com/lgse/strata/issues/2322), filed on 2026-11-14 as the finding's
+  [Issue](https://github.com/lgse/strata/issues/2322), filed on 2026-11-13 as the finding's
   reference and closed at once: its state is kept here.
 - **Seen:** in a full `./scripts/qa-parity.sh all --target rune` for
   [#2321](https://github.com/lgse/strata/pull/2321)'s gate, the run failed at line 37: after the
@@ -551,7 +551,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2324: the Rune List view's rows are table rows where GTK's are list items
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2324), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **What differs:** what a screen reader hears of the List view. GTK's List is a
   `gtk::ListView` (`src/ui/browser_modes/list_pane.rs`), a `list` of `list item`s, under a box
   of heading `button`s (`list_headings.rs`). C4 set its collection's roles to
@@ -578,7 +578,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2331: the Rune List view's column headings are no Tab stops where GTK's are
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2331), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **What differs:** GTK's List headings are plain `gtk::Button`s
   (`src/ui/browser_modes/list_headings.rs`), with nothing keeping the keyboard off them, so
   they are Tab stops that Return and Space press (to sort). C4's headings are no Tab stops: the
@@ -598,7 +598,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2340: the thumbnail-size slider pages by 10 steps and steps onto its grid
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2340), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in the review of [#2336](https://github.com/lgse/strata/pull/2336). GTK's scale
   (`set_increments(16.0, 1.0)` in `src/ui/browser_modes/icons_controls.rs`) pages 1 px and steps
   16 from its value (65 to 81 after a drag); C20a's `Slider` pages its `Range`'s 10 steps and
@@ -609,7 +609,7 @@ sequence only together with the alphabet's version, so the version is part of th
 
 ### #2341: a modal popover cannot also close on a wheel outside it and let the wheel through
 
-- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2341), filed on 2026-11-14
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2341), filed on 2026-11-13
   as the finding's reference and closed at once: its state is kept here. The issue's text
   overstates the gap, as first drafted; this entry is the corrected record.
 - **Seen:** in the review of [#2336](https://github.com/lgse/strata/pull/2336). GTK closes the
@@ -633,7 +633,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2346: a view rebuilt during a staged publish can list rows twice
 
 - **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2346), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **What was seen, by reading** (in the review of [#2343](https://github.com/lgse/strata/pull/2343)):
   - A view rebuilt from the browser while a large folder is still published in stages copies
     every entry the column holds, including those not published yet. That is Rune's
@@ -751,7 +751,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** seed `0x10` of `columns v1`, shrunk to 4 steps and parked in
   `tests/qa/fuzz/corpus/columns/`.
 - **On `main`:** the third case of bug [#2361](https://github.com/lgse/strata/issues/2361), GTK's QA snapshot faults.
-- **Also by the location bar** ([A5](packages/A5.md)'s `location` alphabet, 2026-11-14): with
+- **Also by the location bar** ([A5](packages/A5.md)'s `location` alphabet, 2026-11-13): with
   `pictures` selected and its column open, Ctrl+L and Return on the path as it stands, or a
   typed path to the folder shown, end the same way. GTK reports `diagram.txt` focused while its
   screenshot draws no cursor and its next Down lands on `diagram.txt`; Rune focuses the column
@@ -796,7 +796,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2365: a location suggestion is a named list item on Rune, where GTK's row holds a label
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2365), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [A5](packages/A5.md)'s path suggestions pull request. GTK's suggestion row
   holds a `label` named after the folder (`documents/`); C6's row is a `list item` named so,
   with its parent as the description, and the text inside is not in the tree. A screen reader
@@ -804,7 +804,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `locations/path-completion-dismisses-on-window-switch/columns`, whose line 6
   waits for the `label` (it is pending on [A21](packages/A21.md)'s second window as well); C6's
   suggestion list (`crates/strata-components/src/location_bar/popup.rs`).
-- **State:** ruled by the coordinator (2026-11-14): C6 stays as it is, since a screen reader
+- **State:** ruled by the coordinator (2026-11-13): C6 stays as it is, since a screen reader
   hears the same name; the run takes an `a11y` twin once it can otherwise flip, after
   [A21](packages/A21.md)'s second window. [A5](packages/A5.md)'s, or whoever flips the run.
 
@@ -839,7 +839,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2379: Shift+Tab from a Columns column stops on its header's actions on GTK, on the sidebar on Rune
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2379), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [A5](packages/A5.md)'s `location` alphabet, where 8 of `location v1`'s 20 smoke
   seeds first parted at it. GTK's column header actions are Tab stops, so Shift+Tab from the
   entries focuses the targeted column's last one, the "Filter this pane (Ctrl+F)" toggle
@@ -857,7 +857,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2380: after a typed path fails to open, GTK's next Ctrl+L shows that path, Rune's the location
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2380), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [A5](packages/A5.md)'s `location` alphabet. GTK's `submit_location`
   (`src/ui/browser/location.rs`) restores the entry's text only when a path fails validation;
   a path that validates and then cannot be opened ("Unable to open location") stays in the
@@ -877,7 +877,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2381: after an outside click closes "Unable to open location", GTK's keyboard is on the first crumb
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2381), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** in [A5](packages/A5.md)'s `location` alphabet. A click outside GTK's error dialog
   only closes it, and keyboard focus falls to the header's first crumb, "/", since the
   location entry that held it is hidden; the next Down moves along the header. Rune's dialog
@@ -893,7 +893,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2376: a background click in a scrolled inactive column selects its first visible entry on Rune
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2376), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** by the reviewer of [#2374](https://github.com/lgse/strata/pull/2374), by reading. A
   plain click on the empty space of a column that isn't active makes it active and selects an
   entry in it: GTK's `clear_marquee_selection` (`src/ui/browser/columns/append/surface.rs`)
@@ -906,7 +906,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2377: a drag from a column's background clears only that column's selection on Rune
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2377), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
 - **Seen:** by the reviewer of [#2374](https://github.com/lgse/strata/pull/2374), by reading. On
   GTK the marquee's press calls `clear_marquee_selection`, which clears every column's selection
   and closes the deeper columns before the band moves. On Rune a press that becomes a band goes
@@ -920,7 +920,7 @@ sequence only together with the alphabet's version, so the version is part of th
 ### #2392: rows and buttons under an open plain popover still show hover
 
 - **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2392), filed on
-  2026-11-14 as the finding's reference and closed at once: its state is kept here. The
+  2026-11-13 as the finding's reference and closed at once: its state is kept here. The
   issue's text, written before GTK was driven, says nothing outside GTK's popover hovers; this
   entry is the corrected record.
 - **Seen:** by the owner, in List with the Appearance popover open: a List row beside and under
@@ -928,7 +928,7 @@ sequence only together with the alphabet's version, so the version is part of th
   `strata-app` reproduced it: with the pointer over the popover's "Hidden files" row, both that
   row and the List row under it show hover 1.0, and 60 pt beside the popover, over the scrim,
   the List row does. GTK, driven
-  (`./scripts/qa-drive.sh`, XTest motion on Xvfb, the List view, 2026-11-14): with the pointer
+  (`./scripts/qa-drive.sh`, XTest motion on Xvfb, the List view, 2026-11-13): with the pointer
   over the popover's rows, nothing under the popover hovers; outside it, the sidebar's Home and
   the header's Settings button hover; a List row beside it hovered in one of three sessions
   (one where the pointer had been over the listing before the popover opened) and not in the
@@ -942,7 +942,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `crates/strata-app/src/popover.rs` and its three users: the Appearance popover,
   the Icons header's "Thumbnail size", and "Customize columns…". Rune packet entry
   [105](../upstream/rune/105-hover-paints-through-a-cover.md).
-- **Workarounds weighed** (2026-11-14), none built:
+- **Workarounds weighed** (2026-11-13), none built:
   1. The window's content `.inert()` while a plain popover is open: one change in `Plain`, and
      hover, cursor and tooltips stop beneath, as GTK's grab does. It costs the driven "a wheel
      over the listing closes it and scrolls the listing": `scroll_at_axis` skips what is not
@@ -956,6 +956,44 @@ sequence only together with the alphabet's version, so the version is part of th
      popover on the real look: hover is baked into each element when it is built, so it works,
      but it rests on every kit hover token being swapped, and rune-kit's controls pick their
      own.
-- **State:** left as it is, by the owner's ruling of 2026-11-14 (to the coordinator), until
+- **State:** left as it is, by the owner's ruling of 2026-11-13 (to the coordinator), until
   Rune can block hover under a cover (packet 105) or let a modal background route a wheel
   (packet 104). [A8](packages/A8.md)'s, noted in `popover.rs`'s module docs.
+
+### #2386: a column that is not active loses its load-cursor mark in the Rune view
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2386), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `browser-view` invariant, on Rune. The browser keeps a
+  load cursor for each column, but `Browser::selection_is_load_cursor` reports the active
+  column's only, and `events::marks` (`crates/strata-app/src/events.rs`) reads it for every
+  column. So when the browser reports a column's marks again while another is active (a file
+  written into its folder, hidden files toggled), `handover::adopt` clears the column's
+  provisional flag, and the view takes the browser's load cursor for a fill. Seed `0x07` of
+  `calibration v3` shows it in three steps: launch, Return on `archive`, a file written into
+  the root.
+- **What a user sees:** nothing found. Delete, rename and open act on the browser's
+  selection, which is right; the view's flag decides only a 10xer verb's targets
+  (`Selection::targets`), and Rune has no 10xer yet.
+- **Concerns:** seed `0x03` of `columns v3` and seed `0x07` of `calibration v3`, parked.
+- **State:** open, [F3](packages/F3.md)'s. The fix reads each column's own load cursor in
+  `events::marks`, a `contract` change.
+
+### #2387: the browser's Shift anchor outlives its entry and comes back with it
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2387), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `browser-view` invariant, on Rune. The browser keeps the
+  Shift anchor by location, and nothing clears it when its entry leaves the listing; when the
+  entry comes back (Undo of a Move to Trash, Redo of a new folder) the anchor is on it again.
+  The view moved its anchor to the cursor when the entry left, as GTK's does, so the two
+  disagree until a reload makes the view take the browser's anchor.
+- **Run on both targets:** click `todo.txt`, Delete, Ctrl+Z, F5, Shift+Up. GTK and Rune both
+  select `pictures`, `readme.md` and `todo.txt`, a range from the entry anchored before it
+  was deleted; without F5, both select `pictures` and `readme.md`. So the fault is the shared
+  browser's, and Rune agrees with GTK on what the user sees.
+- **Concerns:** seeds `0x04` and `0x05` of `entries v1`, parked in
+  `tests/qa/fuzz/corpus/entries/`.
+- **State:** open, set aside, its sequences parked. The fault is `strata-fs`'s, in the
+  browser both interfaces share, so GTK has it too: its fix belongs on `main`, from a bug
+  issue there, and reaches `strata-next` by merge. The coordinator places it.

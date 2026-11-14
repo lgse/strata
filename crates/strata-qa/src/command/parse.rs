@@ -20,12 +20,23 @@ fn modifiers(names: &[String]) -> Result<Vec<Modifier>, String> {
     names.iter().map(|name| Modifier::parse(name)).collect()
 }
 
-/// The step the runner sends on its own account, which no scenario may write.
+/// The steps the runner sends on its own account, which no scenario may write.
 const KEYMAP: &str = "keymap";
+const INVARIANTS: &str = "invariants";
 
-/// A line the runner sends the application: a scenario's step, or the runner's own `keymap`.
+/// A line the runner sends the application: a scenario's step, or the runner's own `keymap`
+/// or `invariants`.
 pub fn parse_request(line: &str) -> Result<Command, String> {
     let sent: Option<Value> = serde_json::from_str(line).ok();
+    if let Some(sent) = sent.as_ref().filter(|sent| sent.get(INVARIANTS).is_some()) {
+        let alone = sent.as_object().is_some_and(|fields| fields.len() == 1);
+        return match sent.get(INVARIANTS) {
+            Some(Value::Object(fields)) if alone && fields.is_empty() => Ok(Command::Invariants),
+            _ => Err(format!(
+                "{INVARIANTS} is written {{\"{INVARIANTS}\":{{}}}}, alone"
+            )),
+        };
+    }
     let Some(fields) = sent.filter(|sent| sent.get(KEYMAP).is_some()) else {
         return parse_command(line);
     };

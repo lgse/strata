@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::{
     observe::{Observation, Outcome},
-    project::{CRITICALS, Difference, RESULT, differences, pattern_of},
+    project::{CRITICALS, Difference, INVARIANTS, RESULT, differences, pattern_of},
     replay::Stream,
     rules::Ignored,
 };
@@ -78,11 +78,11 @@ impl Divergence {
 }
 
 /// The first step at which the streams differ on a field `ignored` does not cover, or at
-/// which a target logged a GLib warning or was lost: those are divergences in themselves,
-/// whether or not the other replay did the same.
+/// which a target logged a GLib warning, broke an invariant or was lost: those are
+/// divergences in themselves, whether or not the other replay did the same.
 ///
-/// A step that did not come to rest on either side is compared by its outcome and its
-/// criticals alone: nothing is compared while the application is still moving. A stream
+/// A step that did not come to rest on either side is compared by its outcome, its
+/// criticals and its invariants alone: nothing is compared while the application is still moving. A stream
 /// that ends early differs from the other at the step it lost.
 pub(crate) fn compare(left: &Stream, right: &Stream, ignored: &Ignored) -> Option<Divergence> {
     for (ours, theirs) in left.observations.iter().zip(&right.observations) {
@@ -129,10 +129,13 @@ pub(crate) fn compare(left: &Stream, right: &Stream, ignored: &Ignored) -> Optio
     })
 }
 
-/// What both replays did alike and neither should have: a GLib warning, or a lost target.
+/// What both replays did alike and neither should have: a GLib warning, an invariant
+/// broken, or a lost target.
 fn shared_fault(ours: &Observation, theirs: &Observation) -> Option<Difference> {
     let field = if ours.criticals() > 0 {
         CRITICALS
+    } else if ours.broken() > 0 {
+        INVARIANTS
     } else if ours.outcome() == Outcome::Crashed.name() {
         RESULT
     } else {
@@ -147,5 +150,5 @@ fn shared_fault(ours: &Observation, theirs: &Observation) -> Option<Difference> 
 
 /// A field that says how the step ended, which does not depend on when it was read.
 fn is_verdict(field: &str) -> bool {
-    field == RESULT || field == CRITICALS
+    field == RESULT || field == CRITICALS || field == INVARIANTS
 }
