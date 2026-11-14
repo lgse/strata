@@ -675,6 +675,13 @@ Rulings of the owner on the parity work, oldest first.
   ([A7](packages/A7.md), [#2283](https://github.com/lgse/strata/pull/2283)) and
   `thumbnail_worker_settings/icons-thumbnail-size-keys-saved` ([A1](packages/A1.md),
   [#2281](https://github.com/lgse/strata/pull/2281)).
+- **2026-11-13: a plain popover stays a named dialog on Rune** (finding
+  [#2405](https://github.com/lgse/strata/issues/2405)). Asked whether Rune's plain popovers,
+  `dialog`s named for what they are, should match GTK's, which are unnamed `generic` panels to
+  AT-SPI, the owner chose to keep Rune's: a deliberate improvement for screen readers (relayed
+  by the coordinator, 2026-11-13). So the fuzz map excuses `app.dialog` only where GTK has
+  none and Rune has a plain popover's name, a rule that names its values, and never a real
+  dialog. Built in [A8](packages/A8.md)'s `views` alphabet pull request.
 
 ## Housekeeping
 

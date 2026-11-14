@@ -1090,4 +1090,8 @@ sequence only together with the alphabet's version, so the version is part of th
      technology loses the popover's name and role.
   3. The QA backend leaves plain popovers out of `app.dialog`. Wrong if option 1's role
      stands, since it would hide a real difference from the comparison rather than rule it.
-- **State:** open, with the owner by the coordinator (2026-11-13). [A8](packages/A8.md)'s.
+- **State:** ruled by the owner, 2026-11-13 ([`owner.md`](owner.md#ruled)): option 1. Rune
+  keeps the named `dialog`, a deliberate difference, and `tests/qa/fuzz/normalisation.map`
+  excuses `app.dialog` only for GTK's `null` against a plain popover's name ("Appearance",
+  "Thumbnail size"): a rule that names its values, which the map takes since this finding.
+  Noted in `popover.rs`'s module docs. [A8](packages/A8.md)'s.

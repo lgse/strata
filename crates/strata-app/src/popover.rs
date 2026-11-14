@@ -24,6 +24,12 @@
 //! - **Focus leaving it closes it** (GTK's autohide): [`focus_left`], which the part asks in
 //!   its poll.
 //!
+//! **A deliberate difference:** the surface is a `dialog` named for the popover, where GTK's
+//! `GtkPopover` is an unnamed `generic` panel to AT-SPI, by the owner's ruling of 2026-11-13
+//! (finding lgse/strata#2405): screen readers hear what opened. The fuzz map excuses it in
+//! `app.dialog`, for a plain popover's name only; a part with a new plain popover adds its name
+//! to that rule (`tests/qa/fuzz/normalisation.map`).
+//!
 //! **Known difference:** what lies under the surface still shows hover as the pointer moves
 //! over the surface, and the listing beside it does too, where GTK's popover, a surface of its
 //! own, stops the first (driven; GTK's sidebar and header hover beside it as Rune's do). Left

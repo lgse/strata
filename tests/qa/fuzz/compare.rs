@@ -85,12 +85,17 @@ impl Divergence {
 /// criticals and its invariants alone: nothing is compared while the application is still moving. A stream
 /// that ends early differs from the other at the step it lost.
 pub(crate) fn compare(left: &Stream, right: &Stream, ignored: &Ignored) -> Option<Divergence> {
+    let gtk_left = match (left.header.target.as_str(), right.header.target.as_str()) {
+        ("gtk", "rune") => Some(true),
+        ("rune", "gtk") => Some(false),
+        _ => None,
+    };
     for (ours, theirs) in left.observations.iter().zip(&right.observations) {
         let at_rest = ours.settled && theirs.settled;
         let mut fields: Vec<Difference> = differences(&ours.value, &theirs.value)
             .into_iter()
             .filter(|difference| at_rest || is_verdict(&difference.field))
-            .filter(|difference| !ignored.covers(&difference.field))
+            .filter(|difference| !ignored.excuses(difference, gtk_left))
             .collect();
         if fields.is_empty() {
             fields.extend(shared_fault(ours, theirs));

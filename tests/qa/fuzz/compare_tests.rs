@@ -30,6 +30,7 @@ fn masks(fields: &[&str]) -> Ignored {
                 field: (*field).to_owned(),
                 code: "unsettled".to_owned(),
                 issue: "lgse/strata#2127".to_owned(),
+                only: None,
             })
             .collect(),
     }
@@ -303,6 +304,7 @@ pub(crate) fn the_map_and_the_mask_take_one_sorted_entry_to_a_line() {
             field: "app.panes[].focused".to_owned(),
             code: "a11y".to_owned(),
             issue: "lgse/strata#22".to_owned(),
+            only: None,
         }
     );
     assert_eq!(
@@ -353,4 +355,67 @@ pub(crate) fn an_entry_is_refused_for_its_form_its_code_or_blinding_a_whole_root
     // And a mask is not an exception.
     assert!(rules::parse(one, &CAUSES).is_err());
     assert!(rules::parse(&one.replace("timing", "clock"), &CAUSES).is_ok());
+}
+
+/// A rule that names values (`app.dialog`'s, lgse/strata#2405) excuses only GTK's value
+/// against one of Rune's: a plain popover's name where GTK has none. A real dialog against
+/// none, the two values the other way round, and a different dialog on each side still
+/// differ, and a mask cannot name values.
+pub(crate) fn a_rule_that_names_values_excuses_only_those() {
+    let line = r#"app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":["Appearance","Thumbnail size"]}"#;
+    let entries = rules::parse(line, &exceptions()).expect("the rule should parse");
+    assert_eq!(
+        entries[0].only,
+        Some(rules::Only {
+            gtk: Value::Null,
+            rune: vec![json!("Appearance"), json!("Thumbnail size")],
+        })
+    );
+    let ruled = Ignored {
+        rules: entries,
+        masks: Vec::new(),
+    };
+    let dialog = |name: Value| observed(json!({ "dialog": name }));
+    let streams = |gtk: Value, rune: Value| {
+        let (mut left, mut right) = (stream(&["archive"]), stream(&["archive"]));
+        right.header.target = "rune".to_owned();
+        left.observations[0].value = dialog(gtk);
+        right.observations[0].value = dialog(rune);
+        (left, right)
+    };
+    let differs = |gtk: Value, rune: Value| {
+        let (left, right) = streams(gtk, rune);
+        compare(&left, &right, &ruled).map(|found| found.field().to_owned())
+    };
+    assert_eq!(differs(Value::Null, json!("Appearance")), None);
+    assert_eq!(differs(Value::Null, json!("Thumbnail size")), None);
+    let real = json!("Unable to open location");
+    assert_eq!(
+        differs(Value::Null, real.clone()),
+        Some("app.dialog".to_owned())
+    );
+    assert_eq!(
+        differs(real.clone(), Value::Null),
+        Some("app.dialog".to_owned())
+    );
+    assert_eq!(
+        differs(json!("Appearance"), Value::Null),
+        Some("app.dialog".to_owned())
+    );
+    assert_eq!(
+        differs(real, json!("Appearance")),
+        Some("app.dialog".to_owned())
+    );
+    // The order of the streams does not turn the rule round.
+    let (left, right) = streams(Value::Null, json!("Appearance"));
+    assert_eq!(compare(&right, &left, &ruled), None);
+    // A field the rule names no values for is not left out by it.
+    assert!(!ruled.covers("app.dialog"));
+    for refused in [
+        r#"app.dialog deviation lgse/strata#2405 {"gtk":null}"#,
+        r#"app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":[]}"#,
+        r#"app.dialog deviation lgse/strata#2405 null"#,
+    ] {
+        assert!(rules::parse(refused, &exceptions()).is_err(), "{refused}");
+    }
 }
