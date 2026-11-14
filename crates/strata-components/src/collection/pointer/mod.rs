@@ -102,8 +102,12 @@
 //! there is, as Strata's menu does (`focus_context_entry`): a Shift+click after it ranges from
 //! where the anchor was. With no anchor, as in a column just opened, the anchor goes to the
 //! entry, as Strata's selection takes the cursor for one it lacks; a collection whose
-//! [`PointerSettings::secondary_keeps_no_anchor`] is on leaves it missing, as Strata's search
+//! [`PointerSettings::missing_anchor_stays`] is on leaves it missing, as Strata's search
 //! and filter results do. Where the menu goes is C21's.
+//!
+//! A Shift+press ranges from the anchor to its entry; with no anchor the anchor starts there,
+//! unless [`PointerSettings::missing_anchor_stays`] is on, when the entry alone is selected
+//! and the anchor stays missing, as in Strata's search and filter results.
 //!
 //! # On the element
 //!

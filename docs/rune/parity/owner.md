@@ -543,6 +543,18 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    editing, and the Columns fuzz alphabet keeps those keys out of its rename editor. Source:
    F2's pilot triage, 2026-11-13, by the coordinator's ruling.
 
+### A10: Search, filter and sort
+
+1. **A Shift+click in the pane's filter results with no anchor** (finding
+   [#2431](https://github.com/lgse/strata/issues/2431)). GTK's results in Icons and List keep
+   an anchor of their own, which a Shift+press never sets (`pointer_selection` hands back the
+   anchor it was given, `src/ui/collection_interaction.rs`): with none, each Shift+click
+   selects its result alone, where the browser's views would range from the first. It may be
+   an accident of GTK's code rather than a choice. Should Rune copy it? Meanwhile: Rune copies
+   it, in the pane's results only (`PointerSettings::missing_anchor_stays`, with the
+   right-click's half from [#2375](https://github.com/lgse/strata/issues/2375)). Source: A10,
+   2026-11-13, by the coordinator's ruling, which the owner may reopen.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's
