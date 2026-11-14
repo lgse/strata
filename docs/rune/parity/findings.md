@@ -1510,3 +1510,20 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside, two `entries v3` seeds parked. The fault is in the undo history
   both interfaces share, so its fix belongs on `main`; the coordinator places it with
   [#2387](https://github.com/lgse/strata/issues/2387).
+
+### #2451: a secondary press on an open menu's row runs the row on GTK and does nothing on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2451), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A6](packages/A6.md), checking a remark of its survey. Driven on GTK
+  (`./scripts/qa-drive.sh`, List view): right-click `todo.txt`, then right-click the menu's
+  Rename row. The menu closes and the rename starts. On Rune, a probe of C21's menu
+  (`strata-components`) pressing and releasing the secondary button on a row runs nothing,
+  and the menu stays open. rune-kit's menu rows take no secondary press, so Rune's
+  `secondary_target` finds no handler from the row up.
+- **Not the same as** the feature map's "pressing the secondary button, moving onto a menu
+  row, and releasing does not run the row" ([#1621](https://github.com/lgse/strata/issues/1621)),
+  where the press starts outside the menu.
+- **Concerns:** no scenario or fuzz alphabet yet.
+- **State:** open, for the owner: whether the Rune interface runs a row on a secondary
+  press, as GTK's popover does.
