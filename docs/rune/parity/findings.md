@@ -1569,3 +1569,22 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** no scenario or fuzz alphabet yet.
 - **State:** open, for the owner: whether the Rune interface runs a row on a secondary
   press, as GTK's popover does ([`owner.md`](owner.md#a6-menus-dialogs-and-keymap)).
+
+### #2454: a double-click right after a dialog over the view closes does nothing on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2454), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A6](packages/A6.md)'s Run confirmation, in
+  `dialogs_and_menus/executable-requires-confirmation/columns`. A double-click on `run-me`
+  opens "Run this program?", the dialog closes, and a second double-click on `run-me`
+  follows within the double-click interval of the first. GTK opens the dialog again: its
+  modal layer ends the view's click run, as a grab does. On Rune nothing opens: no modal
+  ends the collection's click run (`collection/pointer/clicks.rs` in `strata-components`), so
+  the second double-click's presses count as the run's third and fourth, and the collection
+  acts only on the first and second. With a pause of 600 ms before the second double-click
+  the run passes.
+- **Concerns:** `executable-requires-confirmation/columns` (line 9), and any double-click
+  soon after a dialog over the view closes.
+- **State:** open, A6's, by the coordinator's ruling of 2026-11-14: C1 gets a way to end a
+  collection's gestures, and the shell ends the shown view's gestures when a part starts
+  holding the keyboard as a modal, in a `contract` pull request after the Run confirmation's.

@@ -8,7 +8,7 @@ use rune::Tx;
 
 use strata_fs::app::{Browser, BrowserEvent};
 
-use super::{Heard, Listener, Part, Place, Setup, Sidebar, Slot, View};
+use super::{Heard, Listener, Part, Place, Setup, Sidebar, Slot, Strip, View};
 use crate::{
     App,
     commands::{Action, Holds},
@@ -25,6 +25,22 @@ pub(crate) struct Entry<S: 'static> {
     pub(crate) caught_up: fn(&mut S),
     pub(crate) poll: fn(&mut S, f64, &mut Tx) -> bool,
     pub(crate) switched: fn(&mut S, &mut Tx),
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
+        )
+    )]
+    pub(crate) tab_hidden: fn(&mut S, &mut Tx),
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
+        )
+    )]
+    pub(crate) tab_shown: fn(&mut S, &mut Tx),
     pub(crate) commands: &'static [Action<S>],
     pub(crate) keyboard: fn(&S) -> Option<Holds>,
 }
@@ -41,6 +57,8 @@ impl Entry<App> {
             caught_up: P::caught_up,
             poll: P::poll,
             switched: P::switched,
+            tab_hidden: P::tab_hidden,
+            tab_shown: P::tab_shown,
             commands: P::COMMANDS,
             keyboard: P::keyboard,
         }
@@ -150,6 +168,18 @@ impl<'a, S> Registry<'a, S> {
         Self { entries, shown }
     }
 
+    /// The same table with the view the saved `mode` names shown: a new tab's.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
+        )
+    )]
+    pub(crate) fn fresh(self, mode: &str) -> Self {
+        Self::new(self.entries, mode)
+    }
+
     /// What is wrong with `entries`, if anything: the first fault in registration order, and
     /// then the first command registered twice, among the parts and the window's `own`.
     pub(crate) fn check(entries: &[Entry<S>], own: &[Action<S>]) -> Result<(), Fault> {
@@ -238,6 +268,14 @@ impl<'a, S> Registry<'a, S> {
     pub(crate) fn sidebar(self) -> Option<&'a Sidebar<S>> {
         self.active().find_map(|entry| match &entry.place {
             Place::Sidebar(sidebar) => Some(sidebar),
+            _ => None,
+        })
+    }
+
+    /// The tab strip, when one is registered.
+    pub(crate) fn strip(self) -> Option<&'a Strip<S>> {
+        self.active().find_map(|entry| match &entry.place {
+            Place::Tabs(strip) => Some(strip),
             _ => None,
         })
     }

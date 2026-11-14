@@ -8,7 +8,7 @@
 //! of the registry ([`crate::commands`]) and is inert until a part registers that command;
 //! the window buttons go to the window manager. The window's keys are the registry's too.
 //! Everything else is a part: [`crate::slots`] says where each slot is and what a part gets
-//! from the shell.
+//! from the shell. Each tab has a browser and a state of each part of its own ([`tabs`]).
 
 use std::rc::Rc;
 
@@ -43,9 +43,13 @@ use crate::{
     location::{self, labels::with_keys},
     pane,
     settings::Saved,
-    slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, ShownView, Slot, View},
+    slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, ShownView, Slot, TabKey, View},
     startup::UiThread,
 };
+
+pub(crate) mod tabs;
+
+use tabs::{Here, Tabs};
 
 /// The window buttons' accessible names, translated once: the language changes only on
 /// restart. The header's actions name their keys, so they are named at each run of the view.
@@ -71,9 +75,11 @@ impl Labels {
 pub(crate) struct Window {
     settings: Saved,
     events: Inbox<App>,
-    /// The registered parts, with the view that is shown.
-    parts: Registry<'static, App>,
-    /// Which view is shown, as the listeners and the parts' timers read it.
+    /// The shown tab's own bits: the view it shows, and what its views share.
+    here: Here,
+    /// The window's tabs, and what each hidden one keeps.
+    tabs: Tabs,
+    /// Which view the shown tab shows, as a part the window keeps one of reads it later.
     shown: ShownView,
     /// The table that names an entry for the components: every part holds the same one.
     ids: Ids,
@@ -94,11 +100,47 @@ pub(crate) struct Window {
     thumbnails: ThumbnailStore,
     /// The per-folder views, one store for the process ([`crate::folder_views`]).
     folder_views: folder_views::Kept,
-    /// Where each folder was left, one memory for the single-pane views, as GTK's one
-    /// history ([`pane::Memory`]).
-    restore: pane::Memory,
     /// Whether a modal layer was open at the last poll ([`grab`]).
     grab: grab::Grab,
+}
+
+/// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with the
+/// saved sort and hidden-files choice.
+fn browser_for(saved: &strata_desktop::settings::Preferences) -> Rc<Browser> {
+    let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
+    browser.set_operation_provider(Rc::new(LocalOperationProvider));
+    browser
+}
+
+/// Puts a tab's browser under its parts: it serves the view the tab shows, every part's
+/// listener and the window's hear its events for tab `key`, the saved settings follow its
+/// sort and hidden-files choice, and its folders open in their saved sorts. Returns whether
+/// it groups by file type for the view. Before the first load, so that its cursor lands on
+/// the first row a grouped view shows (`rebuild.rs` in `src/ui/browser_modes`).
+fn attach(
+    events: &Inbox<App>,
+    folder_views: &folder_views::Kept,
+    (browser, parts): (&Rc<Browser>, Registry<'static, App>),
+    setup: &Setup<'_>,
+    key: TabKey,
+) -> bool {
+    let grouped = parts
+        .shown()
+        .is_some_and(|view| mount(browser, view, setup.settings));
+    let mut listeners = parts.listeners(setup);
+    listeners.push(Box::new(hear));
+    events.observe_for(browser, listeners, Some(key));
+    let queue = events.later();
+    // The browser's sort or hidden-files choice changed: the saved settings follow it.
+    browser.observe_preferences(move |view| {
+        queue.then(move |app: &mut App, _: &mut Tx| {
+            app.window.settings.store_view(view);
+            false
+        });
+    });
+    // Before the first folder opens, so it opens in its saved sort (A10's).
+    folder_views.follow_sorts(browser, setup.settings);
+    grouped
 }
 
 /// The window's own share of an event: the columns or the active one changed, so the window
@@ -135,6 +177,35 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
     }
 }
 
+/// Names the window for the shown tab, whether or not its location changed.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
+    )
+)]
+fn retitle_now(app: &mut App, tx: &mut Tx) {
+    app.window.location = None;
+    app.retitle(tx);
+}
+
+/// Whether the saved "Group by file type" asks other than what the shown tab's browser was
+/// mounted with: another tab changed it while this one was hidden.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
+    )
+)]
+fn grouping_changed(app: &App) -> bool {
+    shown_view(app).is_some_and(|view| {
+        let wanted = preferences(app).group_by_type && view.supports_type_grouping;
+        wanted != app.window.here.grouped
+    })
+}
+
 impl App {
     /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with
     /// the saved sort and hidden-files choice, every registered part, and every event queued
@@ -160,47 +231,37 @@ impl App {
         strata_core::util::set_date_format(strata_core::util::DateFormat::parse(
             &saved.date_format,
         ));
-        let browser = Browser::with_preferences(Rc::new(LocalFileSource), sort_preferences(saved));
-        browser.set_operation_provider(Rc::new(LocalOperationProvider));
+        let browser = browser_for(saved);
         let ids = Ids::default();
         debug_assert_eq!(Registry::check(parts, commands::own()), Ok(()));
-        let parts = Registry::new(parts, &saved.browser_mode);
-        let shown = parts.shown_now();
-        let setup = Setup {
+        let registry = Registry::new(parts, &saved.browser_mode);
+        let (key, tabs) = Tabs::first();
+        let mut here = Here::new(key, registry);
+        let shown = registry.shown_now();
+        let tab_later = events.later_for(Some(key));
+        let tab = Setup {
             settings: saved,
             ids: &ids,
+            later: &tab_later,
+            shown: &here.shown,
+        };
+        let window = Setup {
             later: &later,
             shown: &shown,
+            ..tab
         };
-        // Before the first load, so that its cursor lands on the first row a grouped view
-        // shows (`rebuild.rs` in `src/ui/browser_modes`). A view shown later is mounted by
-        // `show_view`, which does the same.
-        if let Some(view) = parts.shown() {
-            mount(&browser, view, saved);
-        }
-        let mut listeners = parts.listeners(&setup);
-        listeners.push(Box::new(hear));
-        events.observe(&browser, listeners);
-        let queue = setup.later.clone();
-        // The browser's sort or hidden-files choice changed: the saved settings follow it.
-        browser.observe_preferences(move |view| {
-            queue.then(move |app: &mut App, _: &mut Tx| {
-                app.window.settings.store_view(view);
-                false
-            });
-        });
-        let built = Built::new(&setup);
+        let folder_views = folder_views::Kept::load(later.clone());
+        here.grouped = attach(&events, &folder_views, (&browser, registry), &tab, key);
+        let built = Built::new(&tab, &window);
         let keys = Live::registered(saved, first_window_reports().as_deref());
         let thumbnails = thumbnail_store(saved);
-        let folder_views = folder_views::Kept::load(later.clone());
-        // Before the first folder opens, so it opens in its saved sort (A10's).
-        folder_views.follow_sorts(&browser, saved);
         let mut look = Look::fallback(true);
         follow_saved_look(&mut look, saved);
         let window = Window {
             settings,
             events,
-            parts,
+            here,
+            tabs,
             shown,
             ids,
             location: None,
@@ -212,7 +273,6 @@ impl App {
             applied: (0, 0),
             thumbnails,
             folder_views,
-            restore: pane::Memory::default(),
             grab: grab::Grab::default(),
         };
         Self::assemble(look, browser, window, built)
@@ -223,7 +283,7 @@ impl App {
     }
 
     /// Names the window for the browser's active location. False when it has not changed.
-    fn retitle(&mut self, tx: &mut Tx) -> bool {
+    pub(super) fn retitle(&mut self, tx: &mut Tx) -> bool {
         let location = self.browser.active_location();
         if location == self.window.location {
             return false;
@@ -259,6 +319,15 @@ impl App {
     pub(crate) fn has_queued_changes(&self) -> bool {
         !self.window.events.is_empty()
     }
+}
+
+/// Whether each hidden tab has run nothing since it was hidden: everything queued for it is
+/// held, dropped for a rebuild, or still waits ([`tabs::Held::accounted`]).
+#[cfg(feature = "qa")]
+pub(crate) fn hidden_tabs(app: &App) -> impl Iterator<Item = (TabKey, bool)> {
+    let events = &app.window.events;
+    let held = app.window.tabs.held();
+    held.map(|(key, held)| (key, held.accounted(events.queued_for(key))))
 }
 
 /// What the tests read.
@@ -366,7 +435,7 @@ impl Window {
 
 /// Where each folder was left, which the single-pane views share.
 pub(crate) fn restore_memory(app: &App) -> &pane::Memory {
-    &app.window.restore
+    &app.window.here.restore
 }
 
 /// The window's thumbnails, as a view's build reads them.
@@ -377,7 +446,7 @@ pub(crate) fn thumbnails(app: &App) -> &ThumbnailStore {
 /// The view that is shown, as the parts that work in it see it: the rename editor, a context
 /// menu, the QA backend.
 pub(crate) fn shown_view(app: &App) -> Option<&'static View<App>> {
-    app.window.parts.shown()
+    app.window.here.parts.shown()
 }
 
 /// Shows the view that answers to `mode` in place of the one shown, while the window is open,
@@ -399,7 +468,7 @@ pub(crate) fn shown_view(app: &App) -> Option<&'static View<App>> {
 ///
 /// The caller saves the mode and ends what is open across the switch, the rename editor.
 pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
-    let mut parts = app.window.parts;
+    let mut parts = app.window.here.parts;
     if !parts.show(mode) {
         return false;
     }
@@ -412,12 +481,13 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
     let child = view
         .returns
         .and_then(|_| app.browser.follow_selection_on_return());
-    app.window.parts = parts;
+    app.window.here.parts = parts;
+    app.window.here.shown.follow(parts);
     app.window.shown.follow(parts);
     // What the view showed last before it was switched away is stale: it is not remembered.
-    app.window.restore.set_replaying(true);
+    app.window.here.restore.set_replaying(true);
     rebuild(app, view, tx);
-    app.window.restore.set_replaying(false);
+    app.window.here.restore.set_replaying(false);
     let opens = view.returns.is_some_and(|mirrors| mirrors(app));
     if let Some((depth, location)) = child.filter(|_| opens) {
         app.browser.show_child(depth, location);
@@ -432,7 +502,7 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
 /// The browser groups by file type for `view` as the saved setting asks, and `view` is
 /// rebuilt from the browser ([`events::replay`]) through its own [`View::apply`].
 fn rebuild(app: &mut App, view: &View<App>, tx: &mut Tx) {
-    mount(&app.browser, view, preferences(app));
+    app.window.here.grouped = mount(&app.browser, view, preferences(app));
     let rebuilt = events::replay(&app.browser, &app.window.ids);
     for change in rebuilt.changes {
         (view.apply)(app, change, tx);
@@ -440,13 +510,20 @@ fn rebuild(app: &mut App, view: &View<App>, tx: &mut Tx) {
 }
 
 /// The browser serves `view`: it groups by file type as the saved setting asks and the view
-/// supports, and rechecks the columns the view shows ([`View::rechecks`]).
-fn mount(browser: &Rc<Browser>, view: &View<App>, saved: &strata_desktop::settings::Preferences) {
-    browser.set_type_grouping(saved.group_by_type && view.supports_type_grouping);
+/// supports, and rechecks the columns the view shows ([`View::rechecks`]). Returns whether it
+/// groups.
+fn mount(
+    browser: &Rc<Browser>,
+    view: &View<App>,
+    saved: &strata_desktop::settings::Preferences,
+) -> bool {
+    let grouped = saved.group_by_type && view.supports_type_grouping;
+    browser.set_type_grouping(grouped);
     browser.set_freshness(FreshnessInput {
         scope: view.rechecks,
         ..browser.freshness_input()
     });
+    grouped
 }
 
 /// The saved "Group by file type" changed: the view shown follows it, as GTK's List view
@@ -481,6 +558,7 @@ pub(crate) fn known_id(app: &App, location: &Location) -> Option<EntryId> {
 pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
     let Some(key) = app
         .window
+        .here
         .parts
         .sidebar()
         .and_then(|sidebar| (sidebar.focus)(app))
@@ -496,6 +574,7 @@ pub(crate) fn leave_view_at_start(app: &App, tx: &mut Tx) -> bool {
 /// no sidebar.
 pub(crate) fn sidebar_held_back(app: &App) -> f32 {
     app.window
+        .here
         .parts
         .sidebar()
         .map_or(0.0, |sidebar| (sidebar.held_back)(app))
@@ -555,10 +634,13 @@ const LEADING: Button = Button {
     command: "toggle-sidebar",
 };
 
+/// The key of the header's New tab, which the strip holds while it shows.
+const NEW_TAB: &str = "new-tab";
+
 /// After the location bar, in the header's order.
 const TRAILING: [Button; 4] = [
     Button {
-        key: "new-tab",
+        key: NEW_TAB,
         icon: IconName::Plus,
         // GTK names it plainly; only its tooltip names the keys.
         face: |_| Face {
@@ -598,15 +680,42 @@ const TRAILING: [Button; 4] = [
 ];
 
 /// The window buttons the header shows, of those the window manager can work.
-fn window_buttons() -> WindowButtons {
-    WindowButtons::default()
+/// The window buttons the header shows, of those the window manager can work: no Close
+/// while the tab strip shows, which takes it.
+fn window_buttons(app: &App) -> WindowButtons {
+    WindowButtons {
+        close: !strip_shows(app),
+        ..WindowButtons::default()
+    }
+}
+
+/// Whether the tab strip shows: then it holds New tab and the window's Close, which the
+/// header leaves out, as GTK's `refresh_chrome` moves them.
+fn strip_shows(app: &App) -> bool {
+    let strip = app.window.here.parts.strip();
+    strip.is_some_and(|strip| (strip.shows)(app))
+}
+
+/// The window's Close for the strip while it shows, named as the header names it.
+fn strip_close(app: &App, chrome: &WindowChrome) -> Option<El> {
+    let shown = Shown::new(WindowButtons::default(), chrome);
+    if !(shown.close && strip_shows(app)) {
+        return None;
+    }
+    let look = &app.look;
+    let close = header::action(look, IconName::Close, &app.window.labels.window.close)
+        .on_press_tx(|app: &mut App, tx: &mut Tx| {
+            on_window_action(app, WindowAction::Close, tx);
+        })
+        .build(&look.kit);
+    Some(buttons::on_return("window-close".to_owned(), close))
 }
 
 /// The key of the header's last element, after which GTK's `child_focus(TabForward)` in the
 /// header finds nothing (`TopBarNavigation::move_focus`): the last window button shown, else
 /// the last action.
 pub(crate) fn header_last(app: &App) -> String {
-    let shown = Shown::new(window_buttons(), &app.chrome());
+    let shown = Shown::new(window_buttons(app), &app.chrome());
     let buttons = [
         (shown.close, "close"),
         (shown.maximize, "maximize"),
@@ -653,11 +762,19 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
         Some(location) => header.center(location),
         None => header,
     };
-    let header = TRAILING
+    // While the strip shows it holds New tab.
+    let in_strip = strip_shows(app).then_some(NEW_TAB);
+    let trailing = TRAILING
         .iter()
-        .fold(header, |header, button| header.action(action(button)));
+        .filter(|button| Some(button.key) != in_strip);
+    let header = trailing.fold(header, |header, button| header.action(action(button)));
     header
-        .window_buttons(window_buttons(), chrome, &labels.window, on_window_action)
+        .window_buttons(
+            window_buttons(app),
+            chrome,
+            &labels.window,
+            on_window_action,
+        )
         .build()
 }
 
@@ -675,7 +792,7 @@ struct Placed {
 
 /// What the parts of `slot` build, in the order they are registered.
 fn built(app: &App, slot: Slot, frame: &mut Frame<'_, App>) -> Vec<El> {
-    let builds = app.window.parts.of(slot);
+    let builds = app.window.here.parts.of(slot);
     let builds = builds.filter_map(|part| part.place.build());
     builds.filter_map(|build| build(app, frame)).collect()
 }
@@ -683,12 +800,14 @@ fn built(app: &App, slot: Slot, frame: &mut Frame<'_, App>) -> Vec<El> {
 impl Placed {
     /// Asks every active part for its element, in the order [`Slot`] declares the slots and,
     /// within one, in the order the parts are registered: the layer is filled in that order.
-    fn build(app: &App, frame: &mut Frame<'_, App>) -> Self {
-        let tabs = built(app, Slot::Tabs, frame).pop();
+    fn build(app: &App, chrome: &WindowChrome, frame: &mut Frame<'_, App>) -> Self {
+        let close = strip_close(app, chrome);
+        let strip = app.window.here.parts.strip();
+        let tabs = strip.and_then(|strip| (strip.build)(app, close, frame));
         let location = built(app, Slot::Location, frame).pop();
         let sidebar = built(app, Slot::Sidebar, frame).pop();
         let mut files = built(app, Slot::View, frame).pop();
-        if let Some(wrap) = app.window.parts.drawer() {
+        if let Some(wrap) = app.window.here.parts.drawer() {
             files = files.map(|files| wrap(app, files, frame));
         }
         let footer = built(app, Slot::Footer, frame);
@@ -751,16 +870,20 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
     let reduced = !look.animations || frame.cx.system_reduced_motion();
     frame.cx.reduced_motion(reduced);
     let chrome = app.chrome();
-    let placed = Placed::build(app, frame);
+    let placed = Placed::build(app, &chrome, frame);
     let bar = csd::header(bar(app, &chrome, placed.location), &app.window.csd, csd_of);
-    let content = col()
+    // Keyed by the tab: Rune keeps a scroll offset by the element's path, so a tab shown in
+    // another's place starts from its own (`tabs`).
+    let tab = col()
+        .key(format!("tab-{}", app.window.here.key.0))
         .w_full()
-        .h_full()
-        .children(placed.tabs)
+        .grow(1.0)
+        .min_h(0.0)
         .child(bar)
         .child(body(app, placed.sidebar, placed.files))
         .children(placed.footer)
         .children(placed.anchors);
+    let content = col().w_full().h_full().children(placed.tabs).child(tab);
     let window = csd::decorate(
         header::frame("window-frame", content, look, &chrome),
         &app.window.csd,
@@ -782,7 +905,7 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
 pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     let mut ran = settle(app, tx);
     folder_views::poll(app, clock, tx);
-    let parts = app.window.parts;
+    let parts = app.window.here.parts;
     for part in parts.active() {
         ran |= (part.poll)(app, clock, tx);
     }
@@ -796,7 +919,7 @@ pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
 /// Hands the browser what the parts changed. A host calls it before it lets GLib dispatch, so
 /// what the browser's events say of its cursor and selection is never older than the view's.
 pub(crate) fn publish(app: &mut App) {
-    let parts = app.window.parts;
+    let parts = app.window.here.parts;
     for part in parts.active() {
         (part.publish)(app);
     }
@@ -827,10 +950,17 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
     );
     window.applied = (heard, copied);
     let mut changed = false;
-    while let Some(update) = app.window.events.pop() {
-        changed |= update(app, tx);
+    while let Some(queued) = app.window.events.pop() {
+        match queued.tab {
+            // A hidden tab's: held until it is shown. Its browser may have changed what its
+            // tab is named.
+            Some(tab) if tab != app.window.here.key => {
+                changed |= app.window.tabs.hold(tab, queued);
+            }
+            _ => changed |= (queued.update)(app, tx),
+        }
     }
-    let parts = app.window.parts;
+    let parts = app.window.here.parts;
     for part in parts.active() {
         (part.caught_up)(app);
     }
@@ -840,7 +970,7 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
 /// The registered parts, with the view that is shown: what the command registry reads each
 /// part's commands and its hold on the keyboard from.
 pub(crate) fn parts(app: &App) -> Registry<'static, App> {
-    app.window.parts
+    app.window.here.parts
 }
 
 /// The settings file to log a saved keymap's unusable entries against, for the process's

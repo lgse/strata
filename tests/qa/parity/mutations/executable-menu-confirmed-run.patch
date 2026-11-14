@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/run.rs b/crates/strata-app/src/run.rs
+index c7566e64d..aca47e074 100644
+--- a/crates/strata-app/src/run.rs
++++ b/crates/strata-app/src/run.rs
+@@ -180,7 +180,7 @@ fn start(path: &Path) -> std::io::Result<()> {
+         );
+         return Ok(());
+     }
+-    let mut child = program_command(path).spawn()?;
++    let mut child = program_command(Path::new("/bin/true")).spawn()?;
+     std::thread::Builder::new()
+         .name("process-reaper".into())
+         .spawn(move || {

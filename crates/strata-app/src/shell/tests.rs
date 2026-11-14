@@ -16,7 +16,7 @@ use crate::{
     events::Change,
     host::offscreen::Offscreen,
     shell,
-    slots::{Entry, Frame, Listener, Place, Setup, Sidebar, View},
+    slots::{Entry, Frame, Listener, Place, Setup, Sidebar, Strip, View},
     test_support::{PATIENCE, fixture, idle_view, send_key},
 };
 
@@ -29,6 +29,8 @@ thread_local! {
     static TYPING: Cell<bool> = const { Cell::new(false) };
     /// A made-up part's next poll asks a service that answers at once.
     static ASKING: Cell<bool> = const { Cell::new(false) };
+    /// Whether the made-up tab strip shows.
+    static STRIP_SHOWS: Cell<bool> = const { Cell::new(false) };
 }
 
 fn note(line: impl Into<String>) {
@@ -120,6 +122,8 @@ fn part<P: Made>(place: Place<App>) -> Entry<App> {
             false
         },
         switched: |_, _| note(format!("{} follows the view shown", P::NAME)),
+        tab_hidden: |_, _| note(format!("{} leaves its tab", P::NAME)),
+        tab_shown: |_, _| note(format!("{} shows its tab", P::NAME)),
         commands: &[],
         keyboard: |_| TYPING.get().then_some(Holds::Edit),
     }
@@ -150,7 +154,10 @@ fn every_slot() -> Vec<Entry<App>> {
         files(),
         sidebar(),
         part::<Location>(Place::Location(placed::<Location>)),
-        part::<Tabs>(Place::Tabs(placed::<Tabs>)),
+        part::<Tabs>(Place::Tabs(Strip {
+            build: |app, _, frame| placed::<Tabs>(app, frame),
+            shows: |_| false,
+        })),
     ]
 }
 
@@ -181,6 +188,16 @@ fn change_name(change: &Change) -> &'static str {
         Change::Selection { .. } => "the selection",
         _ => "something else",
     }
+}
+
+/// A view and a tab strip that shows while [`STRIP_SHOWS`] says so, with what the shell hands
+/// it then.
+fn a_view_and_a_strip() -> Vec<Entry<App>> {
+    let strip = Strip {
+        build: |_, close, _| Some(rune::row().key("made-tabs").children(close)),
+        shows: |_| STRIP_SHOWS.get(),
+    };
+    vec![files(), part::<Tabs>(Place::Tabs(strip))]
 }
 
 fn two_parts() -> Vec<Entry<App>> {
@@ -269,6 +286,55 @@ fn every_slots_part_is_in_the_tree_where_the_slots_table_puts_it() {
                     "made-dialog-surface",
                 ]
             );
+        },
+    );
+}
+
+/// The keys of the elements in the tree under the one keyed `within`.
+fn keys_in(node: &Value, within: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut walk = vec![(node, false)];
+    while let Some((node, inside)) = walk.pop() {
+        let key = node["key"].as_str();
+        let inside = inside || key == Some(within);
+        if inside && let Some(key) = key {
+            keys.push(key.to_owned());
+        }
+        let children = node["children"].as_array().into_iter().flatten();
+        walk.extend(children.map(|child| (child, inside)));
+    }
+    keys
+}
+
+/// While the tab strip shows, it holds the window's Close and the header leaves out New tab
+/// and Close, as GTK's `refresh_chrome` moves them; while it does not, the header has both.
+#[test]
+fn a_strip_that_shows_takes_new_tab_and_close_from_the_header() {
+    hosted(
+        "a_strip_that_shows_takes_new_tab_and_close_from_the_header",
+        a_view_and_a_strip,
+        |mut host| {
+            while host.turn() {}
+            let header = keys_in(&host.tree(), "header");
+            for key in ["header-new-tab", "header-close"] {
+                assert!(
+                    header.iter().any(|shown| shown == key),
+                    "{key} in {header:?}"
+                );
+            }
+            assert_eq!(keys_in(&host.tree(), "made-tabs"), ["made-tabs"]);
+
+            STRIP_SHOWS.set(true);
+            act(&mut host, |_, _| ());
+            let header = keys_in(&host.tree(), "header");
+            for key in ["header-new-tab", "header-close"] {
+                assert!(
+                    !header.iter().any(|shown| shown == key),
+                    "{key} in {header:?}"
+                );
+            }
+            let strip = keys_in(&host.tree(), "made-tabs");
+            assert!(strip.iter().any(|key| key == "window-close"), "{strip:?}");
         },
     );
 }
