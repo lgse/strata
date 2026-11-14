@@ -29,6 +29,7 @@
 //!   `set_view_mode`, `restore_view_switch_focus`).
 //! - **It closes** with Escape, from its field or its results, and when its column shows
 //!   another folder or goes; a new item in its column empties it first ([`clear_for_new_item`]).
+//!   The keyboard goes back to the view, on the entry the listing had.
 //!
 //! Not yet: a folder that is not local, which GTK narrows in place, the results' thumbnails,
 //! a Columns result's path line, a renamed result keeping the cursor, and the field's own menu.
