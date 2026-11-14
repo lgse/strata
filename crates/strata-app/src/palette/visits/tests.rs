@@ -24,11 +24,7 @@ fn a_column_is_recorded_once_its_folder_finishes_listing() {
             vec![added(0, "/home/me"), Visit::Loaded(0)],
             &["/home/me"],
         ),
-        (
-            "nothing before it lists",
-            vec![added(0, "/home/me")],
-            &[],
-        ),
+        ("nothing before it lists", vec![added(0, "/home/me")], &[]),
         (
             "another column's load records nothing",
             vec![added(1, "/home/me/a"), Visit::Loaded(0), Visit::Loaded(1)],

@@ -312,7 +312,10 @@ fn ctrl_shift_k_jumps_to_a_folder_visited_before() {
             assert_eq!(focused(&mut host).as_deref(), Some("palette-field"));
 
             press(&mut host, Key::Text("k".to_owned()), ctrl());
-            assert!(!host.app().palette.state.is_open(), "Ctrl+K closed the jump");
+            assert!(
+                !host.app().palette.state.is_open(),
+                "Ctrl+K closed the jump"
+            );
 
             press(&mut host, Key::Command('k'), ctrl_shift());
             let name = folder
