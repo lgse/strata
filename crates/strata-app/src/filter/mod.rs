@@ -30,7 +30,8 @@
 //!   `set_view_mode`, `restore_view_switch_focus`).
 //! - **It closes** with Escape, from its field or its results, and when its column shows
 //!   another folder or goes; a new item in its column empties it first ([`clear_for_new_item`]).
-//!   The keyboard goes back to the view, on the entry the listing had.
+//!   The keyboard goes back to the view, on the entry the listing had. "Group by file type"
+//!   closes it in List and leaves the keyboard where it is ([`close_for_regroup`]).
 //! - **A result's path** shows under its name while the filter searches the subfolders: in
 //!   Columns its whole path, as C2's detail line, in Icons and List the path under
 //!   the folder ([`pane`]).
@@ -669,6 +670,20 @@ pub(crate) fn clear_for_new_item(app: &mut App, depth: usize, tx: &mut Tx) {
     }
     app.filter.state.edit.replace_text("");
     let polled = app.filter.state.text_edited(Default::default());
+    route(app, polled, tx);
+}
+
+/// "Group by file type" changed: in a view that groups, the filter closes with its query and
+/// its results, as GTK's `set_group_by_type` rebuilds the List pane and its filter with it
+/// (`rebuild_list` in `src/ui/browser_modes/rebuild.rs`; finding lgse/strata#2460). The
+/// keyboard stays where it is. In a view that does not group, GTK rebuilds nothing and the
+/// filter stays.
+pub(crate) fn close_for_regroup(app: &mut App, tx: &mut Tx) {
+    let groups = shell::shown_view(app).is_some_and(|view| view.supports_type_grouping);
+    if !groups || app.filter.open_in.is_none() {
+        return;
+    }
+    let polled = app.filter.state.close();
     route(app, polled, tx);
 }
 
