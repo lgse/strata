@@ -43,6 +43,13 @@ fn ctrl() -> Mods {
     }
 }
 
+fn alt() -> Mods {
+    Mods {
+        alt: true,
+        ..Mods::default()
+    }
+}
+
 /// The name the QA protocol gives the view shown.
 fn shown(host: &Offscreen) -> Option<&'static str> {
     shell::shown_view(host.app()).map(|view| view.probe.name)
@@ -153,6 +160,41 @@ fn returning_to_columns(mirrors: bool, name: &str) {
     });
 }
 
+/// After the parent in List, the folder come from is the cursor the load placed, though the
+/// root comes back where it was left with that folder chosen: the restore is no choice, as
+/// GTK's `restore_selection` commits nothing. So Columns shown again opens no child for it,
+/// while it mirrors (finding lgse/strata#2437).
+#[test]
+fn columns_shown_again_after_the_parent_opens_no_folder() {
+    let saved = "columns_mirror_selection = true\n".to_owned();
+    let name = "columns_shown_again_after_the_parent_opens_no_folder";
+    hosted_with(MODULE, "list", saved, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, LIST, folder.path());
+        press(&mut host, Key::Down, Mods::default());
+        press(&mut host, Key::Enter, Mods::default());
+        wait(&mut host, LIST, "documents", |seen| seen.entries.len() == 3);
+        press(&mut host, Key::Up, alt());
+        wait(&mut host, LIST, "the root again", |seen| {
+            seen.entries.len() == 5 && !seen.selected.is_empty()
+        });
+        idle(&mut host);
+        assert_eq!(seen(&host, LIST).selected, ["documents"]);
+        let browser = host.app().browser().clone();
+        assert!(
+            browser.selection_is_load_cursor(),
+            "the folder come from stays the cursor the load placed"
+        );
+
+        press(&mut host, Key::Command('1'), ctrl());
+        assert_eq!(shown(&host), Some("Columns"));
+        host.run_until(NONE_OPENS, |_| browser.location_at(1).is_some());
+        idle(&mut host);
+        assert_eq!(browser.location_at(1), None, "no child column opens");
+        assert_eq!(browser_holds(&host).0, ["documents"]);
+    });
+}
+
 /// A child column the cursor was to open in Columns, its wait not over when Icons shows, is
 /// not opened: Columns mirrors only while it is shown, as GTK's `child_mirror_blocked` asks
 /// for the mode when its wait is over.
@@ -210,10 +252,6 @@ fn a_folder_comes_back_by_the_parent_where_another_view_left_it() {
 }
 
 fn coming_back(key: Key, name: &str) {
-    let alt = Mods {
-        alt: true,
-        ..Mods::default()
-    };
     hosted_with(MODULE, "list", String::new(), name, |mut host| {
         let folder = fixture();
         open(&mut host, LIST, folder.path());
@@ -233,7 +271,7 @@ fn coming_back(key: Key, name: &str) {
         wait(&mut host, LIST, "documents in List", |seen| {
             seen.entries.len() == 3
         });
-        press(&mut host, key, alt);
+        press(&mut host, key, alt());
         wait(&mut host, LIST, "the root again", |seen| {
             seen.entries.len() == 5 && !seen.selected.is_empty()
         });
@@ -246,5 +284,6 @@ fn coming_back(key: Key, name: &str) {
 }
 
 mod density;
+mod first_visit;
 mod popover;
 mod text_size;

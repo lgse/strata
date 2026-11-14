@@ -4,12 +4,17 @@
 //! `src/ui/browser_modes/first_visit.rs` and its `on_load_finished` in
 //! `src/ui/browser_modes/events.rs`. GTK's list view, taking the keyboard with no cursor,
 //! focuses its first row; here the first row shown takes the cursor, with nothing selected.
+//!
+//! That cursor, and the one [`keep_on_first_row`] moves, reaches the browser through
+//! `handover::hand_over`, which commits it, where GTK's browser holds no cursor at all. No
+//! replay shows a difference: with nothing selected there is nothing for a command or
+//! `follow_selection_on_return` to take (finding lgse/strata#2427).
 
 use strata_components::collection::selection::AnchorRule;
 
 use crate::{
     listing::Load,
-    pane::{Applied, Pane},
+    pane::{Applied, Memory, Pane},
 };
 
 /// Armed when another folder shows, until its load ends or the user's input reaches the
@@ -74,6 +79,37 @@ impl FirstVisit {
         collection.note_selection(source);
         true
     }
+}
+
+/// Keeps the cursor a first visit placed on the first row `pane` shows, while no input has
+/// moved it ([`Memory::visit_cursor`]): GTK's browser holds no cursor then, and each of its
+/// views rebuilt shows its own first row, so a regroup or a view switch puts it there (finding
+/// lgse/strata#2427). The memory follows it there. A pane that shows anything else (another
+/// folder, another cursor, a selection) forgets it. True when the cursor moved.
+pub(super) fn keep_on_first_row(pane: &mut Pane, memory: &Memory) -> bool {
+    let Some((depth, id)) = memory.visit_cursor() else {
+        return false;
+    };
+    if pane.load() == Some(&Load::Loading) {
+        return false;
+    }
+    let shown = pane.depth();
+    let (source, collection) = pane.parts_mut();
+    let selection = &collection.selection;
+    let untouched = shown == Some(depth) && selection.cursor() == Some(id) && selection.is_empty();
+    if !untouched {
+        memory.set_visit_cursor(None);
+        return false;
+    }
+    if source.is_empty() || source.id_at(0) == id {
+        return false;
+    }
+    let _ = collection
+        .selection
+        .move_cursor(source, 0, AnchorRule::Move);
+    collection.note_selection(source);
+    memory.set_visit_cursor(Some((depth, source.id_at(0))));
+    true
 }
 
 #[cfg(test)]

@@ -1,0 +1,23 @@
+diff --git a/crates/strata-app/src/listing.rs b/crates/strata-app/src/listing.rs
+index 23009258a..d82452251 100644
+--- a/crates/strata-app/src/listing.rs
++++ b/crates/strata-app/src/listing.rs
+@@ -369,13 +369,17 @@ impl Column {
+                 }
+             }
+             Edit::Splice(splices) => {
++                let mut removing = false;
+                 for (position, removed, mut rows) in splices {
+                     self.keep_keys(&mut rows);
+                     let start = position.min(self.rows.len());
+                     let end = start.saturating_add(removed).min(self.rows.len());
++                    removing |= removed > 0;
+                     self.rows.splice(start..end, rows);
+                 }
+-                self.index();
++                if removing {
++                    self.index();
++                }
+             }
+             Edit::Refill(updates) => {
+                 for (position, row) in updates {

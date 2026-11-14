@@ -21,7 +21,7 @@ use crate::{
 
 const BUTTON: &str = "header-appearance";
 
-fn idle(host: &mut Offscreen) {
+pub(super) fn idle(host: &mut Offscreen) {
     while host.turn() {
         host.runtime().settle_all();
     }
@@ -49,13 +49,13 @@ fn focused(host: &mut Offscreen) -> Option<String> {
     said
 }
 
-fn press(host: &mut Offscreen, key: Key, mods: Mods) {
+pub(super) fn press(host: &mut Offscreen, key: Key, mods: Mods) {
     send_key(host, KeyEvent { key, mods });
     idle(host);
 }
 
 /// Return on the element keyed `key`, with the keyboard given to it first.
-fn return_on(host: &mut Offscreen, key: &'static str) {
+pub(super) fn return_on(host: &mut Offscreen, key: &'static str) {
     host.runtime()
         .update(move |_: &mut App, tx: &mut Tx| tx.focus(key, true));
     idle(host);
@@ -67,14 +67,14 @@ fn is_open(host: &Offscreen) -> bool {
 }
 
 /// Opens the popover from the header's Appearance button.
-fn open_popover(host: &mut Offscreen) {
+pub(super) fn open_popover(host: &mut Offscreen) {
     return_on(host, BUTTON);
     let opened = host.run_until(PATIENCE, is_open);
     assert!(opened, "Return on Appearance opened its popover");
     idle(host);
 }
 
-fn wait_closed(host: &mut Offscreen, after: &str) {
+pub(super) fn wait_closed(host: &mut Offscreen, after: &str) {
     let closed = host.run_until(PATIENCE, |host| !is_open(host));
     assert!(closed, "{after} closed the popover");
 }

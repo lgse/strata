@@ -1378,11 +1378,34 @@ sequence only together with the alphabet's version, so the version is part of th
   browser decides which listings show the groups, so its automatic cursor lands on the first
   row this pane shows." Rune's `shell::regroup` keeps the load's cursor on the first entry in
   the folder's order.
-- **Concerns:** the regroup ([A8](packages/A8.md)'s, `shell::regroup`). The sequence is parked
-  in `tests/qa/fuzz/corpus/views/`.
-- **State:** open, A8's: a fix moves a load's cursor to the first row shown when the grouping
-  changes, in a later pull request, after or alongside
-  [#2425](https://github.com/lgse/strata/issues/2425)'s.
+- **Driven again on GTK** (2026-11-14), which corrects the reading above: the cursor in
+  `documents` is no load's. A double click opens the folder with a first visit, after which
+  GTK's browser holds no cursor at all (`grouped_focus_drifted` in
+  `src/ui/browser_modes/events.rs` asks for none); the ring on `notes.txt` is the list widget's
+  own focus. So each GTK view rebuilt over it rings its own first row shown: the grouped List
+  `spreadsheet.csv`, the List ungrouped again and Icons and Columns `notes.txt`. F2 renames and
+  Return opens the ringed row. A cursor a load placed, Alt+Up's folder come from, stays on its
+  entry in every view rebuilt, grouped or not.
+- **Fixed in part** by [#2458](https://github.com/lgse/strata/pull/2458) (2026-11-14). The
+  Rune side must hand the first visit's cursor to the browser, for F3's `browser-view`
+  invariant, so the single panes' shared memory keeps it as the visit's until the user's own
+  input moves the cursor or the selection, and a single pane that shows it off its first row
+  moves it there (`pane::Memory`, `single::first_visit`). The parked sequence is in the corpus
+  unparked.
+- **Remaining in Columns, driven on GTK** (`./scripts/qa-drive.sh`, 2026-11-14): in List with
+  "Group by file type" on, a double click on `documents` (the first visit: the ring on
+  `spreadsheet.csv`, nothing selected), then Ctrl+1, then Down.
+  - Ctrl+1: GTK's Columns rings its first row, `notes.txt`, nothing selected; Rune's shows the
+    browser's `spreadsheet.csv`.
+  - Down: GTK's selects `notes.txt` in place, the ring staying on it, since its browser holds
+    no cursor and a cursorless column's first key picks its first row; GTK's List, whose
+    widget has a focus row of its own, moves on instead.
+  - Matching it needs both halves: the single panes' rule for Columns' active column, and the
+    first key selecting the cursor's row in place while the mark holds, key handling in
+    `columns/`, possibly with a hook in C2's keyboard. The rule alone would only move the
+    difference to the next key. Left by the coordinator's ruling of 2026-11-14, for its narrow
+    path.
+- **State:** fixed in List and Icons; the Columns residual is open.
 
 ### #2422: the folder menu's Select All over filter results selects the hidden listing on GTK
 
@@ -1439,9 +1462,18 @@ sequence only together with the alphabet's version, so the version is part of th
   browser the cursor Up placed as a choice, where GTK keeps it the navigation's. Where, not
   yet found: the single pane's `settle` (`pane.rs`), through a remembered position coming back
   or a cursor the collection placed itself (`handover::placed`).
-- **Concerns:** the view switch's return to Columns ([A8](packages/A8.md)'s). The sequence is
-  parked in `tests/qa/fuzz/corpus/views/`.
-- **State:** open, A8's.
+- **Cause, found** (2026-11-14), two of them:
+  - Alt+Up's root comes with no reveal pending, so the root's remembered position comes back,
+    `documents` chosen, and the single pane handed it to the browser as a choice
+    (`handover::hand_over` commits), which cleared the load's cursor. GTK's
+    `restore_selection` sets the browser's selection without committing it.
+  - A view's rebuild (`shell::rebuild`) applied the replay outside the queue, so no part heard
+    `caught_up`, and Columns took the cursor it was rebuilt with for a move of its own and
+    mirrored it. GTK's views mirror from `FocusChanged`, which no rebuild raises.
+- **Fixed** by [#2458](https://github.com/lgse/strata/pull/2458) (2026-11-14): a restore is handed back with no commit
+  (`handover::hand_back`), and the parts catch up after a rebuild. The sequence is in the
+  corpus unparked.
+- **State:** fixed.
 
 ### #2431: a Shift+click in pane filter results with no anchor anchors there on Rune
 
@@ -1588,3 +1620,18 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** fixed by [A6](packages/A6.md)'s [#2461](https://github.com/lgse/strata/pull/2461): a part that starts answering
   `Holds::Modal` ends the shown view's pointer gestures (`shell/grab.rs`), as GTK's grab
   does, and `executable-requires-confirmation/columns` is `required`.
+
+### #2460: after a regroup, Rune's matches keep a typed query's, GTK's show every entry
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2460), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the review of [#2458](https://github.com/lgse/strata/pull/2458), in a sequence
+  replayed GTK against Rune on the canonical fixture with type to search on: in List, open
+  `documents`, type `r`, switch views and back, then the Appearance popover's "Group by file
+  type". GTK's `app.matches` lists all three entries; Rune's only `report.md` and
+  `spreadsheet.csv`. It parts the same way on `strata-next` without #2458, so it is older.
+- **Why, not yet known:** it reads as the typed query outliving the regroup on Rune. Not
+  driven on GTK.
+- **Concerns:** the typed search ([A10](packages/A10.md)'s), through the regroup's rebuild
+  (`shell::regroup`, [A8](packages/A8.md)'s).
+- **State:** open, A10's.
