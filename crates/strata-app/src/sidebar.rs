@@ -156,7 +156,10 @@ impl Part for Sidebar {
         }
         let saved = shell::preferences(app);
         let step = saved_step(saved.sidebar_expanded, saved.sidebar_compact);
-        let collapsed = (saved.sidebar_pinned_collapsed, saved.sidebar_devices_collapsed);
+        let collapsed = (
+            saved.sidebar_pinned_collapsed,
+            saved.sidebar_devices_collapsed,
+        );
         let state = &mut app.sidebar.state;
         if state.width.chosen() != step {
             state.width.choose(step);

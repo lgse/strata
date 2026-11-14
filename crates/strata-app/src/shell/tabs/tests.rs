@@ -305,22 +305,26 @@ fn a_location_edit_ends_when_its_tab_is_left() {
 /// follows what another changed in the settings while it was hidden: here, a place hidden.
 #[test]
 fn a_tabs_sidebar_follows_a_place_another_tab_hid() {
-    hosted(MODULE, "a_tabs_sidebar_follows_a_place_another_tab_hid", |mut host| {
-        let folder = fixture();
-        opened(&mut host, folder.path());
-        let home = |host: &Offscreen| {
-            let tree = host.tree();
-            !all(&tree, &|node| node["key"] == "sidebar-place-home").is_empty()
-        };
-        assert!(host.run_until(PATIENCE, home), "the sidebar lists Home");
-        let first = shown_tab(host.app());
-        second_tab(&mut host, folder.path());
-        act(&mut host, |app, _| {
-            shell::saved(app).change(|settings| settings.sidebar_show_home = false);
-        });
+    hosted(
+        MODULE,
+        "a_tabs_sidebar_follows_a_place_another_tab_hid",
+        |mut host| {
+            let folder = fixture();
+            opened(&mut host, folder.path());
+            let home = |host: &Offscreen| {
+                let tree = host.tree();
+                !all(&tree, &|node| node["key"] == "sidebar-place-home").is_empty()
+            };
+            assert!(host.run_until(PATIENCE, home), "the sidebar lists Home");
+            let first = shown_tab(host.app());
+            second_tab(&mut host, folder.path());
+            act(&mut host, |app, _| {
+                shell::saved(app).change(|settings| settings.sidebar_show_home = false);
+            });
 
-        act(&mut host, |app, tx| show(app, first, tx));
-        let gone = host.run_until(PATIENCE, |host| !home(host));
-        assert!(gone, "the first tab's sidebar hides Home");
-    });
+            act(&mut host, |app, tx| show(app, first, tx));
+            let gone = host.run_until(PATIENCE, |host| !home(host));
+            assert!(gone, "the first tab's sidebar hides Home");
+        },
+    );
 }
