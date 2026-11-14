@@ -146,6 +146,12 @@ pub mod icons {
         strata_desktop::settings::custom_emoji(name)
     }
 
+    // Kept where `main` has it so its merges stay easy: since A6's Customize dialog the
+    // manager's getters ask `strata_desktop::settings` (`docs/rune/shared-state.md`).
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "only GTK's tests ask it on strata-next")
+    )]
     pub fn is_customization_choice(name: &str) -> bool {
         strata_desktop::settings::is_icon_choice(name)
     }
