@@ -120,6 +120,16 @@ impl Held {
         self.outran = true;
     }
 
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.updates.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn outran(&self) -> bool {
+        self.outran
+    }
+
     /// Whether every update routed here is held or was dropped for a rebuild: none ran while
     /// the tab was hidden.
     #[cfg(feature = "qa")]

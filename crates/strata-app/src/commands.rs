@@ -164,7 +164,9 @@ pub(crate) enum On {
     /// A column's folder: a background menu.
     Column(usize),
     /// A location that is no row of the view: the sidebar row a menu was opened on or a
-    /// middle click pressed, or a crumb of the location bar.
+    /// middle click pressed, or a crumb of the location bar. A command that acts on the
+    /// focus, or on a row, declines it: a sidebar row's Properties must never act on the
+    /// focused entry.
     Place(Location),
 }
 
