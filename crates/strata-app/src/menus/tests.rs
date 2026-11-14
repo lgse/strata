@@ -358,6 +358,7 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "new-folder",
                     "new-file",
                     "open",
+                    "run",
                     "rename",
                     "trash",
                     "delete",

@@ -61,17 +61,16 @@ host = "offscreen"
 scenario = "executable-menu-confirmed-run"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "executable-requires-confirmation"
 run = "columns"
 package = "A6"
 status = "pending"
-reason = "scope"
-blocker = "A6"
+reason = "component"
+blocker = "lgse/strata#2454: a dialog opening over the view does not end C1's click run, so the second double-click on run-me (line 8) counts as presses 3 and 4 and opens nothing (line 9). A6 adds the seam next"
 
 [[run]]
 scenario = "floating-chooser-transfers-files"
