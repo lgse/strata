@@ -108,9 +108,9 @@ pub fn drop_ring(look: &Look) -> f32 {
 }
 
 /// The border of the "Column width" caption over a column's edge: `columns.caption.border`,
-/// else 1 (as C9's divider caption draws).
+/// else 0, as Strata's `.resize-caption` draws none.
 pub fn caption_border(look: &Look) -> f32 {
-    look.slots.columns.caption_border.unwrap_or(1.0)
+    look.slots.columns.caption_border.unwrap_or(0.0)
 }
 
 /// The corner radius of a row's size badge: `columns.badge.radius`, else 5.

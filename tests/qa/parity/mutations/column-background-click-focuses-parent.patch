@@ -1,12 +1,12 @@
 diff --git a/crates/strata-app/src/appearance/popover.rs b/crates/strata-app/src/appearance/popover.rs
-index 472043d6f..ad36bdbd6 100644
+index 6dab23777..26c56e7e1 100644
 --- a/crates/strata-app/src/appearance/popover.rs
 +++ b/crates/strata-app/src/appearance/popover.rs
-@@ -176,7 +176,6 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
+@@ -180,7 +180,6 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
          .gap(look.space.xxs)
          .child(heading(look, &state.labels.view))
          .children(view_rows(app))
 -        .child(preview_row(app))
+         .child(heading(look, &state.labels.density))
+         .child(density::sliders(app))
          .child(heading(look, &state.labels.text_size))
-         .child(stepper(app))
-         .child(group_row(app))
