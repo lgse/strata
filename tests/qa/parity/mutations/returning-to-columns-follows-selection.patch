@@ -1,7 +1,7 @@
-diff --git i/crates/strata-app/src/shell.rs w/crates/strata-app/src/shell.rs
+diff --git a/crates/strata-app/src/shell.rs b/crates/strata-app/src/shell.rs
 index b34db4ae7..cec1a9b55 100644
---- i/crates/strata-app/src/shell.rs
-+++ w/crates/strata-app/src/shell.rs
+--- a/crates/strata-app/src/shell.rs
++++ b/crates/strata-app/src/shell.rs
 @@ -485,7 +485,7 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
      app.window.here.restore.set_replaying(true);
      rebuild(app, view, tx);
