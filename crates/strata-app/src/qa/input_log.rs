@@ -6,9 +6,21 @@
 
 use std::{cell::RefCell, fs::File, io::Write as _};
 
+use strata_qa::Modifier;
+
 const VARIABLE: &str = "STRATA_INPUT_LOG";
 
 pub(super) struct InputLog(Option<RefCell<File>>);
+
+/// A modifier as the log names it.
+pub(super) fn modifier_name(modifier: Modifier) -> &'static str {
+    match modifier {
+        Modifier::Ctrl => "ctrl",
+        Modifier::Shift => "shift",
+        Modifier::Alt => "alt",
+        Modifier::AltGr => "altgr",
+    }
+}
 
 fn direction(pressed: bool) -> &'static str {
     if pressed { "down" } else { "up" }

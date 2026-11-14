@@ -7,7 +7,8 @@
 //! on a folder, change the folder, and wait for the browser's events to reach the interface,
 //! which logs them at trace level, and for the Columns view to list what the folder holds,
 //! which it logs too. The second covers the window first: upstream Rune #139 is a covered
-//! Wayland window whose `poll` and timers stop.
+//! Wayland window whose `poll` and timers stop. `window::qa` drives the QA mode's session
+//! host, a real window that serves the runner's protocol.
 //!
 //! Nothing here looks at the picture: that the rows are drawn is the owner's hand check.
 
@@ -24,6 +25,9 @@
 mod support;
 
 mod window {
+    #[cfg(feature = "qa")]
+    mod qa;
+
     use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
 

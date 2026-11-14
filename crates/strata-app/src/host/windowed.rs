@@ -58,6 +58,17 @@ fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
 
 /// Opens the window on `location` and returns when it closes.
 pub(crate) fn run(ui: UiThread, settings: Saved, location: Location) -> Result<(), String> {
+    run_with(ui, settings, location, |app| app)
+}
+
+/// [`run`], with the app handed to `extend` before it runs: the QA mode's session host adds
+/// its frame hook and takes a handle there (`qa::session`).
+pub(crate) fn run_with(
+    ui: UiThread,
+    settings: Saved,
+    location: Location,
+    extend: impl FnOnce(rune::App<App>) -> rune::App<App>,
+) -> Result<(), String> {
     rune::set_app_id(APPLICATION_ID);
     let frame = Policy::Auto.frame();
     let app = rune::App::new(AppSpec {
@@ -79,6 +90,7 @@ pub(crate) fn run(ui: UiThread, settings: Saved, location: Location) -> Result<(
     // Rune's own flags (`--snap`, `--tree`) are not this binary's.
     .args(Vec::new())
     .window_options(csd::window_options(frame, WindowOptions::default()));
+    let app = extend(app);
     let handle = app.handle();
     let notified = handle.clone();
     let glib = GlibLoop::start(glib::MainContext::default(), move || {

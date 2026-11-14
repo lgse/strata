@@ -147,6 +147,8 @@ pub(super) struct Drawn {
     pub(super) icons: Vec<RowIcon>,
     pub(super) buttons: Vec<DrawnButton>,
     pub(super) sidebar: super::sidebar::Gaps,
+    /// The entry the filter's Enter would open (`qa::filter`).
+    pub(super) outlined: Option<EntryId>,
 }
 
 /// How far a scroll view has scrolled, whether it can, and how much it shows: along x, then
@@ -238,6 +240,7 @@ pub(super) struct Snapshot {
     /// The node that takes key presses: the focused element's active descendant when it
     /// names one, since a Rune list keeps focus and points at its current row.
     focus: Option<usize>,
+    outlined: Option<EntryId>,
 }
 
 fn text(node: &Value, field: &str) -> String {
@@ -317,7 +320,10 @@ impl Snapshot {
     /// Reads `tree`, the nested JSON of `Runtime::accessibility_json`, and what the view
     /// draws that the tree leaves out.
     pub(super) fn read(tree: &Value, drawn: &Drawn) -> Self {
-        let mut snapshot = Self::default();
+        let mut snapshot = Self {
+            outlined: drawn.outlined,
+            ..Self::default()
+        };
         if tree.is_object() {
             snapshot.add(tree, None, "window".to_owned());
         }
@@ -345,6 +351,11 @@ impl Snapshot {
         }
         drawn.sidebar.present(&mut snapshot);
         snapshot
+    }
+
+    /// The entry the filter's Enter would open, as of this snapshot.
+    pub(super) fn outlined(&self) -> Option<EntryId> {
+        self.outlined
     }
 
     /// Presents `seen` under the window: a node a part draws and the tree leaves out.
