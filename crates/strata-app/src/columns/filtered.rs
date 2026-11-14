@@ -5,6 +5,8 @@
 //! GTK's column swaps its model for the search's hits and back
 //! (`search_recursively` and `deactivate_search` in `src/ui/browser/columns/append/query.rs`).
 
+use std::collections::HashMap;
+
 use rune::Tx;
 use strata_components::{
     collection::selection::{Position, Selection},
@@ -71,6 +73,12 @@ impl Columns {
             return Position::default();
         };
         state.collection.selection.position(column)
+    }
+
+    /// Each result's path, by its id, and whether they show under the names: what the next
+    /// results the filter shows are described by.
+    pub(crate) fn describe_hits(&mut self, paths: HashMap<EntryId, String>, details: bool) {
+        self.listings.describe_hits(paths, details);
     }
 
     /// Shows `hits` in the place of column `depth`'s rows, with nothing selected when `clear`

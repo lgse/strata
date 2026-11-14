@@ -398,13 +398,13 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
     }
     let mut controls = row().gap(look.space.xxs).items_center();
     let mut any = false;
+    let cx = HeaderCx {
+        depth,
+        active,
+        targeted,
+        loading,
+    };
     if targeted {
-        let cx = HeaderCx {
-            depth,
-            active,
-            targeted,
-            loading,
-        };
         if let Some(actions) = sh.actions.as_ref().and_then(|f| f(s, cx)) {
             controls = controls.child(actions);
             any = true;
@@ -435,7 +435,7 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
         bar = bar.child(controls.on_secondary_press(|_: &mut S, _, tx: &mut Tx| tx.live_only()));
     }
     let menu = sh.clone();
-    bar.on_secondary_press(move |s: &mut S, at, tx: &mut Tx| {
+    let bar = bar.on_secondary_press(move |s: &mut S, at, tx: &mut Tx| {
         let Some(depth) = depth_of(&menu, s, serial) else {
             return;
         };
@@ -454,5 +454,15 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
             },
             tx,
         );
-    })
+    });
+    with_band(sh, s, bar, cx)
+}
+
+/// The header row, and the host's band under it when there is one
+/// ([`ColumnsView::header_band`](super::ColumnsView::header_band)).
+fn with_band<S: 'static>(sh: &Shared<S>, s: &S, bar: El, cx: HeaderCx) -> El {
+    match sh.band.as_ref().and_then(|f| f(s, cx)) {
+        Some(band) => col().w_full().child(bar).child(band),
+        None => bar,
+    }
 }

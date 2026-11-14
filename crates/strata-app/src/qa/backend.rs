@@ -18,7 +18,7 @@ use strata_qa::{
 };
 
 use super::{
-    field,
+    field, filter,
     input_log::InputLog,
     invariants,
     keyboard::Keyboard,
@@ -288,7 +288,7 @@ impl Backend for Rune {
             editable: field::is_one(&seen.role) && !seen.has_state("read-only"),
             focusable: seen.has_action("focus"),
             busy: false,
-            marked: false,
+            marked: filter::marked(self.stage.borrow().app(), seen),
         })
         .unwrap_or_default()
     }

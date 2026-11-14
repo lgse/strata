@@ -8,7 +8,7 @@
 //! (`search_recursively` in `src/ui/browser/columns/append/query.rs`): the column's listing
 //! stays, and follows the browser underneath.
 
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 
 use strata_components::{
     columns::ColumnSources,
@@ -26,6 +26,11 @@ pub(super) struct Listings {
     described: Words,
     /// A filter's results, and the column whose rows they replace.
     hits: Option<(usize, Column)>,
+    /// Each result's path, by its id: what describes it, and its detail line while
+    /// `hit_details` holds (GTK's `show_origin`).
+    hit_paths: HashMap<EntryId, String>,
+    /// The results come from the subfolders too: each shows its path under its name.
+    hit_details: bool,
     /// Moves each time results take a column's place or give it back, so the column's
     /// version changes with what it shows.
     swaps: u64,
@@ -37,6 +42,8 @@ impl Listings {
             columns: Vec::new(),
             described: Words::translated(),
             hits: None,
+            hit_paths: HashMap::new(),
+            hit_details: false,
             swaps: 0,
         }
     }
@@ -71,7 +78,20 @@ impl Listings {
     pub(super) fn take_hits(&mut self) -> Option<(usize, Column)> {
         let taken = self.hits.take()?;
         self.swaps += 1;
+        self.hit_paths.clear();
         Some(taken)
+    }
+
+    /// Each result's path, by its id, and whether they show as detail lines.
+    pub(super) fn describe_hits(&mut self, paths: HashMap<EntryId, String>, details: bool) {
+        self.hit_paths = paths;
+        self.hit_details = details;
+    }
+
+    /// The path of the result at `index` of column `depth`, while results show there.
+    fn hit_path(&self, depth: usize, index: usize) -> Option<&str> {
+        let (_, hits) = self.hits.as_ref().filter(|(at, _)| *at == depth)?;
+        self.hit_paths.get(&hits.id_at(index)).map(String::as_str)
     }
 
     /// Drops the results when the column they showed in goes or shows another folder: column
@@ -130,8 +150,24 @@ impl ColumnSources for Listings {
         (!text.is_empty()).then_some(Cow::Owned(text))
     }
 
+    /// A result is described by its path (GTK's `show_origin`), a row by what it is.
     fn description(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
+        if let Some(path) = self.hit_path(depth, index) {
+            return Some(Cow::Borrowed(path));
+        }
         let description = self.shown(depth)?.description(index, &self.described)?;
         Some(Cow::Borrowed(description))
+    }
+
+    fn has_details(&self, depth: usize) -> bool {
+        self.hit_details && self.hits_at(depth)
+    }
+
+    /// A result's path under its name, while the results come from the subfolders too.
+    fn detail(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
+        self.has_details(depth)
+            .then(|| self.hit_path(depth, index))
+            .flatten()
+            .map(Cow::Borrowed)
     }
 }
