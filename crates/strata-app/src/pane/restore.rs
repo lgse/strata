@@ -32,6 +32,16 @@
 //!   List where Icons left it. A view switched away hears nothing, so while the view shown
 //!   again is rebuilt from the browser what it showed last is stale and is not remembered
 //!   (finding lgse/strata#2425).
+//! - **The cursor a first visit placed** ([`Memory::visit_cursor`]), shared the same way. GTK's
+//!   browser holds no cursor after a first visit: the ring on the first row is the list
+//!   widget's own focus (`grouped_focus_drifted` in `src/ui/browser_modes/events.rs` asks for
+//!   no cursor), so each GTK view rebuilt over it, by a regroup or a view switch, rings its own
+//!   first row shown, and the browser takes a cursor only when the user moves one. The Rune
+//!   side must hold one for F3's `browser-view` invariant, which keeps the view's cursor the
+//!   browser's, so the first visit hands its cursor over and the memory keeps it as the visit's
+//!   until the user's own input moves the cursor or the selection. While it does, a single pane
+//!   that shows it off its first row moves it there, with nothing selected
+//!   (`single::first_visit`; finding lgse/strata#2427).
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -59,12 +69,26 @@ struct Kept {
     places: RestoreMemory<Location>,
     /// A view switched to is being rebuilt from the browser: the folder it leaves is stale.
     replaying: bool,
+    /// The cursor a first visit placed, in the browser's column at that depth, which no input
+    /// has moved since.
+    visit: Option<(usize, EntryId)>,
 }
 
 impl Memory {
     /// While `replaying`, a view leaving a folder does not remember it.
     pub(crate) fn set_replaying(&self, replaying: bool) {
         self.0.borrow_mut().replaying = replaying;
+    }
+
+    /// The cursor a first visit placed and no input has moved since: the browser's column and
+    /// the entry.
+    pub(crate) fn visit_cursor(&self) -> Option<(usize, EntryId)> {
+        self.0.borrow().visit
+    }
+
+    /// The cursor a first visit placed is at `at` now, or there is none.
+    pub(crate) fn set_visit_cursor(&self, at: Option<(usize, EntryId)>) {
+        self.0.borrow_mut().visit = at;
     }
 
     fn same(&self, other: &Self) -> bool {

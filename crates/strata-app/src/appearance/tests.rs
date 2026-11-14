@@ -284,5 +284,6 @@ fn coming_back(key: Key, name: &str) {
 }
 
 mod density;
+mod first_visit;
 mod popover;
 mod text_size;
