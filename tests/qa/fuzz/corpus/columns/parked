@@ -9,9 +9,7 @@ v1-0000000000000008 oracle lgse/strata#2350
 v1-000000000000000d oracle lgse/strata#2353
 v1-000000000000000e oracle lgse/strata#2350
 v1-0000000000000010 oracle lgse/strata#2356
-v2-0000000000000010 divergence lgse/strata#2358
 v2-0000000000000012 divergence lgse/strata#2357
 v3-0000000000000009 oracle lgse/strata#2353
-v3-0000000000000010 divergence lgse/strata#2358
-v3-0000000000000011 divergence lgse/strata#2358
-v3-0000000000000014 divergence lgse/strata#2358
+v3-0000000000000011 toolkit lgse/strata#2445
+v3-0000000000000014 toolkit lgse/strata#2445
