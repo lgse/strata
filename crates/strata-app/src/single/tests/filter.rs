@@ -282,3 +282,57 @@ fn tab_in_a_rename_on_a_row_among_the_results_only_commits() {
         "filter::tab_in_a_rename_on_a_row_among_the_results_only_commits",
     );
 }
+
+/// Escape from the results closes the filter and gives the keyboard to the listing, on the
+/// entry it had before the filter, so the next arrow moves on from there (GTK's
+/// `dismiss_focused_filter`; finding lgse/strata#2421).
+fn escape_from_the_results_gives_the_listing_the_keyboard(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        open(&mut host, case.shape, folder.path());
+        press(&mut host, Key::Home, Mods::default());
+        press(&mut host, Key::Text("f".to_owned()), ctrl());
+        type_text(&mut host, "photo");
+        wait(&mut host, case.shape, "the filter's one result", |seen| {
+            seen.names() == ["photo.txt"]
+        });
+        press(&mut host, Key::Down, Mods::default());
+        wait(
+            &mut host,
+            case.shape,
+            "the result with the keyboard",
+            |seen| seen.keyboard && seen.focused.as_deref() == Some("photo.txt"),
+        );
+
+        press(&mut host, Key::Escape, Mods::default());
+        let back = wait(
+            &mut host,
+            case.shape,
+            "the listing with the keyboard",
+            |seen| seen.names() == FIXTURE && seen.keyboard,
+        );
+        assert_eq!(back.focused.as_deref(), Some("archive"));
+
+        press(&mut host, case.next.clone(), Mods::default());
+        assert_eq!(
+            seen(&host, case.shape).focused.as_deref(),
+            Some("documents")
+        );
+    });
+}
+
+#[test]
+fn escape_from_the_tiles_gives_the_grid_the_keyboard() {
+    escape_from_the_results_gives_the_listing_the_keyboard(
+        &ICONS,
+        "filter::escape_from_the_tiles_gives_the_grid_the_keyboard",
+    );
+}
+
+#[test]
+fn escape_from_the_rows_gives_the_table_the_keyboard() {
+    escape_from_the_results_gives_the_listing_the_keyboard(
+        &LIST,
+        "filter::escape_from_the_rows_gives_the_table_the_keyboard",
+    );
+}

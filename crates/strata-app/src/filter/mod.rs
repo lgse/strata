@@ -262,14 +262,7 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
             }
         }
         FilterIntent::Closed => {
-            // Escape in the field: the keyboard goes back to the view, as GTK's
-            // `dismiss_focused_filter` focuses the pane.
-            let place = app.filter.open_in.as_ref().map(|open| open.place);
-            if let Some(place) = place
-                && tx.focused() == Some(bar(app).field_key().as_str())
-            {
-                tx.focus(place.view_key(), false);
-            }
+            refocus_on_close(app, tx);
             closed(app);
         }
         FilterIntent::Open { id } => {
@@ -286,6 +279,22 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
         }
         // The preview is A15's, and the field's own menu C21's.
         _ => {}
+    }
+}
+
+/// The filter closes: the keyboard goes back to the view from the field, as GTK's
+/// `dismiss_focused_filter` focuses the pane, and from a pane's results, whose collection
+/// leaves the tree with the keyboard in it, to the listing that takes its place (finding
+/// lgse/strata#2421). A Columns column's results are its own rows, which keep it.
+fn refocus_on_close(app: &App, tx: &mut Tx) {
+    let Some(place) = app.filter.open_in.as_ref().map(|open| open.place) else {
+        return;
+    };
+    let focused = tx.focused();
+    if focused == Some(bar(app).field_key().as_str()) {
+        tx.focus(place.view_key(), false);
+    } else if place != Where::Columns && focused == Some(place.view_key()) {
+        tx.focus(place.view_key(), true);
     }
 }
 
