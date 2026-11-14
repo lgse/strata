@@ -143,11 +143,11 @@ impl Part for NewItem {
 }
 
 fn new_folder(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
-    begin(app, call.on, true, tx)
+    begin(app, &call.on, true, tx)
 }
 
 fn new_file(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
-    begin(app, call.on, false, tx)
+    begin(app, &call.on, false, tx)
 }
 
 fn cancelled(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
@@ -172,10 +172,11 @@ pub(crate) fn cancel(app: &mut App) -> bool {
 
 /// The column a new item goes in: the menu's, or the browser's active one, or the last
 /// (`new_entry_parent` and `new_folder_destination_depth` in `src/ui/browser.rs`).
-fn column(app: &App, on: On) -> Option<usize> {
-    match on {
+fn column(app: &App, on: &On) -> Option<usize> {
+    match *on {
         On::Row((depth, _)) | On::Column(depth) => Some(depth),
         On::Focus => app.browser.active_depth().or_else(|| last_column(app)),
+        On::Place(_) => None,
     }
 }
 
@@ -195,7 +196,7 @@ fn may_create_in(location: &Location) -> bool {
 
 /// `begin_new_entry`: an edit or a naming already open gives way, and the browser creates
 /// the item. The key is taken wherever the folder is, as GTK takes it.
-fn begin(app: &mut App, on: On, directory: bool, tx: &mut Tx) -> Outcome {
+fn begin(app: &mut App, on: &On, directory: bool, tx: &mut Tx) -> Outcome {
     let Some((depth, parent)) =
         column(app, on).and_then(|depth| Some((depth, app.browser.location_at(depth)?)))
     else {

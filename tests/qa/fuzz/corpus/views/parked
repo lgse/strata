@@ -6,12 +6,12 @@
 # it. Versions 2 and 3 were A8's drafts, never merged. In the corpus unparked, their findings
 # fixed: `v3-0000000000000006` (lgse/strata#2410), `v4-0000000000000011`, `-13` and `-14`
 # (lgse/strata#2425), `v4-0000000000000001` (lgse/strata#2437; seed 1 held #2425's sequence
-# first, and met #2437 further on once that was fixed), and `v4-0000000000000007`
-# (lgse/strata#2427).
+# first, and met #2437 further on once that was fixed), `v4-0000000000000007`
+# (lgse/strata#2427), `v3-000000000000000b` (lgse/strata#2411) and `v4-000000000000000f`
+# (lgse/strata#2426).
 v2-000000000000000c divergence lgse/strata#2408
 v3-0000000000000005 oracle lgse/strata#2412
 v3-0000000000000009 oracle lgse/strata#2415
-v3-000000000000000b divergence lgse/strata#2411
 v3-000000000000000c divergence lgse/strata#2414
 v3-0000000000000011 oracle lgse/strata#2415
 v4-0000000000000002 oracle lgse/strata#2412
@@ -19,4 +19,3 @@ v4-0000000000000004 oracle lgse/strata#2412
 v4-0000000000000005 oracle lgse/strata#2412
 v4-0000000000000009 oracle lgse/strata#2415
 v4-000000000000000e divergence lgse/strata#2414
-v4-000000000000000f divergence lgse/strata#2426
