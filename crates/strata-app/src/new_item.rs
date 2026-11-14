@@ -206,6 +206,9 @@ fn begin(app: &mut App, on: On, directory: bool, tx: &mut Tx) -> Outcome {
     }
     cancel(app);
     rename::cancel(app, tx);
+    // GTK empties the column's filter first, so the new row is not hidden
+    // (`begin_new_entry_inner` in `src/ui/browser/inline_edit/new_entry.rs`).
+    crate::filter::clear_for_new_item(app, depth, tx);
     app.new_item.pending = Some(Pending {
         depth,
         parent: parent.clone(),

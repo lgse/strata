@@ -588,6 +588,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Reach:** by reading, no scenario Tabs onto a heading. The gap is older than
   [#2329](https://github.com/lgse/strata/pull/2329), which made the headings `button`s for
   assistive technology and left them unfocusable. Found in #2329's review.
+  The columns menu "Customize columns…" opens gives the keyboard back to the table where
+  GTK's gives it to the "Name" heading ([#2399](https://github.com/lgse/strata/pull/2399)'s
+  review): `list::customize_columns` focuses the table, and would focus `head-name` once the
+  headings take focus.
 - **State:** open, waiting for the owner ([`owner.md`](owner.md#a8-view-switching-and-appearance),
   A8 item 1). C4's "owner ruling" was a reading: the owner's sign-off of 2026-11-10 covers
   the deviations marked OWNER in `docs/rune/work/STATUS.md`, and C4's row does not mark this

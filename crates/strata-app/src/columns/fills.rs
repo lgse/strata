@@ -134,7 +134,12 @@ pub(super) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
     let fills = &mut app.columns.fills;
     fills.fit(open);
     let mut wake: Option<f64> = None;
-    for (depth, listing) in app.columns.listings.columns.iter().enumerate().take(open) {
+    let listings = &app.columns.listings;
+    for (depth, listing) in listings.columns.iter().enumerate().take(open) {
+        // The rows on screen are a filter's results, not the folder's.
+        if listings.hits_at(depth) {
+            continue;
+        }
         let Some(column) = fills.columns.get_mut(depth) else {
             continue;
         };

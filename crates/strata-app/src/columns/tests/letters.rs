@@ -2,8 +2,8 @@
 
 //! What a plain letter does in the Columns view, by the saved "Type to search" choice.
 
-use super::{MODULE, fixture, open, press, save_settings, seen, wait};
-use crate::test_support::hosted_after;
+use super::{MODULE, find, fixture, open, press, save_settings, text, wait};
+use crate::test_support::{PATIENCE, hosted_after};
 
 /// `keyboard_navigation/arrow-keys-move-focus-remaining` (`columns-hjkl`): its header turns
 /// "Type to search" off, and `j` and `k` are then Down and Up.
@@ -50,7 +50,13 @@ fn with_type_to_search_on_a_letter_moves_nothing() {
 
             press(&mut host, "j");
 
-            assert_eq!(seen(&host).focused.as_deref(), Some("archive"));
+            // The letter is a query: the filter opens on it (type-to-search).
+            let reached = host.run_until(PATIENCE, |host| {
+                let tree = host.tree();
+                let fields = find(&tree, &|node| node["role"] == "text-input");
+                fields.iter().any(|field| text(field, "value") == "j")
+            });
+            assert!(reached, "no filter field holds the letter");
         },
     );
 }

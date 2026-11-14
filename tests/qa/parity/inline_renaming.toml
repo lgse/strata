@@ -97,7 +97,7 @@ package = "A7"
 gate = "G3"
 status = "pending"
 reason = "scope"
-blocker = "C18: the filter bar, at Ctrl+F on line 4 (A10)"
+blocker = "A10: the band under the Columns header for the filter's field (contract), at the background press on line 9, which lands on the header's filter toggle"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
@@ -120,9 +120,8 @@ scenario = "new-item-clears-hiding-filter"
 run = "columns-folder"
 package = "A7"
 gate = "G3"
-status = "pending"
-reason = "scope"
-blocker = "C18: the filter bar, at Ctrl+F on line 4 (A10)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"

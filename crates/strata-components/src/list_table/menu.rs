@@ -34,13 +34,18 @@ const MENU_WIDTH: f32 = 260.0;
 
 fn items<S: 'static>(shared: &Rc<Shared<S>>, s: &S, mut menu: Menu) -> Menu {
     let layout = (shared.parts)(s).layout;
-    menu = menu.min_width(MENU_WIDTH).group_label("COLUMNS");
+    let labels = &shared.labels;
+    menu = menu
+        .min_width(MENU_WIDTH)
+        .group_label(labels.heading.clone());
     for column in shared.columns.iter() {
         let mut item = MenuItem::new(column.title.clone()).checked(layout.is_visible(&column.id));
         if column.is_primary() {
-            item = item
-                .disabled(true)
-                .description(format!("The {} column cannot be hidden", column.title));
+            let fixed = labels
+                .fixed
+                .clone()
+                .unwrap_or_else(|| format!("The {} column cannot be hidden", column.title));
+            item = item.disabled(true).description(fixed);
         } else {
             let toggle = shared.clone();
             let id = column.id.clone();
@@ -63,8 +68,8 @@ fn items<S: 'static>(shared: &Rc<Shared<S>>, s: &S, mut menu: Menu) -> Menu {
     }
     let reset = shared.clone();
     menu.separator()
-        .item(MenuItem::new("Reset to default columns").on_select_tx(
-            move |s: &mut S, tx: &mut Tx| {
+        .item(
+            MenuItem::new(labels.reset.clone()).on_select_tx(move |s: &mut S, tx: &mut Tx| {
                 let layout = ColumnLayout::new(reset.columns.iter().map(|c| c.id.clone()));
                 if let Some(f) = &reset.on_layout {
                     f(
@@ -76,8 +81,8 @@ fn items<S: 'static>(shared: &Rc<Shared<S>>, s: &S, mut menu: Menu) -> Menu {
                         tx,
                     );
                 }
-            },
-        ))
+            }),
+        )
 }
 
 fn closing<S: 'static>(shared: &Rc<Shared<S>>, menu: Menu) -> Menu {
@@ -122,8 +127,8 @@ pub(super) fn button<S: 'static>(shared: &Rc<Shared<S>>, s: &S, layer: &mut Vec<
     let look = parts.look;
     let open = shared.clone();
     let trigger = IconButton::new(look.icon(IconName::ViewColumns))
-        .label("Columns")
-        .help("Columns")
+        .label(shared.labels.button.clone())
+        .help(shared.labels.button.clone())
         .on_press(move |s: &mut S| (open.table_mut)(s).menu = Some(MenuAt::Button))
         .build(&look.kit)
         .key(button_key(&shared.key));

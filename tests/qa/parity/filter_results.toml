@@ -3,12 +3,35 @@
 # The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
 
 [[run]]
+scenario = "confirmed-delete-acts-on-filter-result"
+run = "columns"
+package = "A10"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "confirmed-delete-acts-on-filter-result"
+run = "icons"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10: the filter in Icons and List, at Ctrl+F on line 5"
+
+[[run]]
+scenario = "confirmed-delete-acts-on-filter-result"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10: the filter in Icons and List, at Ctrl+F on line 5"
+
+[[run]]
 scenario = "delete-trashes-filtered-result"
 run = "columns"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a result's path line in Columns, at `result` on line 8 (contract, C2)"
 
 [[run]]
 scenario = "delete-trashes-filtered-result"
@@ -30,9 +53,8 @@ blocker = "A10"
 scenario = "dismissed-delete-confirmation-keeps-result-focus"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "dismissed-delete-confirmation-keeps-result-focus"
@@ -56,7 +78,7 @@ run = "columns-folder"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: the Enter mark read as `marked`, at line 8 (contract, qa/)"
 
 [[run]]
 scenario = "filter-enter-opens-top-match"
@@ -80,7 +102,7 @@ run = "columns-subfolders"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: the Enter mark read as `marked`, at line 8 (contract, qa/)"
 
 [[run]]
 scenario = "filter-enter-opens-top-match"
@@ -102,9 +124,8 @@ blocker = "A10"
 scenario = "filter-results-follow-external-changes"
 run = "columns-false"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-results-follow-external-changes"
@@ -128,7 +149,7 @@ run = "columns-true"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a result's path line in Columns, at `result` on line 46 (contract, C2)"
 
 [[run]]
 scenario = "filter-results-follow-external-changes"
@@ -150,9 +171,8 @@ blocker = "A10"
 scenario = "filter-slash-enters-folder"
 run = "columns-folder"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-slash-enters-folder"
@@ -174,9 +194,8 @@ blocker = "A10"
 scenario = "filter-slash-enters-folder"
 run = "columns-subfolders"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-slash-enters-folder"
@@ -200,7 +219,7 @@ run = "columns"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a result's path line in Columns, at `result` on line 8 (contract, C2); then A15's preview, at Space on line 11"
 
 [[run]]
 scenario = "filter-updates-retain-state"
@@ -232,7 +251,7 @@ run = "columns-two-clicks"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A15: the preview, at line 8"
 
 [[run]]
 scenario = "filtered-file-click-previews"
@@ -256,7 +275,7 @@ run = "columns-one-click"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
 
 [[run]]
 scenario = "filtered-file-click-previews"
@@ -288,7 +307,7 @@ run = "columns-inline"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `focus_renamed_column_result`, at line 41"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
@@ -312,7 +331,7 @@ run = "columns-tab"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `focus_renamed_column_result`, at line 41"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
@@ -376,4 +395,4 @@ run = "columns"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a result's path line in Columns, at `result` on line 8 (contract, C2); then A15's preview, at line 17"

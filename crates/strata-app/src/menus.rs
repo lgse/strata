@@ -64,18 +64,28 @@ struct Opening {
 /// part of.
 fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
     let rows = &shell::shown_view(app)?.rows;
-    let position = (rows.position)(app, (depth, id))?;
-    let entry = app.browser.entry_at(depth, position)?;
-    // `context_entries` in `src/ui/browser/context_menu.rs`: the selection when the entry is
-    // in it, else the entry alone.
-    let selected = app.browser.selected_entries();
-    let within = selected
-        .iter()
-        .any(|other| other.location == entry.location);
-    let entries = if within {
-        selected
-    } else {
-        vec![entry.clone()]
+    // `context_entries` in `src/ui/browser/context_menu.rs`: a filter's result and the
+    // results selected first, as GTK asks `selected_search_results` before the browser.
+    let (entry, entries) = match crate::filter::targets::at(app, depth, id) {
+        Some(entry) => {
+            let entries = crate::filter::targets::of_row(app, depth, id).unwrap_or_default();
+            (entry, entries)
+        }
+        None => {
+            let position = (rows.position)(app, (depth, id))?;
+            let entry = app.browser.entry_at(depth, position)?;
+            // The selection when the entry is in it, else the entry alone.
+            let selected = app.browser.selected_entries();
+            let within = selected
+                .iter()
+                .any(|other| other.location == entry.location);
+            let entries = if within {
+                selected
+            } else {
+                vec![entry.clone()]
+            };
+            (entry, entries)
+        }
     };
     let model = self::entry(&EntryTarget {
         entry: &entry,
