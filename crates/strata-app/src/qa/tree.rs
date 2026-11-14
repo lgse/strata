@@ -625,6 +625,26 @@ impl Snapshot {
         self.focus().is_some_and(|focus| focus.node == seen.node)
     }
 
+    /// Whether the keyboard can reach `seen`, as GTK's `is_focusable` says: an element that
+    /// takes focus itself, or an entry reachable as the active descendant of the focus stop
+    /// around it. A Rune collection keeps one focus stop and points at its current entry (C1's
+    /// list, or C2's strip for the Columns view's columns), so an entry offers no focus action
+    /// of its own; `keyboard_focus` reads `focused` the same way.
+    pub(super) fn is_focusable(&self, seen: &Seen) -> bool {
+        seen.has_action("focus") || self.reached_as_active_descendant(seen)
+    }
+
+    /// Whether `seen` is an entry whose nearest focus stop names an active descendant.
+    fn reached_as_active_descendant(&self, seen: &Seen) -> bool {
+        if seen.mark != Some(Mark::Entry) {
+            return false;
+        }
+        let mut above = std::iter::successors(seen.parent, |index| self.nodes[*index].parent);
+        above
+            .find(|index| self.nodes[*index].has_action("focus"))
+            .is_some_and(|stop| self.nodes[stop].active_descendant.is_some())
+    }
+
     pub(super) fn keep(&self, node: &Node) -> Kept {
         Kept {
             node: node.clone(),

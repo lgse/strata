@@ -1079,7 +1079,21 @@ sequence only together with the alphabet's version, so the version is part of th
   `undo::tests::a_rename_is_undone_by_its_key_and_redone_by_either_of_redos` said
   "undo-target still absent" after its 30 s wait (`crates/strata-app/src/undo/tests.rs:59`).
   The branch did not touch undo. Alone, the test passed 3 of 3.
-- **Concerns:** that test, [A7](packages/A7.md)'s undo.
+  Seen again on 2026-11-14, in a full `mise run test-rune` for [A6](packages/A6.md)'s
+  [#2475](https://github.com/lgse/strata/pull/2475), run while a `./scripts/qa-parity.sh` gate loaded the machine:
+  `undo::tests::an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry` saw its
+  undo answer `Declined` where it expects `Ran` (`crates/strata-app/src/undo/tests.rs:156`).
+  The branch did not touch undo. Alone, the test passed.
+  A third, outside undo, seen in the review of the same pull request: in the full lane at a
+  load average of 13 to 20,
+  `sidebar::tests::the_arrows_move_along_the_header_and_down_returns_to_the_sidebar` failed
+  twice; alone, it passed 3 of 3. It has no owner.
+  A fourth, in this pull request's own lane at a load average of 33:
+  `sort::tests::a_columns_menu_sorts_its_own_column` said "the inner folder's column" after its
+  30 s wait (`crates/strata-app/src/sort/tests.rs:167`); alone, it passed 3 of 3. It has no
+  owner.
+- **Concerns:** those four tests: the two of [A7](packages/A7.md)'s undo, the sidebar's and
+  the sort's.
 - **What it suggests:** a hypothesis, by reading only, not verified: the test presses the redo
   chord once the undone name is back on disk, and the operation's completion may not have
   reached the undo stack by then, so the redo finds nothing to redo.
