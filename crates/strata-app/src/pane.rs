@@ -176,6 +176,7 @@ impl Pane {
             shown: shown.into_iter().collect(),
             pending,
             results: Vec::new(),
+            drawn: Vec::new(),
         }
     }
 

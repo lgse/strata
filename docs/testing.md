@@ -1786,11 +1786,12 @@ What the checks leave out, on purpose:
 - **The anchor** is compared as a view ranges from it, the anchor or the
   cursor where there is none, so no anchor and an anchor on the cursor read the
   same.
-- **A column showing a filter's results** (A10's) is held to all but its
-  marks, its pending hand-over and its pane, only while the results show: the
-  results replace its rows, and by design the browser holds none of their
-  selection, as on GTK. Its listing is still held to the browser's, and every
-  other column to everything.
+- **A column or pane showing a filter's results** (A10's) is held to the
+  browser by its listing, and its pane in the tree by the results drawn there,
+  nested ones included. In Columns, whose column's collection holds the
+  results' selection, its marks and its pending hand-over are left alone while
+  the results show: by design the browser holds none of their selection, as on
+  GTK. Every other column is held to everything.
 - **The load cursor** is read on the browser's side through
   `Browser::filled_entries`, as `events::marks` reads it, so the two cannot
   disagree on that predicate: the check holds the view to the marks it was

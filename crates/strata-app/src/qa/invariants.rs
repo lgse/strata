@@ -34,16 +34,21 @@
 //!   has been published.
 //! - **The anchor** is compared as a view ranges from it: the anchor, or the cursor where
 //!   there is none. So no anchor and an anchor on the cursor read the same.
-//! - **A column showing a filter's results** ([`Presented::results`]) is held to all but its
-//!   marks, its pending hand-over and its pane: the results replace its rows, and the browser
-//!   holds none of their selection, as on GTK. Its listing is still held to the browser's.
+//! - **A column showing a filter's results** is held to the browser by its listing, and its
+//!   pane by the results the tree draws in its place ([`Presented::drawn`]). Where the
+//!   results' selection is the column's own collection's, Columns' ([`Presented::results`]),
+//!   its marks and its pending hand-over are left alone: the browser holds none of the
+//!   results' selection, as on GTK.
 //! - **The load cursor** is read on the browser's side through `Browser::filled_entries`, as
 //!   `events::marks` reads it, so the two cannot disagree on that predicate: the check holds
 //!   the view to the marks it was given, not the predicate to the browser's `load_cursor`.
 
 use std::collections::HashSet;
 
-use strata_components::contract::{EntryId, EntrySource};
+use strata_components::{
+    collection::element::CollectionState,
+    contract::{EntryId, EntrySource},
+};
 use strata_core::model::FileEntry;
 use strata_fs::app::Browser;
 use strata_qa::{Observation, PaneObservation};
@@ -441,8 +446,23 @@ fn tree(presented: &Presented<'_>, panes: &[PaneObservation], failures: &mut Fai
             );
             return;
         };
-        if !presented.results.contains(&shown.depth) {
-            pane_of(pane, shown, failures);
+        let drawn = presented
+            .drawn
+            .iter()
+            .find(|drawn| drawn.depth == shown.depth);
+        match drawn {
+            Some(drawn) => pane_of(
+                pane,
+                shown.depth,
+                (drawn.column, drawn.collection),
+                failures,
+            ),
+            None => pane_of(
+                pane,
+                shown.depth,
+                (shown.column, shown.collection),
+                failures,
+            ),
         }
     }
     for shown in columns {
@@ -454,9 +474,15 @@ fn tree(presented: &Presented<'_>, panes: &[PaneObservation], failures: &mut Fai
     }
 }
 
-fn pane_of(pane: &PaneObservation, shown: &Shown<'_>, failures: &mut Failures) {
-    let (depth, column) = (shown.depth, shown.column);
-    let selection = &shown.collection.selection;
+/// A pane against the rows the view draws in it, `drawn`: a column's listing and its
+/// collection, or a filter's results in its place.
+fn pane_of(
+    pane: &PaneObservation,
+    depth: usize,
+    (column, collection): (&Column, &CollectionState),
+    failures: &mut Failures,
+) {
+    let selection = &collection.selection;
     let mut seen = HashSet::new();
     for entry in &pane.entries {
         let name = &entry.name;

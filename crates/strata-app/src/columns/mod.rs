@@ -422,8 +422,18 @@ impl Columns {
         let pending = (0..self.open())
             .filter(|depth| self.held.get(*depth) != Some(&self.held_now(*depth)))
             .collect();
-        let results = (0..self.open())
+        let results: Vec<usize> = (0..self.open())
             .filter(|depth| self.listings.hits_at(*depth))
+            .collect();
+        let drawn = results
+            .iter()
+            .filter_map(|depth| {
+                Some(handover::Drawn {
+                    depth: *depth,
+                    column: self.listings.shown(*depth)?,
+                    collection: &self.state.column(*depth)?.collection,
+                })
+            })
             .collect();
         handover::Presented {
             active: Some(self.state.active()),
@@ -432,6 +442,7 @@ impl Columns {
             shown,
             pending,
             results,
+            drawn,
         }
     }
 }

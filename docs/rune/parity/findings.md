@@ -1146,3 +1146,16 @@ sequence only together with the alphabet's version, so the version is part of th
   targets and the cursor's own moves.
 - **State:** open, [A10](packages/A10.md)'s; the three seeds parked in
   `tests/qa/fuzz/corpus/calibration/`.
+
+### #2421: Escape from a pane's filter results leaves no element with the keyboard on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2421), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `keyboard` invariant in a hosted run of the QA backend,
+  in List and Icons since [#2416](https://github.com/lgse/strata/pull/2416). Click
+  `readme.md`, press Ctrl+F, type `no`, press Down so the keyboard is on `notes.txt` in the
+  results, then Escape. The listing comes back with `readme.md` selected, but no element has
+  the keyboard, and Down and Up change nothing until a click. Without the Down, Escape gives
+  the keyboard to `readme.md`. No merged alphabet opens a pane's filter yet.
+- **State:** open, [A10](packages/A10.md)'s.
+

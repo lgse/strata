@@ -218,31 +218,50 @@ fn the_holds_follow_what_opens_and_a_hidden_view_does_nothing() {
 }
 
 /// A filter's results take the place of a column's rows, and the browser holds none of their
-/// selection, as on GTK: the invariants leave the marks and the pane of that column alone
-/// while the results show, and hold everything else.
+/// selection, as on GTK: the column is held to the browser by its listing and its pane by the
+/// results the tree draws, nested ones among them (`no` finds `documents/notes.txt`). Escape
+/// from the results of a pane is left out: it loses the keyboard (finding lgse/strata#2421).
+fn a_filter_s_results_are_held_to_what_the_tree_draws(mode: &str, name: &str) {
+    shown_in(mode, name, |backend, kept| {
+        for (step, then) in [
+            (
+                json!({ "click": { "entry": "readme.md" } }),
+                json!({ "wait": { "focused": "readme.md" } }),
+            ),
+            (
+                json!({ "key": "ctrl+f" }),
+                json!({ "wait": { "field": {} } }),
+            ),
+            (json!({ "type": "no" }), json!({ "sleep": 500 })),
+            (json!({ "key": "Down" }), json!({ "sleep": 300 })),
+        ] {
+            passes(backend, kept, &step);
+            passes(backend, kept, &then);
+            assert_eq!(failed(backend, kept), json!([]), "after {step}");
+        }
+    });
+}
+
 #[test]
-fn a_column_showing_filter_results_is_held_to_all_but_its_marks() {
-    shown_in(
+fn a_filter_s_results_in_the_columns_are_held_to_what_the_tree_draws() {
+    a_filter_s_results_are_held_to_what_the_tree_draws(
         "columns",
-        "a_column_showing_filter_results_is_held_to_all_but_its_marks",
-        |backend, kept| {
-            for (step, then) in [
-                (
-                    json!({ "click": { "entry": "readme.md" } }),
-                    json!({ "wait": { "focused": "readme.md" } }),
-                ),
-                (
-                    json!({ "key": "ctrl+f" }),
-                    json!({ "wait": { "field": {} } }),
-                ),
-                (json!({ "type": "re" }), json!({ "sleep": 500 })),
-                (json!({ "key": "Down" }), json!({ "sleep": 300 })),
-                (json!({ "key": "Escape" }), json!({ "sleep": 300 })),
-            ] {
-                passes(backend, kept, &step);
-                passes(backend, kept, &then);
-                assert_eq!(failed(backend, kept), json!([]), "after {step}");
-            }
-        },
+        "a_filter_s_results_in_the_columns_are_held_to_what_the_tree_draws",
+    );
+}
+
+#[test]
+fn a_filter_s_results_in_the_list_are_held_to_what_the_tree_draws() {
+    a_filter_s_results_are_held_to_what_the_tree_draws(
+        "list",
+        "a_filter_s_results_in_the_list_are_held_to_what_the_tree_draws",
+    );
+}
+
+#[test]
+fn a_filter_s_results_in_the_icons_are_held_to_what_the_tree_draws() {
+    a_filter_s_results_are_held_to_what_the_tree_draws(
+        "icons",
+        "a_filter_s_results_in_the_icons_are_held_to_what_the_tree_draws",
     );
 }
