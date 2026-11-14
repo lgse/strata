@@ -29,6 +29,7 @@
 //!   `set_view_mode`, `restore_view_switch_focus`).
 //! - **It closes** with Escape, from its field or its results, and when its column shows
 //!   another folder or goes; a new item in its column empties it first ([`clear_for_new_item`]).
+//!   The keyboard goes back to the view, on the entry the listing had.
 //!
 //! Not yet: a folder that is not local, which GTK narrows in place, the results' thumbnails,
 //! a Columns result's path line, a renamed result keeping the cursor, and the field's own menu.
@@ -262,14 +263,7 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
             }
         }
         FilterIntent::Closed => {
-            // Escape in the field: the keyboard goes back to the view, as GTK's
-            // `dismiss_focused_filter` focuses the pane.
-            let place = app.filter.open_in.as_ref().map(|open| open.place);
-            if let Some(place) = place
-                && tx.focused() == Some(bar(app).field_key().as_str())
-            {
-                tx.focus(place.view_key(), false);
-            }
+            refocus_on_close(app, tx);
             closed(app);
         }
         FilterIntent::Open { id } => {
@@ -286,6 +280,22 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
         }
         // The preview is A15's, and the field's own menu C21's.
         _ => {}
+    }
+}
+
+/// The filter closes: the keyboard goes back to the view from the field, as GTK's
+/// `dismiss_focused_filter` focuses the pane, and from a pane's results, whose collection
+/// leaves the tree with the keyboard in it, to the listing that takes its place (finding
+/// lgse/strata#2421). A Columns column's results are its own rows, which keep it.
+fn refocus_on_close(app: &App, tx: &mut Tx) {
+    let Some(place) = app.filter.open_in.as_ref().map(|open| open.place) else {
+        return;
+    };
+    let focused = tx.focused();
+    if focused == Some(bar(app).field_key().as_str()) {
+        tx.focus(place.view_key(), false);
+    } else if place != Where::Columns && focused == Some(place.view_key()) {
+        tx.focus(place.view_key(), true);
     }
 }
 
