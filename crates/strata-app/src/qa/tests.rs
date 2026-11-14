@@ -21,6 +21,7 @@ use crate::{
     test_support::{fixture, in_own_process},
 };
 
+mod filter;
 mod icon;
 mod invariants;
 mod ready;

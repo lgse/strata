@@ -71,4 +71,18 @@ pub trait ColumnSources {
     fn description(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
         None
     }
+
+    /// Whether column `depth`'s rows carry a detail line under their names ([`Self::detail`]):
+    /// its rows are taller while they do, all of them, so the column keeps one row height.
+    /// `false` (the default) keeps the one-line rows.
+    fn has_details(&self, _depth: usize) -> bool {
+        false
+    }
+
+    /// The detail line under the name of column `depth`'s entry at `index`, as the host words
+    /// it: Strata's search results show the folder each was found in. Wrapped to two lines and
+    /// muted; read while [`Self::has_details`] holds. `None` (the default) draws none.
+    fn detail(&self, _depth: usize, _index: usize) -> Option<Cow<'_, str>> {
+        None
+    }
 }

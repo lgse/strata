@@ -69,3 +69,8 @@ pub fn wash(column: &str) -> String {
 
 /// The key of a row's size badge, under the row's key (`row-<id>/badge`).
 pub const BADGE: &str = "badge";
+
+/// The key of the box around a row's detail line, under the row's key
+/// (`row-<id>/detail`): the line itself is keyed as a label (C1e's `LABEL`), as the row's name
+/// is, so a host's tooling reads it as the row's second label.
+pub const DETAIL: &str = "detail";

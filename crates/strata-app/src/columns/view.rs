@@ -102,6 +102,8 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .pointer_settings(|app: &App| PointerSettings::default().modes(app.columns.clicks))
     // GTK's column header actions, in its order (`pane_header::actions`).
     .header_actions(|app: &App, cx| pane_header::actions::column(app, &cx))
+    // The filter's field, in a band under the header of the column it is open in.
+    .header_band(|app: &App, cx| filter::column_band(app, cx.depth))
     // The filter's Enter target among its results.
     .marks(filter::marks)
     .on_intent(intents::heard)
