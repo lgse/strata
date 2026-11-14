@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use rune::{Env, Runtime, text::TextSystem};
+use rune::{Env, Mods, PhysicalInput, Runtime, text::TextSystem};
 use strata_kit::fonts::{FAMILIES, FONTS};
 use strata_platform::csd::{Backend, Csd, Policy};
 
@@ -74,6 +74,18 @@ impl Offscreen {
     /// Rune's side of the host: where input goes in, and the tree comes out.
     pub(crate) fn runtime(&mut self) -> &mut Runtime<App> {
         &mut self.runtime
+    }
+
+    /// Tells Rune which modifiers are held, as a keyboard does before the key they modify,
+    /// and the shell with it: the hook the windowed host registers is one this host cannot
+    /// (Rune packet entry 107; `shell::held` has the order this keeps).
+    pub(crate) fn modifiers(&mut self, mods: Mods) {
+        self.runtime.physical_input(PhysicalInput::Modifiers(mods));
+        self.runtime.update_if(|app, tx| {
+            let changed = shell::held_modifiers(app) != mods;
+            shell::modifiers(app, mods, tx);
+            changed
+        });
     }
 
     /// The accessibility tree, as an assistive client and the QA harness read it.
