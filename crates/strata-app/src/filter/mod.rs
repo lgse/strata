@@ -73,14 +73,14 @@ mod descent;
 mod hits;
 pub(crate) mod pane;
 mod place;
-mod session;
+pub(crate) mod session;
 mod switch;
 pub(crate) mod targets;
 mod typing;
 
 use pane::PaneHits;
 use place::Where;
-use session::{Batch, Input, Session};
+use session::{Batch, Input, Scope, Session};
 
 #[cfg(test)]
 mod tests;
@@ -378,13 +378,13 @@ fn search(app: &mut App, text: &str) {
         .column_preferences(open.depth)
         .unwrap_or_else(|| app.browser.preferences())
         .show_hidden;
+    let recursive = preferences.filter_include_subfolders;
     let input = Input {
-        root,
+        scope: Scope::Folder { root, recursive },
         show_hidden,
-        recursive: preferences.filter_include_subfolders,
     };
     let limits = limits(preferences);
-    app.filter.pane.recursive = input.recursive;
+    app.filter.pane.recursive = recursive;
     let later = app.filter.later.clone();
     app.filter
         .session
@@ -394,7 +394,7 @@ fn search(app: &mut App, text: &str) {
 }
 
 /// `search_limits` in `src/ui/preferences/input_settings.rs`: zero is no limit.
-fn limits(preferences: &strata_desktop::settings::Preferences) -> SearchLimits {
+pub(crate) fn limits(preferences: &strata_desktop::settings::Preferences) -> SearchLimits {
     SearchLimits {
         time_budget: (preferences.search_time_limit != 0)
             .then(|| Duration::from_secs(u64::from(preferences.search_time_limit))),
