@@ -2,7 +2,7 @@
 
 //! Volume, mount and drive rows in the sidebar Devices section.
 
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, collections::HashSet, rc::Rc};
 
 use gtk::prelude::*;
 
@@ -121,12 +121,16 @@ impl SidebarState {
         &self,
         volumes: &[gio::Volume],
     ) -> Vec<(String, Location, gio::Mount)> {
+        let mut seen = HashSet::new();
         super::devices::mounts_without_listed_volumes(&self.volume_monitor, volumes)
             .into_iter()
             .filter_map(|mount| {
                 let name = mount.name().to_string();
                 let location = location_for_file(&mount.root())?;
                 if self.local_only && location.native_path().is_none() {
+                    return None;
+                }
+                if !seen.insert(location.clone()) {
                     return None;
                 }
                 Some((name, location, mount))

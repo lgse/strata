@@ -868,10 +868,12 @@ pub(super) fn mounts_without_listed_volumes(
     monitor: &gio::VolumeMonitor,
     volumes: &[gio::Volume],
 ) -> Vec<gio::Mount> {
+    let mut seen_roots = HashSet::new();
     monitor
         .mounts()
         .into_iter()
         .filter(|mount| MountListing::of(mount, volumes).has_own_row())
+        .filter(|mount| seen_roots.insert(mount.root().uri()))
         .collect()
 }
 
