@@ -11,7 +11,6 @@ use std::{
 
 use serde_json::Value;
 
-const SOCKET_VARIABLE: &str = "SWAYSOCK";
 const MAGIC: &[u8; 6] = b"i3-ipc";
 const RUN_COMMAND: u32 = 0;
 const GET_OUTPUTS: u32 = 3;
@@ -42,11 +41,9 @@ pub(super) struct Sway {
 }
 
 impl Sway {
-    pub(super) fn from_environment() -> Result<Self, String> {
-        let socket = std::env::var_os(SOCKET_VARIABLE)
-            .map(PathBuf::from)
-            .ok_or("the session host needs sway's SWAYSOCK")?;
-        Ok(Self { socket })
+    /// The sway whose IPC socket is `socket`.
+    pub(super) fn at(socket: PathBuf) -> Self {
+        Self { socket }
     }
 
     fn ask(&self, kind: u32, payload: &str) -> Result<Value, String> {

@@ -1,13 +1,24 @@
 // SPDX-License-Identifier: MIT
 
 //! What keeps the session host off a desktop. It puts a virtual keyboard and pointer on the
-//! seat of the compositor it reaches, so it runs only in a private, headless sway: every
-//! output sway lists must be a headless one (`HEADLESS-*`, as `WLR_BACKENDS=headless` names
-//! them), and no variable it reaches the session through may point into the desktop's
-//! runtime directory, `/run/user/<uid>`, the bus's included. The session bus it expects is
-//! the runner's private one, or none. A refusal ends the host; it never falls back.
+//! seat of the compositor it reaches, so it runs only in a private, headless sway. [`admit`]
+//! decides before the window opens, so a refused session never touches a display:
+//!
+//! - The hard gate: every output the sway of `SWAYSOCK` lists is a headless one
+//!   (`HEADLESS-*`, as `WLR_BACKENDS=headless` names them). No desktop has only those.
+//! - An extra check: no variable the host reaches the session through points into the
+//!   desktop's runtime directory, `/run/user/<uid>`, the bus's included. The session bus it
+//!   expects is the runner's private one, or none.
+//!
+//! That `WAYLAND_DISPLAY` is that same sway is proven once the window is up, before any
+//! device is made: the session waits until that sway lists this process's window
+//! (`Session::connect`). A refusal ends the host; it never falls back.
+
+use std::path::PathBuf;
 
 use serde_json::Value;
+
+use super::sway::Sway;
 
 /// The prefix wlroots' headless backend names its outputs with.
 const HEADLESS: &str = "HEADLESS-";
@@ -20,6 +31,23 @@ pub(super) const REACHED_THROUGH: [&str; 4] = [
     "SWAYSOCK",
     "DBUS_SESSION_BUS_ADDRESS",
 ];
+
+/// The sway the session host may run in, and the size of its output.
+pub(super) struct Admitted {
+    pub(super) sway: Sway,
+    pub(super) screen: (u32, u32),
+}
+
+/// Admits the session `variable` reads, or says why it is refused: through the desktop's
+/// runtime directory, or in a sway that is not headless.
+pub(super) fn admit(variable: impl Fn(&str) -> Option<String>) -> Result<Admitted, String> {
+    let reached = REACHED_THROUGH.map(|name| (name, variable(name)));
+    private(&reached)?;
+    let socket = variable("SWAYSOCK").ok_or("the session host needs sway's SWAYSOCK")?;
+    let sway = Sway::at(PathBuf::from(socket));
+    let screen = headless(&sway.outputs()?)?;
+    Ok(Admitted { sway, screen })
+}
 
 /// The size of the active output of sway's `GET_OUTPUTS` reply, when every output is
 /// headless.
