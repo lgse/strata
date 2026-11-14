@@ -203,7 +203,7 @@ fn renamed(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
             Outcome::Ran
         }
         // No editor opened; and a menu with no entry has no Rename row.
-        On::Focus | On::Column(_) => Outcome::Declined,
+        On::Focus | On::Column(_) | On::Place(_) => Outcome::Declined,
     }
 }
 
