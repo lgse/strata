@@ -382,6 +382,7 @@ pub(crate) struct Strip<S: 'static> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Scope {
     Tab,
+    #[expect(dead_code, reason = "the tab strip, A4's next pull request, is the window's")]
     Window,
 }
 

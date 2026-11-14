@@ -27,9 +27,9 @@
 //!
 //! - **The context menus** of the rows, by right-click and the Menu key ([`menu`]).
 //!
-//! The window keeps one sidebar for every tab (`Scope::Window`), where GTK builds one for each
-//! tab: every tab's shows the same settings and bookmarks, and a hidden tab's sidebar has
-//! nothing of its own to keep but its scroll. The tab shown marks its own place.
+//! Each tab has a sidebar of its own, as GTK builds one for each tab: its scroll, its marked
+//! row and its menu are the tab's. What another tab changes in the settings is followed when
+//! the tab is shown again (`Part::tab_shown`).
 //!
 //! Drops, devices, the full Trash's icon and the `g` keycaps are not here yet:
 //! `docs/rune/parity/packages/A3.md` lists them.
@@ -56,7 +56,7 @@ use crate::{
     App,
     commands::{self, Action, Holds, On},
     shell,
-    slots::{self, Frame, Later, Listener, Part, Place, Scope, Setup},
+    slots::{self, Frame, Later, Listener, Part, Place, Setup},
 };
 
 mod header;
@@ -146,13 +146,23 @@ impl Part for Sidebar {
         }))
     }
 
-    /// One sidebar for the window: its places, pins, widths and sections are the settings' and
-    /// the bookmarks', which every tab shows alike.
-    const SCOPE: Scope = Scope::Window;
-
-    /// The tab shown now marks its own place.
+    /// The tab is shown: what another tab changed while it was hidden (the width step, the
+    /// sections, the places shown and their order) is followed, as GTK binds each tab's
+    /// sidebar to the settings. The pins come from the bookmarks store, which this tab's
+    /// sidebar hears for itself, held while it was hidden.
     fn tab_shown(app: &mut App, _tx: &mut Tx) {
-        app.sidebar.follow(&app.browser);
+        if !app.sidebar.started {
+            return;
+        }
+        let saved = shell::preferences(app);
+        let step = saved_step(saved.sidebar_expanded, saved.sidebar_compact);
+        let collapsed = (saved.sidebar_pinned_collapsed, saved.sidebar_devices_collapsed);
+        let state = &mut app.sidebar.state;
+        if state.width.chosen() != step {
+            state.width.choose(step);
+        }
+        (state.pinned_collapsed, state.devices_collapsed) = collapsed;
+        relist(app);
     }
 
     fn poll(app: &mut App, _clock: f64, _tx: &mut Tx) -> bool {
