@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::ui::preferences::defaults::{
-    default_window_show_maximize, default_window_show_minimize, layout_contains_button,
-};
+use crate::test_support::gtk_test_with_env;
 
 #[test]
 fn saved_language_applies_before_settings_and_changes_only_after_restart() {
@@ -385,121 +383,65 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
 }
 
 #[test]
-fn decoration_layout_parsing_matches_window_controls() {
-    assert!(layout_contains_button(
-        "icon:minimize,maximize,close",
-        "minimize"
-    ));
-    assert!(layout_contains_button(
-        "icon:minimize,maximize,close",
-        "maximize"
-    ));
-    assert!(layout_contains_button(
-        "icon:minimize,maximize,close",
-        "close"
-    ));
-
-    assert!(!layout_contains_button("appmenu:close", "minimize"));
-    assert!(!layout_contains_button("appmenu:close", "maximize"));
-    assert!(layout_contains_button("appmenu:close", "close"));
-
-    assert!(layout_contains_button(
-        "appmenu:minimize,maximize,close",
-        "minimize"
-    ));
-    assert!(layout_contains_button(
-        "appmenu:minimize,maximize,close",
-        "maximize"
-    ));
-
-    assert!(!layout_contains_button("menu:close", "minimize"));
-    assert!(!layout_contains_button("menu:close", "maximize"));
-    assert!(layout_contains_button("menu:close", "close"));
-
-    assert!(!layout_contains_button("close:maximize", "minimize"));
-    assert!(layout_contains_button("close:maximize", "maximize"));
-    assert!(layout_contains_button("close:maximize", "close"));
-
-    assert!(layout_contains_button(
-        "close,minimize,maximize:",
-        "minimize"
-    ));
-    assert!(layout_contains_button(
-        "close,minimize,maximize:",
-        "maximize"
-    ));
-
-    assert!(layout_contains_button(
-        " minimize , maximize : close ",
-        "minimize"
-    ));
-    assert!(layout_contains_button(
-        " minimize , maximize : close ",
-        "maximize"
-    ));
-
-    assert!(!layout_contains_button(":", "minimize"));
-    assert!(!layout_contains_button(":", "close"));
-    assert!(!layout_contains_button("", "minimize"));
-
-    assert!(!layout_contains_button(
-        "minimizer,maximizer,closer",
-        "minimize"
-    ));
-    assert!(!layout_contains_button(
-        "minimizer,maximizer,closer",
-        "maximize"
-    ));
-    assert!(!layout_contains_button(
-        "minimizer,maximizer,closer",
-        "close"
-    ));
+fn window_buttons_default_visible_on_gnome_even_with_a_close_only_layout() {
+    gtk_test_with_env(
+        "ui::preferences::tests::preferences::loading::window_buttons_default_visible_on_gnome_even_with_a_close_only_layout",
+        [("XDG_CURRENT_DESKTOP", "GNOME")],
+        || {
+            let settings = gtk::Settings::default().expect("GTK settings");
+            settings.set_gtk_decoration_layout(Some("appmenu:close"));
+            assert_window_button_preferences(true);
+        },
+    );
 }
 
 #[test]
-fn window_buttons_default_to_gtk_decoration_layout_unless_overridden() {
-    gtk_test(
-        "ui::preferences::tests::preferences::loading::window_buttons_default_to_gtk_decoration_layout_unless_overridden",
+fn window_buttons_default_hidden_on_tilers_even_with_a_full_button_layout() {
+    gtk_test_with_env(
+        "ui::preferences::tests::preferences::loading::window_buttons_default_hidden_on_tilers_even_with_a_full_button_layout",
+        [("XDG_CURRENT_DESKTOP", "KDE: hYpRlAnD ")],
         || {
-            let Some(settings) = gtk::Settings::default() else {
-                return;
-            };
-            let original_layout = settings.gtk_decoration_layout();
-
+            let settings = gtk::Settings::default().expect("GTK settings");
             settings.set_gtk_decoration_layout(Some("icon:minimize,maximize,close"));
-            assert!(default_window_show_minimize());
-            assert!(default_window_show_maximize());
-            let default_prefs = Preferences::default();
-            assert!(default_prefs.window_show_minimize);
-            assert!(default_prefs.window_show_maximize);
-
-            let mut saved =
-                toml::Table::try_from(non_default_preferences()).expect("saved preferences");
-            saved.remove("window_show_minimize");
-            saved.remove("window_show_maximize");
-            let parsed_default: Preferences = saved.clone().try_into().expect("valid preferences");
-            assert!(parsed_default.window_show_minimize);
-            assert!(parsed_default.window_show_maximize);
-
-            settings.set_gtk_decoration_layout(Some("appmenu:close"));
-            assert!(!default_window_show_minimize());
-            assert!(!default_window_show_maximize());
-            let gn_prefs = Preferences::default();
-            assert!(!gn_prefs.window_show_minimize);
-            assert!(!gn_prefs.window_show_maximize);
-
-            let parsed_gnome: Preferences = saved.clone().try_into().expect("valid preferences");
-            assert!(!parsed_gnome.window_show_minimize);
-            assert!(!parsed_gnome.window_show_maximize);
-
-            let mut explicit_table = saved;
-            explicit_table.insert("window_show_minimize".into(), toml::Value::Boolean(true));
-            explicit_table.insert("window_show_maximize".into(), toml::Value::Boolean(true));
-            let explicit_prefs: Preferences = explicit_table.try_into().expect("valid preferences");
-            assert!(explicit_prefs.window_show_minimize);
-            assert!(explicit_prefs.window_show_maximize);
-
-            settings.set_gtk_decoration_layout(original_layout.as_deref());
+            assert_window_button_preferences(false);
         },
     );
+}
+
+fn assert_window_button_preferences(default_visible: bool) {
+    let buttons = |preferences: &Preferences| {
+        [
+            preferences.window_show_minimize,
+            preferences.window_show_maximize,
+            preferences.window_show_close,
+        ]
+    };
+    assert_eq!(buttons(&Preferences::default()), [default_visible; 3]);
+    let keys = [
+        "window_show_minimize",
+        "window_show_maximize",
+        "window_show_close",
+    ];
+    for overrides in [
+        [None, None, None],
+        [Some(false), Some(false), Some(false)],
+        [Some(true), Some(true), Some(true)],
+        [Some(false), None, Some(true)],
+        [None, Some(true), Some(false)],
+    ] {
+        let mut saved =
+            toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+        for (key, value) in keys.into_iter().zip(overrides) {
+            saved.remove(key);
+            if let Some(value) = value {
+                saved.insert(key.into(), toml::Value::Boolean(value));
+            }
+        }
+        let parsed: Preferences = saved.try_into().expect("valid preferences");
+        assert_eq!(
+            buttons(&parsed),
+            overrides.map(|value| value.unwrap_or(default_visible)),
+            "saved overrides {overrides:?}"
+        );
+    }
 }

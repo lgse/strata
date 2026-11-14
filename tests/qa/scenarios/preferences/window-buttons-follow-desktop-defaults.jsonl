@@ -1,0 +1,31 @@
+{"scenario":"window-buttons-follow-desktop-defaults","modes":["columns"],"env":{"XDG_CURRENT_DESKTOP":"GNOME"},"gtk_settings":{"gtk-decoration-layout":"appmenu:close"}}
+{"wait":{"all":[{"present":{"role":"button","name":"Minimize window"}},{"present":{"role":"button","name":"Maximize window"}},{"present":{"role":"button","name":"Close window"}}]},"message":"GNOME to show all three window buttons before Settings opens despite a close-only GTK layout"}
+{"restart":{"env":{"XDG_CURRENT_DESKTOP":"KDE"}}}
+{"wait":{"all":[{"present":{"role":"button","name":"Minimize window"}},{"present":{"role":"button","name":"Maximize window"}},{"present":{"role":"button","name":"Close window"}}]},"message":"KDE to show all three unsaved window buttons"}
+{"restart":{"env":{"XDG_CURRENT_DESKTOP":"unknown-desktop"}}}
+{"wait":{"all":[{"present":{"role":"button","name":"Minimize window"}},{"present":{"role":"button","name":"Maximize window"}},{"present":{"role":"button","name":"Close window"}}]},"message":"an unrecognized desktop to keep window controls discoverable"}
+{"restart":{"env":{"XDG_CURRENT_DESKTOP":"KDE: hYpRlAnD "}}}
+{"wait":{"all":[{"absent":{"role":"button","name":"Minimize window"}},{"absent":{"role":"button","name":"Maximize window"}},{"absent":{"role":"button","name":"Close window"}}]},"message":"a recognized tiler in a mixed case-insensitive desktop list to hide all three unsaved buttons"}
+{"fs":{"path":"$config/gtk-4.0","replace_lines":{"suffix":".ini","prefix":"gtk-decoration-layout=","with":"gtk-decoration-layout=icon:minimize,maximize,close"}},"message":"give the tiling session a full GTK decoration layout"}
+{"restart":{"env":{"XDG_CURRENT_DESKTOP":"niri"}}}
+{"wait":{"all":[{"absent":{"role":"button","name":"Minimize window"}},{"absent":{"role":"button","name":"Maximize window"}},{"absent":{"role":"button","name":"Close window"}}]},"message":"niri to hide all three unsaved buttons regardless of the full GTK decoration layout"}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"presented":{"role":["check box","toggle button","switch"],"name":"Show minimize button","rendered":false}},"message":"the window-button settings to be available"}
+{"activate":{"role":["check box","toggle button","switch"],"name":"Show minimize button","rendered":false}}
+{"wait":{"all":[{"present":{"role":"button","name":"Minimize window"}},{"pref":{"key":"window_show_minimize","value":true}}]},"message":"the explicit minimize choice to apply live and be saved"}
+{"activate":{"role":["check box","toggle button","switch"],"name":"Show maximize button","rendered":false}}
+{"wait":{"all":[{"present":{"role":"button","name":"Maximize window"}},{"pref":{"key":"window_show_maximize","value":true}}]},"message":"the explicit maximize choice to apply live and be saved"}
+{"activate":{"role":["check box","toggle button","switch"],"name":"Show close button","rendered":false}}
+{"wait":{"all":[{"present":{"role":"button","name":"Close window"}},{"pref":{"key":"window_show_close","value":true}}]},"message":"the explicit Close choice to apply live and be saved"}
+{"restart":{"env":{"XDG_CURRENT_DESKTOP":"Sway"}}}
+{"wait":{"all":[{"present":{"role":"button","name":"Minimize window"}},{"present":{"role":"button","name":"Maximize window"}},{"present":{"role":"button","name":"Close window"}}]},"message":"saved visible buttons to override a tiling desktop after restart"}
+{"activate":{"role":"button","name":"Settings"}}
+{"wait":{"presented":{"role":["check box","toggle button","switch"],"name":"Show minimize button","rendered":false}},"message":"the saved window-button settings to be available"}
+{"activate":{"role":["check box","toggle button","switch"],"name":"Show minimize button","rendered":false}}
+{"wait":{"all":[{"absent":{"role":"button","name":"Minimize window"}},{"pref":{"key":"window_show_minimize","value":false}}]},"message":"hiding minimize to apply live and be saved"}
+{"activate":{"role":["check box","toggle button","switch"],"name":"Show maximize button","rendered":false}}
+{"wait":{"all":[{"absent":{"role":"button","name":"Maximize window"}},{"pref":{"key":"window_show_maximize","value":false}}]},"message":"hiding maximize to apply live and be saved"}
+{"activate":{"role":["check box","toggle button","switch"],"name":"Show close button","rendered":false}}
+{"wait":{"all":[{"absent":{"role":"button","name":"Close window"}},{"pref":{"key":"window_show_close","value":false}}]},"message":"hiding Close to apply live and be saved"}
+{"restart":{"env":{"XDG_CURRENT_DESKTOP":"GNOME"}}}
+{"wait":{"all":[{"absent":{"role":"button","name":"Minimize window"}},{"absent":{"role":"button","name":"Maximize window"}},{"absent":{"role":"button","name":"Close window"}}]},"message":"saved hidden buttons to override a stacking desktop after restart"}
