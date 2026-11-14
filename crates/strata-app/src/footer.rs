@@ -4,15 +4,16 @@
 //! its left (`reference_toggle` in `src/ui/shortcut_footer/build.rs`). The button is named
 //! and described with the reference's key as the keymap binds it, shows pressed while the
 //! reference is open, and toggles it ([`crate::shortcuts`]). "Show keybinding hints" off
-//! hides it, and F1 still opens the reference; with nothing else to show, the footer goes.
+//! hides it, and F1 still opens the reference. At its right the active column's item and
+//! selection count ([`count`]); with neither to show, the footer goes.
 //!
-//! Left out, with what brings each back: the item and selection count, this package's next;
-//! the clipboard badge, [A12]'s; the 10X pill, the marks and the prompt, [A11]'s.
+//! Left out, with what brings each back: the clipboard badge, [A12]'s; the 10X pill, the
+//! marks and the prompt, [A11]'s.
 //!
 //! [A11]: ../../../docs/rune/parity/packages/A11.md
 //! [A12]: ../../../docs/rune/parity/packages/A12.md
 
-use rune::El;
+use rune::{El, Tx};
 use strata_components::footer::{Footer as Bar, FooterLabels};
 use strata_desktop::keys::{Keys, bindings::REFERENCE};
 
@@ -20,16 +21,32 @@ use crate::{
     App, buttons,
     location::labels::with_keys,
     shell,
-    slots::{Frame, Part, Place, Setup},
+    slots::{Frame, Listener, Part, Place, Setup},
 };
 
-pub(crate) struct Footer;
+mod count;
+#[cfg(test)]
+mod tests;
+
+pub(crate) struct Footer {
+    counted: count::Counted,
+}
 
 impl Part for Footer {
     const PLACE: Place<App> = Place::Footer(build);
 
     fn new(_: &Setup<'_>) -> Self {
-        Self
+        Self {
+            counted: count::Counted::default(),
+        }
+    }
+
+    fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
+        Some(count::listener())
+    }
+
+    fn poll(app: &mut App, _: f64, _: &mut Tx) -> bool {
+        count::poll(app)
     }
 }
 
@@ -43,6 +60,7 @@ fn build(app: &App, _: &mut Frame<'_, App>) -> Option<El> {
             |app: &App| &app.shortcuts.reference,
             |app: &mut App| &mut app.shortcuts.reference,
         )))
+        .count(count::shown(app))
         .labels(labels());
     debug_assert_eq!(footer.shortcuts_key(), SHORTCUTS);
     // Return presses the button, as on GTK (Rune packet entry 103).
