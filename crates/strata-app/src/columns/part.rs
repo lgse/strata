@@ -69,6 +69,7 @@ impl Part for Columns {
                 matches!(root, Some(Load::Listed | Load::Failed(_)))
             },
             lists: |app| app.columns.list_keys(),
+            presented: |app| app.columns.presented(),
         },
     });
 

@@ -475,20 +475,20 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    every other button? Meanwhile: they stay as they are, named on the exceptions list of
    `crates/strata-app/src/buttons/tests.rs`, the check that every other focusable button takes
    Return. Source: the review of A5's [#2311](https://github.com/lgse/strata/pull/2311),
-   2026-11-14.
+   2026-11-13.
 2. **A column header's actions and Tab** (finding
    [#2379](https://github.com/lgse/strata/issues/2379)). GTK's column header actions are Tab
    stops: Shift+Tab from a column's entries focuses the targeted column's last one, the filter
    toggle. C2's header slot keeps them off the focus chain, as its Close button, so Rune's
    Shift+Tab goes on to the sidebar. Should they become Tab stops, as the List headings'
    question (A8 item 1) asks for those? Meanwhile: they stay off it, and the `location`
-   alphabet keeps Shift+Tab off the files. Source: A5's fuzz alphabet, 2026-11-14.
+   alphabet keeps Shift+Tab off the files. Source: A5's fuzz alphabet, 2026-11-13.
 3. **Where the keyboard goes after an outside click closes the error dialog** (finding
    [#2381](https://github.com/lgse/strata/issues/2381)). GTK's dialog closes and keyboard
    focus falls to the header's first crumb, since the location entry that held it is hidden;
    Rune's clicked column takes it. Closed by Escape, both return it to the files. Should Rune
    copy GTK's? Meanwhile: Rune's, and the `location` alphabet makes no click while a dialog
-   shows. Source: A5's fuzz alphabet, 2026-11-14.
+   shows. Source: A5's fuzz alphabet, 2026-11-13.
 4. **Three smaller differences of the pane header and the crumbs.** (a) A press held on Back
    opens the back history after 0.5 s however far the pointer moves; GTK's long press is
    cancelled once the pointer passes the drag threshold. (b) Escape while that press is held
@@ -496,7 +496,7 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    press has claimed the press by then, so its release goes nowhere. (c) The crumbs'
    hierarchy menu shows the arrow over its items, rune-kit's `Menu`'s, where GTK gives each
    a pointer (`src/ui/browser/location/breadcrumbs.rs`). Should Rune copy each? Meanwhile:
-   Rune's stays. Source: A5's closing, 2026-11-14, by the coordinator's ruling.
+   Rune's stays. Source: A5's closing, 2026-11-13, by the coordinator's ruling.
 
 ### A8: View switching and appearance
 
@@ -510,7 +510,7 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    marked OWNER in `docs/rune/work/STATUS.md`, and C4's row does not mark it. Should the
    headings stay off the Tab order, or take focus and sort on Return and Space as GTK's do?
    Meanwhile: they stay as they are; no scenario Tabs onto a heading. Source: A8's agent,
-   2026-11-14, by the coordinator's ruling.
+   2026-11-13, by the coordinator's ruling.
 
 ### A3: Sidebar
 

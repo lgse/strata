@@ -2,7 +2,7 @@
 
 //! A plain popover, as GTK's `gtk::Popover` behaves in Strata: the Icons header's
 //! "Thumbnail size" first, A8's Appearance popover next. GTK's behaviour here is driven, not
-//! read (`./scripts/qa-drive.sh` on the GTK build, XTest input, 2026-11-14):
+//! read (`./scripts/qa-drive.sh` on the GTK build, XTest input, 2026-11-13):
 //!
 //! - **It takes every key** while focus is in it, with or without modifiers: Alt+Up,
 //!   Ctrl+Alt+=, Delete and F5 did nothing. The part that owns the popover answers
