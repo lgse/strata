@@ -16,7 +16,7 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A6: the Compress dialog (line 10); then A20: the floating Extract to chooser (line 25)"
 
 [[run]]
 scenario = "customization-follows-move-and-trash"
@@ -24,7 +24,7 @@ run = "list"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A6: the Customize dialog (line 8); then A12: Ctrl+X and Ctrl+V (lines 16 and 21)"
 
 [[run]]
 scenario = "customize-takes-focus-single-escape"
@@ -48,15 +48,14 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A18: Settings on Ctrl+, (line 4); then A10: the search and folder palettes on Ctrl+K and Ctrl+Shift+K (line 13), and A6: the Compress dialog (line 29)"
 
 [[run]]
 scenario = "entry-menu-named-actions"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "executable-menu-confirmed-run"
@@ -80,7 +79,7 @@ run = "columns-copy"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A20: the floating Copy to chooser (line 8), by the coordinator's ruling of 2026-11-14"
 
 [[run]]
 scenario = "floating-chooser-transfers-files"
@@ -88,7 +87,7 @@ run = "columns-move"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A20: the floating Move to chooser (line 25), by the coordinator's ruling of 2026-11-14"
 
 [[run]]
 scenario = "invalid-archive-name-keeps-dialog"
@@ -104,15 +103,14 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A17: the Properties dialog on Alt+Return (line 31); passes through line 30 on Rune"
 
 [[run]]
 scenario = "pane-menu-directory-actions"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "properties-copy-path-slashes-only-folders"
@@ -120,7 +118,7 @@ run = "columns-file"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A17: the Properties dialog (line 8); then the clipboard it copies to (line 11)"
 
 [[run]]
 scenario = "properties-copy-path-slashes-only-folders"
@@ -128,7 +126,7 @@ run = "columns-directory"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A17: the Properties dialog (line 8); then the clipboard it copies to (line 11)"
 
 [[run]]
 scenario = "properties-pins-and-unpins-folder"
@@ -136,7 +134,7 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A17: the Properties dialog (line 8)"
 
 [[run]]
 scenario = "rename-onto-existing-rejected"
@@ -189,7 +187,7 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A14: the custom actions' Actions submenu (line 10); then A12: Copy and Ctrl+V (lines 50 and 57)"
 
 [[run]]
 scenario = "submenu-arrows-return-to-parent"
@@ -197,7 +195,7 @@ run = "icons"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A14: the custom actions' Actions submenu (line 10); then A12: Copy and Ctrl+V (lines 50 and 57)"
 
 [[run]]
 scenario = "submenu-arrows-return-to-parent"
@@ -205,4 +203,4 @@ run = "list"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6"
+blocker = "A14: the custom actions' Actions submenu (line 10); then A12: Copy and Ctrl+V (lines 50 and 57)"
