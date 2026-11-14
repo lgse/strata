@@ -644,8 +644,11 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    `src/ui/window/devices.rs` (`search_roots`, `local_device_roots`, `MountRoot::local_path`
    and `MountListing::has_own_row`). Since nothing under `src/ui` moves, the Rune side ports
    it into `crates/strata-app/src/palette/roots.rs`, with GTK's unit cases, and the two copies
-   must now change together. Should the rule move to a shared crate later, with GTK calling
-   it? Source: A10, 2026-11-14.
+   must now change together: a fix to GTK's rule that lands on `main` does not reach
+   `roots.rs` by merge, so until this is ruled a merge from `main` that changes
+   `search_roots`, `local_device_roots`, `device_mount_roots` or `MountListing` makes the same
+   change in `roots.rs` by hand (`docs/rune/shared-state.md`, "Merging from `main`"). Should
+   the rule move to a shared crate later, with GTK calling it? Source: A10, 2026-11-14.
 
 ### Packages added later
 
