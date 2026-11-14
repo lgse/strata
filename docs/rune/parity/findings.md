@@ -1158,4 +1158,3 @@ sequence only together with the alphabet's version, so the version is part of th
   the keyboard, and Down and Up change nothing until a click. Without the Down, Escape gives
   the keyboard to `readme.md`. No merged alphabet opens a pane's filter yet.
 - **State:** open, [A10](packages/A10.md)'s.
-
