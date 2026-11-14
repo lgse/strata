@@ -18,9 +18,12 @@
 //! - **Opening a result** ([`act`]): Enter or a click. A folder is navigated to; a file is
 //!   revealed in its folder, selected, and opened first when "Open files directly" is on. The
 //!   preview drawer GTK shows a file in otherwise is A15's.
-//! - **Its folder:** Alt+Return (`open_containing_folder`, read through the key catalog) or the
-//!   result's menu ([`menu`], "Open containing folder") reveals it in its folder, the folder's
-//!   filter emptied first, as GTK's `reveal_location` does.
+//! - **Its folder:** Alt+Return, with Super held or not, or the result's menu ([`menu`], "Open
+//!   containing folder") reveals it in its folder, the folder's filter emptied first, as GTK's
+//!   `reveal_location` does. The palette's field reads Alt+Return itself (C17's reveal
+//!   chord): Rune's single-line field takes Return with any modifier, so the window's
+//!   commands never hear it there. A keymap that binds `open_containing_folder` to another
+//!   key is not followed yet (`docs/rune/parity/packages/A10.md`, "Open").
 //! - **No new tab:** GTK's palette takes neither Ctrl+Return nor a middle click (driven), so
 //!   the palette is given no new-tab chord and its middle click is off.
 //!
@@ -34,10 +37,7 @@ use strata_components::{
     context_menu::ContextMenuState,
     search_palette::{By, PaletteIntent, PaletteState, Polled, SearchPalette},
 };
-use strata_desktop::keys::{
-    Modifiers,
-    bindings::{OPEN_CONTAINING_FOLDER, SEARCH},
-};
+use strata_desktop::keys::{Modifiers, bindings::SEARCH};
 use strata_fs::services::SearchItem;
 
 use crate::{
@@ -93,23 +93,16 @@ impl Part for Palette {
 
     // `window_commands` reads Ctrl+K where no text field has the keyboard, and the window
     // action `search` reads it once the chain has left the key (`WINDOW_ACTIONS` in
-    // `src/ui/window/keyboard.rs`). The palette's own key for a result's folder is read in its
-    // `handle_key` (`src/ui/search.rs`), after its field.
-    const COMMANDS: &'static [Action<App>] = &[
-        Action::new("search", toggle).command(SEARCH).keys(&[
+    // `src/ui/window/keyboard.rs`).
+    const COMMANDS: &'static [Action<App>] =
+        &[Action::new("search", toggle).command(SEARCH).keys(&[
             Keys::at(
                 Stage::WindowCommands,
                 &[SEARCH.ignoring(Modifiers::empty())],
             )
             .when(no_text),
             Keys::at(Stage::AfterYield, &[SEARCH.ignoring(Modifiers::empty())]),
-        ]),
-        Action::new("palette-reveal", reveal_highlighted).keys(&[Keys::at(
-            Stage::AfterYield,
-            &[OPEN_CONTAINING_FOLDER.ignoring(Modifiers::SUPER_MASK)],
-        )
-        .when(open)]),
-    ];
+        ])];
 
     fn keyboard(app: &App) -> Option<Holds> {
         let palette = &app.palette;
@@ -123,10 +116,6 @@ fn no_text(_: &App, at: &Situation) -> bool {
     !at.text()
 }
 
-fn open(app: &App, _: &Situation) -> bool {
-    app.palette.state.is_open() && !app.palette.menu.is_open()
-}
-
 /// The palette, while open, over every other dialog.
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let return_to = shell::view_focus(app).unwrap_or_default();
@@ -136,7 +125,6 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         |app: &mut App| &mut app.palette.state,
     )
     .new_tab_keys(Vec::new())
-    .reveal_keys(Vec::new())
     .middle_click_opens(false)
     .return_focus_on_open(return_to)
     .reduced_motion(frame.cx.is_reduced_motion())
@@ -149,21 +137,6 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
 fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     let mode = search::mode();
     let polled = app.palette.state.toggle(mode);
-    route(app, polled, tx);
-    Outcome::Ran
-}
-
-/// Alt+Return: the highlighted result's folder.
-fn reveal_highlighted(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
-    let Some(id) = app
-        .palette
-        .state
-        .highlighted_item()
-        .map(|item| item.id.clone())
-    else {
-        return Outcome::Ran;
-    };
-    let polled = app.palette.state.reveal(&id, tx);
     route(app, polled, tx);
     Outcome::Ran
 }

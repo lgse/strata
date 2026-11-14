@@ -1640,3 +1640,17 @@ sequence only together with the alphabet's version, so the version is part of th
   (`shell::regroup`, [A8](packages/A8.md)'s).
 - **State:** fixed by [#2465](https://github.com/lgse/strata/pull/2465): the Group row
   closes the filter before it regroups, in a view that groups (`filter::close_for_regroup`).
+
+### #2468: Escape from a search result's menu leaves GTK's keyboard on an unnamed box
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2468), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** driving GTK for [A10](packages/A10.md)'s search palette. Ctrl+K, a query, a
+  right-click on a result, then Escape: the menu closes and the keyboard lands on the
+  palette's layer box (`.search-backdrop`), which has no role and no name. The next character
+  typed is lost. Down gives the field the keyboard back (`move_selection` in
+  `src/ui/search.rs`).
+- **Concerns:** `show_result_menu` in `src/ui/search/results.rs`. No run checks it.
+- **State:** open, set aside, and not copied: on Rune the keyboard goes back to the palette's
+  field, with the result still highlighted (`palette::menu`), by the coordinator's ruling.
+  The fix belongs on `main`.

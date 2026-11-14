@@ -12,7 +12,7 @@ use crate::{
     host::offscreen::Offscreen,
     test_support::{
         PATIENCE, fixture,
-        view::{hosted_in, idle, press},
+        view::{self, hosted_in, idle, press},
     },
 };
 
@@ -49,7 +49,11 @@ fn searched(host: &mut Offscreen, query: &str) {
     for character in query.chars() {
         press(host, Key::Text(character.to_string()), Mods::default());
     }
-    let found = host.run_until(PATIENCE, |host| host.app().palette.state.items().len() == 3);
+    // Every result, and the index read to its end: no later batch reorders them.
+    let found = host.run_until(PATIENCE, |host| {
+        let state = &host.app().palette.state;
+        state.items().len() == 3 && !state.busy()
+    });
     assert!(
         found,
         "the three results did not come: {:?}",
@@ -114,7 +118,7 @@ fn ctrl_k_searches_home_and_escape_closes_it() {
 
 /// A right-click on a result opens its menu, which holds the keyboard; Escape closes it and
 /// the field has the keyboard again, the result still highlighted (finding
-/// lgse/strata#FINDING: GTK leaves it on its layer).
+/// lgse/strata#2468: GTK leaves it on its layer).
 #[test]
 fn a_results_menu_holds_the_keyboard_and_gives_it_back_to_the_field() {
     hosted_in(
@@ -207,6 +211,44 @@ fn the_search_button_opens_the_palette_and_closes_it() {
             let closed = host.run_until(PATIENCE, |host| !host.app().palette.state.is_open());
             assert!(closed, "a click on the button closed it");
             assert_eq!(focused(&mut host).as_deref(), Some("header-search"));
+        },
+    );
+}
+
+/// Alt+Return, the catalog's `open_containing_folder`, shows the highlighted result's folder
+/// with it selected, and closes the palette.
+#[test]
+fn alt_return_reveals_the_highlighted_result_in_its_folder() {
+    hosted_in(
+        MODULE,
+        "columns",
+        "alt_return_reveals_the_highlighted_result_in_its_folder",
+        |mut host| {
+            let _folder = ready(&mut host);
+            searched(&mut host, "nav-");
+            let target = highlighted(&host).expect("a highlighted result");
+            let alt = Mods {
+                alt: true,
+                ..Mods::default()
+            };
+            press(&mut host, Key::Enter, alt);
+            let closed = host.run_until(PATIENCE, |host| !host.app().palette.state.is_open());
+            assert!(closed, "Alt+Return closed the palette");
+            let home = strata_core::model::Location::local(crate::launch::home_directory());
+            let shown = host.run_until(PATIENCE, |host| {
+                let browser = host.app().browser();
+                browser
+                    .active_depth()
+                    .and_then(|depth| browser.location_at(depth))
+                    == Some(home.clone())
+            });
+            assert!(shown, "Home is the folder shown");
+            let (selected, _) = view::browser_holds(&host);
+            let name = std::path::Path::new(&target)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("a name");
+            assert_eq!(selected, [name], "the result is selected in its folder");
         },
     );
 }

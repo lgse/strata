@@ -9,7 +9,7 @@
 //! its layer: the menus' part sits in the overlays, under every dialog. Escape or a press
 //! outside closes it, and the keyboard goes back to the palette's field with the result still
 //! highlighted. GTK leaves it on its layer instead, where the next character typed is lost
-//! (finding lgse/strata#FINDING, `oracle`).
+//! (finding lgse/strata#2468, `oracle`).
 
 use std::{path::Path, rc::Rc};
 
