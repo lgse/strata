@@ -1300,8 +1300,13 @@ sequence only together with the alphabet's version, so the version is part of th
   the stale position back over the one the user left.
 - **Concerns:** the view switch ([A8](packages/A8.md)'s). The sequences are parked in
   `tests/qa/fuzz/corpus/views/`.
-- **State:** open, A8's: a fix is one memory for the window's single-pane views, kept by the
-  shell, and no remembering on a rebuild, in a pull request of its own.
+- **State:** fixed by [A8](packages/A8.md): one memory for the window's single-pane views, held
+  by the shell (`pane::Memory`), and nothing remembered while a view shown again is rebuilt.
+  `appearance::tests::a_folder_comes_back_by_back_where_another_view_left_it` and
+  `a_folder_comes_back_by_the_parent_where_another_view_left_it` hold it. Seeds `0x11`,
+  `0x13` and `0x14` are no longer parked: the corpus replay holds them to agreeing on both
+  targets. Seed `0x01`, run whole again, met [#2437](https://github.com/lgse/strata/issues/2437)
+  further on, and its file holds that sequence now.
 
 ### #2426: Escape with nothing selected closes the deepest column on GTK
 
@@ -1379,6 +1384,24 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside. Rune's Tab on a result only commits (`rename::advance` asks
   `filter::targets` first), and the browser's selection from before the filter stays: the
   scenario's visible behaviour, without the hidden move.
+
+### #2437: after Up in List, Rune's Columns opens the folder Up came from, GTK's does not
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2437), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet, v4, once
+  [#2425](https://github.com/lgse/strata/issues/2425) was fixed: seed `0x01`, run whole, shrunk
+  3 of 3 GTK against Rune to Ctrl+2, Ctrl+period twice, a double click on `documents`, the
+  Appearance popover's Hidden files row, Ctrl+3, Alt+Up, the popover's Columns row. GTK's
+  Columns shows the root alone (`app.matches` its entries); Rune's opens `documents`, the
+  folder Up came from, as the child column.
+- **Why, not yet known:** on GTK the selection Up placed is still the cursor the navigation
+  placed, which `follow_selection_on_return` does not open; on Rune it counts as a choice by
+  then. The same steps part the same way on Rune without #2425's fix (replayed on both), so it
+  is older than that fix. Not driven on GTK yet.
+- **Concerns:** the view switch's return to Columns ([A8](packages/A8.md)'s). The sequence is
+  parked in `tests/qa/fuzz/corpus/views/`.
+- **State:** open, A8's.
 
 ### #2431: a Shift+click in pane filter results with no anchor anchors there on Rune
 

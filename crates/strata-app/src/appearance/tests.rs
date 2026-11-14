@@ -188,6 +188,63 @@ fn a_mirror_waiting_when_another_view_shows_opens_no_column() {
     );
 }
 
+/// A folder left in one single-pane view comes back in the other where it was left, as GTK's
+/// one history across the views brings it back, not where the other view last saw it (finding
+/// lgse/strata#2425): the root left in List on `todo.txt`, `documents` opened from it in Icons,
+/// List shown again, then Back. The view and the browser agree on `documents`.
+#[test]
+fn a_folder_comes_back_by_back_where_another_view_left_it() {
+    coming_back(
+        Key::Left,
+        "a_folder_comes_back_by_back_where_another_view_left_it",
+    );
+}
+
+/// And by the parent, Alt+Up.
+#[test]
+fn a_folder_comes_back_by_the_parent_where_another_view_left_it() {
+    coming_back(
+        Key::Up,
+        "a_folder_comes_back_by_the_parent_where_another_view_left_it",
+    );
+}
+
+fn coming_back(key: Key, name: &str) {
+    let alt = Mods {
+        alt: true,
+        ..Mods::default()
+    };
+    hosted_with(MODULE, "list", String::new(), name, |mut host| {
+        let folder = fixture();
+        open(&mut host, LIST, folder.path());
+        press(&mut host, Key::End, Mods::default());
+        assert_eq!(seen(&host, LIST).selected, ["todo.txt"]);
+
+        press(&mut host, Key::Command('2'), ctrl());
+        press(&mut host, Key::Home, Mods::default());
+        press(&mut host, Key::Right, Mods::default());
+        assert_eq!(seen(&host, ICONS).focused.as_deref(), Some("documents"));
+        press(&mut host, Key::Enter, Mods::default());
+        wait(&mut host, ICONS, "documents in Icons", |seen| {
+            seen.entries.len() == 3
+        });
+
+        press(&mut host, Key::Command('3'), ctrl());
+        wait(&mut host, LIST, "documents in List", |seen| {
+            seen.entries.len() == 3
+        });
+        press(&mut host, key, alt);
+        wait(&mut host, LIST, "the root again", |seen| {
+            seen.entries.len() == 5 && !seen.selected.is_empty()
+        });
+        idle(&mut host);
+        let back = seen(&host, LIST);
+        assert_eq!(back.selected, ["documents"]);
+        assert_eq!(back.focused.as_deref(), Some("documents"));
+        assert_eq!(browser_holds(&host).0, ["documents"], "the browser");
+    });
+}
+
 mod density;
 mod popover;
 mod text_size;

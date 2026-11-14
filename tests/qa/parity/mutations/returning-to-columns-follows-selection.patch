@@ -1,11 +1,11 @@
 diff --git a/crates/strata-app/src/shell.rs b/crates/strata-app/src/shell.rs
-index 76b98f071..f3ed27b88 100644
+index 5b17c3ef3..f88ab6851 100644
 --- a/crates/strata-app/src/shell.rs
 +++ b/crates/strata-app/src/shell.rs
-@@ -381,7 +381,7 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
-     app.window.parts = parts;
-     app.window.shown.follow(parts);
+@@ -396,7 +396,7 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
+     app.window.restore.set_replaying(true);
      rebuild(app, view, tx);
+     app.window.restore.set_replaying(false);
 -    let opens = view.returns.is_some_and(|mirrors| mirrors(app));
 +    let opens = view.returns.is_some_and(|mirrors| !mirrors(app));
      if let Some((depth, location)) = child.filter(|_| opens) {
