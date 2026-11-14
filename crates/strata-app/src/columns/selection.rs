@@ -177,6 +177,15 @@ impl Columns {
         self.mirror.note_pointer(at);
     }
 
+    /// A modal layer opened over the view: every column's pointer gesture ends.
+    pub(crate) fn end_gestures(&mut self) {
+        for depth in 0..self.state.len() {
+            if let Some(column) = self.state.column_mut(depth) {
+                column.collection.end_gestures();
+            }
+        }
+    }
+
     /// The browser moved the cursor itself, and said so in an event that mirrors it or does
     /// not: [`Columns::publish`] must not take the move for the view's.
     pub(crate) fn caught_up(&mut self) {

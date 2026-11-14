@@ -1617,9 +1617,9 @@ sequence only together with the alphabet's version, so the version is part of th
   the run passes.
 - **Concerns:** `executable-requires-confirmation/columns` (line 9), and any double-click
   soon after a dialog over the view closes.
-- **State:** open, A6's, by the coordinator's ruling of 2026-11-14: C1 gets a way to end a
-  collection's gestures, and the shell ends the shown view's gestures when a part starts
-  holding the keyboard as a modal, in a `contract` pull request after the Run confirmation's.
+- **State:** fixed by [A6](packages/A6.md)'s [#2461](https://github.com/lgse/strata/pull/2461): a part that starts answering
+  `Holds::Modal` ends the shown view's pointer gestures (`shell/grab.rs`), as GTK's modal
+  layer does, and `executable-requires-confirmation/columns` is `required`.
 
 ### #2460: after a regroup, Rune's matches keep a typed query's, GTK's show every entry
 
@@ -1630,8 +1630,13 @@ sequence only together with the alphabet's version, so the version is part of th
   `documents`, type `r`, switch views and back, then the Appearance popover's "Group by file
   type". GTK's `app.matches` lists all three entries; Rune's only `report.md` and
   `spreadsheet.csv`. It parts the same way on `strata-next` without #2458, so it is older.
-- **Why, not yet known:** it reads as the typed query outliving the regroup on Rune. Not
-  driven on GTK.
+- **Why:** driven on GTK by [A10](packages/A10.md), with and without the view switch: "Group
+  by file type" closes the List pane's filter, its field, query and results, since
+  `set_group_by_type` rebuilds the List pane and the filter with it (`rebuild_list` in
+  `src/ui/browser_modes/rebuild.rs`). The keyboard stays on the Appearance button, and the
+  listing comes back grouped with the selection it had. Rune's regroup rebuilt the view and
+  left the filter open.
 - **Concerns:** the typed search ([A10](packages/A10.md)'s), through the regroup's rebuild
   (`shell::regroup`, [A8](packages/A8.md)'s).
-- **State:** open, A10's.
+- **State:** fixed by [#2465](https://github.com/lgse/strata/pull/2465): the Group row
+  closes the filter before it regroups, in a view that groups (`filter::close_for_regroup`).

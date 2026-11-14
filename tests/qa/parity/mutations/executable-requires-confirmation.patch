@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/shell.rs b/crates/strata-app/src/shell.rs
+index 02fcb89f3..ee7f562ee 100644
+--- a/crates/strata-app/src/shell.rs
++++ b/crates/strata-app/src/shell.rs
+@@ -912,6 +912,6 @@ pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+     if !app.window.events.is_empty() {
+         ran |= settle(app, tx);
+     }
+-    grab::follow(app);
++    // grab::follow(app);
+     ran
+ }
