@@ -5,13 +5,15 @@
 //!
 //! `strata-qa` runs the session and decides what a step, a target and a predicate mean. This
 //! module answers its `Backend` from Rune's accessibility tree and sends input at Rune's
-//! input layer, on the offscreen host: it needs no display server.
+//! input layer, on the offscreen host: it needs no display server. With `STRATA_QA_WINDOW=1`
+//! it serves the same protocol from a real window instead ([`session`]).
 //! `docs/rune/slice/V7-rune-qa-backend.md` describes it.
 
 mod backend;
 mod compose;
 mod field;
 mod filter;
+mod host;
 mod input_log;
 mod invariants;
 mod keyboard;
@@ -19,8 +21,10 @@ mod keymap;
 mod keys;
 mod replaced;
 mod roles;
+mod session;
 mod sidebar;
 mod stage;
+mod staged;
 mod tree;
 
 use std::{
@@ -61,7 +65,12 @@ pub(crate) fn launch(arguments: &[OsString]) -> Option<ExitCode> {
         eprintln!("{USAGE}");
         return Some(ExitCode::from(2));
     };
-    Some(match serve(directory) {
+    let served = if session::wanted() {
+        session::serve(directory)
+    } else {
+        serve(directory)
+    };
+    Some(match served {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("strata-rune: {error}");

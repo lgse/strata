@@ -7,10 +7,10 @@ use strata_components::contract::EntryId;
 use strata_qa::Mark;
 
 use super::tree::Seen;
-use crate::App;
 
-/// Whether `seen` is the entry the filter's Enter would open, outlined as its target.
-pub(super) fn marked(app: &App, seen: &Seen) -> bool {
+/// Whether `seen` is `outlined`, the entry the filter's Enter would open, outlined as its
+/// target (`crate::filter::outlined`, read with the snapshot).
+pub(super) fn marked(outlined: Option<EntryId>, seen: &Seen) -> bool {
     if seen.mark != Some(Mark::Entry) {
         return false;
     }
@@ -21,5 +21,5 @@ pub(super) fn marked(app: &App, seen: &Seen) -> bool {
     let id = digits
         .and_then(|digits| digits.parse().ok())
         .map(EntryId::new);
-    id.is_some_and(|id| crate::filter::outlined(app) == Some(id))
+    id.is_some_and(|id| outlined == Some(id))
 }

@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 
 //! Rune's side of the QA mode: what `strata_qa::Backend` asks, answered from the
-//! accessibility tree, with input sent at Rune's input layer.
+//! accessibility tree of the host it drives (`qa::host`): the offscreen host, or a real
+//! window on the session host.
 
 use std::{
-    cell::{Cell, RefCell},
+    cell::Cell,
     path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
 
-use rune::{KeyEvent, PhysicalInput, PointerButton, WheelEvent, accesskit::Action};
 use strata_core::{i18n::tr, logging::criticals, storage};
 use strata_qa::{
     Backend, Chord, Command, FieldState, Labels, Mark, Modifier, Orientation, Outcome, Rect, Scope,
@@ -19,182 +19,118 @@ use strata_qa::{
 
 use super::{
     field, filter,
+    host::{Activated, Host},
     input_log::InputLog,
     invariants,
-    keyboard::Keyboard,
-    replaced::Replacements,
-    stage::Stage,
+    staged::Staged,
     tree::{Kept, Node, Seen, Snapshot},
 };
-use crate::{host::offscreen::Offscreen, shell};
+use crate::{App, host::offscreen::Offscreen, shell};
 
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 const READY_POLL: Duration = Duration::from_millis(5);
-/// How far one click of the wheel scrolls, in points.
-const WHEEL_CLICK: f32 = 40.0;
 /// The names of the preview drawer, the folder peek and the search results, as the GTK
 /// application's `PREVIEW_LABEL`, `PEEK_LABEL` and `SEARCH_RESULTS_LABEL` spell them. The
 /// slice draws none of the three.
 const PREVIEW: &str = "Preview";
 const PEEK: &str = "Folder peek";
 const SEARCH_RESULTS: &str = "Search results";
-pub(super) struct Rune {
-    stage: RefCell<Stage>,
-    keyboard: RefCell<Keyboard>,
-    /// Where the last motion put the pointer, in window points.
-    pointer: Cell<(i16, i16)>,
-    quitting: Cell<bool>,
-    log: InputLog,
-    replacements: Rc<Replacements>,
-}
 
-fn modifier_name(modifier: Modifier) -> &'static str {
-    match modifier {
-        Modifier::Ctrl => "ctrl",
-        Modifier::Shift => "shift",
-        Modifier::Alt => "alt",
-        Modifier::AltGr => "altgr",
-    }
+pub(super) struct Rune<H: Host = Staged> {
+    host: H,
+    quitting: Cell<bool>,
 }
 
 impl Rune {
     pub(super) fn new(host: Offscreen, log: InputLog) -> Self {
-        let replacements = Replacements::watch(&host.app().browser);
-        Self {
-            replacements,
-            stage: RefCell::new(Stage::new(host)),
-            keyboard: RefCell::default(),
-            pointer: Cell::new((0, 0)),
-            quitting: Cell::new(false),
-            log,
-        }
+        Self::on(Staged::new(host, log))
     }
 
     /// Opens a folder, as the launch does with its argument.
     #[cfg(test)]
     pub(super) fn open(&self, folder: &std::path::Path) {
         let location = strata_core::model::Location::local(folder);
-        self.stage.borrow().app().open(location);
+        self.host.app(|app| app.open(location));
     }
 
     /// The window's state, for a test to reach behind the steps.
     #[cfg(test)]
-    pub(super) fn browser(&self) -> std::rc::Rc<strata_fs::app::Browser> {
-        self.stage.borrow().app().browser.clone()
+    pub(super) fn browser(&self) -> Rc<strata_fs::app::Browser> {
+        self.host.app(|app| app.browser.clone())
+    }
+
+    /// One turn of the host while no step runs. Returns whether it did anything.
+    pub(super) fn turn(&self) -> bool {
+        self.host.turn()
+    }
+
+    /// Blocks until the host has work, and for `limit` at most.
+    pub(super) fn wait(&self, limit: Duration) {
+        self.host.pause(limit);
+    }
+}
+
+impl<H: Host> Rune<H> {
+    pub(super) fn on(host: H) -> Self {
+        Self {
+            host,
+            quitting: Cell::new(false),
+        }
     }
 
     pub(super) fn quitting(&self) -> bool {
         self.quitting.get()
     }
 
-    /// One turn of the host while no step runs. Returns whether it did anything.
-    pub(super) fn turn(&self) -> bool {
-        self.stage.borrow_mut().turn()
-    }
-
-    /// Blocks until the host has work, and for `limit` at most.
-    pub(super) fn wait(&self, limit: Duration) {
-        self.stage.borrow_mut().wait(limit);
-    }
-
     fn snapshot(&self) -> Rc<Snapshot> {
-        self.stage.borrow_mut().snapshot()
+        self.host.snapshot()
     }
 
     fn read<T>(&self, node: &Node, read: impl FnOnce(&Snapshot, &Seen) -> T) -> Option<T> {
         let snapshot = self.snapshot();
         snapshot.get(node).map(|seen| read(&snapshot, seen))
     }
+}
 
-    /// Whether the folder the launch opened has been listed, or could not be.
-    fn listed(stage: &Stage) -> bool {
-        let app = stage.app();
-        shell::shown_view(app).is_some_and(|view| (view.probe.listed)(app))
-    }
+/// Whether the folder the launch opened has been listed, or could not be.
+fn listed(app: &App) -> bool {
+    shell::shown_view(app).is_some_and(|view| (view.probe.listed)(app))
+}
 
-    /// Whether the view shown is the one the saved `browser_mode` names, which the runner
-    /// writes for the run's mode. The shell shows the first view when none answers to it, so a
-    /// run of a view not mounted would otherwise pass on that one.
-    fn shows_saved_mode(stage: &Stage) -> Result<(), String> {
-        let app = stage.app();
-        let mode = &shell::preferences(app).browser_mode;
-        match shell::shown_view(app) {
-            Some(view) if (view.shows)(mode) => Ok(()),
-            Some(view) => Err(format!(
-                "the run starts in the {mode:?} view, and the window shows the {} view instead: \
-                 no view mounted answers to {mode:?}",
-                view.probe.name
-            )),
-            None => Err("the Strata window shows no view".to_owned()),
-        }
-    }
-
-    /// Tells Rune which modifiers are down, as a keyboard does before the key they modify.
-    /// The Columns adapter reads them to tell a Shift range from a move.
-    fn show_modifiers(&self, stage: &mut Stage) {
-        let mods = self.keyboard.borrow().mods();
-        let runtime = stage.host().runtime();
-        runtime.physical_input(PhysicalInput::Modifiers(mods));
-    }
-
-    /// A key going down and up with its modifiers held around it, then a settle. With no
-    /// `event` the key is one a window hears nothing of, a dead key: only the log has it.
-    fn tap(&self, name: &str, event: Option<KeyEvent>) {
-        let stage = &mut *self.stage.borrow_mut();
-        if let Some(event) = event {
-            let runtime = stage.host().runtime();
-            runtime.physical_input(PhysicalInput::Modifiers(event.mods));
-            runtime.key(event.clone());
-            runtime.key_up(event);
-        }
-        self.log.key(name, true);
-        self.log.key(name, false);
-        self.show_modifiers(stage);
-        stage.settle();
-    }
-
-    /// One click of the wheel at (x, y), as Rune's window host delivers it off macOS: with
-    /// the held modifiers, and with Shift turning it sideways.
-    fn wheel_click(&self, x: f32, y: f32, delta: f32) -> WheelEvent {
-        let mods = self.keyboard.borrow().mods();
-        let (dx, dy) = if mods.shift {
-            (delta, 0.0)
-        } else {
-            (0.0, delta)
-        };
-        WheelEvent::new(dx, dy).at(x, y).mods(mods)
-    }
-
-    fn set_modifier(&self, modifier: Modifier, pressed: bool) {
-        let mut keyboard = self.keyboard.borrow_mut();
-        if pressed {
-            keyboard.hold(modifier);
-        } else {
-            keyboard.release(modifier);
-        }
-        self.log.key(modifier_name(modifier), pressed);
+/// Whether the view shown is the one the saved `browser_mode` names, which the runner
+/// writes for the run's mode. The shell shows the first view when none answers to it, so a
+/// run of a view not mounted would otherwise pass on that one.
+fn shows_saved_mode(app: &App) -> Result<(), String> {
+    let mode = &shell::preferences(app).browser_mode;
+    match shell::shown_view(app) {
+        Some(view) if (view.shows)(mode) => Ok(()),
+        Some(view) => Err(format!(
+            "the run starts in the {mode:?} view, and the window shows the {} view instead: \
+             no view mounted answers to {mode:?}",
+            view.probe.name
+        )),
+        None => Err("the Strata window shows no view".to_owned()),
     }
 }
 
-impl Backend for Rune {
+impl<H: Host> Backend for Rune<H> {
     type Node = Node;
     type Kept = Kept;
 
     async fn ready(&self) -> Result<(), String> {
         let deadline = Instant::now() + READY_TIMEOUT;
-        let stage = &mut *self.stage.borrow_mut();
         // The view is chosen when the window is built, so a fallback is named at once rather
         // than waited on until it lists.
-        Self::shows_saved_mode(stage)?;
+        self.host.with_app(shows_saved_mode)??;
         loop {
-            stage.settle();
-            if Self::listed(stage) {
+            self.host.settle().await;
+            if self.host.with_app(listed)? {
                 return Ok(());
             }
             if Instant::now() >= deadline {
                 return Err("the Strata window never showed an entry list".to_owned());
             }
-            stage.wait(READY_POLL);
+            self.host.pause(READY_POLL);
         }
     }
 
@@ -216,7 +152,7 @@ impl Backend for Rune {
     }
 
     fn title(&self, _window: &Node) -> Option<String> {
-        Some(self.stage.borrow().app().title().to_owned())
+        self.host.with_app(|app| app.title().to_owned()).ok()
     }
 
     fn window_width(&self, window: &Node) -> i32 {
@@ -288,7 +224,7 @@ impl Backend for Rune {
             editable: field::is_one(&seen.role) && !seen.has_state("read-only"),
             focusable: seen.has_action("focus"),
             busy: false,
-            marked: filter::marked(self.stage.borrow().app(), seen),
+            marked: filter::marked(snapshot.outlined(), seen),
         })
         .unwrap_or_default()
     }
@@ -321,9 +257,9 @@ impl Backend for Rune {
         self.read(node, |_, seen| seen.bounds).flatten()
     }
 
-    /// The host has one surface, at the origin: a box in the window is a box on the screen.
+    /// Rune draws a window and its menus on one surface.
     fn origin(&self, _node: &Node) -> Result<(f64, f64), String> {
-        Ok((0.0, 0.0))
+        self.host.origin()
     }
 
     fn layout(&self, node: &Node, _window: &Node) -> Option<Rect> {
@@ -354,16 +290,14 @@ impl Backend for Rune {
     }
 
     fn keep(&self, node: &Node) -> Kept {
-        self.snapshot().keep(node).after(self.replacements.now())
+        self.snapshot().keep(node).after(self.host.replacements())
     }
 
     /// A row its column has been replaced in since is another row, as on GTK.
     fn recall(&self, kept: &Kept) -> Option<Node> {
-        let replaced = kept.entry().is_some_and(|entry| {
-            let stage = self.stage.borrow();
-            self.replacements
-                .replaced_since(stage.app(), entry, kept.since())
-        });
+        let replaced = kept
+            .entry()
+            .is_some_and(|entry| self.host.replaced_since(entry, kept.since()));
         if replaced {
             return None;
         }
@@ -375,11 +309,11 @@ impl Backend for Rune {
     }
 
     async fn settle(&self, _window: &Node) {
-        self.stage.borrow_mut().settle();
+        self.host.settle().await;
     }
 
     async fn sleep(&self, time: Duration) {
-        self.stage.borrow_mut().sleep(time);
+        self.host.sleep(time).await;
     }
 
     /// There is one window, and it is the one the steps act on already.
@@ -392,148 +326,72 @@ impl Backend for Rune {
             reason = "a window's height in points fits f32"
         )]
         let height = height.map_or(frame.height as f32, f32::from);
-        let stage = &mut *self.stage.borrow_mut();
-        stage
-            .host()
-            .runtime()
-            .set_viewport((f32::from(width), height), 1.0);
-        Ok(())
+        self.host.resize(f32::from(width), height).await
     }
 
     async fn chord(&self, _window: &Node, chord: &Chord) -> Result<(), String> {
-        let event = self
-            .keyboard
-            .borrow_mut()
-            .strike(&chord.key, &chord.modifiers)?;
-        for modifier in &chord.modifiers {
-            self.log.key(modifier_name(*modifier), true);
-        }
-        self.tap(&chord.key, event);
-        for modifier in chord.modifiers.iter().rev() {
-            self.log.key(modifier_name(*modifier), false);
-        }
-        Ok(())
+        self.host.chord(chord).await
     }
 
     async fn text_input(&self, _window: &Node, character: char) -> Result<(), String> {
-        let event = self.keyboard.borrow_mut().typed(character);
-        self.tap(&character.to_string(), event);
-        Ok(())
+        self.host.text_input(character).await
     }
 
     async fn hold(&self, _window: &Node, modifiers: &[Modifier]) -> Result<(), String> {
-        for modifier in modifiers {
-            self.set_modifier(*modifier, true);
-        }
-        let stage = &mut *self.stage.borrow_mut();
-        self.show_modifiers(stage);
-        stage.settle();
-        Ok(())
+        self.host.hold(modifiers).await
     }
 
     async fn release(&self, _window: &Node, modifiers: &[Modifier]) {
-        for modifier in modifiers.iter().rev() {
-            self.set_modifier(*modifier, false);
-        }
-        let stage = &mut *self.stage.borrow_mut();
-        self.show_modifiers(stage);
-        stage.settle();
+        self.host.release(modifiers).await;
     }
 
     async fn key(&self, name: &str, pressed: bool) -> Result<(), String> {
-        let stage = &mut *self.stage.borrow_mut();
-        if let Ok(modifier) = Modifier::parse(name) {
-            self.set_modifier(modifier, pressed);
-            self.show_modifiers(stage);
-            return Ok(());
-        }
-        // A release composes nothing, and a dead key's is a release a window hears nothing of.
-        let event = match pressed {
-            true => self.keyboard.borrow_mut().strike(name, &[])?,
-            false => self.keyboard.borrow().press(name, &[]).ok(),
-        };
-        self.log.key(name, pressed);
-        let Some(event) = event else {
-            return Ok(());
-        };
-        let runtime = stage.host().runtime();
-        if pressed {
-            runtime.physical_input(PhysicalInput::Modifiers(event.mods));
-            runtime.key(event);
-        } else {
-            runtime.key_up(event);
-            self.show_modifiers(stage);
-        }
-        Ok(())
+        self.host.key(name, pressed).await
     }
 
     async fn pointer_move(&self, x: i16, y: i16) -> Result<(), String> {
-        self.log.motion((x, y));
-        self.pointer.set((x, y));
-        let stage = &mut *self.stage.borrow_mut();
-        stage
-            .host()
-            .runtime()
-            .pointer_move(f32::from(x), f32::from(y));
-        Ok(())
+        self.host.pointer_move(x, y).await
     }
 
     fn pointer_position(&self) -> Result<(i16, i16), String> {
-        Ok(self.pointer.get())
+        Ok(self.host.pointer_position())
     }
 
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
-        let at = self.pointer.get();
-        let (x, y) = (f32::from(at.0), f32::from(at.1));
-        let stage = &mut *self.stage.borrow_mut();
-        let runtime = stage.host().runtime();
-        match (number, pressed) {
-            (1, true) => runtime.pointer_down(x, y),
-            (1, false) => runtime.pointer_up(x, y),
-            (2, true) => runtime.button_down(x, y, PointerButton::Middle),
-            (2, false) => runtime.button_up(x, y, PointerButton::Middle),
-            (3, true) => runtime.secondary_down(x, y),
-            (3, false) => runtime.secondary_up(x, y),
-            // A wheel click is a press and release of button 4 or 5, as X numbers them.
-            // Positive moves the content down, which is the wheel turning up.
-            (4, true) => runtime.wheel_event(self.wheel_click(x, y, WHEEL_CLICK)),
-            (5, true) => runtime.wheel_event(self.wheel_click(x, y, -WHEEL_CLICK)),
-            (4 | 5, false) => {}
-            _ => return Err(format!("the pointer has no button {number}")),
-        }
-        self.log.button(at, number, pressed);
-        Ok(())
+        self.host.button(number, pressed).await
     }
 
     /// The element's press handler, through the click an assistive client asks for.
     fn activate(&self, node: &Node) -> bool {
-        let key = self.read(node, |_, seen| {
-            seen.key.clone().filter(|_| seen.has_action("click"))
+        let target = self.read(node, |_, seen| {
+            let key = seen.key.clone().filter(|_| seen.has_action("click"))?;
+            Some(Activated {
+                key,
+                bounds: seen.bounds,
+            })
         });
-        let Some(key) = key.flatten() else {
-            return false;
-        };
-        let stage = &mut *self.stage.borrow_mut();
-        stage
-            .host()
-            .runtime()
-            .accessibility_action(&key, Action::Click, None)
+        target
+            .flatten()
+            .is_some_and(|target| self.host.activate(&target))
     }
 
     /// The two steps of Rune's own: the keyboard layout, which the GTK application reads from
     /// its display server, and the invariants ([`invariants`]), which it does not check.
     async fn command(&self, scope: &Scope<'_, Self>, command: &Command) -> Option<Outcome> {
         match command {
-            Command::Keymap(keymap) => {
-                Some(Outcome::from(self.keyboard.borrow_mut().set_layout(keymap)))
-            }
+            Command::Keymap(keymap) => Some(Outcome::from(self.host.set_layout(keymap))),
             Command::Invariants => {
                 let observation = scope.scene().observation;
                 let focused = scope.focused().is_some();
-                let failed = invariants::check(self.stage.borrow().app(), &observation, focused);
-                Some(Outcome {
-                    result: serde_json::json!(failed),
-                    ..Outcome::default()
+                let failed = self
+                    .host
+                    .with_app(move |app| invariants::check(app, &observation, focused));
+                Some(match failed {
+                    Ok(failed) => Outcome {
+                        result: serde_json::json!(failed),
+                        ..Outcome::default()
+                    },
+                    Err(error) => Outcome::from(Err::<(), _>(error)),
                 })
             }
             _ => None,

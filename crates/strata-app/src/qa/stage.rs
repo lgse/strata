@@ -199,10 +199,9 @@ fn drawn_buttons(elements: &[ElementInfo], lists: &[String]) -> Vec<DrawnButton>
     elements.iter().enumerate().filter_map(button).collect()
 }
 
-/// What the snapshot reads beside the accessibility tree.
-fn drawn(host: &Offscreen) -> Drawn {
-    let elements = host.elements();
-    let app = host.app();
+/// What the snapshot reads beside the accessibility tree: what `app` draws as `elements`.
+/// Both hosts read it, the session host's on each frame its window draws.
+pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
     let probe = shell::shown_view(app).map(|view| &view.probe);
     let lists = probe.map_or_else(Vec::new, |probe| (probe.lists)(app));
     Drawn {
@@ -213,12 +212,13 @@ fn drawn(host: &Offscreen) -> Drawn {
         }),
         columns: lists
             .iter()
-            .filter_map(|list| drawn_column(&elements, list))
+            .filter_map(|list| drawn_column(elements, list))
             .collect(),
-        labels: name_labels(&elements),
-        icons: row_icons(&elements),
-        buttons: drawn_buttons(&elements, &lists),
-        sidebar: super::sidebar::Gaps::drawn(&elements),
+        labels: name_labels(elements),
+        icons: row_icons(elements),
+        buttons: drawn_buttons(elements, &lists),
+        sidebar: super::sidebar::Gaps::drawn(elements),
+        outlined: crate::filter::outlined(app),
         lists,
     }
 }
@@ -247,7 +247,10 @@ impl Stage {
     pub(super) fn snapshot(&mut self) -> Rc<Snapshot> {
         let host = &self.host;
         self.seen
-            .get_or_insert_with(|| Rc::new(Snapshot::read(&host.tree(), &drawn(host))))
+            .get_or_insert_with(|| {
+                let drawn = drawn(&host.elements(), host.app());
+                Rc::new(Snapshot::read(&host.tree(), &drawn))
+            })
             .clone()
     }
 

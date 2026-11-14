@@ -4814,6 +4814,7 @@ dependencies = [
  "rune",
  "rune-kit",
  "rust-i18n",
+ "rustix 1.1.6",
  "serde_json",
  "strata-components",
  "strata-core",
@@ -4828,6 +4829,9 @@ dependencies = [
  "toml 1.1.6+spec-1.1.0",
  "tracing",
  "unicode-segmentation",
+ "wayland-client",
+ "wayland-protocols-misc",
+ "wayland-protocols-wlr",
  "xkbcommon",
 ]
 
