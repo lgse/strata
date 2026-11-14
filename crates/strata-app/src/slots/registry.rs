@@ -25,21 +25,7 @@ pub(crate) struct Entry<S: 'static> {
     pub(crate) caught_up: fn(&mut S),
     pub(crate) poll: fn(&mut S, f64, &mut Tx) -> bool,
     pub(crate) switched: fn(&mut S, &mut Tx),
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-        )
-    )]
     pub(crate) tab_hidden: fn(&mut S, &mut Tx),
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-        )
-    )]
     pub(crate) tab_shown: fn(&mut S, &mut Tx),
     pub(crate) commands: &'static [Action<S>],
     pub(crate) keyboard: fn(&S) -> Option<Holds>,
@@ -169,13 +155,6 @@ impl<'a, S> Registry<'a, S> {
     }
 
     /// The same table with the view the saved `mode` names shown: a new tab's.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-        )
-    )]
     pub(crate) fn fresh(self, mode: &str) -> Self {
         Self::new(self.entries, mode)
     }

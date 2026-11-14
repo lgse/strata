@@ -30,14 +30,6 @@
 //!   scroll comes back from its own state: each collection keeps where it was drawn, as GTK's
 //!   hidden tab keeps its scroll.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-    )
-)]
-
 use std::{collections::VecDeque, rc::Rc};
 
 use rune::Tx;
@@ -98,6 +90,10 @@ pub(crate) struct Held {
     /// How many updates had been queued for the tab when it was hidden, how many were routed
     /// to it since, and how many of them were dropped: what the QA backend holds the shell to
     /// ([`Held::accounted`]).
+    #[cfg_attr(
+        not(feature = "qa"),
+        expect(dead_code, reason = "only the QA backend's invariant reads it")
+    )]
     since: u64,
     routed: u64,
     dropped: u64,

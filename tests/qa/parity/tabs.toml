@@ -134,9 +134,8 @@ blocker = "A4"
 scenario = "reopen-closed-tabs"
 run = "columns"
 package = "A4"
-status = "pending"
-reason = "scope"
-blocker = "A4"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sidebar-locations-open-new-tabs"
@@ -150,9 +149,8 @@ blocker = "A4"
 scenario = "tab-drag-reorders-numbers"
 run = "columns"
 package = "A4"
-status = "pending"
-reason = "scope"
-blocker = "A4"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-tab-chords"

@@ -382,10 +382,6 @@ pub(crate) struct Strip<S: 'static> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Scope {
     Tab,
-    #[expect(
-        dead_code,
-        reason = "the tab strip, A4's next pull request, is the window's"
-    )]
     Window,
 }
 
@@ -404,10 +400,6 @@ pub(crate) type PointerAt<S> = fn(&mut S, (f32, f32));
 /// Each such variant expects that, on a line of its own: the package that fills the slot
 /// deletes its variant's `cfg_attr` line, and the lint says so if it forgets.
 pub(crate) enum Place<S: 'static> {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no part fills the tabs slot yet")
-    )]
     Tabs(Strip<S>),
     Location(Build<S>),
     Sidebar(Sidebar<S>),
@@ -553,14 +545,12 @@ macro_rules! parts {
         }
 
         /// The state of each part a hidden tab keeps for itself: none of the window's parts.
-        #[cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
         pub(crate) struct TabParts {
             $($field: ::std::option::Option<$part>,)*
         }
 
         impl TabParts {
             /// Builds the parts of a new tab, in the order they are registered.
-            #[cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
             pub(crate) fn new(setup: &$crate::slots::Setup<'_>) -> Self {
                 Self {
                     $($field: <$part as $crate::slots::Part>::SCOPE
@@ -573,7 +563,6 @@ macro_rules! parts {
         impl App {
             /// Puts the parts of a hidden tab in place of the shown tab's, which `parked` then
             /// holds. The window's parts stay.
-            #[cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
             pub(crate) fn swap_parts(&mut self, parked: &mut TabParts) {
                 $(if let ::std::option::Option::Some(part) = parked.$field.as_mut() {
                     ::std::mem::swap(&mut self.$field, part);

@@ -176,13 +176,6 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
 }
 
 /// Names the window for the shown tab, whether or not its location changed.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-    )
-)]
 fn retitle_now(app: &mut App, tx: &mut Tx) {
     app.window.location = None;
     app.retitle(tx);
@@ -190,13 +183,6 @@ fn retitle_now(app: &mut App, tx: &mut Tx) {
 
 /// Whether the saved "Group by file type" asks other than what the shown tab's browser was
 /// mounted with: another tab changed it while this one was hidden.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-    )
-)]
 fn grouping_changed(app: &App) -> bool {
     shown_view(app).is_some_and(|view| {
         let wanted = preferences(app).group_by_type && view.supports_type_grouping;

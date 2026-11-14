@@ -37,7 +37,7 @@ pub(super) struct Staged {
 
 impl Staged {
     pub(super) fn new(host: Offscreen, log: InputLog) -> Self {
-        let replacements = Replacements::watch(&host.app().browser);
+        let replacements = Replacements::watch(host.app());
         Self {
             replacements,
             stage: RefCell::new(Stage::new(host)),
@@ -54,7 +54,9 @@ impl Staged {
 
     /// One turn of the host while no step runs. Returns whether it did anything.
     pub(super) fn turn(&self) -> bool {
-        self.stage.borrow_mut().turn()
+        let turned = self.stage.borrow_mut().turn();
+        self.replacements.follow(self.stage.borrow().app());
+        turned
     }
 
     /// Runs `act` on the window's state as a handler would, then settles: what no step does.
@@ -125,11 +127,13 @@ impl Host for Staged {
     }
 
     fn replacements(&self) -> u64 {
+        self.replacements.follow(self.stage.borrow().app());
         self.replacements.now()
     }
 
     fn replaced_since(&self, entry: EntryId, since: u64) -> bool {
         let stage = self.stage.borrow();
+        self.replacements.follow(stage.app());
         self.replacements.replaced_since(stage.app(), entry, since)
     }
 
