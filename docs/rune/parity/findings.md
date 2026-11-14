@@ -1106,3 +1106,19 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** fixed by [F3](packages/F3.md)'s [#2409](https://github.com/lgse/strata/pull/2409): the part holds
   `Holds::Menu` while the menu is open, held by
   `location::tests::the_hierarchy_menu_holds_the_keyboard_while_it_is_open`.
+
+### #2420: closing a filter restores a load-cursor mark the browser no longer has on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2420), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `browser-view` invariant, on Rune, at the Escape that
+  closes a type-to-search filter (`calibration v3`, seeds `0x02`, `0x06` and `0x0a`). By
+  reading: the filter keeps the column's position before its results show, the load cursor's
+  provisional mark with it (`Columns::listing_position`), and Escape restores it
+  (`Columns::drop_hits`). The view then hands the selection over, which commits it in the
+  browser (`Browser::commit_selection`), and the handover carries no provisional mark. So the
+  view keeps a mark the browser no longer has, until a key moves the cursor.
+- **What a user sees:** nothing found, as with #2386: the mark decides only a 10xer verb's
+  targets and the cursor's own moves.
+- **State:** open, [A10](packages/A10.md)'s; the three seeds parked in
+  `tests/qa/fuzz/corpus/calibration/`.
