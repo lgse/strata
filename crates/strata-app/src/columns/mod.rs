@@ -419,11 +419,30 @@ impl Columns {
                 })
             })
             .collect();
+        let pending = (0..self.open())
+            .filter(|depth| self.held.get(*depth) != Some(&self.held_now(*depth)))
+            .collect();
+        let results: Vec<usize> = (0..self.open())
+            .filter(|depth| self.listings.hits_at(*depth))
+            .collect();
+        let drawn = results
+            .iter()
+            .filter_map(|depth| {
+                Some(handover::Drawn {
+                    depth: *depth,
+                    column: self.listings.shown(*depth)?,
+                    collection: &self.state.column(*depth)?.collection,
+                })
+            })
+            .collect();
         handover::Presented {
             active: Some(self.state.active()),
             strip: Some(self.state.len()),
             listings: self.listings.columns.iter().collect(),
             shown,
+            pending,
+            results,
+            drawn,
         }
     }
 }

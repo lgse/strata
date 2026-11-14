@@ -540,10 +540,21 @@ pub(crate) fn lists<V: SinglePane>(app: &App) -> Vec<String> {
     }
 }
 
-/// What the view holds of the browser's columns: the probe's.
+/// What the view holds of the browser's columns, and the filter's results it draws in the
+/// listing's place while they show: the probe's.
 #[cfg(feature = "qa")]
 pub(crate) fn presented<V: SinglePane>(app: &App) -> crate::handover::Presented<'_> {
-    pane::<V>(app).presented()
+    let pane = pane::<V>(app);
+    let mut presented = pane.presented();
+    let hits = &app.filter.pane;
+    if let (Some(depth), Some(column)) = (pane.depth(), hits.hits()) {
+        presented.drawn.push(crate::handover::Drawn {
+            depth,
+            column,
+            collection: hits.collection(),
+        });
+    }
+    presented
 }
 
 mod first_visit;

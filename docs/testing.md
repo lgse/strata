@@ -1771,9 +1771,42 @@ browser's column by its depth and entries by name:
 
 | Invariant | Holds |
 | --- | --- |
-| `browser-view` | The view keeps a listing for each of the browser's columns, of the same folder, loading while it loads; Columns draws a column for each; the active column is the browser's; each listing shows the browser's entries that are not hidden, each under its entry's id and at its position, none twice; and each column shown has the browser's cursor, selection and Shift anchor, and says the selection is the cursor a load placed when the browser does. |
+| `browser-view` | The view keeps a listing for each of the browser's columns, of the same folder, loading while it loads; Columns draws a column for each; the active column is the browser's; each listing shows the browser's entries that are not hidden, each under its entry's id and at its position, none twice; and each column shown has the browser's cursor, selection and Shift anchor, and says the selection is the cursor a load placed when the browser does. A window that shows no view breaks it. |
 | `browser` | The browser lists no entry twice, and marks no position past its entries. |
-| `tree-view` | Each pane the snapshot reads out of the tree is a column the view shows, with the same entries selected, and no entry twice. The tree leaves out rows scrolled out of sight, so only the rows it has are held to the view. |
+| `tree-view` | Each pane the snapshot reads out of the tree is the next column of its name that the view shows, every column shown has a pane, and each pane has the view's entries selected, none twice. The tree leaves out rows scrolled out of sight, so only the rows it has are held to the view; a column the strip has scrolled out of sight stays in the tree (seen at 360 points wide with two columns). |
+| `handover` | No view, shown or hidden, holds a change of a selection the browser has not taken: the shown view hands every change over before GLib dispatches, and a view that is not shown does nothing until it is shown again. |
+| `keyboard` | An element has the keyboard. A part holds it for a menu exactly while the tree shows a menu, and for a modal layer only while it shows a dialog; a dialog the tree shows is held for by a modal layer or a plain popover (the Appearance popover shows as one); one that holds it for an inline edit or the location bar does so only while a text field has it; and a text field with the keyboard is held for by some part. A plain popover's hold needs no surface: the snapshot names no popover, and not every popover shows as a dialog. |
+| `undo-redo` | The runner's own, on every target: after an Undo that changed the fixture tree, a Redo taken at once puts the tree back as it was before the Undo. It is checked from the stream (`tests/qa/fuzz/stream.rs`) and written into the Redo's observation. The `entries` alphabet reaches it with an action that is an Undo and its Redo (9 of its 20 smoke seeds on each target). |
+
+What the checks leave out, on purpose:
+
+- **A column still loading** is held to rows at the browser's positions under
+  the browser's ids, never to the browser's whole listing: a large folder is
+  published in stages, and the view lists what has been published.
+- **The anchor** is compared as a view ranges from it, the anchor or the
+  cursor where there is none, so no anchor and an anchor on the cursor read the
+  same.
+- **A column or pane showing a filter's results** (A10's) is held to the
+  browser by its listing, and its pane in the tree by the results drawn there,
+  nested ones included. In Columns, whose column's collection holds the
+  results' selection, its marks and its pending hand-over are left alone while
+  the results show: by design the browser holds none of their selection, as on
+  GTK. Every other column is held to everything.
+- **The load cursor** is read on the browser's side through
+  `Browser::filled_entries`, as `events::marks` reads it, so the two cannot
+  disagree on that predicate: the check holds the view to the marks it was
+  given, not the predicate to the browser's own `load_cursor`, which no
+  accessor exposes. It matches `load_cursor` in every state the fuzzer
+  reaches (finding lgse/strata#2386's review).
+- **Known limits, which no alphabet reaches yet.** Marks are compared while a
+  column loads, so a cursor on an entry not yet published reads as none in the
+  view: a large-folder alphabet would see `browser-view` break. And
+  `keyboard` takes every modal layer to show as a `dialog`: a modal that is
+  none there (a palette, F1's reference) needs one, or the check breaks on a
+  correct window. A plain popover's hold satisfies any dialog, so a real modal
+  dialog with no `Modal` hold passes while some part holds a plain popover:
+  narrowing it to the popovers' own dialogs needs the snapshot to mark them,
+  and their localized names are not hard-coded.
 
 The lines go into the observation's `invariants`, which the comparator
 treats as it treats `criticals`: a broken invariant is a divergence at its

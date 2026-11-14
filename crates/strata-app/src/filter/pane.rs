@@ -98,6 +98,12 @@ impl PaneHits {
         &self.collection
     }
 
+    /// The results' rows, while they show: what the QA backend's invariants hold the tree to.
+    #[cfg(feature = "qa")]
+    pub(crate) fn hits(&self) -> Option<&Column> {
+        self.hits.as_ref()
+    }
+
     pub(crate) fn parts_mut(&mut self) -> (&dyn EntrySource, &mut CollectionState) {
         let source: &dyn EntrySource = match &self.hits {
             Some(hits) => hits,

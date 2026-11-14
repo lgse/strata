@@ -171,11 +171,19 @@ impl Pane {
                 collection: &self.collection,
             })
         });
+        let pending = self
+            .shown
+            .filter(|_| self.held != Held::of(&self.collection))
+            .into_iter()
+            .collect();
         handover::Presented {
             active: self.shown,
             strip: None,
             listings: self.columns.iter().collect(),
             shown: shown.into_iter().collect(),
+            pending,
+            results: Vec::new(),
+            drawn: Vec::new(),
         }
     }
 

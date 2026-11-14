@@ -116,6 +116,23 @@ pub(crate) struct Presented<'a> {
     pub(crate) listings: Vec<&'a Column>,
     /// The columns shown with a cursor and a selection.
     pub(crate) shown: Vec<Shown<'a>>,
+    /// The depth of each column shown whose selection changed since the browser last took it
+    /// ([`Held`]): what the view has still to hand over.
+    pub(crate) pending: Vec<usize>,
+    /// The depth of each column whose collection holds a filter's results' selection while
+    /// they show, Columns': the browser holds none of it, as GTK's does not.
+    pub(crate) results: Vec<usize>,
+    /// What the tree draws in a column's place while a filter's results show there: its rows
+    /// and their collection.
+    pub(crate) drawn: Vec<Drawn<'a>>,
+}
+
+/// A filter's results, drawn in the place of column `depth`.
+#[cfg(feature = "qa")]
+pub(crate) struct Drawn<'a> {
+    pub(crate) depth: usize,
+    pub(crate) column: &'a Column,
+    pub(crate) collection: &'a CollectionState,
 }
 
 /// Gives the browser's column what its collection changed since the browser last held it.

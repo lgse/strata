@@ -45,6 +45,7 @@ use super::{
         the_projection_names_every_key_the_snapshot_has,
         two_streams_are_compared_only_when_they_answer_one_another,
     },
+    stream_tests::an_undo_then_a_redo_puts_the_tree_back_as_it_was_before_the_undo,
     targets_tests::{
         a_command_takes_one_target_or_gtk_and_rune_and_the_comparing_commands_take_both,
         a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_own_folder,
@@ -95,4 +96,5 @@ unit_tests! {
     a_command_takes_one_target_or_gtk_and_rune_and_the_comparing_commands_take_both,
     each_target_is_held_to_itself_and_rune_to_the_first_gtk_replay_under_the_map,
     a_run_on_two_targets_names_the_replays_that_differ_and_keeps_its_own_folder,
+    an_undo_then_a_redo_puts_the_tree_back_as_it_was_before_the_undo,
 }

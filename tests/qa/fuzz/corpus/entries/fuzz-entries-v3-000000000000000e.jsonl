@@ -1,0 +1,65 @@
+{"scenario":"fuzz-entries-v3-000000000000000e","modes":["columns"],"prefs":{"type_to_search":false}}
+{"fs":{"path":"fuzz-a.txt","write":"fuzz\n"}}
+{"key":"ctrl+z","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"ctrl+shift+z","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"kept/one","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"ctrl+z","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"ctrl+y","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"shift+Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"End","when":{"not":{"field":{"name":"Rename"}}}}
+{"fs":{"path":"fuzz-a.txt","write":"fuzz\n"}}
+{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"New File"},"when":{"present":{"menu_item":"New File"}}}
+{"wait":{"field":{"name":"Rename","focused":true}},"when":{"present":{"entry":"readme.md"}},"message":"the new file\u2019s name editor"}
+{"type":"docs/","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Right","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"ctrl+z","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"ctrl+shift+z","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"fs":{"path":"archive/fuzz-c.txt","remove":true}}
+{"key":"Up","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Delete","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"entry":"todo.txt"},"button":3,"when":{"all":[{"present":{"entry":"todo.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"New File"},"when":{"present":{"menu_item":"New File"}}}
+{"wait":{"field":{"name":"Rename","focused":true}},"when":{"present":{"entry":"todo.txt"}},"message":"the new file\u2019s name editor"}
+{"type":"made.txt","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"ctrl+z","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"shift+Delete","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Escape","when":{"dialog":true}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Delete","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"entry":"spreadsheet.csv"},"mods":["ctrl"],"when":{"all":[{"present":{"entry":"spreadsheet.csv"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"-2","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"fs":{"path":"documents/fuzz-b.txt","write":"fuzz\n"}}
+{"click":{"entry":"pictures"},"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Up","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Left","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"entry":"readme.md"},"button":3,"when":{"all":[{"present":{"entry":"readme.md"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"click":{"menu_item":"New File"},"when":{"present":{"menu_item":"New File"}}}
+{"wait":{"field":{"name":"Rename","focused":true}},"when":{"present":{"entry":"readme.md"}},"message":"the new file\u2019s name editor"}
+{"type":"docs/","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Delete","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"-2","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Escape","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"F2","when":{"all":[{"focused_in_matches":true},{"not":{"field":{"name":"Rename"}}}]}}
+{"type":"x","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Escape","when":{"field":{"name":"Rename","focused":true}}}
+{"key":"Left","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"ctrl+z","when":{"not":{"field":{"name":"Rename"}}}}
+{"key":"Left","when":{"all":[{"not":{"directory":"$root"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"key":"shift+Up","when":{"not":{"field":{"name":"Rename"}}}}
+{"click":{"entry":"todo.txt"},"mods":["shift"],"when":{"all":[{"present":{"entry":"todo.txt"}},{"not":{"field":{"name":"Rename"}}}]}}
+{"fs":{"path":"fuzz-a.txt","write":"fuzz\n"}}
+{"key":"Down","when":{"not":{"field":{"name":"Rename"}}}}
