@@ -12,10 +12,10 @@
 //! winit as a user's does. After each input it waits until Rune has dispatched it, then for
 //! the frame that shows it.
 //!
-//! It runs only in a private, headless sway, and refuses any other session before it makes
-//! a device ([`guard`]): every output headless, and nothing it reaches the compositor or the
-//! bus through in the desktop's runtime directory. The session bus it expects is the
-//! runner's private one, or none.
+//! It runs only in a private, headless sway, and refuses any other session before the window
+//! opens ([`guard`]): every output headless, and nothing it reaches the compositor or the bus
+//! through in the desktop's runtime directory. The session bus it expects is the runner's
+//! private one, or none.
 
 mod devices;
 mod guard;
@@ -41,6 +41,7 @@ use strata_qa::{Chord, Keymap, Modifier};
 
 use self::{
     devices::{Devices, UsKey, modifier_key},
+    guard::Admitted,
     link::{Frames, Link},
     sway::Sway,
 };
@@ -67,6 +68,9 @@ const SETTLE_LIMIT: Duration = Duration::from_millis(250);
 /// get, a motion outside it say, is not waited for longer.
 const DISPATCH_LIMIT: Duration = Duration::from_millis(500);
 const DISPATCH_POLL: Duration = Duration::from_millis(2);
+/// How long the window may take to show in the admitted sway.
+const WINDOW_LIMIT: Duration = Duration::from_secs(30);
+const WINDOW_POLL: Duration = Duration::from_millis(20);
 /// The longest the session thread sleeps without polling the session again.
 const IDLE_WAIT: Duration = Duration::from_secs(1);
 
@@ -81,6 +85,8 @@ pub(super) fn wanted() -> bool {
 }
 
 pub(super) fn serve(directory: &OsStr) -> Result<(), String> {
+    // Before the window opens: a refused session touches no display.
+    let admitted = guard::admit(|name| std::env::var(name).ok())?;
     // Before anything can log there: stdout is the replies' from here on.
     let protocol = strata_qa::reply_stream()?;
     criticals::capture();
@@ -93,17 +99,17 @@ pub(super) fn serve(directory: &OsStr) -> Result<(), String> {
     let ui = UiThread::claim()?;
     windowed::run_with(ui, settings, location, move |app| {
         let link = Link::new(app.handle(), frames);
-        start(link, protocol, log);
+        start(link, protocol, log, admitted);
         app.on_frame_drawn(move |runtime| recorder.record(runtime))
     })
 }
 
 /// Starts the session's thread. Requests it makes before the loop runs wait for it.
-fn start(link: Link, protocol: File, log: InputLog) {
+fn start(link: Link, protocol: File, log: InputLog, admitted: Admitted) {
     let spawned = std::thread::Builder::new()
         .name("qa-session".to_owned())
         .spawn(move || {
-            match Session::connect(link.clone(), log) {
+            match Session::connect(link.clone(), log, admitted) {
                 Ok(host) => {
                     let backend = Rune::on(host);
                     let commands = strata_qa::command_lines();
@@ -115,6 +121,24 @@ fn start(link: Link, protocol: File, log: InputLog) {
         });
     if let Err(error) = spawned {
         eprintln!("strata-rune: cannot start the QA session: {error}");
+    }
+}
+
+/// Waits until `sway` lists this process's window, for [`WINDOW_LIMIT`] at most.
+fn own_window(sway: &Sway) -> Result<(), String> {
+    let deadline = Instant::now() + WINDOW_LIMIT;
+    loop {
+        match sway.window(std::process::id()) {
+            Ok(_) => return Ok(()),
+            Err(error) if Instant::now() >= deadline => {
+                return Err(format!(
+                    "the sway of SWAYSOCK did not show this process's window within {} s, so \
+                     WAYLAND_DISPLAY may be another compositor: {error}",
+                    WINDOW_LIMIT.as_secs()
+                ));
+            }
+            Err(_) => std::thread::sleep(WINDOW_POLL),
+        }
     }
 }
 
@@ -151,11 +175,11 @@ pub(super) struct Session {
 }
 
 impl Session {
-    fn connect(link: Link, log: InputLog) -> Result<Self, String> {
-        let reached = guard::REACHED_THROUGH.map(|name| (name, std::env::var(name).ok()));
-        guard::private(&reached)?;
-        let sway = Sway::from_environment()?;
-        let screen = guard::headless(&sway.outputs()?)?;
+    fn connect(link: Link, log: InputLog, admitted: Admitted) -> Result<Self, String> {
+        let Admitted { sway, screen } = admitted;
+        // The window is on `WAYLAND_DISPLAY`: once the admitted sway lists it, the two are one
+        // compositor, and the devices made on `WAYLAND_DISPLAY` are that sway's.
+        own_window(&sway)?;
         let devices = Devices::connect(screen)?;
         // As the offscreen QA host does: a column that closes leaves the tree at once.
         link.change(|app| {
