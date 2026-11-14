@@ -21,9 +21,12 @@
 # - Renames, menus and files made behind the application: the per-view alphabets have them.
 #
 # Version 1 was the first draft, never merged: its smoke tier met the plain popover's
-# `app.dialog` and Up off a first row, and one sequence broke F3's browser-view invariant.
+# `app.dialog` (lgse/strata#2405, ruled and in the map), Up off a first row, and one sequence
+# broke F3's browser-view invariant (lgse/strata#2386, since fixed). Version 2, never merged
+# either, had the Up guard; its smoke tier met lgse/strata#2408, parked. Version 3 keeps Right
+# off the empty `archive`.
 area = "views"
-version = 2
+version = 3
 about = "Columns, Icons and List on the canonical fixture, type to search off: the view switched by Ctrl+1, Ctrl+2, Ctrl+3 and by the Appearance popover's rows, Group by file type and Hidden files from the popover and by Ctrl+period, with arrows, Home, End, Shift extension and Escape between switches, folders opened by Right in Columns and by a double click, and the parent and Back"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
@@ -105,11 +108,13 @@ name = "escape"
 weight = 2
 steps = ['{"key":"Escape"}']
 
-# Right opens the folder under the keyboard in Columns, as the child column.
+# Right opens the folder under the keyboard in Columns, as the child column. Not on
+# `archive`, the fixture's one empty folder: in it, shown in Icons, Down takes GTK's keyboard
+# to the footer (lgse/strata#2408, parked in tests/qa/fuzz/corpus/views).
 [[action]]
 name = "right"
 weight = 3
-steps = ['{"key":"Right","when":{"view_mode":"Columns"}}']
+steps = ['{"key":"Right","when":{"all":[{"view_mode":"Columns"},{"not":{"focused":"archive"}}]}}']
 
 [[action]]
 name = "open-folder"

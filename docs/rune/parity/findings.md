@@ -1095,3 +1095,22 @@ sequence only together with the alphabet's version, so the version is part of th
   excuses `app.dialog` only for GTK's `null` against a plain popover's name ("Appearance",
   "Thumbnail size"): a rule that names its values, which the map takes since this finding.
   Noted in `popover.rs`'s module docs. [A8](packages/A8.md)'s.
+
+### #2408: Down in an empty Icons view takes GTK's keyboard to the footer
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2408), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet (v2, never merged), shrunk 3 of 3
+  GTK against Rune from `fuzz-views-v2-000000000000000c`. On the canonical fixture, type to
+  search off: Right on `archive` in Columns, the fixture's one empty folder, Ctrl+2, Down.
+  `app.focused_pane` is then `null` on GTK and `"archive"` on Rune.
+- **Not the snapshot:** GTK driven (`./scripts/qa-drive.sh`, 2026-11-13), by F2's lesson
+  (#2350, #2351, #2356, `main` bug #2361): after the Down, GTK's widget tree's focus line and
+  the focus ring on screen are on the footer's `GtkToggleButton "F1 Shortcuts"`. Ctrl+A leaves
+  it there; Alt+Up brings it back to the parent's `archive`. Rune's keyboard stays in the
+  pane. Whether GTK's move is what it should do (an empty grid handing Down to the next widget
+  below) is the area's question.
+- **Concerns:** the Icons view's keys in an empty folder ([A1](packages/A1.md)'s area). The
+  sequence is parked in `tests/qa/fuzz/corpus/views` (`v2-000000000000000c`), and the `views`
+  alphabet from v3 keeps Right off `archive`.
+- **State:** open; for the coordinator to place with A1's area.

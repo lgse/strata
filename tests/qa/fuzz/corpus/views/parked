@@ -1,0 +1,7 @@
+# The view switch's sequences parked against their findings (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Version 2 was A8's second draft, never merged: its lines are each finding's sequence shrunk
+# GTK against Rune, named for the smoke seed that met it.
+v2-000000000000000c divergence lgse/strata#2408

@@ -22,7 +22,8 @@ list v3 53cac7ac7cdfa46c
 # tests/qa/fuzz/corpus/location.
 location v2 c074595ff2aab0b4
 sidebar v1 4acfcd20a194fff5
-# views: version 1 was A8's first draft, never merged: its smoke tier met the plain popover's
-# app.dialog (lgse/strata#2405), Up off a first row, and #2386, since fixed. Version 2 has the
-# Up guard.
-views v2 e8e930c9ab4c3843
+# views: versions 1 and 2 were A8's drafts, never merged: version 1's smoke tier met the plain
+# popover's app.dialog (lgse/strata#2405), Up off a first row, and #2386, since fixed;
+# version 2's, with the Up guard, met lgse/strata#2408, parked in tests/qa/fuzz/corpus/views.
+# Version 3 keeps Right off the empty archive.
+views v3 db33a207f9ea7905
