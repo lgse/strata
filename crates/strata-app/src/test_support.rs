@@ -121,6 +121,7 @@ pub(crate) fn idle_view<S>(
         apply: |_, _, _| false,
         returns: None,
         pointer_at: None,
+        end_gestures: |_| {},
         rows: Rows {
             position: |_, _| None,
             neighbour: |_, _, _| None,

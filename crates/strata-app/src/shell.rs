@@ -100,6 +100,8 @@ pub(crate) struct Window {
     thumbnails: ThumbnailStore,
     /// The per-folder views, one store for the process ([`crate::folder_views`]).
     folder_views: folder_views::Kept,
+    /// Whether a modal layer was open at the last poll ([`grab`]).
+    grab: grab::Grab,
 }
 
 /// A browser over the local file source, as `src/ui/window/launch.rs` builds one, with the
@@ -271,6 +273,7 @@ impl App {
             applied: (0, 0),
             thumbnails,
             folder_views,
+            grab: grab::Grab::default(),
         };
         Self::assemble(look, browser, window, built)
     }
@@ -916,6 +919,7 @@ pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     if !app.window.events.is_empty() {
         ran |= settle(app, tx);
     }
+    grab::follow(app);
     ran
 }
 
@@ -993,5 +997,6 @@ pub(crate) fn live_keys(app: &App) -> &Live {
     live
 }
 
+mod grab;
 #[cfg(test)]
 mod tests;
