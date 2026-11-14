@@ -25,9 +25,10 @@
 //!   with what changed while it was hidden (the saved sort and hidden files on its browser,
 //!   the saved view mode, the grouping), retitles the window, tells every part
 //!   (`Part::tab_shown`, then `Part::switched`), and gives the keyboard back where it was.
-//! - **Rune keeps a scroll offset by the element's path,** and the shell keys each tab's
-//!   content `tab-<n>` (`super::view`), so no tab shows another's offset. A view puts its own
-//!   back in `Part::tab_shown`.
+//! - **Each tab's content is keyed `tab-<n>`** (`super::view`), so what Rune keeps by an
+//!   element's path (a scroll offset, a hover, an animation) is never another tab's. A view's
+//!   scroll comes back from its own state: each collection keeps where it was drawn, as GTK's
+//!   hidden tab keeps its scroll.
 
 #![cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
 

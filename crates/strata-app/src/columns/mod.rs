@@ -144,22 +144,6 @@ impl Columns {
         self.fills.show_sizes(show);
     }
 
-    /// Scrolls the strip and each column back to where they were last drawn: the view's tab is
-    /// shown again, under a key of its own, where Rune starts a viewport at its start.
-    pub(crate) fn scroll_back(&self, tx: &mut Tx) {
-        let strip = strata_components::columns::keys::strip(VIEW);
-        tx.scroll_to_instant(strip, self.state.strip_offset(), 0.0);
-        for depth in 0..self.state.len() {
-            let (Some(key), Some(column)) =
-                (self.state.column_key(depth), self.state.column(depth))
-            else {
-                continue;
-            };
-            let viewport = strata_components::collection::element::viewport_path(&key);
-            tx.scroll_to_instant(viewport, 0.0, column.collection.scroll_offset());
-        }
-    }
-
     /// Whether the selection's folder opens as the child column: the saved choice.
     pub(crate) fn mirrors(&self) -> bool {
         self.mirror.enabled()

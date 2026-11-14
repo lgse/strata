@@ -103,13 +103,12 @@ impl Part for Columns {
     }
 
     /// What another tab changed while this one was hidden: the sizes shown and the width new
-    /// columns open at. Then the strip and its columns scroll back to where they were.
-    fn tab_shown(app: &mut App, tx: &mut Tx) {
+    /// columns open at.
+    fn tab_shown(app: &mut App, _: &mut Tx) {
         let saved = shell::preferences(app);
         let (sizes, width) = (saved.columns_show_sizes, super::width::saved(saved));
         app.columns.show_sizes(sizes);
         app.columns.state.set_default_width(width);
-        app.columns.scroll_back(tx);
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {

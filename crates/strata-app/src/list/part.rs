@@ -109,12 +109,11 @@ impl Part for List {
     }
 
     /// The columns another tab reordered, hid or resized while this one was hidden.
-    fn tab_shown(app: &mut App, tx: &mut Tx) {
+    fn tab_shown(app: &mut App, _: &mut Tx) {
         let saved = shell::preferences(app);
         let (layout, widths) = (super::columns::layout(saved), super::columns::widths(saved));
         app.list.layout = layout;
         app.list.widths = widths;
-        single::scroll_back::<Self>(app, tx);
     }
 
     fn publish(app: &mut App) {
