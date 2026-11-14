@@ -1693,3 +1693,24 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** no run: no scenario closes a window with an operation running.
 - **State:** open, [A21](packages/A21.md)'s, to draft into the packet with the window's
   lifecycle and to work around if it can.
+
+### #2477: `reopen-closed-tabs/columns` sometimes misses the click on a new tab's folder
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2477), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A10](packages/A10.md)'s `all --target rune` on #2472, then reproduced by
+  [A4](packages/A4.md), each run alone under the machine lock. The run fails at line 4, "the
+  browser to be working in 'archive'", after Ctrl+T and a `select` of `archive` in the new
+  tab: `archive` ends selected and focused, and no child column opens.
+  - Rune at `48460bc99`: 3 of 30 unloaded, 2 of 10 with every core kept busy.
+  - Rune with [#2474](https://github.com/lgse/strata/pull/2474): 0 of 30 unloaded, 2 of 10
+    loaded.
+  - GTK under the same load: 0 of 10.
+- **Why, so far:** the `select` step clicked once and found `archive` selected at once, so
+  it did not retry. The new tab shows the same folder at the same coordinates as the one it
+  was opened from. The likely cause, not yet confirmed: the click is aimed and routed by the
+  tree from before the new tab's listing is drawn, and lands on nothing. The rows then arrive
+  with the load cursor on `archive`, which reads as selected but opens no column.
+- **Concerns:** `tabs/reopen-closed-tabs/columns` (required), and any run that clicks in a
+  tab just opened at the folder it was opened from.
+- **State:** open, A4's. No fix yet: the coordinator rules before one is made.
