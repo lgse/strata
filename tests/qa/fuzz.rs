@@ -65,6 +65,12 @@ pub(crate) mod sequence;
 #[path = "fuzz/shrink.rs"]
 pub(crate) mod shrink;
 
+#[path = "fuzz/stream.rs"]
+pub(crate) mod stream;
+
+#[path = "fuzz/stream_tests.rs"]
+mod stream_tests;
+
 #[path = "fuzz/targets.rs"]
 pub(crate) mod targets;
 

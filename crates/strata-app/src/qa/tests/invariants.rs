@@ -166,3 +166,113 @@ fn an_anchor_the_view_does_not_hold_breaks_them() {
         },
     );
 }
+
+/// The keyboard's holds follow a menu, a rename editor, a dialog and the Appearance popover
+/// (which shows as a dialog) as they open and close,
+/// and the view switched away from does nothing while it is hidden.
+#[test]
+fn the_holds_follow_what_opens_and_a_hidden_view_does_nothing() {
+    shown_in(
+        "columns",
+        "the_holds_follow_what_opens_and_a_hidden_view_does_nothing",
+        |backend, kept| {
+            for (step, then) in [
+                (
+                    json!({ "click": { "entry": "readme.md" }, "button": 3 }),
+                    json!({ "wait": { "menu_items": {} } }),
+                ),
+                (
+                    json!({ "key": "Escape" }),
+                    json!({ "wait": { "menu_items": null } }),
+                ),
+                (
+                    json!({ "key": "F2" }),
+                    json!({ "wait": { "field": { "focused": true, "name": "Rename" } } }),
+                ),
+                (
+                    json!({ "key": "Escape" }),
+                    json!({ "wait": { "focused": "readme.md" } }),
+                ),
+                (
+                    json!({ "key": "shift+Delete" }),
+                    json!({ "wait": { "dialog": true } }),
+                ),
+                (
+                    json!({ "key": "Escape" }),
+                    json!({ "wait": { "not": { "dialog": true } } }),
+                ),
+                (
+                    json!({ "click": { "name": "Appearance", "role": "toggle button" } }),
+                    json!({ "wait": { "dialog": true } }),
+                ),
+                (
+                    json!({ "key": "Escape" }),
+                    json!({ "wait": { "not": { "dialog": true } } }),
+                ),
+                (
+                    json!({ "key": "ctrl+2" }),
+                    json!({ "wait": { "view_mode": "Icons" } }),
+                ),
+                (
+                    json!({ "key": "ctrl+1" }),
+                    json!({ "wait": { "view_mode": "Columns" } }),
+                ),
+            ] {
+                passes(backend, kept, &step);
+                passes(backend, kept, &then);
+                assert_eq!(failed(backend, kept), json!([]), "after {step}");
+            }
+        },
+    );
+}
+
+/// A filter's results take the place of a column's rows, and the browser holds none of their
+/// selection, as on GTK: the column is held to the browser by its listing and its pane by the
+/// results the tree draws, nested ones among them (`no` finds `documents/notes.txt`), and Escape
+/// from the results gives the listing the keyboard again (finding lgse/strata#2421).
+fn a_filter_s_results_are_held_to_what_the_tree_draws(mode: &str, name: &str) {
+    shown_in(mode, name, |backend, kept| {
+        for (step, then) in [
+            (
+                json!({ "click": { "entry": "readme.md" } }),
+                json!({ "wait": { "focused": "readme.md" } }),
+            ),
+            (
+                json!({ "key": "ctrl+f" }),
+                json!({ "wait": { "field": {} } }),
+            ),
+            (json!({ "type": "no" }), json!({ "sleep": 500 })),
+            (json!({ "key": "Down" }), json!({ "sleep": 300 })),
+            (json!({ "key": "Escape" }), json!({ "sleep": 300 })),
+            (json!({ "key": "Down" }), json!({ "sleep": 300 })),
+        ] {
+            passes(backend, kept, &step);
+            passes(backend, kept, &then);
+            assert_eq!(failed(backend, kept), json!([]), "after {step}");
+        }
+    });
+}
+
+#[test]
+fn a_filter_s_results_in_the_columns_are_held_to_what_the_tree_draws() {
+    a_filter_s_results_are_held_to_what_the_tree_draws(
+        "columns",
+        "a_filter_s_results_in_the_columns_are_held_to_what_the_tree_draws",
+    );
+}
+
+#[test]
+fn a_filter_s_results_in_the_list_are_held_to_what_the_tree_draws() {
+    a_filter_s_results_are_held_to_what_the_tree_draws(
+        "list",
+        "a_filter_s_results_in_the_list_are_held_to_what_the_tree_draws",
+    );
+}
+
+#[test]
+fn a_filter_s_results_in_the_icons_are_held_to_what_the_tree_draws() {
+    a_filter_s_results_are_held_to_what_the_tree_draws(
+        "icons",
+        "a_filter_s_results_in_the_icons_are_held_to_what_the_tree_draws",
+    );
+}

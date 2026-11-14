@@ -20,6 +20,12 @@ v2-00000000000000b1 oracle lgse/strata#2177
 # v2, 0x19b: GTK logs a critical, gtk_selection_model_selection_changed, every time. Shrunk
 # from 40 steps to these 7 and confirmed three times out of three.
 v2-000000000000019b oracle lgse/strata#2176
+# v3, 0x02, 0x06 and 0x0a: on Rune, F3's browser-view invariant breaks at the Escape that
+# closes a type-to-search filter: the view restores the load cursor's mark the browser no
+# longer has. The sequences are the seeds'.
+v3-0000000000000002 divergence lgse/strata#2420
+v3-0000000000000006 divergence lgse/strata#2420
+v3-000000000000000a divergence lgse/strata#2420
 # v3, 0x1de: with a column's sort menu open, Space after a right-click and Down puts the
 # folder back in its default order in 16 GTK replays of 24, and in another order in the
 # other 8. The sequence is the seed's first 32 steps; the shrinker took the seed to 10

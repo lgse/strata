@@ -9,3 +9,16 @@
 # and Ctrl+Y (0x04). GTK does the same; the sequences are the seeds'.
 v1-0000000000000004 oracle lgse/strata#2387
 v1-0000000000000005 oracle lgse/strata#2387
+# Version 3 adds an Undo with its Redo straight after (F3's undo-redo invariant). Its smoke
+# seeds meet two findings of the shared browser and its undo history, both GTK's too: the
+# Shift anchor that comes back with a restored entry (lgse/strata#2387, on Rune), and a Redo
+# that skips a rename into a new path, does nothing or redoes the operation before it
+# (lgse/strata#2435, on both targets). The sequences are the seeds'.
+v3-0000000000000001 oracle lgse/strata#2387
+v3-0000000000000004 oracle lgse/strata#2435
+v3-000000000000000a oracle lgse/strata#2387
+v3-000000000000000b oracle lgse/strata#2387
+v3-000000000000000d oracle lgse/strata#2387
+v3-000000000000000e oracle lgse/strata#2435
+v3-000000000000000f oracle lgse/strata#2387
+v3-0000000000000010 oracle lgse/strata#2387

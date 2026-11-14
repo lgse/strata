@@ -1015,8 +1015,9 @@ sequence only together with the alphabet's version, so the version is part of th
   select `pictures`, `readme.md` and `todo.txt`, a range from the entry anchored before it
   was deleted; without F5, both select `pictures` and `readme.md`. So the fault is the shared
   browser's, and Rune agrees with GTK on what the user sees.
-- **Concerns:** seeds `0x04` and `0x05` of `entries v1`, parked in
-  `tests/qa/fuzz/corpus/entries/`.
+- **Concerns:** seeds `0x04` and `0x05` of `entries v1`, and `0x01`, `0x0a`, `0x0b`, `0x0d`,
+  `0x0f` and `0x10` of `entries v3`, whose Undo with its Redo straight after meets it often,
+  parked in `tests/qa/fuzz/corpus/entries/`.
 - **State:** open, set aside, its sequences parked. The fault is `strata-fs`'s, in the
   browser both interfaces share, so GTK has it too: its fix belongs on `main`, from a bug
   issue there, and reaches `strata-next` by merge. The coordinator places it.
@@ -1138,13 +1139,23 @@ sequence only together with the alphabet's version, so the version is part of th
   key of an element no longer drawn kept it, and every key after that (Menu, the arrows)
   went nowhere until a click. On GTK, in the same replay (seed `0x01` of `sidebar v1`,
   `gtk,rune`), the next Menu key opens the selected entry's context menu.
-- **Also seen:** a focused sidebar row that goes away by a drag (seed `0x10`) or by Unpin
-  (seed `0x0e`) leaves no element with the keyboard too. Neither has been checked on GTK.
+- **Also seen:** two more cases leave no element with the keyboard, both checked against
+  GTK in the same `gtk,rune` replays.
+  - Seed `0x10`: a drag of a sidebar row while that row's menu is open. GTK's menu swallows
+    the drag and stays open; Rune's closes, and the keyboard goes nowhere. This is a
+    divergence of its own (a drag across an open menu), and not as local as the hidden
+    sidebar.
+  - Seed `0x0e`: Unpin of the focused row. Driven on GTK (`qa-drive.sh`, 2026-11-14): Left
+    into the sidebar, the Menu key, Unpin on `Home`. GTK draws the keyboard's ring on the next
+    row, `Trash`; Down then moves it to `Network`, and the Menu key opens `Network`'s menu.
+    On Rune no element has the keyboard. So the divergence stands: GTK gives the keyboard to
+    the row after the one that went.
 - **State:** the hidden sidebar fixed by [F3](packages/F3.md)'s
   [#2409](https://github.com/lgse/strata/pull/2409): the toggle gives the shown view the keyboard when it hides the sidebar with the
   keyboard in it (`sidebar/width.rs`), held by
   `sidebar::tests::hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view`.
-  The drag and Unpin cases are open, to be placed.
+  The drag and Unpin cases are open, their seeds parked in `tests/qa/fuzz/corpus/sidebar/`
+  by F3's [#2432](https://github.com/lgse/strata/pull/2432).
 
 ### #2407: the location bar's hierarchy menu holds no keyboard on Rune
 
@@ -1444,3 +1455,48 @@ sequence only together with the alphabet's version, so the version is part of th
   behaviour a user meets, so Rune adds no outer node, and line 26 of the scenario aims at the
   toggle button as the others do ([A8](packages/A8.md)'s pull request; the scenario's ledger
   row is A10's).
+
+### #2420: closing a filter restores a load-cursor mark the browser no longer has on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2420), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `browser-view` invariant, on Rune, at the Escape that
+  closes a type-to-search filter (`calibration v3`, seeds `0x02`, `0x06` and `0x0a`). By
+  reading: the filter keeps the column's position before its results show, the load cursor's
+  provisional mark with it (`Columns::listing_position`), and Escape restores it
+  (`Columns::drop_hits`). The view then hands the selection over, which commits it in the
+  browser (`Browser::commit_selection`), and the handover carries no provisional mark. So the
+  view keeps a mark the browser no longer has, until a key moves the cursor.
+- **What a user sees:** nothing found, as with #2386: the mark decides only a 10xer verb's
+  targets and the cursor's own moves.
+- **State:** open, [A10](packages/A10.md)'s; the three seeds parked in
+  `tests/qa/fuzz/corpus/calibration/`.
+
+### #2421: Escape from a pane's filter results leaves no element with the keyboard on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2421), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `keyboard` invariant in a hosted run of the QA backend,
+  in List and Icons since [#2416](https://github.com/lgse/strata/pull/2416). Click
+  `readme.md`, press Ctrl+F, type `no`, press Down so the keyboard is on `notes.txt` in the
+  results, then Escape. The listing comes back with `readme.md` selected, but no element has
+  the keyboard, and Down and Up change nothing until a click. Without the Down, Escape gives
+  the keyboard to `readme.md`. No merged alphabet opens a pane's filter yet.
+- **State:** fixed by [A10](packages/A10.md)'s
+  [#2430](https://github.com/lgse/strata/pull/2430): Escape from a pane's results gives the
+  listing the keyboard, as GTK does. F3's `qa::tests::invariants` filter tests in List and
+  Icons go on past the Escape and hold the invariants there.
+
+### #2435: Redo after undoing a rename into a new path does not redo it
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2435), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `undo-redo` invariant, the runner's own, on GTK and on
+  Rune alike, in `entries` (seeds `0x0b` and `0x0a` of the draft v2, `0x04` and `0x0e` of
+  v3). F2 on `archive` with `kept/one` typed, so the rename moves it into a new folder; Ctrl+Z
+  puts `archive` back; Ctrl+Shift+Z or Ctrl+Y then does not redo the rename. Either nothing
+  changes, or, with an older operation on the redo history (`v3-0x04`: a Move to Trash
+  undone before), the Redo replays that one instead.
+- **State:** open, set aside, two `entries v3` seeds parked. The fault is in the undo history
+  both interfaces share, so its fix belongs on `main`; the coordinator places it with
+  [#2387](https://github.com/lgse/strata/issues/2387).

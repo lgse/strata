@@ -1,0 +1,41 @@
+{"scenario":"fuzz-sidebar-v1-0000000000000010","modes":["columns"],"prefs":{"type_to_search":false}}
+{"click":{"named":"Toggle sidebar (Ctrl+B)","within":{"window":true}}}
+{"drag":{"from":{"sidebar":"Home"},"from_at":["50%","50%"],"to":{"sidebar":"Trash"},"to_at":["50%","1/5"]},"steps":12,"when":{"all":[{"present":{"sidebar":"Home"}},{"present":{"sidebar":"Trash"}}]}}
+{"key":"Menu"}
+{"key":"Up"}
+{"drag":{"from":{"sidebar":"Network"},"from_at":["50%","50%"],"to":{"sidebar":"Desktop"},"to_at":["50%","1/5"]},"steps":12,"when":{"all":[{"present":{"sidebar":"Network"}},{"present":{"sidebar":"Desktop"}}]}}
+{"key":"Tab"}
+{"key":"shift+Tab"}
+{"key":"ctrl+b"}
+{"key":"Menu"}
+{"key":"shift+Tab"}
+{"click":{"menu_item":"Unpin"},"when":{"present":{"menu_item":"Unpin"}}}
+{"key":"shift+Tab"}
+{"key":"Down"}
+{"click":{"named":"Toggle sidebar (Ctrl+B)","within":{"window":true}}}
+{"key":"ctrl+b"}
+{"click":{"sidebar":"Home"},"button":3,"when":{"present":{"sidebar":"Home"}}}
+{"drag":{"from":{"sidebar":"Network"},"from_at":["50%","50%"],"to":{"sidebar":"Desktop"},"to_at":["50%","1/5"]},"steps":12,"when":{"all":[{"present":{"sidebar":"Network"}},{"present":{"sidebar":"Desktop"}}]}}
+{"key":"Menu"}
+{"key":"Tab"}
+{"key":"Right"}
+{"key":"Right"}
+{"click":{"sidebar":"Trash"},"button":3,"when":{"present":{"sidebar":"Trash"}}}
+{"key":"Up"}
+{"key":"ctrl+b"}
+{"key":"Tab"}
+{"key":"ctrl+b"}
+{"key":"shift+Down"}
+{"key":"Down"}
+{"click":{"named":"Toggle sidebar (Ctrl+B)","within":{"window":true}}}
+{"drag":{"from":{"sidebar":"Desktop"},"from_at":["50%","50%"],"to":{"sidebar":"Home"},"to_at":["50%","4/5"]},"steps":12,"when":{"all":[{"present":{"sidebar":"Desktop"}},{"present":{"sidebar":"Home"}}]}}
+{"key":"l"}
+{"key":"Up"}
+{"drag":{"from":{"sidebar":"Network"},"from_at":["50%","50%"],"to":{"sidebar":"Trash"},"to_at":["50%","1/5"]},"steps":12,"when":{"all":[{"present":{"sidebar":"Network"}},{"present":{"sidebar":"Trash"}}]}}
+{"key":"Escape","when":{"present":{"menu_item":"Properties"}}}
+{"key":"shift+Tab"}
+{"key":"Down"}
+{"key":"j"}
+{"key":"Escape","when":{"present":{"menu_item":"Properties"}}}
+{"drag":{"from":{"sidebar":"Home"},"from_at":["50%","50%"],"to":{"sidebar":"Trash"},"to_at":["50%","4/5"]},"steps":12,"when":{"all":[{"present":{"sidebar":"Home"}},{"present":{"sidebar":"Trash"}}]}}
+{"key":"k"}
