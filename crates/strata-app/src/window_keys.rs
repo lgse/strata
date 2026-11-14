@@ -27,7 +27,9 @@
 //! them is drawn or kept.
 
 use rune::Tx;
-use strata_desktop::keys::bindings::{ENTER, ENTER_ANY_SHIFT, ESCAPE, ESCAPE_ANY, ESCAPE_ANY_SHIFT};
+use strata_desktop::keys::bindings::{
+    ENTER, ENTER_ANY_SHIFT, ESCAPE, ESCAPE_ANY, ESCAPE_ANY_SHIFT,
+};
 
 use crate::{
     App,
@@ -71,8 +73,9 @@ fn from_the_listing(_: &App, at: &Situation) -> bool {
 pub(crate) const COMMANDS: &[Action<App>] = &[
     Action::new("rename-cancel", rename_cancelled)
         .command(ESCAPE)
-        .keys(&[Keys::at(Stage::InlineEditing, &[ESCAPE_ANY])
-            .when(|app, _| app.rename.state.is_open())]),
+        .keys(&[
+            Keys::at(Stage::InlineEditing, &[ESCAPE_ANY]).when(|app, _| app.rename.state.is_open())
+        ]),
     // `!event.text_has_focus()`.
     Action::new("dismiss", dismissed)
         .command(ESCAPE)

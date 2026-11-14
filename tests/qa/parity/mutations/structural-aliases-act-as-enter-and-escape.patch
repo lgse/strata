@@ -2,7 +2,7 @@ diff --git a/crates/strata-app/src/window_keys.rs b/crates/strata-app/src/window
 index a7a3a1608..c9dd159bb 100644
 --- a/crates/strata-app/src/window_keys.rs
 +++ b/crates/strata-app/src/window_keys.rs
-@@ -82,5 +82,5 @@ pub(crate) const COMMANDS: &[Action<App>] = &[
+@@ -85,5 +85,5 @@ pub(crate) const COMMANDS: &[Action<App>] = &[
          .keys(&[Keys::at(Stage::ItemNavigation, &[ESCAPE_ANY_SHIFT]).when(from_the_listing)]),
      Action::new("activate", activated)
          .command(ENTER)

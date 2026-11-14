@@ -42,7 +42,10 @@ fn focus(host: &mut Offscreen, key: impl FnOnce(&App) -> String) {
 
 fn selected(host: &Offscreen) -> Vec<String> {
     let entries = host.app().browser().selected_entries();
-    entries.into_iter().map(|entry| entry.display_name).collect()
+    entries
+        .into_iter()
+        .map(|entry| entry.display_name)
+        .collect()
 }
 
 /// Finding lgse/strata#2411, driven on GTK: an Escape with the keyboard on a header button
@@ -54,7 +57,9 @@ fn escape_outside_the_files_clears_the_selection() {
         "escape_outside_the_files_clears_the_selection",
         |mut host| {
             let _folder = listed(&mut host);
-            focus(&mut host, |app| shell::view_focus(app).expect("a view").to_owned());
+            focus(&mut host, |app| {
+                shell::view_focus(app).expect("a view").to_owned()
+            });
             press(&mut host, Key::End);
             assert_eq!(selected(&host), ["todo.txt"]);
 
@@ -80,7 +85,9 @@ fn escape_with_nothing_selected_closes_the_deepest_column_a_view_does_not_show()
         "escape_with_nothing_selected_closes_the_deepest_column_a_view_does_not_show",
         |mut host| {
             let _folder = listed(&mut host);
-            focus(&mut host, |app| shell::view_focus(app).expect("a view").to_owned());
+            focus(&mut host, |app| {
+                shell::view_focus(app).expect("a view").to_owned()
+            });
             press(&mut host, Key::Home);
             let opened = |host: &Offscreen| host.app().browser().location_at(1).is_some();
             assert!(host.run_until(PATIENCE, opened), "archive's column opens");
@@ -89,7 +96,9 @@ fn escape_with_nothing_selected_closes_the_deepest_column_a_view_does_not_show()
                 shell::show_view(app, "icons", tx);
             });
             while host.turn() {}
-            focus(&mut host, |app| shell::view_focus(app).expect("a view").to_owned());
+            focus(&mut host, |app| {
+                shell::view_focus(app).expect("a view").to_owned()
+            });
             press(&mut host, Key::Escape);
             assert_eq!(selected(&host), Vec::<String>::new());
             assert!(opened(&host), "the first Escape clears the selection only");
@@ -131,7 +140,9 @@ fn structural_aliases_open_and_cancel_as_their_keys_do() {
         aliases_saved,
         |mut host| {
             let folder = listed(&mut host);
-            focus(&mut host, |app| shell::view_focus(app).expect("a view").to_owned());
+            focus(&mut host, |app| {
+                shell::view_focus(app).expect("a view").to_owned()
+            });
             press(&mut host, Key::Home);
             press(&mut host, Key::Down);
             assert_eq!(selected(&host), ["documents"]);
@@ -140,7 +151,9 @@ fn structural_aliases_open_and_cancel_as_their_keys_do() {
             let documents = Location::local(folder.path().join("documents"));
             let opened = |host: &Offscreen| {
                 let browser = host.app().browser();
-                browser.active_depth().and_then(|depth| browser.location_at(depth))
+                browser
+                    .active_depth()
+                    .and_then(|depth| browser.location_at(depth))
                     == Some(documents.clone())
             };
             assert!(host.run_until(PATIENCE, opened), "o opens documents");
@@ -148,9 +161,14 @@ fn structural_aliases_open_and_cancel_as_their_keys_do() {
             let listed_documents = |host: &Offscreen| {
                 let browser = host.app().browser();
                 let depth = browser.active_depth().unwrap_or_default();
-                browser.column_entry_counts(depth).is_some_and(|counts| counts.total > 0)
+                browser
+                    .column_entry_counts(depth)
+                    .is_some_and(|counts| counts.total > 0)
             };
-            assert!(host.run_until(PATIENCE, listed_documents), "documents lists");
+            assert!(
+                host.run_until(PATIENCE, listed_documents),
+                "documents lists"
+            );
             press(&mut host, Key::Home);
             press(&mut host, Key::Function(2));
             let editing = |host: &Offscreen| host.app().rename.state.is_open();
