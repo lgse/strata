@@ -429,6 +429,7 @@ impl<'a> Session<'a> {
                 perturbation.apply(step.written, &before.value, &mut observation.value);
             }
             over = observation.ends_the_replay();
+            super::stream::check(&stream.observations, &mut observation);
             stream.observations.push(observation);
             gone = lost.or(unseen);
         }

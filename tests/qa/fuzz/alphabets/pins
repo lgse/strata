@@ -14,7 +14,7 @@ calibration v3 d06627cec8c47f93
 # Ctrl+A and Shift selection in the rename editor, version 3 its Up, Down and page keys. Their
 # seeds name the shrunk sequences of the pilot's findings, parked in tests/qa/fuzz/corpus/columns.
 columns v3 c1c7755a9701e199
-entries v1 5222ec7bfe1641ce
+entries v3 8fb7d5c38ff6b880
 icons v1 c800a440ffbc265a
 list v3 53cac7ac7cdfa46c
 # location: version 1 was A5's draft, never merged: version 2 keeps clicks off a shown dialog and

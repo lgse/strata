@@ -1,0 +1,12 @@
+# The sidebar alphabet's sequences parked against their findings
+# (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# The line reads as the end of the kept file's name, sorted by version and seed. See
+# docs/testing.md, "Fuzzing". Both are F3's keyboard invariant on Rune, "no element has the
+# keyboard", in the cases finding lgse/strata#2406's fix leaves open: 0x0e after Unpin of the
+# focused row, and 0x10 after a drag of a sidebar row while the row's menu is open, which
+# GTK's menu swallows and Rune's does not. The sequences are the seeds'.
+v1-000000000000000e divergence lgse/strata#2406
+v1-0000000000000010 divergence lgse/strata#2406
