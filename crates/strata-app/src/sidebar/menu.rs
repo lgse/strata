@@ -19,10 +19,11 @@
 //!   row's location: a relist while it is open renumbers the pins, and Unpin still takes the
 //!   one it was opened on.
 //! - **Unpin** is the sidebar's: it hides a built-in place, saving its `sidebar_show_*`
-//!   setting, or takes a pin out of the bookmarks file (`unpin_location`). The other rows'
-//!   commands belong to other packages' parts (tabs, the Connect to server dialog, the
-//!   Customize dialog, Properties) and are drawn as GTK draws them, doing nothing until those
-//!   parts land; each will add the target it needs to `commands::On` when it wires its row.
+//!   setting, or takes a pin out of the bookmarks file (`unpin_location`). Every other row
+//!   runs the command of the registry named for it on the row's location,
+//!   `commands::On::Place`: the trash part's `empty-trash`, and the commands of other
+//!   packages' parts (tabs, the Connect to server dialog, the Customize dialog, Properties),
+//!   which are drawn as GTK draws them and do nothing until a part registers them.
 
 use std::rc::Rc;
 
@@ -182,8 +183,9 @@ pub(super) fn element(app: &App, layer: &mut Vec<El>) -> El {
     .build(app, &app.look, layer)
 }
 
-/// A row of the menu was chosen; the menu has closed. Unpin is the sidebar's, Empty Trash the
-/// trash part's command.
+/// A row of the menu was chosen; the menu has closed. Unpin is the sidebar's; every other row
+/// is the command named for it, on the row's location. Empty Trash is the trash part's, which
+/// empties the Trash wherever it is asked from.
 fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     let MenuIntent::Activate { target, action } = intent;
     let MenuTarget::Other(target) = target else {
@@ -194,8 +196,8 @@ fn chosen(app: &mut App, intent: MenuIntent, tx: &mut Tx) {
     };
     if &*action == UNPIN.id {
         unpin(app, target);
-    } else if &*action == EMPTY_TRASH.id {
-        commands::run(app, EMPTY_TRASH.id, On::Focus, tx);
+    } else {
+        commands::run(app, &action, On::Place(target.location.clone()), tx);
     }
 }
 

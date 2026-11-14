@@ -312,19 +312,19 @@ fn move_to_trash(app: &mut App, entries: Vec<FileEntry>) {
 }
 
 /// The menu's or the key's items, and whether their folder is the Trash.
-fn targets(app: &App, on: On) -> Option<(Vec<FileEntry>, bool)> {
-    let (entries, in_trash) = match on {
+fn targets(app: &App, on: &On) -> Option<(Vec<FileEntry>, bool)> {
+    let (entries, in_trash) = match *on {
         On::Focus => focused_entries(app),
         On::Row(at) => row_entries(app, at),
-        // A folder's menu has no delete rows.
-        On::Column(_) => return None,
+        // A folder's menu has no delete rows, and a place's none here.
+        On::Column(_) | On::Place(_) => return None,
     };
     (!entries.is_empty()).then_some((entries, in_trash))
 }
 
 /// Delete, and the Move to Trash row: for good in the Trash.
 fn trashed(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    match targets(app, call.on) {
+    match targets(app, &call.on) {
         Some((entries, in_trash)) => request(app, entries, in_trash),
         None => Outcome::Declined,
     }
@@ -332,7 +332,7 @@ fn trashed(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
 
 /// Shift+Delete, and the Permanently Delete row.
 fn deleted(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    match targets(app, call.on) {
+    match targets(app, &call.on) {
         Some((entries, _)) => request(app, entries, true),
         None => Outcome::Declined,
     }

@@ -24,8 +24,11 @@
 //! - **Path suggestions** ([`completion`]): GTK's planner, its folder listings off Rune's
 //!   thread; they close when the window loses its activation ([`window_focused`]).
 //!
-//! Not on this interface yet: mounting a typed location that needs it, Copy path,
-//! a crumb's middle click (tabs and windows), and drops on crumbs. `docs/rune/parity/packages/A5.md`, "Open", says who brings each.
+//! - **A crumb's middle click** runs `open-in-tab`, or with Ctrl or Shift `open-in-window`, on
+//!   its folder ([`intents`]); each does nothing until a part registers it.
+//!
+//! Not on this interface yet: mounting a typed location that needs it, Copy path, and drops
+//! on crumbs. `docs/rune/parity/packages/A5.md`, "Open", says who brings each.
 
 use rune::{El, Tx};
 use strata_components::location_bar::{LocationBar, LocationBarState, Trail};

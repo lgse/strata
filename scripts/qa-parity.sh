@@ -24,6 +24,8 @@
 #                                             has an exception that lapsed
 #   ./scripts/qa-parity.sh g2 --scenario shift-click-range
 #                                             only that scenario's runs of the selection
+#   ./scripts/qa-parity.sh A8 --host session  every Rune run of the selection on the session
+#                                             host, whatever host its row names
 #   ./scripts/qa-parity.sh mutations          each patch under tests/qa/parity/mutations must
 #                                             make the scenario it is named for fail on Rune;
 #                                             <scenario>-rune.patch is a twin's
@@ -36,6 +38,8 @@
 # A required run passes on both targets from one file. A parallel run is at parity by another
 # route, and is run with the required ones: its scenario must pass on GTK, and its twin,
 # <scenario>-rune/<run>, on Rune (docs/testing.md, "Twins"). --scenario takes either name.
+# On Rune a run takes the host its row names: offscreen, or the session host, a real window in
+# a private headless sway (STRATA_QA_DISPLAY=wayland; docs/testing.md, "The session host").
 #
 # A run's artifacts are kept whether it passes or fails, in target/qa-artifacts (GTK) and
 # target/qa-artifacts-rune (Rune), under <scenario>/<run>; STRATA_QA_KEEP_ARTIFACTS=0 keeps
@@ -49,7 +53,7 @@ set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-usage='Usage: scripts/qa-parity.sh <selection> [--target gtk|rune] [--pending|--parallel] [--scenario <name>]
+usage='Usage: scripts/qa-parity.sh <selection> [--target gtk|rune] [--pending|--parallel] [--scenario <name>] [--host session]
        scripts/qa-parity.sh <selection> --counts
        scripts/qa-parity.sh <selection> --twins
        scripts/qa-parity.sh mutations [<patch>...]
@@ -71,6 +75,8 @@ scenario=()
 whole=1
 counts=0
 narrowed=0
+# Every Rune run on the session host, rather than on the host its row names.
+session_only=0
 while (($#)); do
   case "$1" in
     --target)
@@ -90,6 +96,13 @@ while (($#)); do
       narrowed=1
       shift 2
       ;;
+    --host)
+      [[ "${2:-}" == session ]] || { echo "$usage" >&2; exit 2; }
+      session_only=1
+      whole=0
+      narrowed=1
+      shift 2
+      ;;
     --counts|--twins)
       counts=1
       report="$1"
@@ -98,9 +111,13 @@ while (($#)); do
     *) echo "$usage" >&2; exit 2 ;;
   esac
 done
+if ((session_only)) && [[ "$targets" == gtk ]]; then
+  echo "--host session picks the Rune target's host: it takes no --target gtk." >&2
+  exit 2
+fi
 if ((counts)); then
   if ((narrowed)); then
-    echo "$report is of the whole selection: it takes no --target, --pending, --parallel or --scenario." >&2
+    echo "$report is of the whole selection: it takes no --target, --pending, --parallel, --scenario or --host." >&2
     exit 2
   fi
   # The ledger and the scenario files alone answer: no image, no build.
@@ -116,9 +133,16 @@ if [[ "$targets" != "gtk rune" || "$status" != required ]]; then whole=0; fi
 # The reader checks the whole ledger and its twins first and refuses one with a fault, as the
 # runner's tests would; then a selection it does not have, and a run it cannot start here.
 list() { python3 "$repository/scripts/qa_parity.py" "$selection" "$@" "${scenario[@]}"; }
-gtk_runs="" rune_runs="" parallel=0 kind="$status"
+gtk_runs="" rune_runs="" session_runs="" parallel=0 kind="$status"
 if [[ "$status" != required ]]; then
-  rune_runs="$(list --status "$status")" || exit 2
+  # A survey splits by host as the gate does: a pending run that will need the session host
+  # is surveyed there, not offscreen.
+  if ((session_only)); then
+    session_runs="$(list --status "$status")" || exit 2
+  else
+    rune_runs="$(list --status "$status" --host offscreen)" || exit 2
+    session_runs="$(list --status "$status" --host session)" || exit 2
+  fi
 else
   # What must pass differs by target: a parallel run is its scenario on GTK, its twin on Rune.
   kind="required or parallel"
@@ -126,11 +150,16 @@ else
     listed="$(list --on "$target")" || exit 2
     printf -v "${target}_runs" '%s' "$listed"
   done
+  if [[ "$targets" == *rune* ]] && ((!session_only)); then
+    rune_runs="$(list --on rune --host offscreen)" || exit 2
+    session_runs="$(list --on rune --host session)" || exit 2
+  elif ((session_only)); then
+    session_runs="$rune_runs" rune_runs=""
+  fi
   listed="$(list --status parallel)" || exit 2
   if [[ -n "$listed" ]]; then parallel="$(wc -l <<< "$listed")"; fi
 fi
-first="${targets%% *}_runs"
-if [[ -z "${!first}" ]]; then
+if [[ -z "$gtk_runs$rune_runs$session_runs" ]]; then
   if ((${#scenario[@]})); then
     # A scenario is named to run it: a name with no run is a mistake, not an empty gate.
     echo "The ledger has no $kind run of ${scenario[1]} for $selection." >&2
@@ -160,7 +189,13 @@ code=0
   --env "STRATA_UI_STALL_MS=${STRATA_UI_STALL_MS:-}" \
   "$image" bash -euc '
     selection="$1" status="$2" targets="$3" whole="$4" notes="/workspace/$5" parallel="$6"
-    declare -A listed=([gtk]="$7" [rune]="$8")
+    # Rune runs on the session host are a batch of their own, on the private sway display.
+    declare -A listed=([gtk]="$7" [rune]="$8" [rune-session]="$9")
+    batches=""
+    for target in $targets; do
+      batches="$batches $target"
+      if [[ "$target" == rune ]]; then batches="$batches rune-session"; fi
+    done
     mkdir -p "$HOME" "$CARGO_HOME"
     # An empty cache takes the crates the image holds; a used one is left alone.
     python3 scripts/dependency_seed.py
@@ -183,21 +218,24 @@ code=0
       echo "ALLOWANCE USED: $1 failed in the whole GTK suite; the ledger names it flaky before the slice." \
         | tee -a "$notes"
     }
-    for target in $targets; do
-      mapfile -t runs <<< "${listed[$target]}"
+    for batch in $batches; do
+      [[ -n "${listed[$batch]}" ]] || continue
+      target="${batch%-session}" display=x11 on=""
+      if [[ "$batch" == *-session ]]; then display=wayland on=" (session host)"; fi
+      mapfile -t runs <<< "${listed[$batch]}"
       count="${#runs[@]}"
       heading="$count $status run(s)"
-      if ((parallel)) && [[ "$status" == required ]]; then
+      if ((parallel)) && [[ "$status" == required && "$batch" != rune-session ]]; then
         heading="$count run(s): $((count - parallel)) required and $parallel parallel, the scenario on gtk and its twin on rune"
       fi
-      echo "== $selection on $target: $heading =="
+      echo "== $selection on $target$on: $heading =="
       output="$(mktemp)"
-      STRATA_QA_TARGET="$target" "${runner[@]}" -- --include-ignored --exact "${runs[@]}" 2>&1 \
+      STRATA_QA_DISPLAY="$display" STRATA_QA_TARGET="$target" "${runner[@]}" -- --include-ignored --exact "${runs[@]}" 2>&1 \
         | tee "$output"
       code="${PIPESTATUS[0]}"
       passed="$(grep -Ec "^(PASS|KNOWN BUG) " "$output" || true)"
       planned="$(grep -c "^RUN " "$output" || true)"
-      echo "== $target: $passed of $count passed =="
+      echo "== $target$on: $passed of $count passed =="
       if [[ "$status" != required ]]; then
         # A survey fails only when it could not run: its failures are what it is for.
         if ((planned == 0)); then failed=1; fi
@@ -228,7 +266,7 @@ code=0
       fi
     fi
     exit "$failed"
-  ' bash "$selection" "$status" "$targets" "$whole" "$notes" "$parallel" "$gtk_runs" "$rune_runs" \
+  ' bash "$selection" "$status" "$targets" "$whole" "$notes" "$parallel" "$gtk_runs" "$rune_runs" "$session_runs" \
   || code=$?
 if [[ "$selection" == slice && "$whole" == 1 ]]; then
   echo "== the Rune mutation patches =="

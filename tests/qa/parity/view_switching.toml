@@ -36,7 +36,7 @@ scenario = "list-column-drag-applies-on-release"
 run = "list"
 package = "A8"
 status = "required"
-host = "offscreen"
+host = "session"
 
 [[run]]
 scenario = "list-column-resize-tracks-pointer"

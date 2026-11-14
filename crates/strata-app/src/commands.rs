@@ -29,6 +29,7 @@ use std::{
 
 use rune::{KeyEvent, Tx};
 use strata_components::collection::element::Collection;
+use strata_core::model::Location;
 use strata_desktop::{
     keys::{self, Active, Command, Context, Digits, KeyPress, Keymap, Matcher},
     settings::{KeymapOverrides, Preferences, resolve_keymap},
@@ -154,7 +155,7 @@ impl<S> Keys<S> {
 }
 
 /// Where a command acts.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum On {
     /// Where the keyboard is: a key, a header button, a palette.
     Focus,
@@ -162,6 +163,9 @@ pub(crate) enum On {
     Row(At),
     /// A column's folder: a background menu.
     Column(usize),
+    /// A location that is no row of the view: the sidebar row a menu was opened on or a
+    /// middle click pressed, or a crumb of the location bar.
+    Place(Location),
 }
 
 /// One call of a command.
@@ -311,13 +315,6 @@ fn find(app: &App, id: &str) -> Option<&'static Action<App>> {
 
 /// Whether the window has the command `id`: a menu row or a button that names it is not
 /// inert.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the rows and the buttons are drawn whether or not one acts"
-    )
-)]
 pub(crate) fn has(app: &App, id: &str) -> bool {
     find(app, id).is_some()
 }

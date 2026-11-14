@@ -11,6 +11,9 @@
 //! - **The open place.** The row of the browser's active location carries the accent. A
 //!   clicked row is marked before its folder opens, as GTK's `select_sidebar_row` does, and
 //!   of two rows for one location the marked one stays marked (`sync_active_place`).
+//! - **A middle click** on a row runs `open-in-tab` on its location
+//!   (`commands::On::Place`), as GTK's `install_open_in_tab` opens it in a new tab. Only
+//!   while a part registers that command: until then the row takes no middle click.
 //! - **The keyboard.** Left at the start of the view comes here (`shell::leave_view_at_start`),
 //!   onto the open place's row, else the first (`focus_active_place`). In 10xer mode the
 //!   component's `h`, Left and Backspace give it back to the view; in the default map the
@@ -51,7 +54,7 @@ use strata_kit::look::Look;
 
 use crate::{
     App,
-    commands::{Action, Holds},
+    commands::{self, Action, Holds, On},
     shell,
     slots::{self, Frame, Later, Listener, Part, Place, Scope, Setup},
 };
@@ -66,6 +69,7 @@ mod width;
 
 pub(crate) use width::toggle_face;
 
+use menu::OPEN_IN_TAB;
 use places::{Environment, Listed, Navigation};
 
 /// The key every element of the sidebar's starts with.
@@ -321,8 +325,8 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
     )
     .key(KEY)
     .reorder(true)
-    // Tabs are not on this interface yet.
-    .open_in_new_tab(false)
+    // A middle click opens a row in a new tab once a part registers the command.
+    .open_in_new_tab(commands::has(app, OPEN_IN_TAB.id))
     .tenxer(shell::preferences(app).tenxer_mode)
     .on_intent(heard)
     .build(look)
@@ -332,6 +336,12 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
 fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
     match intent {
         SidebarIntent::Open { item, via } => open(app, &item, via, tx),
+        SidebarIntent::OpenInNewTab { item } => {
+            if let Some(row) = app.sidebar.location_of(&item) {
+                let place = On::Place(row.location.clone());
+                commands::run(app, OPEN_IN_TAB.id, place, tx);
+            }
+        }
         SidebarIntent::ContextMenu {
             item: Some(item),
             point,
