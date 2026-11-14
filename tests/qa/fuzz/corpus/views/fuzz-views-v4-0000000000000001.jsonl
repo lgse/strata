@@ -1,7 +1,11 @@
 {"scenario":"fuzz-views-v4-0000000000000001","modes":["columns"],"prefs":{"type_to_search":false}}
-{"click":{"role":"toggle button","name":"Appearance"}}
-{"click":{"role":"radio menu item","name":"List"},"when":{"present":{"role":"radio menu item","name":"List"}}}
 {"key":"ctrl+2"}
+{"key":"ctrl+period"}
+{"key":"ctrl+period"}
 {"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}}]}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"check menu item","name":"Hidden files"},"when":{"present":{"role":"check menu item","name":"Hidden files"}}}
 {"key":"ctrl+3"}
 {"key":"alt+Up","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"radio menu item","name":"Columns"},"when":{"present":{"role":"radio menu item","name":"Columns"}}}

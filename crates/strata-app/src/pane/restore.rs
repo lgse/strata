@@ -21,6 +21,13 @@
 //! - **A cursor falls back** to the first restored selected entry when its own entry is gone,
 //!   or none was remembered, and the anchor to the cursor; with no selection either, to the
 //!   browser's own cursor, so the two never disagree ([`fall_back`]).
+//! - **One memory for the window's single-pane views** ([`Memory`]), as GTK's
+//!   `PaneNavigation` is one history whatever the mode: a folder left in Icons comes back in
+//!   List where Icons left it. A view switched away hears nothing, so while the view shown
+//!   again is rebuilt from the browser what it showed last is stale and is not remembered
+//!   (finding lgse/strata#2425).
+
+use std::{cell::RefCell, rc::Rc};
 
 use strata_components::{
     collection::{
@@ -33,9 +40,32 @@ use strata_core::model::Location;
 
 use crate::listing::{Column, Load};
 
+/// Where each folder was left, shared by the window's single-pane views: the shell holds it,
+/// and each view's [`super::Pane`] is given it as a change applies.
+#[derive(Clone, Default)]
+pub(crate) struct Memory(Rc<RefCell<Kept>>);
+
+#[derive(Default)]
+struct Kept {
+    places: RestoreMemory<Location>,
+    /// A view switched to is being rebuilt from the browser: the folder it leaves is stale.
+    replaying: bool,
+}
+
+impl Memory {
+    /// While `replaying`, a view leaving a folder does not remember it.
+    pub(crate) fn set_replaying(&self, replaying: bool) {
+        self.0.borrow_mut().replaying = replaying;
+    }
+
+    fn same(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Restore {
-    memory: RestoreMemory<Location>,
+    memory: Memory,
     /// The folder being left by the change applying now, and where it was.
     leaving: Option<(Location, Position)>,
     /// The folder shown last came back at a position remembered for it.
@@ -48,6 +78,10 @@ impl Restore {
     /// remembered, as GTK's `loaded_location` skips one with an error.
     pub(super) fn leave(&mut self, shown: Option<&Column>, collection: &CollectionState) {
         self.returned = false;
+        if self.memory.0.borrow().replaying {
+            self.leaving = None;
+            return;
+        }
         self.leaving = shown
             .filter(|column| listed(column))
             .map(|column| (column.location().clone(), collection.position(column)));
@@ -56,15 +90,24 @@ impl Restore {
     /// Another folder shows, `column` or none: the folder left is remembered, and the
     /// position remembered for `column`, unless the browser reveals an entry there.
     pub(super) fn arrive(&mut self, column: Option<&Column>, reveal: bool) -> Option<Position> {
+        let mut kept = self.memory.0.borrow_mut();
         if let Some((location, position)) = self.leaving.take() {
-            let _ = self.memory.remember(location, position);
+            let _ = kept.places.remember(location, position);
         }
         let position = column
             .filter(|column| !reveal && column.is_loading())
-            .and_then(|column| self.memory.recall(column.location()))
+            .and_then(|column| kept.places.recall(column.location()))
             .cloned();
+        drop(kept);
         self.returned = position.is_some();
         position
+    }
+
+    /// Remembers into `memory` from now on, the window's shared one.
+    pub(super) fn share(&mut self, memory: &Memory) {
+        if !self.memory.same(memory) {
+            self.memory = memory.clone();
+        }
     }
 
     /// Whether the folder shown last came back at its remembered position.
