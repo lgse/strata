@@ -122,7 +122,10 @@ fn a_view_shown_puts_the_first_visit_cursor_on_its_first_row() {
             seen.entries.len() == 3
         });
         idle(&mut host);
-        assert_eq!(seen(&host, LIST).focused.as_deref(), Some("spreadsheet.csv"));
+        assert_eq!(
+            seen(&host, LIST).focused.as_deref(),
+            Some("spreadsheet.csv")
+        );
         cursor_alone(&host, "spreadsheet.csv", "List again");
     });
 }
