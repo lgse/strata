@@ -67,7 +67,9 @@
 //! shrinks and scrolls (rune-kit's `anchored_fit`). A submenu opens beside its row, flips
 //! sideways and slides up or down, but never shrinks or scrolls: [`chooser_minimum`] covers
 //! it. A menu grows to show its widest row whole, up to 360 pt; rune-kit's rows would shrink
-//! their labels instead, and it draws submenus 160 pt wide.
+//! their labels instead, and it draws submenus 160 pt wide. A header line longer than 30
+//! characters is shortened in the middle, as GTK's are, so a long file name does not widen the
+//! menu; the menu's accessible description then gives the header whole.
 //!
 //! The point is the menu's top-left. A host that centres a menu under what it opened on, as
 //! GTK centres a popover on the widget it points at, reads how wide it draws from

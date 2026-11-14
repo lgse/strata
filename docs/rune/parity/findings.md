@@ -1016,3 +1016,22 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** fixed by [#2400](https://github.com/lgse/strata/pull/2400): both captions take
   `Look::resize_caption`, Kit's `bg_accent` and `text_inverse` (Strata's accent and
   background), and draw no border, as GTK does; `columns.caption.border` now defaults to 0.
+
+### #2403: a long file name widens the context menu on the Rune interface
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2403), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the owner: a right-click on a file with a long name opened a menu as wide as the
+  name. GTK's item menu shows the name and the compact path as header labels shortened in the
+  middle past 30 characters (`ITEM_CONTEXT_SUMMARY_MAX_CHARS`, `EllipsizeMode::Middle`, in
+  `src/ui/browser/context_menu/item_options.rs`), so its menu keeps its usual width; the
+  labels keep their whole text for assistive technology.
+- **Why:** C21 draws its header as rune-kit group labels, whose text never shrinks or
+  ellipsizes, and the menu surface takes only a least width, so a header line as wide as the
+  name widened it. The rows were not at fault: their labels already end in an ellipsis.
+- **Concerns:** `crates/strata-components/src/context_menu/view.rs`, so every context menu with
+  a header: the item and multi-selection menus. No scenario names a file that long.
+- **State:** fixed by [#2404](https://github.com/lgse/strata/pull/2404): C21 shortens each header
+  line in the middle at GTK's 30 characters, and when it shortened one, the menu's accessible
+  description gives the header whole. rune-kit's group labels take no truncation, so the cut
+  is made on the string before it reaches one.

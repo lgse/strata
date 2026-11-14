@@ -343,6 +343,71 @@ fn the_menu_opens_with_the_keyboard_on_its_first_action_and_is_named() {
     );
 }
 
+/// The accessible description of the node keyed `key`, from the tree assistive technology reads.
+fn description(rt: &Runtime<Host>, key: &str) -> Option<String> {
+    let mut stack = vec![rt.accessibility_json()];
+    while let Some(node) = stack.pop() {
+        if node["key"] == key {
+            return node["description"].as_str().map(str::to_owned);
+        }
+        if let Some(children) = node["children"].as_array() {
+            stack.extend(children.iter().cloned());
+        }
+    }
+    None
+}
+
+#[test]
+fn a_long_header_line_is_shortened_in_the_middle_and_heard_whole() {
+    let name = format!("{}.md", "Quarterly report ".repeat(7));
+    let mut rt = opened();
+    rt.update(|s, _| {
+        s.menu.open(
+            MenuTarget::Entry(EntryId::new(4)),
+            Point::new(120.0, 60.0),
+            model_with_header(&name),
+        )
+    });
+    step(&mut rt);
+    let shown: Vec<String> = rt
+        .elements()
+        .into_iter()
+        .filter(|e| !e.exiting && e.path.contains("m-menu"))
+        .filter_map(|e| e.text)
+        .collect();
+    assert!(!shown.contains(&name), "the name is not drawn whole");
+    let cut = shown
+        .iter()
+        .find(|t| t.contains('…'))
+        .unwrap_or_else(|| panic!("a shortened header line in {shown:?}"));
+    assert_eq!(cut.chars().count(), 30, "GTK's 30 characters: {cut}");
+    let (head, tail) = cut.split_once('…').unwrap();
+    assert!(
+        name.starts_with(head) && name.ends_with(tail),
+        "cut in the middle, keeping the extension: {cut}"
+    );
+    assert!(
+        shown.iter().any(|t| t == "~/Documents"),
+        "a short line stays"
+    );
+    assert_eq!(
+        description(&rt, "m-menu"),
+        Some(format!("{name}\n~/Documents"))
+    );
+}
+
+#[test]
+fn a_header_drawn_whole_adds_no_description() {
+    let rt = opened();
+    assert_eq!(description(&rt, "m-menu"), None);
+}
+
+fn model_with_header(first: &str) -> MenuModel {
+    let mut m = model();
+    m.header[0] = first.to_owned();
+    m
+}
+
 #[test]
 fn up_and_down_skip_insensitive_rows_and_wrap_home_and_end_jump() {
     // browser/context-menu: "Up and Down move between enabled actions, skipping separators
