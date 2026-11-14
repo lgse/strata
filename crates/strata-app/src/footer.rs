@@ -17,7 +17,7 @@ use strata_components::footer::{Footer as Bar, FooterLabels};
 use strata_desktop::keys::{Keys, bindings::REFERENCE};
 
 use crate::{
-    App,
+    App, buttons,
     location::labels::with_keys,
     shell,
     slots::{Frame, Part, Place, Setup},
@@ -33,15 +33,22 @@ impl Part for Footer {
     }
 }
 
+/// The button's key: C19's `Footer::shortcuts_key` for the footer keyed `footer`.
+const SHORTCUTS: &str = "footer-shortcuts";
+
 fn build(app: &App, _: &mut Frame<'_, App>) -> Option<El> {
     let shows = shell::preferences(app).show_keybinding_hints;
-    Bar::new("footer")
+    let footer = Bar::new("footer")
         .shortcuts(shows.then_some((
             |app: &App| &app.shortcuts.reference,
             |app: &mut App| &mut app.shortcuts.reference,
         )))
-        .labels(labels())
+        .labels(labels());
+    debug_assert_eq!(footer.shortcuts_key(), SHORTCUTS);
+    // Return presses the button, as on GTK (Rune packet entry 103).
+    footer
         .build(app, &app.look)
+        .map(|footer| buttons::on_return_within(SHORTCUTS, footer))
 }
 
 /// The button's name and description, as GTK's `follow_keys` writes them.
