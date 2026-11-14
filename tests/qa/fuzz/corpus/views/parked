@@ -4,14 +4,16 @@
 #
 # Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed that met
 # it. Versions 2 and 3 were A8's drafts, never merged. In the corpus unparked, their findings
-# fixed: `v3-0000000000000006` (lgse/strata#2410), and `v4-0000000000000001`, `-11`, `-13` and
-# `-14` (lgse/strata#2425).
+# fixed: `v3-0000000000000006` (lgse/strata#2410), and `v4-0000000000000011`, `-13` and `-14`
+# (lgse/strata#2425). Seed 1 of v4 held #2425's sequence too; with it fixed, the seed met
+# lgse/strata#2437 further on, and its file is that one's now.
 v2-000000000000000c divergence lgse/strata#2408
 v3-0000000000000005 oracle lgse/strata#2412
 v3-0000000000000009 oracle lgse/strata#2415
 v3-000000000000000b divergence lgse/strata#2411
 v3-000000000000000c divergence lgse/strata#2414
 v3-0000000000000011 oracle lgse/strata#2415
+v4-0000000000000001 divergence lgse/strata#2437
 v4-0000000000000002 oracle lgse/strata#2412
 v4-0000000000000004 oracle lgse/strata#2412
 v4-0000000000000005 oracle lgse/strata#2412
