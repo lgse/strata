@@ -7,11 +7,17 @@
 //! - **Read in `poll`, after the shell has handed the browser the view's selection.** A
 //!   handler changes the view's selection before the browser hears it, so the count is read
 //!   where the two agree, and kept for the build.
-//! - **Sizes are asked for.** With up to [`DETAILED_SELECTION`] entries selected, a selected
-//!   file whose size the browser does not know yet is filled, as GTK's
+//! - **Sizes are asked for.** With up to [`DETAILED_SELECTION`] entries selected, each
+//!   selected file whose size the browser does not know yet is filled, as GTK's
 //!   `request_selected_sizes` asks, so the count does not wait for its row to scroll into
-//!   view. Each is asked once while it stays selected: a fill that cannot read a size leaves
-//!   it unknown, and asking again would loop.
+//!   view. GTK asks again on every browser event, and so does this: when the selection or the
+//!   count changes, and after any event the browser raised. The browser drops a request whose
+//!   fill is already out, so a fill a reload dropped, or one the fill's time budget cut off,
+//!   is asked for again at the next event, as on GTK.
+//! - **An unreadable file is asked once a listing.** A fill that answers a file with no size
+//!   (it could not be read) would raise an event that asks for it again, without end. Such a
+//!   file is not asked again until the column's listing is replaced (its request changes, as a
+//!   reload replaces it).
 //! - **No active column, no count,** as GTK hides its label.
 //!
 //! Not yet: a filter's or a search's own count ([`Listing::filter`]), which needs the
@@ -28,15 +34,46 @@ use strata_core::{
     i18n::{count, file_size, integer, list, tr},
     model::{FileEntry, Location, MetadataValue},
 };
-use strata_fs::app::Browser;
+use strata_fs::{
+    app::{Browser, BrowserEvent},
+    services::RequestId,
+};
 
-use crate::App;
+use crate::{App, slots::Listener};
 
-/// What the footer counted at the last poll, and the sizes it has asked for.
+/// What the footer counted at the last poll, and what it knows of the sizes it asks for.
 #[derive(Default)]
 pub(super) struct Counted {
     listing: Option<Listing>,
-    asked: HashSet<Location>,
+    /// A browser event came since the last poll: GTK asks for the sizes again on each.
+    heard: bool,
+    /// The listing the files below belong to: the active column and its request.
+    under: Option<(usize, Option<RequestId>)>,
+    /// The selection's positions at the last poll: a new selection asks for its sizes.
+    selected: Vec<usize>,
+    /// Files a fill answered without a size, which are not asked for again in this listing.
+    unreadable: HashSet<Location>,
+}
+
+/// The browser's events, for the count: each asks for the sizes again, and a fill that
+/// answers a file without its size marks it unreadable.
+pub(super) fn listener() -> Listener<App> {
+    Box::new(|event, _, heard| {
+        let unreadable: Vec<Location> = match event {
+            BrowserEvent::MetadataFilled { updates, .. } => updates
+                .iter()
+                .filter(|(_, entry)| !entry.is_directory() && lacks_size(entry))
+                .map(|(_, entry)| entry.location.clone())
+                .collect(),
+            _ => Vec::new(),
+        };
+        heard.then(move |app: &mut App, _| {
+            let counted = &mut app.footer.counted;
+            counted.heard = true;
+            counted.unreadable.extend(unreadable);
+            false
+        });
+    })
 }
 
 /// Reads the count from the browser and asks for the selected files' missing sizes. True
@@ -44,7 +81,29 @@ pub(super) struct Counted {
 pub(super) fn poll(app: &mut App) -> bool {
     let browser = Rc::clone(&app.browser);
     let counted = &mut app.footer.counted;
-    let listing = read(&browser, &mut counted.asked);
+    let Some(depth) = browser.active_depth() else {
+        let shown = counted.listing.is_some();
+        *counted = Counted::default();
+        return shown;
+    };
+    let under = Some((depth, browser.column_request_id(depth)));
+    let replaced = counted.under != under;
+    if replaced {
+        counted.under = under;
+        counted.unreadable.clear();
+    }
+    // Past the detailed limit only the number is read, as GTK reads no entry then.
+    let selected = if browser.selected_count() <= DETAILED_SELECTION {
+        browser.selected_positions(depth)
+    } else {
+        Vec::new()
+    };
+    let reselected = counted.selected != selected;
+    if std::mem::take(&mut counted.heard) || replaced || reselected {
+        ask_sizes(&browser, depth, &selected, &counted.unreadable);
+    }
+    counted.selected = selected;
+    let listing = Some(read(&browser, depth, &counted.selected));
     if counted.listing == listing {
         return false;
     }
@@ -58,56 +117,58 @@ pub(super) fn shown(app: &App) -> Option<Count> {
     Some(summary(listing, &words()))
 }
 
-fn read(browser: &Rc<Browser>, asked: &mut HashSet<Location>) -> Option<Listing> {
-    let Some(depth) = browser.active_depth() else {
-        asked.clear();
-        return None;
-    };
+fn read(browser: &Browser, depth: usize, selected: &[usize]) -> Listing {
     let counts = browser.column_entry_counts(depth).unwrap_or_default();
     let count = browser.selected_count();
-    let selected = (count > 0).then(|| Selected {
-        count,
-        details: (count <= DETAILED_SELECTION).then(|| details(browser, depth, asked)),
-    });
-    if count == 0 || count > DETAILED_SELECTION {
-        asked.clear();
-    }
-    Some(Listing {
+    Listing {
         total: counts.total,
         files: counts.files,
         folders: counts.folders,
-        selected,
+        selected: (count > 0).then(|| Selected {
+            count,
+            details: (count <= DETAILED_SELECTION).then(|| details(browser, depth, selected)),
+        }),
         filter: None,
-    })
+    }
 }
 
-/// The selection's kinds and known sizes, asking for each selected file's size the browser
-/// lacks and has not been asked for.
-fn details(browser: &Rc<Browser>, depth: usize, asked: &mut HashSet<Location>) -> SelectionDetails {
+/// The selection's kinds and the selected files' known sizes.
+fn details(browser: &Browser, depth: usize, selected: &[usize]) -> SelectionDetails {
     let mut details = SelectionDetails::default();
-    let mut lacking = HashSet::new();
-    for position in browser.selected_positions(depth) {
+    for entry in selected
+        .iter()
+        .filter_map(|&at| browser.entry_at(depth, at))
+    {
+        if entry.is_directory() {
+            details.folders += 1;
+        } else {
+            details.files += 1;
+            if let MetadataValue::Known(size) = entry.size {
+                details.known_files += 1;
+                details.known_bytes = details.known_bytes.saturating_add(size);
+            }
+        }
+    }
+    details
+}
+
+/// GTK's `request_selected_sizes`: a fill for each selected file whose size the browser does
+/// not know, up to [`DETAILED_SELECTION`] selected, but those a fill found unreadable. The
+/// browser drops a request whose fill is already out.
+fn ask_sizes(
+    browser: &Rc<Browser>,
+    depth: usize,
+    selected: &[usize],
+    unreadable: &HashSet<Location>,
+) {
+    for &position in selected {
         let Some(entry) = browser.entry_at(depth, position) else {
             continue;
         };
-        if entry.is_directory() {
-            details.folders += 1;
-            continue;
-        }
-        details.files += 1;
-        if let MetadataValue::Known(size) = entry.size {
-            details.known_files += 1;
-            details.known_bytes = details.known_bytes.saturating_add(size);
-        } else if lacks_size(&entry) {
-            if !asked.contains(&entry.location) {
-                browser.request_metadata_fill(depth, position, entry.location.clone(), false);
-            }
-            lacking.insert(entry.location);
+        if !entry.is_directory() && lacks_size(&entry) && !unreadable.contains(&entry.location) {
+            browser.request_metadata_fill(depth, position, entry.location, false);
         }
     }
-    asked.retain(|location| lacking.contains(location));
-    asked.extend(lacking);
-    details
 }
 
 fn lacks_size(entry: &FileEntry) -> bool {

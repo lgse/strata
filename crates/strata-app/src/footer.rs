@@ -21,7 +21,7 @@ use crate::{
     App, buttons,
     location::labels::with_keys,
     shell,
-    slots::{Frame, Part, Place, Setup},
+    slots::{Frame, Listener, Part, Place, Setup},
 };
 
 mod count;
@@ -39,6 +39,10 @@ impl Part for Footer {
         Self {
             counted: count::Counted::default(),
         }
+    }
+
+    fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
+        Some(count::listener())
     }
 
     fn poll(app: &mut App, _: f64, _: &mut Tx) -> bool {
