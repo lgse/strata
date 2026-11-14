@@ -271,14 +271,17 @@ pub(crate) fn saved(app: &mut App) -> &mut Saved {
 }
 
 /// Sets the look's tokens from what of the saved settings this interface follows: the text
-/// size (`TextSize`, 8 to 48 px). The rest of [`LookParams`] stays at Strata's defaults until
-/// its settings are followed (density, roundness, the font, the desktop's text scale), and
-/// the glow and animations switches stay as the look has them, which a host may have turned
-/// off (`Offscreen::without_animations`).
+/// size (`TextSize`, 8 to 48 px) and the Frame and Content densities
+/// ([`crate::appearance::density`]). The rest of [`LookParams`] stays at Strata's defaults
+/// until its settings are followed (roundness, the font, the desktop's text scale), and the
+/// glow and animations switches stay as the look has them, which a host may have turned off
+/// (`Offscreen::without_animations`).
 fn follow_saved_look(look: &mut Look, saved: &strata_desktop::settings::Preferences) {
     let text_size = u16::try_from(saved.text_size.root_font_px()).unwrap_or(u16::MAX);
     look.apply_params(&LookParams {
         text_size,
+        frame_density: crate::appearance::density::FRAME.saved(saved),
+        content_density: crate::appearance::density::CONTENT.saved(saved),
         element_glow: look.glow.on,
         animations: look.animations,
         ..LookParams::default()
