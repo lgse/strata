@@ -21,11 +21,27 @@
 //! - **A cursor falls back** to the first restored selected entry when its own entry is gone,
 //!   or none was remembered, and the anchor to the cursor; with no selection either, to the
 //!   browser's own cursor, so the two never disagree ([`fall_back`]).
+//! - **No choice.** What comes back is handed to the browser without committing it, as GTK's
+//!   `restore_selection` sets the browser's selection alone: a cursor a load placed (Alt+Up's
+//!   folder come from) stays the load's, so Columns shown again opens no child for it
+//!   (`follow_selection_on_return`; finding lgse/strata#2437). Where the browser's selection is
+//!   such a cursor and what came back is the cursor alone, the view's pick stays provisional
+//!   too ([`keep_provisional`]), as the browser's does.
 //! - **One memory for the window's single-pane views** ([`Memory`]), as GTK's
 //!   `PaneNavigation` is one history whatever the mode: a folder left in Icons comes back in
 //!   List where Icons left it. A view switched away hears nothing, so while the view shown
 //!   again is rebuilt from the browser what it showed last is stale and is not remembered
 //!   (finding lgse/strata#2425).
+//! - **The cursor a first visit placed** ([`Memory::visit_cursor`]), shared the same way. GTK's
+//!   browser holds no cursor after a first visit: the ring on the first row is the list
+//!   widget's own focus (`grouped_focus_drifted` in `src/ui/browser_modes/events.rs` asks for
+//!   no cursor), so each GTK view rebuilt over it, by a regroup or a view switch, rings its own
+//!   first row shown, and the browser takes a cursor only when the user moves one. The Rune
+//!   side must hold one for F3's `browser-view` invariant, which keeps the view's cursor the
+//!   browser's, so the first visit hands its cursor over and the memory keeps it as the visit's
+//!   until the user's own input moves the cursor or the selection. While it does, a single pane
+//!   that shows it off its first row moves it there, with nothing selected
+//!   (`single::first_visit`; finding lgse/strata#2427).
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -38,7 +54,10 @@ use strata_components::{
 };
 use strata_core::model::Location;
 
-use crate::listing::{Column, Load};
+use crate::{
+    events::Marks,
+    listing::{Column, Load},
+};
 
 /// Where each folder was left, shared by the window's single-pane views: the shell holds it,
 /// and each view's [`super::Pane`] is given it as a change applies.
@@ -50,12 +69,26 @@ struct Kept {
     places: RestoreMemory<Location>,
     /// A view switched to is being rebuilt from the browser: the folder it leaves is stale.
     replaying: bool,
+    /// The cursor a first visit placed, in the browser's column at that depth, which no input
+    /// has moved since.
+    visit: Option<(usize, EntryId)>,
 }
 
 impl Memory {
     /// While `replaying`, a view leaving a folder does not remember it.
     pub(crate) fn set_replaying(&self, replaying: bool) {
         self.0.borrow_mut().replaying = replaying;
+    }
+
+    /// The cursor a first visit placed and no input has moved since: the browser's column and
+    /// the entry.
+    pub(crate) fn visit_cursor(&self) -> Option<(usize, EntryId)> {
+        self.0.borrow().visit
+    }
+
+    /// The cursor a first visit placed is at `at` now, or there is none.
+    pub(crate) fn set_visit_cursor(&self, at: Option<(usize, EntryId)>) {
+        self.0.borrow_mut().visit = at;
     }
 
     fn same(&self, other: &Self) -> bool {
@@ -151,5 +184,21 @@ pub(super) fn fall_back(
         None => AnchorRule::Move,
     };
     let _ = collection.selection.move_cursor(column, index, anchor);
+    collection.note_selection(column);
+}
+
+/// After a restore landed over the browser's `marks`: where the browser's selection is the
+/// cursor a load placed, the browser keeps it the load's through the restore, which commits
+/// nothing, so a pick of the cursor alone stays provisional in the view as it does there.
+pub(super) fn keep_provisional(column: &Column, collection: &mut CollectionState, marks: &Marks) {
+    let selection = &collection.selection;
+    if !marks.provisional || selection.is_provisional() {
+        return;
+    }
+    let mut position = selection.position(column);
+    position.provisional = true;
+    if !collection.selection.restore(&position).selection {
+        return;
+    }
     collection.note_selection(column);
 }

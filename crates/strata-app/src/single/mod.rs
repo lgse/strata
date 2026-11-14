@@ -310,8 +310,11 @@ fn body(app: &App) -> El {
 }
 
 /// One poll of what the view says while it shows no entry, a read announced once it outlasts
-/// GTK's grace period, and of a first visit whose load ended. True when the view has to run.
+/// GTK's grace period, and of a first visit whose load ended, whose cursor the window keeps
+/// as the visit's and on the first row shown ([`first_visit::keep_on_first_row`]). True when
+/// the view has to run.
 pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
+    let memory = shell::restore_memory(app).clone();
     let Single {
         pane,
         surface,
@@ -319,7 +322,11 @@ pub(crate) fn poll<V: SinglePane>(app: &mut App, clock: f64, tx: &mut Tx) -> boo
         ..
     } = V::single_mut(app);
     let placed = first_visit.settle(pane);
-    surface.watch(std::iter::once(pane.listing()), clock, tx) | placed
+    if placed {
+        memory.set_visit_cursor(pane.depth().zip(pane.collection().selection.cursor()));
+    }
+    let kept = first_visit::keep_on_first_row(pane, &memory);
+    surface.watch(std::iter::once(pane.listing()), clock, tx) | placed | kept
 }
 
 /// The user's input reached the view's pane: a first visit leaves the cursor to them.
@@ -422,6 +429,8 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
 /// The collection moved its cursor or changed its selection: the browser takes it now, so
 /// the frame drawn for the input shows the browser in step.
 fn moved(app: &mut App, tx: &mut Tx) {
+    // The user's own move: the cursor is no first visit's any more.
+    shell::restore_memory(app).set_visit_cursor(None);
     shell::settle(app, tx);
 }
 

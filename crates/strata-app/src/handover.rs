@@ -9,7 +9,8 @@
 //!
 //! - [`hand_over`] gives the browser what the collection changed, through
 //!   `Browser::set_selection`. The browser answers with `SelectionSynced`, which nothing
-//!   applies again.
+//!   applies again. [`hand_back`] gives it a remembered position the view brought back, which
+//!   is no choice.
 //! - [`adopt`] writes to the collection what the browser changed by itself: the cursor a load
 //!   places, the neighbour a deletion moves it to, a reveal.
 //! - [`placed`] tells [`adopt`]'s one exception: a cursor the collection was waiting to place
@@ -139,6 +140,27 @@ pub(crate) struct Drawn<'a> {
 /// Call it before GLib dispatches and before any call that makes the browser act on its
 /// cursor, so the browser never works from a selection older than the view's.
 pub(crate) fn hand_over(shown: &Shown<'_>, browser: &Browser, held: &mut Held) {
+    give(shown, browser, held, Handed::Choice);
+}
+
+/// Gives the browser a position the view brought back itself, a folder's remembered one, as
+/// [`hand_over`] does, but as no choice: GTK's `restore_selection`
+/// (`src/ui/browser_modes/navigation.rs`) sets the browser's selection without committing it,
+/// so a cursor a load placed stays the load's (finding lgse/strata#2437).
+pub(crate) fn hand_back(shown: &Shown<'_>, browser: &Browser, held: &mut Held) {
+    give(shown, browser, held, Handed::Restored);
+}
+
+/// Whose change the browser is given.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Handed {
+    /// The user's, as a key or a click is to the GTK views: it replaces a cursor a load placed.
+    Choice,
+    /// A remembered position the view brought back.
+    Restored,
+}
+
+fn give(shown: &Shown<'_>, browser: &Browser, held: &mut Held, handed: Handed) {
     let Shown {
         depth,
         column,
@@ -163,9 +185,9 @@ pub(crate) fn hand_over(shown: &Shown<'_>, browser: &Browser, held: &mut Held) {
         ?cursor,
         "the browser takes the view's selection"
     );
-    // The user's own choice, as a key or a click is to the GTK views: it replaces a cursor a
-    // load placed.
-    browser.commit_selection();
+    if handed == Handed::Choice {
+        browser.commit_selection();
+    }
     browser.set_selection(depth, &selected, cursor);
     if let Some(anchor) = selection.anchor().and_then(position) {
         browser.set_selection_anchor(depth, anchor);

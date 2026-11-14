@@ -497,12 +497,19 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
 }
 
 /// The browser groups by file type for `view` as the saved setting asks, and `view` is
-/// rebuilt from the browser ([`events::replay`]) through its own [`View::apply`].
+/// rebuilt from the browser ([`events::replay`]) through its own [`View::apply`]. What the
+/// rebuild shows is the browser's, so the parts catch up with it as after queued events: the
+/// cursor it shows is no move of the view's, and Columns' child does not follow it (GTK's
+/// views mirror from `FocusChanged`, which no rebuild raises; finding lgse/strata#2437).
 fn rebuild(app: &mut App, view: &View<App>, tx: &mut Tx) {
     app.window.here.grouped = mount(&app.browser, view, preferences(app));
     let rebuilt = events::replay(&app.browser, &app.window.ids);
     for change in rebuilt.changes {
         (view.apply)(app, change, tx);
+    }
+    let parts = app.window.here.parts;
+    for part in parts.active() {
+        (part.caught_up)(app);
     }
 }
 
