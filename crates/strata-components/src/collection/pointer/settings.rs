@@ -84,6 +84,11 @@ pub struct PointerSettings {
     /// An entry whose activation would change nothing: the folder whose child column is open in
     /// Columns (C2). A slow click on its name renames it instead of opening it again.
     pub already_open: Option<EntryId>,
+    /// Whether a secondary press leaves a missing Shift anchor missing, so the next
+    /// Shift+click selects its entry alone. Off by default: the press anchors its entry, as
+    /// Strata's browser views do. On for Strata's search and filter results, whose anchor a
+    /// right-click never sets (finding lgse/strata#2375).
+    pub secondary_keeps_no_anchor: bool,
 }
 
 impl Default for PointerSettings {
@@ -97,6 +102,7 @@ impl Default for PointerSettings {
             drags: true,
             ctrl_shift: Extend::Replace,
             already_open: None,
+            secondary_keeps_no_anchor: false,
         }
     }
 }
@@ -117,6 +123,12 @@ impl PointerSettings {
     /// The same settings with slow-click rename on or off.
     pub const fn rename(mut self, rename: bool) -> Self {
         self.rename = rename;
+        self
+    }
+
+    /// The same settings with a secondary press leaving a missing anchor missing, or not.
+    pub const fn secondary_keeps_no_anchor(mut self, keeps: bool) -> Self {
+        self.secondary_keeps_no_anchor = keeps;
         self
     }
 

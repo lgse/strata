@@ -244,7 +244,7 @@ impl PointerMachine {
         match press.button {
             Button::Secondary => {
                 self.clicks.break_run();
-                secondary(press, entry, s);
+                secondary(press, entry, settings.secondary_keeps_no_anchor, s);
                 true
             }
             Button::Middle => {
@@ -418,12 +418,19 @@ fn apply(s: &mut dyn Surface, mut op: impl FnMut(&mut Selection, &dyn EntrySourc
 }
 
 /// A secondary press selects an unselected entry alone and opens its menu; inside the
-/// selection it keeps the selection.
-fn secondary(press: &Press, entry: Option<(usize, EntryId)>, s: &mut dyn Surface) {
+/// selection it keeps the selection. With `keeps_no_anchor` a missing anchor stays missing.
+fn secondary(
+    press: &Press,
+    entry: Option<(usize, EntryId)>,
+    keeps_no_anchor: bool,
+    s: &mut dyn Surface,
+) {
     if let Some((index, _)) = entry
         && !s.selection().is_selected_at(s.source(), index)
     {
-        apply(s, |sel, src| sel.select_only_keeping_anchor(src, index));
+        apply(s, |sel, src| {
+            sel.select_only_keeping_anchor(src, index, keeps_no_anchor)
+        });
     }
     s.emit(Outcome::ContextMenu {
         target: entry.map(|(_, id)| id),
