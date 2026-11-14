@@ -108,3 +108,56 @@ fn an_executable_runs_only_once_confirmed() {
         },
     );
 }
+
+/// The tree holds a dialog named `name`.
+fn dialog(node: &Value, name: &str) -> bool {
+    (node["role"] == "dialog" && node["name"] == name)
+        || node["children"]
+            .as_array()
+            .is_some_and(|children| children.iter().any(|child| dialog(child, name)))
+}
+
+/// Confirms the program at `location` and waits for "Unable to run program", then closes it.
+fn fails_to_start(host: &mut Offscreen, location: &Location) {
+    opened(host, location);
+    run_focused(host);
+    key(host, Key::Enter);
+    let said = host.run_until(PATIENCE, |host| {
+        dialog(&host.tree(), "Unable to run program")
+    });
+    assert!(said, "Run says the program could not start");
+    key(host, Key::Escape);
+    let closed = host.run_until(PATIENCE, |host| {
+        !dialog(&host.tree(), "Unable to run program")
+    });
+    assert!(closed, "Escape closes the error");
+}
+
+fn executable_file(folder: &Path, name: &str, text: &str) -> Location {
+    let path = folder.join(name);
+    std::fs::write(&path, text).expect("program");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("mode");
+    Location::local(&path)
+}
+
+/// A program whose start fails says so once its thread has answered, and a shell script,
+/// whose terminal this interface does not open yet, starts nothing and says so too.
+#[test]
+fn a_program_that_cannot_start_says_so() {
+    hosted(MODULE, "a_program_that_cannot_start_says_so", |mut host| {
+        let folder = folder_of(&[]);
+        let broken = executable_file(folder.path(), "broken", "#!/no/such/interpreter\n");
+        let script = executable_file(folder.path(), "script.sh", "#!/bin/sh\nprintf ran > ran\n");
+        host.app().open(Location::local(folder.path()));
+        let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+        assert!(host.run_until(PATIENCE, listed), "the folder's listing");
+        while host.turn() {}
+
+        fails_to_start(&mut host, &broken);
+        fails_to_start(&mut host, &script);
+        assert!(
+            !folder.path().join("ran").exists(),
+            "the script did not run"
+        );
+    });
+}
