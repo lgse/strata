@@ -59,7 +59,9 @@ impl Shown {
         let fields = FIELDS
             .into_iter()
             .filter(|(_, key, _)| match key {
-                SortKey::DeviceOrder => location.as_ref().is_some_and(|at| at.is_camera_photo_root()),
+                SortKey::DeviceOrder => location
+                    .as_ref()
+                    .is_some_and(|at| at.is_camera_photo_root()),
                 SortKey::Recency => location.as_ref().is_some_and(|at| at.is_recent_root()),
                 _ => true,
             })
@@ -86,7 +88,10 @@ impl Shown {
     }
 
     fn direction_live(&self) -> bool {
-        !matches!(self.prefs.sort_key, SortKey::Unsorted | SortKey::DeviceOrder)
+        !matches!(
+            self.prefs.sort_key,
+            SortKey::Unsorted | SortKey::DeviceOrder
+        )
     }
 
     fn folders_live(&self) -> bool {
@@ -135,27 +140,40 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
         .child(heading(look, &labels.sort_by))
         .children(shown.fields.iter().map(|(_, key, row_key)| {
             let row = field_row(app, *key, row_key);
-            option(look, Row { checked: prefs.sort_key == *key, ..row })
+            option(
+                look,
+                Row {
+                    checked: prefs.sort_key == *key,
+                    ..row
+                },
+            )
         }));
     if shown.list {
-        body = body.child(separator(look)).children(direction_rows(app, &shown));
+        body = body
+            .child(separator(look))
+            .children(direction_rows(app, &shown));
     }
     body = body
         .child(separator(look))
         .child(heading(look, &labels.name_order))
         .children(name_rows(app, &shown))
         .child(separator(look))
-        .child(option(look, Row {
-            key: FOLDERS_FIRST,
-            role: "menuitemcheckbox",
-            name: labels.folders_first.clone(),
-            description: None,
-            checked: prefs.folders_first,
-            sensitive: shown.folders_live(),
-            press: folders_first,
-        }));
+        .child(option(
+            look,
+            Row {
+                key: FOLDERS_FIRST,
+                role: "menuitemcheckbox",
+                name: labels.folders_first.clone(),
+                description: None,
+                checked: prefs.folders_first,
+                sensitive: shown.folders_live(),
+                press: folders_first,
+            },
+        ));
     if shown.make_default || shown.reset {
-        body = body.child(separator(look)).children(default_rows(app, &shown));
+        body = body
+            .child(separator(look))
+            .children(default_rows(app, &shown));
     }
     let plain = Plain {
         key: SURFACE,
@@ -183,8 +201,8 @@ fn field_row(app: &App, key: SortKey, row_key: &'static str) -> Row {
         SortKey::Recency => |app, _| field(app, SortKey::Recency),
         SortKey::Unsorted => |_, _| {},
     };
-    let description = (key == SortKey::DeviceOrder)
-        .then(|| app.sort.labels.device_order_description.clone());
+    let description =
+        (key == SortKey::DeviceOrder).then(|| app.sort.labels.device_order_description.clone());
     Row {
         key: row_key,
         role: "menuitemradio",
@@ -209,12 +227,23 @@ fn direction_rows(app: &App, shown: &Shown) -> Vec<El> {
         press,
     };
     vec![
-        option(&app.look, row(ASCENDING, labels.ascending.clone(), ascending, |app, _| {
-            direction(app, SortDirection::Ascending);
-        })),
-        option(&app.look, row(DESCENDING, labels.descending.clone(), !ascending, |app, _| {
-            direction(app, SortDirection::Descending);
-        })),
+        option(
+            &app.look,
+            row(ASCENDING, labels.ascending.clone(), ascending, |app, _| {
+                direction(app, SortDirection::Ascending);
+            }),
+        ),
+        option(
+            &app.look,
+            row(
+                DESCENDING,
+                labels.descending.clone(),
+                !ascending,
+                |app, _| {
+                    direction(app, SortDirection::Descending);
+                },
+            ),
+        ),
     ]
 }
 
@@ -232,15 +261,44 @@ fn name_rows(app: &App, shown: &Shown) -> Vec<El> {
         press,
     };
     vec![
-        option(&app.look, row(NATURAL, "menuitemradio", labels.natural.clone(), comparison.natural, |app, _| {
-            names(app, |comparison| comparison.natural = true);
-        })),
-        option(&app.look, row(ALPHABETICAL, "menuitemradio", labels.alphabetical.clone(), !comparison.natural, |app, _| {
-            names(app, |comparison| comparison.natural = false);
-        })),
-        option(&app.look, row(CASE_SENSITIVE, "menuitemcheckbox", labels.case_sensitive.clone(), comparison.case_sensitive, |app, _| {
-            names(app, |comparison| comparison.case_sensitive = !comparison.case_sensitive);
-        })),
+        option(
+            &app.look,
+            row(
+                NATURAL,
+                "menuitemradio",
+                labels.natural.clone(),
+                comparison.natural,
+                |app, _| {
+                    names(app, |comparison| comparison.natural = true);
+                },
+            ),
+        ),
+        option(
+            &app.look,
+            row(
+                ALPHABETICAL,
+                "menuitemradio",
+                labels.alphabetical.clone(),
+                !comparison.natural,
+                |app, _| {
+                    names(app, |comparison| comparison.natural = false);
+                },
+            ),
+        ),
+        option(
+            &app.look,
+            row(
+                CASE_SENSITIVE,
+                "menuitemcheckbox",
+                labels.case_sensitive.clone(),
+                comparison.case_sensitive,
+                |app, _| {
+                    names(app, |comparison| {
+                        comparison.case_sensitive = !comparison.case_sensitive
+                    });
+                },
+            ),
+        ),
     ]
 }
 
@@ -257,7 +315,10 @@ fn default_rows(app: &App, shown: &Shown) -> Vec<El> {
     };
     let mut rows = Vec::new();
     if shown.make_default {
-        rows.push(option(&app.look, row(MAKE_DEFAULT, labels.make_default.clone(), make_default)));
+        rows.push(option(
+            &app.look,
+            row(MAKE_DEFAULT, labels.make_default.clone(), make_default),
+        ));
     }
     if shown.reset {
         rows.push(option(&app.look, row(RESET, labels.reset.clone(), reset)));

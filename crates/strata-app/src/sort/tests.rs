@@ -80,7 +80,9 @@ fn listed(host: &mut Offscreen) -> tempfile::TempDir {
 /// The sort key of the browser's column at `depth`.
 fn sorted_by(host: &Offscreen, depth: usize) -> Option<SortKey> {
     let browser = host.app().browser();
-    browser.column_preferences(depth).map(|prefs| prefs.sort_key)
+    browser
+        .column_preferences(depth)
+        .map(|prefs| prefs.sort_key)
 }
 
 fn opened(host: &mut Offscreen, button: &str) {
@@ -162,7 +164,10 @@ fn a_columns_menu_sorts_its_own_column() {
             host.app().browser().active_depth() == Some(1)
                 && view::drawn(host).contains(&"ccc.txt".to_owned())
         };
-        assert!(host.run_until(PATIENCE, entered), "the inner folder's column");
+        assert!(
+            host.run_until(PATIENCE, entered),
+            "the inner folder's column"
+        );
         idle(&mut host);
         let depth = 1;
 

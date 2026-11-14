@@ -36,7 +36,10 @@ pub(crate) fn direction_and_menu(app: &App, view: &str) -> Vec<El> {
             format!("{view}-sort-direction"),
             direction_button(app, depth),
         ),
-        buttons::on_return(anchor.clone(), menu_button(app, depth, &anchor, false, false)),
+        buttons::on_return(
+            anchor.clone(),
+            menu_button(app, depth, &anchor, false, false),
+        ),
     ]
 }
 
@@ -162,7 +165,14 @@ fn labelled(app: &App, depth: usize) -> Option<String> {
     } else {
         "↓"
     };
-    Some(rust_i18n::t!("Sort: %{field} %{direction}", field = field, direction = direction).to_string())
+    Some(
+        rust_i18n::t!(
+            "Sort: %{field} %{direction}",
+            field = field,
+            direction = direction
+        )
+        .to_string(),
+    )
 }
 
 fn special_names(prefs: ViewPreferences) -> bool {

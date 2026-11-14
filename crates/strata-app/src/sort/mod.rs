@@ -134,7 +134,12 @@ pub(crate) struct Opener {
 /// Opens the menu under its button with the keyboard on its first row, or closes it when it
 /// is open there.
 pub(crate) fn toggle(app: &mut App, opener: Opener, tx: &mut Tx) {
-    if app.sort.open.as_ref().is_some_and(|open| open.anchor == opener.anchor) {
+    if app
+        .sort
+        .open
+        .as_ref()
+        .is_some_and(|open| open.anchor == opener.anchor)
+    {
         close(app);
         return;
     }
@@ -161,7 +166,10 @@ fn close(app: &mut App) {
 
 /// Whether the menu is open over the column at `depth`, for its button's pressed state.
 fn open_at(app: &App, anchor: &str) -> bool {
-    app.sort.open.as_ref().is_some_and(|open| open.anchor == anchor)
+    app.sort
+        .open
+        .as_ref()
+        .is_some_and(|open| open.anchor == anchor)
 }
 
 /// The menu closes when the keyboard leaves it, or when another folder or view shows; the
@@ -177,8 +185,8 @@ fn follow(app: &mut App, tx: &mut Tx) -> bool {
     // A Columns column's button takes no focus: the view keeps it while the menu opens.
     let anchor = open.returns.unwrap_or(&open.anchor);
     let left = popover::focus_left(tx, anchor, &menu::stops(app), &[]);
-    let moved = shell::view_focus(app) != open.view
-        || app.browser.location_at(open.depth) != open.over;
+    let moved =
+        shell::view_focus(app) != open.view || app.browser.location_at(open.depth) != open.over;
     if left || moved {
         close(app);
         return true;

@@ -140,10 +140,12 @@ impl Plain {
             .role(role)
             .label(self.label)
             .focus_return(self.anchor.clone())
-            .on_key(move |app: &mut App, event: &KeyEvent, tx: &mut Tx| match kind {
-                Kind::Dialog => keyed(app, event, tx, (close, &stops, own_arrows)),
-                Kind::Menu => menu_keyed(app, event, tx, (close, &stops)),
-            })
+            .on_key(
+                move |app: &mut App, event: &KeyEvent, tx: &mut Tx| match kind {
+                    Kind::Dialog => keyed(app, event, tx, (close, &stops, own_arrows)),
+                    Kind::Menu => menu_keyed(app, event, tx, (close, &stops)),
+                },
+            )
             // A press or a wheel on the surface's own blank parts stays with it, and leaves
             // the keyboard where it was, as GTK's does.
             .preserve_focus_on_press(true)
