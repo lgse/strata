@@ -226,8 +226,9 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
 }
 
 /// The view's element: a group keyed `<key>-pane`, named by the folder and described as
-/// the view, around the pane's header ([`pane_header`]) and the component's.
-pub(crate) fn group<V: SinglePane>(app: &App, component: El) -> El {
+/// the view, around the pane's header ([`pane_header`]), with the view's own `actions` among
+/// the header's, and the component's.
+pub(crate) fn group<V: SinglePane>(app: &App, component: El, actions: Option<El>) -> El {
     let title = title::<V>(app);
     col()
         .key(format!("{}-pane", V::KEY))
@@ -237,7 +238,7 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El) -> El {
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .child(pane_header::bar(app, V::KEY, &title))
+        .child(pane_header::bar(app, V::KEY, &title, actions))
         // What is left under the header: the component fills its parent's height.
         .child(col().w_full().grow(1.0).min_h(0.0).child(component))
 }

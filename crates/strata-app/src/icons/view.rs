@@ -66,5 +66,5 @@ fn details_text(app: &App, rcx: &RowCx<'_>) -> Option<Arc<str>> {
 /// The view: the pane's group around the grid.
 pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     let grid = grid().scale(frame.cx.env().scale).build(app);
-    Some(single::group::<Icons>(app, grid))
+    Some(single::group::<Icons>(app, grid, None))
 }
