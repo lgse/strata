@@ -369,6 +369,11 @@ fn customize_columns_opens_the_list_columns_menu() {
             );
 
             press(&mut host, Key::Escape, Mods::default());
+            assert_eq!(
+                focused(&mut host).as_deref(),
+                Some("list"),
+                "Escape gives the keyboard back to the table, whose headings GTK's popover is on"
+            );
             press(&mut host, Key::Command('1'), ctrl());
             open_popover(&mut host);
             assert!(

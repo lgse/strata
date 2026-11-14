@@ -11,6 +11,7 @@
 //! date, a mode) is asked for while it is near the viewport ([`crate::fills`]).
 //! An image's row draws its thumbnail at 18 points, from the window's store ([`thumbs`]).
 
+use rune::Tx;
 use strata_components::{
     collection::keyboard::{KeySettings, Letters},
     context_menu::AnchorEdge,
@@ -99,8 +100,12 @@ impl List {
 }
 
 /// "Customize columns…": the columns menu opens under the heading strip's right end, as
-/// GTK's opens on the headings (`open_list_columns_popover`). The List view is shown.
-pub(crate) fn customize_columns(app: &mut App) {
+/// GTK's opens on the headings (`open_list_columns_popover`). The keyboard goes to the table
+/// first, so the menu gives it back there when it closes: GTK's popover is the headings box's
+/// and gives it to the first heading, "Name", which C4 keeps off the focus chain, the table
+/// being one stop (lgse/strata#2331, the owner's). The List view is shown.
+pub(crate) fn customize_columns(app: &mut App, tx: &mut Tx) {
+    tx.focus(VIEW, true);
     app.list.table.open_columns_menu(MenuAt::Headings(None));
 }
 

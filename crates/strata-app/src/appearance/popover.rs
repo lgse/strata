@@ -442,9 +442,9 @@ fn customize_row(app: &App) -> El {
             shown_keys: None,
             checked: false,
             sensitive: true,
-            press: |app, _| {
+            press: |app, tx| {
                 close(app);
-                crate::list::customize_columns(app);
+                crate::list::customize_columns(app, tx);
             },
         },
     )
