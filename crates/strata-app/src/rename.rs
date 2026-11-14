@@ -415,6 +415,13 @@ fn ask(app: &mut App, editing: Editing, typed: String) {
 /// Tab and Shift+Tab: the cursor and the editor go on to the neighbour `step` rows away,
 /// unless the entry was the last that way (`advance_rename`).
 fn advance(app: &mut App, (depth, id): (usize, EntryId), step: isize, tx: &mut Tx) {
+    // On a filter's result Tab only commits: GTK's `advance_rename` moves the browser's
+    // cursor in the listing under the results, where no editor shows, and the renamed result
+    // keeps the keyboard (`renamed-filter-result-keeps-focus`, its `tab` runs). The browser's
+    // selection from before the filter stays (finding lgse/strata#2423).
+    if crate::filter::targets::at(app, depth, id).is_some() {
+        return;
+    }
     let Some(view) = host(app) else {
         return;
     };
