@@ -358,6 +358,16 @@ Source for all of these: [B3](packages/B3.md), "Design", and the archived issue
   `src/ui`, and the Rune side has no conflict check. Source: the archived issues
   [#2133](https://github.com/lgse/strata/issues/2133) and [#2150](https://github.com/lgse/strata/issues/2150).
 
+### A6: Menus, dialogs and keymap
+
+- **A secondary press on an open menu's row** (finding
+  [#2451](https://github.com/lgse/strata/issues/2451), `divergence`). GTK's popover runs
+  the row on a secondary press and release on it: right-click an entry, then right-click
+  its menu's Rename row, and the rename starts. On Rune nothing happens and the menu stays
+  open, since rune-kit's menu rows take no secondary press. It may be an accident of GTK's
+  popover rather than a choice; no scenario reads it. Should the Rune interface run the row
+  as GTK does? Meanwhile: it does nothing, and no run waits on it. Source: A6, 2026-11-14.
+
 ### A1: Icons view and thumbnails
 
 Found in the review of [#2192](https://github.com/lgse/strata/pull/2192) and by the

@@ -1542,4 +1542,4 @@ sequence only together with the alphabet's version, so the version is part of th
   where the press starts outside the menu.
 - **Concerns:** no scenario or fuzz alphabet yet.
 - **State:** open, for the owner: whether the Rune interface runs a row on a secondary
-  press, as GTK's popover does.
+  press, as GTK's popover does ([`owner.md`](owner.md#a6-menus-dialogs-and-keymap)).
