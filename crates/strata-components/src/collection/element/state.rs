@@ -582,6 +582,21 @@ impl CollectionState {
         self.pending = None;
     }
 
+    /// Ends the pointer's gesture: the press held, the click run and a rename a click left
+    /// pending. The next press is a run's first, as after a press elsewhere. A host calls it
+    /// when a modal layer opens over the collection, as GTK's modal layer ends the gesture under it.
+    ///
+    /// A marquee in progress and the keyboard's state are left as they are: the marquee's
+    /// reset drops its band without touching the selection, which would keep the band's half
+    /// of a selection with no band to finish it, and the keyboard's would end a 10xer range
+    /// and drop queued commands, which a dialog does not end on GTK.
+    pub fn end_gestures(&mut self) {
+        self.gesture = None;
+        if let Some(pointer) = self.controllers.pointer.as_mut() {
+            pointer.reset();
+        }
+    }
+
     fn apply_position(
         &mut self,
         scope: &str,
