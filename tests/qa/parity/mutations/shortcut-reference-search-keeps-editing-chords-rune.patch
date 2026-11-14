@@ -1,0 +1,15 @@
+diff --git a/crates/strata-app/src/shortcuts/contents.rs b/crates/strata-app/src/shortcuts/contents.rs
+index 8f8cc9d16..26fae58d0 100644
+--- a/crates/strata-app/src/shortcuts/contents.rs
++++ b/crates/strata-app/src/shortcuts/contents.rs
+@@ -104,10 +104,6 @@ pub(crate) fn default_sections(mode: Mode) -> Vec<Section> {
+             title: "Search and tools",
+             rows: DEFAULT_TOOLS.to_vec(),
+         },
+-        Section {
+-            title: "Preview media",
+-            rows: MEDIA.to_vec(),
+-        },
+         Section {
+             title: "Custom actions",
+             rows: custom_action_rows(),
