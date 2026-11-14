@@ -1706,11 +1706,19 @@ sequence only together with the alphabet's version, so the version is part of th
   - Rune with [#2474](https://github.com/lgse/strata/pull/2474): 0 of 30 unloaded, 2 of 10
     loaded.
   - GTK under the same load: 0 of 10.
-- **Why, so far:** the `select` step clicked once and found `archive` selected at once, so
-  it did not retry. The new tab shows the same folder at the same coordinates as the one it
-  was opened from. The likely cause, not yet confirmed: the click is aimed and routed by the
-  tree from before the new tab's listing is drawn, and lands on nothing. The rows then arrive
-  with the load cursor on `archive`, which reads as selected but opens no column.
-- **Concerns:** `tabs/reopen-closed-tabs/columns` (required), and any run that clicks in a
-  tab just opened at the folder it was opened from.
-- **State:** open, A4's. No fix yet: the coordinator rules before one is made.
+- **Why** (confirmed with probes in the QA runs):
+  - The press was aimed and routed right: tab-2's `row-1`, with its listing there.
+  - The column's collection dropped the press as outside its viewport. That viewport, kept
+    from `on_layout`, said x=0 where the column was drawn at x=201.
+  - A new tab's sidebar started only in its first `poll`, so the tab's first frame laid the
+    files out where the sidebar goes (x=0), and the next one at x=201.
+  - Rune lost the second report: once layout feedback falls quiet (`ECHOES` feedback-only
+    commits in a row), a moved rect is recorded without its `on_layout` and never reported
+    later. Under load that move landed in a quiet frame. Rune packet entry
+    [106](../upstream/rune/106-quiet-layout-loses-a-move.md).
+- **Concerns:** `tabs/reopen-closed-tabs/columns` (required), and any click in a tab just
+  opened.
+- **State:** fixed in strata-app by A4's pull request: a new tab's sidebar starts before its
+  first frame (`Sidebar::tab_shown`), so the files never lay out at x=0. 30 of 30 runs pass
+  loaded and 30 of 30 unloaded. The Rune gap stays: any other move laid out while feedback is
+  quiet can still lose its `on_layout` report.
