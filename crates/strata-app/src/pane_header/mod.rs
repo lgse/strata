@@ -142,6 +142,8 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         actions = actions.child(thumbnail_size::button(app));
     }
     actions = actions.children(own);
+    // The filter's toggle ends GTK's list (A10).
+    actions = actions.children(crate::filter::pane::toggle(app, view));
     row()
         .key(format!("{view}-header"))
         .w_full()

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-//! The filter (A10): C18's [`FilterBar`] in a Columns column's header, as GTK's pane filter
-//! (`filter_controls` in `src/ui/browser_modes/filter.rs`, the column's in
-//! `src/ui/browser/columns/append/header.rs` and `query.rs`).
+//! The filter (A10): C18's [`FilterBar`] in a Columns column's header, and under the pane's
+//! header in Icons and List ([`pane`]), as GTK's pane filter (`filter_controls` in
+//! `src/ui/browser_modes/filter.rs`, the column's in `src/ui/browser/columns/append/header.rs`
+//! and `query.rs`).
 //!
-//! - **Where it opens.** Ctrl+F, the column header's "Filter this pane" toggle, and a key
-//!   typed in the listing (type-to-search) open it in the column the pointer or the keys last
+//! - **Where it opens.** Ctrl+F, the header's filter toggle, and a key typed in the listing
+//!   (type-to-search) open it in the pane, or in the column the pointer or the keys last
 //!   targeted (GTK's `destination_depth`), closing it in any other. Its keys are read where
 //!   GTK's dispatcher reads them: Ctrl+F and Escape from its results in
 //!   `filter_and_location_commands`, type-to-search in `text_input`
@@ -14,19 +15,24 @@
 //! - **What it shows.** In a local folder the query runs strata-fs's index of the folder,
 //!   with its subfolders when "Include subfolders" is on ([`session`]), and the results take
 //!   the place of the column's rows (GTK's `search_recursively`); the column's selection
-//!   then is the results', which the browser never holds. Clearing the query or closing the
-//!   filter gives the rows back with the selection they had. Each edit waits GTK's 40 ms
+//!   then is the results', which the browser never holds. In Icons and List they show in a
+//!   collection of their own in the listing's place ([`pane`]). Clearing the query or closing
+//!   the filter gives the rows back with the selection they had. Each edit waits GTK's 40 ms
 //!   before it asks (`FILTER_DEBOUNCE_DELAY`).
 //! - **Opening a result:** Enter in the field (its Enter target, C18's), a click or Return on
 //!   it: a folder is navigated to, a file opened (`activate_recursive_search_result`).
 //! - **A `/` typed into the field over a query** enters the first match's folder and leaves
 //!   the filter open there, empty ([`descent`]), as GTK's `connect_path_separator` does.
+//! - **Up from the first result** gives the field the keyboard back.
+//! - **A view switch keeps it** in the folder shown, with its query, its results and their
+//!   selection, and the keyboard where it was, field or results (GTK's `ActivePaneFilter` in
+//!   `set_view_mode`, `restore_view_switch_focus`).
 //! - **It closes** with Escape, from its field or its results, and when its column shows
 //!   another folder or goes; a new item in its column empties it first ([`clear_for_new_item`]).
 //!
-//! Not yet: the filter in Icons and List (A10's next pull request), a folder that is not
-//! local, which GTK narrows in place, the results' thumbnails and their path line, and the
-//! field's own menu. `docs/rune/parity/packages/A10.md` keeps the list.
+//! Not yet: a folder that is not local, which GTK narrows in place, the results' thumbnails,
+//! a Columns result's path line, a renamed result keeping the cursor, and the field's own menu.
+//! `docs/rune/parity/packages/A10.md` keeps the list.
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
 
@@ -50,7 +56,7 @@ use strata_desktop::keys::{
 use strata_fs::services::{SEARCH_RESULT_LIMIT, SearchItem, SearchLimits};
 
 use crate::{
-    App, columns,
+    App,
     commands::{Action, Call, Holds, Keys, Outcome, Reads, Situation, Stage},
     listing::{Column, Edit, Load, Row},
     shell,
@@ -59,10 +65,15 @@ use crate::{
 
 mod descent;
 mod hits;
+pub(crate) mod pane;
+mod place;
 mod session;
+mod switch;
 pub(crate) mod targets;
 mod typing;
 
+use pane::PaneHits;
+use place::Where;
 use session::{Batch, Input, Session};
 
 #[cfg(test)]
@@ -85,9 +96,10 @@ enum Refocus {
     Arrived,
 }
 
-/// The column the filter is open in, and that column's folder.
+/// The view and the column the filter is open in, and that column's folder.
 #[derive(Clone, Debug, PartialEq)]
 struct OpenIn {
+    place: Where,
     depth: usize,
     folder: Location,
 }
@@ -98,6 +110,8 @@ pub(crate) struct Filter {
     session: Session,
     /// Each result's entry, by its id: what a command acts on ([`targets`]).
     found: HashMap<EntryId, FileEntry>,
+    /// The results in a pane of Icons or List.
+    pub(crate) pane: PaneHits,
     /// The field's text after its last edit: what tells a `/` typed into it.
     typed: String,
     /// The query a `/` was typed over, until its results settle and its first match opens.
@@ -135,6 +149,15 @@ fn column_name() -> String {
     named("Filter this pane (%{keys})", "Filter this pane")
 }
 
+/// The toggle's and the field's name in `place`: `filter_controls`' tooltip.
+fn name_in(place: Where) -> String {
+    match place {
+        Where::Columns => column_name(),
+        Where::Icons => named("Filter icons (%{keys})", "Filter icons"),
+        Where::List => named("Filter list (%{keys})", "Filter list"),
+    }
+}
+
 /// `filter_placeholder`: the folder's item count.
 fn placeholder(items: usize) -> String {
     rust_i18n::t!("Filter %{items}…", items = count("items", items)).into_owned()
@@ -146,17 +169,15 @@ fn results(app: &App) -> Results<'_> {
         .filter
         .open_in
         .as_ref()
-        .and_then(|open| app.columns.shown_with_selection(open.depth));
+        .and_then(|open| open.place.shown_with_selection(app, open.depth));
     let (source, selection) = shown.unwrap_or((&app.filter.nothing.0, &app.filter.nothing.1));
     Results { source, selection }
 }
 
 fn bar(app: &App) -> FilterBar<App> {
-    let items = app
-        .filter
-        .open_in
-        .as_ref()
-        .map_or(0, |open| app.columns.listing_len(open.depth));
+    let open = app.filter.open_in.as_ref();
+    let items = open.map_or(0, |open| open.place.listing_len(app, open.depth));
+    let place = open.map_or(Where::Columns, |open| open.place);
     let key = format!("{KEY}-{}", app.filter.serial);
     FilterBar::new(
         key,
@@ -164,7 +185,7 @@ fn bar(app: &App) -> FilterBar<App> {
         |app: &mut App| &mut app.filter.state,
     )
     .labels(FilterLabels {
-        field: column_name(),
+        field: name_in(place),
         placeholder: placeholder(items),
     })
     .results(results)
@@ -179,17 +200,15 @@ fn route(app: &mut App, polled: Polled, tx: &mut Tx) {
     bar(app).route(app, polled, tx);
 }
 
-/// Opens the filter in the targeted column, empty or on `query`: Ctrl+F, the toggle, a key
-/// typed in the listing. False where there is no column to open it in.
-fn in_columns(app: &App) -> bool {
-    shell::shown_view(app).is_some_and(|view| (view.shows)("columns"))
-}
-
+/// Opens the filter in the pane or the targeted column, empty or on `query`: Ctrl+F, the
+/// toggle, a key typed in the listing. False where there is no column to open it in.
 fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
-    if !in_columns(app) {
+    let Some(place) = Where::shown(app) else {
         return false;
-    }
-    let depth = app.columns.targeted();
+    };
+    let Some(depth) = place.targeted(app) else {
+        return false;
+    };
     let Some(folder) = app.browser.location_at(depth) else {
         return false;
     };
@@ -197,7 +216,7 @@ fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
         .filter
         .open_in
         .as_ref()
-        .is_some_and(|open| open.depth != depth);
+        .is_some_and(|open| open.depth != depth || open.place != place);
     if elsewhere {
         let polled = app.filter.state.close();
         route(app, polled, tx);
@@ -207,19 +226,21 @@ fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
         None => Shows::InPlace,
     };
     app.filter.state.set_shows(shows);
-    if app
-        .filter
-        .open_in
-        .as_ref()
-        .is_none_or(|open| open.depth != depth || open.folder != folder)
-    {
+    let opening = OpenIn {
+        place,
+        depth,
+        folder,
+    };
+    if app.filter.open_in.as_ref() != Some(&opening) {
         app.filter.serial += 1;
     }
-    app.filter.open_in = Some(OpenIn { depth, folder });
-    app.columns.hold_header(Some(depth));
+    app.filter.open_in = Some(opening);
+    if place == Where::Columns {
+        app.columns.hold_header(Some(depth));
+    }
     let polled = match query {
         Some(query) => {
-            let before = app.columns.listing_position(depth);
+            let before = place.listing_position(app, depth);
             app.filter.state.open_with(query, before)
         }
         None => app.filter.state.open(),
@@ -236,13 +257,18 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
         FilterIntent::ShowListing { restore } => {
             stop(app);
             app.filter.typed.clear();
-            app.columns.drop_hits(restore.as_ref(), tx);
+            if let Some(open) = app.filter.open_in.clone() {
+                open.place.drop_hits(app, restore.as_ref(), tx);
+            }
         }
         FilterIntent::Closed => {
             // Escape in the field: the keyboard goes back to the view, as GTK's
             // `dismiss_focused_filter` focuses the pane.
-            if tx.focused() == Some(bar(app).field_key().as_str()) {
-                tx.focus(columns::VIEW, false);
+            let place = app.filter.open_in.as_ref().map(|open| open.place);
+            if let Some(place) = place
+                && tx.focused() == Some(bar(app).field_key().as_str())
+            {
+                tx.focus(place.view_key(), false);
             }
             closed(app);
         }
@@ -255,8 +281,7 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
         }
         FilterIntent::FocusResults { id } => {
             if let Some(open) = app.filter.open_in.clone() {
-                app.columns.land(open.depth, id, &app.look, tx);
-                tx.focus(columns::VIEW, true);
+                open.place.land(app, open.depth, id, tx);
             }
         }
         // The preview is A15's, and the field's own menu C21's.
@@ -292,12 +317,12 @@ fn searching(app: &mut App, tx: &mut Tx) {
     let Some(open) = app.filter.open_in.clone() else {
         return;
     };
-    if app.columns.shows_hits(open.depth) || open.folder.native_path().is_none() {
+    if open.place.shows_hits(app, open.depth) || open.folder.native_path().is_none() {
         return;
     }
     let mut hits = Column::new(open.folder, true, None);
     hits.set_load(Load::Listed);
-    app.columns.show_hits(open.depth, hits, true, tx);
+    open.place.show_hits(app, open.depth, hits, true, tx);
 }
 
 /// Asks for `text`'s results after GTK's debounce, dropping an earlier edit's wait.
@@ -344,6 +369,7 @@ fn search(app: &mut App, text: &str) {
         recursive: preferences.filter_include_subfolders,
     };
     let limits = limits(preferences);
+    app.filter.pane.recursive = input.recursive;
     let later = app.filter.later.clone();
     app.filter
         .session
@@ -388,9 +414,9 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
     hits.apply(Edit::Replace(rows));
     hits.set_load(Load::Listed);
     let clear = app.filter.state.shown(&batch.query);
-    app.columns.show_hits(open.depth, hits, clear, tx);
+    open.place.show_hits(app, open.depth, hits, clear, tx);
     if let Some(index) = take_reveal(app) {
-        app.columns.reveal_index(open.depth, index, tx);
+        open.place.reveal_index(app, open.depth, index, tx);
     }
     if !batch.incomplete && app.filter.descent.as_deref() == Some(batch.query.as_str()) {
         descent::finish(app, tx);
@@ -401,10 +427,12 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
 /// The top result to keep in view now that results came, once (C18's `take_reveal`).
 fn take_reveal(app: &mut App) -> Option<usize> {
     let filter = &mut app.filter;
-    let shown = filter
-        .open_in
-        .as_ref()
-        .and_then(|open| app.columns.shown_with_selection(open.depth));
+    let place = filter.open_in.as_ref().map(|open| (open.place, open.depth));
+    let shown = match place {
+        Some((Where::Columns, depth)) => app.columns.shown_with_selection(depth),
+        Some(_) => filter.pane.shown_with_selection(),
+        None => None,
+    };
     let (source, selection) = shown.unwrap_or((&filter.nothing.0, &filter.nothing.1));
     filter.state.take_reveal(Results { source, selection })
 }
@@ -443,13 +471,14 @@ fn closed(app: &mut App) {
     app.filter.refocus = Refocus::No;
     app.filter.open_in = None;
     app.filter.typed.clear();
+    app.filter.pane.drop_hits();
     app.columns.hold_header(None);
 }
 
 /// What the open column says in place of results it has none of: GTK's status line.
 pub(crate) fn status(app: &App) -> Option<String> {
     let open = app.filter.open_in.as_ref()?;
-    if app.columns.shows_hits(open.depth) && results(app).source.is_empty() {
+    if open.place.shows_hits(app, open.depth) && results(app).source.is_empty() {
         return Some(match app.filter.session.awaiting() {
             true => tr("Searching…"),
             false => tr("No matching files"),
@@ -515,15 +544,21 @@ pub(crate) fn open_hit(app: &mut App, depth: usize, id: EntryId) {
     }
 }
 
-/// What a result asks of the Columns view, where it is not a listing's: true when the filter
-/// took it.
+/// What a result asks of the view, where it is not a listing's: true when the filter took it.
 pub(crate) fn hit_intent(
     app: &mut App,
     depth: usize,
     intent: &strata_components::collection::element::Intent,
+    tx: &mut Tx,
 ) -> bool {
-    use strata_components::collection::element::Intent;
+    use strata_components::{collection::element::Intent, contract::Direction};
     match intent {
+        // Up from the first result: the field takes the keyboard back.
+        Intent::Edge(Direction::Up) if app.filter.state.is_open() => {
+            app.filter.state.focus_field();
+            tx.focus(bar(app).field_key(), false);
+            true
+        }
         Intent::Activate { id, .. } => {
             open_hit(app, depth, *id);
             true
@@ -636,7 +671,7 @@ fn refocus(app: &mut App, tx: &mut Tx) -> bool {
         return false;
     };
     let listed = app.browser.location_at(open.depth).as_ref() == Some(&open.folder)
-        && app.columns.listed(open.depth);
+        && open.place.listed(app, open.depth);
     if !listed {
         return false;
     }
@@ -671,7 +706,7 @@ fn on_results(app: &App, at: &Situation) -> bool {
     let Some(open) = app.filter.open_in.as_ref() else {
         return false;
     };
-    at.in_view() && app.columns.shows_hits(open.depth) && !app.filter.state.text().is_empty()
+    at.in_view() && open.place.shows_hits(app, open.depth) && !app.filter.state.text().is_empty()
 }
 
 /// A key typed in the listing (`type_to_search_query`): `/` opens the filter empty, a
@@ -696,7 +731,8 @@ fn types_to_search(app: &App, at: &Situation) -> bool {
 }
 
 impl Part for Filter {
-    // The filter draws in its column's header (`pane_header::actions`), and nowhere else.
+    // The filter draws in its column's header (`pane_header::actions`), or under the pane's
+    // ([`pane::band`]), and nowhere else.
     const PLACE: Place<App> = Place::Overlays(|_, _| None);
 
     fn new(setup: &Setup<'_>) -> Self {
@@ -705,6 +741,7 @@ impl Part for Filter {
             open_in: None,
             session: Session::default(),
             found: HashMap::new(),
+            pane: PaneHits::new(),
             typed: String::new(),
             descent: None,
             refocus: Refocus::No,
@@ -760,11 +797,8 @@ impl Part for Filter {
         }]),
     ];
 
-    // The field is drawn in Columns only, for now: in another view it holds no keyboard.
-    fn switched(app: &mut App, _: &mut Tx) {
-        if !in_columns(app) {
-            app.filter.state.edit.focused = false;
-        }
+    fn switched(app: &mut App, tx: &mut Tx) {
+        switch::follow(app, tx);
     }
 
     fn keyboard(app: &App) -> Option<Holds> {

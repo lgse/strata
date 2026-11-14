@@ -107,9 +107,21 @@ impl Part for Icons {
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = single::poll::<Self>(app, clock, tx);
         size::follow_folder(app);
-        let grid = view::grid();
-        let ticked = grid.collection(app).tick(app, tx);
-        grid.poll(app, tx);
+        // A filter's results tick in the grid's place, and the grid waits under them.
+        let ticked = match app.filter.pane.shows() {
+            true => {
+                let results = view::results();
+                let ticked = results.collection(app).tick(app, tx);
+                results.poll(app, tx);
+                ticked
+            }
+            false => {
+                let grid = view::grid();
+                let ticked = grid.collection(app).tick(app, tx);
+                grid.poll(app, tx);
+                ticked
+            }
+        };
         Viewer::pump(app, thumbnail_parts, clock);
         fill(app);
         ticked | said
