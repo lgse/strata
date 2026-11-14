@@ -3,8 +3,9 @@
 //! The filter's results in the place of a column's rows: what a command on them acts on, and
 //! what holds the keyboard after the view changes.
 
-use super::{MODULE, find, fixture, idle, open, press, seen, text, wait};
+use super::{MODULE, find, fixture, open, press, seen, text, wait};
 use crate::{
+    commands::Holds,
     filter::Filter,
     host::offscreen::Offscreen,
     slots::Part,
@@ -44,14 +45,14 @@ fn filtered_to_photo(host: &mut Offscreen) -> tempfile::TempDir {
 }
 
 /// GTK's `begin_rename` asks `selected_search_result` first: F2 on a result renames it, not
-/// the entry the browser had selected before the filter.
+/// the entry the browser had selected before the filter, and the new name reaches the disk.
 #[test]
 fn f2_on_a_filter_result_renames_the_result() {
     hosted(
         MODULE,
         "filter::f2_on_a_filter_result_renames_the_result",
         |mut host| {
-            let _folder = filtered_to_photo(&mut host);
+            let folder = filtered_to_photo(&mut host);
             press(&mut host, "Down");
             wait(&mut host, "the result under the cursor", |seen| {
                 seen.focused.as_deref() == Some("photo.txt")
@@ -68,26 +69,100 @@ fn f2_on_a_filter_result_renames_the_result() {
                 shown.contains(&("Rename".to_owned(), "photo.txt".to_owned())),
                 "the editor names another entry: {shown:?}"
             );
+
+            // The editor selects the stem, which the typing replaces.
+            type_text(&mut host, "snap");
+            press(&mut host, "Return");
+            let renamed = folder.path().join("pictures/snap.txt");
+            let committed = host.run_until(PATIENCE, |_| renamed.exists());
+            assert!(committed, "the result was not renamed on disk");
+            assert!(
+                folder.path().join("todo.txt").exists(),
+                "todo.txt was renamed"
+            );
         },
     );
 }
 
-/// The field leaves with the Columns view: no part says it holds the keyboard in the view
-/// shown after it, so the window's commands are not held back there as in a text field.
+/// A view switch keeps the filter, its query and its results, and the keyboard in its field
+/// (GTK's `ActivePaneFilter` and `restore_view_switch_focus`), into Icons and back.
 #[test]
-fn a_view_switch_with_the_field_focused_leaves_no_filter_owner() {
+fn a_view_switch_keeps_the_filter_with_its_field_focused() {
     hosted(
         MODULE,
-        "filter::a_view_switch_with_the_field_focused_leaves_no_filter_owner",
+        "filter::a_view_switch_keeps_the_filter_with_its_field_focused",
         |mut host| {
             let _folder = filtered_to_photo(&mut host);
-            assert!(<Filter as Part>::keyboard(host.app()).is_some());
 
             press(&mut host, "ctrl+2");
-            let left = host.run_until(PATIENCE, |host| seen(host).panes.is_empty());
-            idle(&mut host);
+            let field_kept = |host: &Offscreen| {
+                fields(host) == [("Filter icons (Ctrl+F)".to_owned(), "photo".to_owned())]
+                    && focused_field(host)
+            };
+            let switched = host.run_until(PATIENCE, |host| {
+                seen(host).panes.is_empty() && field_kept(host)
+            });
+            assert!(
+                switched,
+                "Icons has no focused filter field: {:?}",
+                fields(&host)
+            );
+            assert_eq!(<Filter as Part>::keyboard(host.app()), Some(Holds::Filter));
+            let tree = host.tree();
+            let results = find(&tree, &|node| node["name"] == "Search results");
+            assert_eq!(results.len(), 1, "no results in Icons");
 
-            assert!(left, "the Columns view stayed");
+            press(&mut host, "ctrl+1");
+            wait(&mut host, "the result back in Columns", |seen| {
+                seen.panes
+                    .first()
+                    .is_some_and(|pane| pane.names() == ["photo.txt"])
+            });
+            let back = host.run_until(PATIENCE, |host| {
+                fields(host) == [("Filter this pane (Ctrl+F)".to_owned(), "photo".to_owned())]
+                    && focused_field(host)
+            });
+            assert!(
+                back,
+                "Columns has no focused filter field: {:?}",
+                fields(&host)
+            );
+        },
+    );
+}
+
+/// Whether a text field has the keyboard.
+fn focused_field(host: &Offscreen) -> bool {
+    let tree = host.tree();
+    find(&tree, &|node| node["role"] == "text-input")
+        .iter()
+        .any(|node| {
+            node["states"]
+                .as_array()
+                .is_some_and(|states| states.iter().any(|state| state == "focused"))
+        })
+}
+
+/// After a view switch kept the filter, Escape in its field closes it, and no part holds
+/// the keyboard as a filter any more.
+#[test]
+fn escape_after_a_view_switch_releases_the_filters_hold() {
+    hosted(
+        MODULE,
+        "filter::escape_after_a_view_switch_releases_the_filters_hold",
+        |mut host| {
+            let _folder = filtered_to_photo(&mut host);
+            press(&mut host, "ctrl+2");
+            let switched = host.run_until(PATIENCE, |host| {
+                seen(host).panes.is_empty() && focused_field(host)
+            });
+            assert!(switched, "Icons has no focused filter field");
+            assert_eq!(<Filter as Part>::keyboard(host.app()), Some(Holds::Filter));
+
+            press(&mut host, "Escape");
+
+            let closed = host.run_until(PATIENCE, |host| fields(host).is_empty());
+            assert!(closed, "the filter stayed: {:?}", fields(&host));
             assert_eq!(<Filter as Part>::keyboard(host.app()), None);
         },
     );

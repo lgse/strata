@@ -20,6 +20,10 @@
 //!   rename editor, [`publish`], and for the QA backend [`listed`] and [`lists`].
 //! - **What both build:** the base [`collection`] a view's component adds its parts to, and
 //!   the [`group`] around it, named by the folder and described as the view.
+//! - **A filter's results** (A10's [`crate::filter::pane`]) show in the component's place, in
+//!   a collection of their own built on [`results`], under the filter's band in the group.
+//!   Their rows are no listing's: the view's rows hooks ask the filter first for an entry of
+//!   theirs, and the rename editor opens and follows its row in the results.
 
 use std::borrow::Cow;
 
@@ -41,6 +45,7 @@ use self::first_visit::FirstVisit;
 use crate::{
     App, commands,
     events::{self, Change},
+    filter,
     listing::{Column, Words},
     menus::{self, Request},
     pane::{Applied, Pane},
@@ -80,6 +85,19 @@ fn controlled() -> CollectionState {
     collection.controllers.pointer = Some(Box::new(PointerIntent::new()));
     collection.controllers.keyboard = Some(Box::new(Keyboard::default()));
     collection.controllers.marquee = Some(Box::new(Marquee::new()));
+    collection
+}
+
+/// The state of a filter's results in the pane (A10's [`crate::filter`]), with the controllers
+/// and the keys the pane's listing has, the Menu key's menu where the view opens it: the
+/// centre in List, the right edge in Icons.
+pub(crate) fn results_state(list: bool) -> CollectionState {
+    let mut collection = controlled();
+    let menu_at = match list {
+        true => AnchorEdge::Center,
+        false => AnchorEdge::Right,
+    };
+    commands::view_keys(&mut collection, menu_at);
     collection
 }
 
@@ -225,6 +243,35 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
     )
 }
 
+/// The collection a filter's results show in, in the listing's place (GTK's "Search
+/// results"): keyed as the view's, so its keyboard and commands are the view's, with the view's
+/// keys and clicks. Its rows are the filter's ([`filter::pane`]).
+pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
+    let single = V::single(app);
+    commands::in_view(Collection::new(
+        V::KEY,
+        |app: &App| {
+            let hits = &app.filter.pane;
+            (hits.source(), hits.collection())
+        },
+        |app: &mut App| app.filter.pane.parts_mut(),
+        |app: &App| &app.look,
+        |app: &App| app.filter.pane.version(),
+    ))
+    .name(tr(filter::pane::SEARCH_RESULTS))
+    .settings(single.keys.clone())
+    .settings(PointerSettings::default().modes(single.clicks))
+    .marks(filter::pane::marks)
+    .empty(filter::pane::status)
+    .on_intent(filter::pane::heard)
+    .on_cursor(|app: &mut App, _, _| filter::picked(app))
+    .on_selection(|app: &mut App, _| filter::picked(app))
+    .rename(
+        |app: &App| app.rename.state.renaming_in(V::KEY),
+        rename::editor(app).slot(),
+    )
+}
+
 /// The view's element: a group keyed `<key>-pane`, named by the folder and described as
 /// the view, around the pane's header ([`pane_header`]), with the view's own `actions` among
 /// the header's, and the component's.
@@ -239,8 +286,21 @@ pub(crate) fn group<V: SinglePane>(app: &App, component: El, actions: Option<El>
         .grow(1.0)
         .min_h(0.0)
         .child(pane_header::bar(app, V::KEY, &title, actions))
+        // The filter's field, under the header as GTK's revealer is.
+        .children(filter::pane::band(app))
         // What is left under the header: the component fills its parent's height.
-        .child(col().w_full().grow(1.0).min_h(0.0).child(component))
+        .child(body(app).child(component))
+}
+
+/// The box under the header the component fills. A filter's results take the view's key, so
+/// theirs is keyed apart: Rune then lays them out as new elements, and their collection hears
+/// its viewport's size, which an element in the place of one of the same size never reports.
+fn body(app: &App) -> El {
+    let body = col().w_full().grow(1.0).min_h(0.0);
+    match app.filter.pane.shows() {
+        true => body.key("filter-results"),
+        false => body,
+    }
 }
 
 /// One poll of what the view says while it shows no entry, a read announced once it outlasts
@@ -363,21 +423,35 @@ pub(crate) const fn rows<V: SinglePane>() -> Rows<App> {
         position: |app, (depth, id)| pane::<V>(app).position(depth, id),
         neighbour: |app, (depth, id), step| pane::<V>(app).neighbour(depth, id, step),
         // What the context menu's Open asks (`open_context_entry` in
-        // `src/ui/browser/context_menu/item_menu.rs`): what a click on the row does.
-        activate: |app, (depth, id)| open_in_place::<V>(app, depth, id, Activation::Click),
+        // `src/ui/browser/context_menu/item_menu.rs`): what a click on the row does, or on a
+        // filter's result.
+        activate: |app, (depth, id)| match filter::targets::at(app, depth, id) {
+            Some(_) => filter::open_hit(app, depth, id),
+            None => open_in_place::<V>(app, depth, id, Activation::Click),
+        },
         // The keyboard is the editor's that opens next (Tab's `advance` and the menu's Rename
         // both open one on the row): focusing the list here would take it from the field, as
         // the Columns view does not either.
-        select_only: |app, (depth, id), _| V::single_mut(app).pane.select_only(depth, id),
+        select_only: |app, (depth, id), tx| match filter::targets::at(app, depth, id) {
+            Some(_) => filter::pane::select_only::<V>(app, id, tx),
+            None => V::single_mut(app).pane.select_only(depth, id),
+        },
         // Select All in a single pane is the browser's (`select_all` in
-        // `src/ui/browser/view_state.rs`): the view adopts it.
+        // `src/ui/browser/view_state.rs`): the view adopts it. GTK's does so under a filter's
+        // results too, where the listing it selects is not shown (finding lgse/strata#2422); Ctrl+A
+        // in the results is their own key.
         select_all: |app, depth| app.browser.select_all(depth),
         reveal: reveal_row::<V>,
     }
 }
 
-/// Scrolls the row of entry `id` into view, when the pane shows column `depth`.
+/// Scrolls the row of entry `id` into view, when the pane shows column `depth`: a filter's
+/// result's, while they show.
 fn reveal_row<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) {
+    if filter::targets::at(app, depth, id).is_some() {
+        filter::pane::reveal::<V>(app, id, tx);
+        return;
+    }
     let pane = &V::single(app).pane;
     let Some(listing) = pane.listing().filter(|_| pane.depth() == Some(depth)) else {
         return;
@@ -400,6 +474,18 @@ pub(crate) const fn editing<V: SinglePane>() -> Editing<App> {
 /// Opens the editor on the entry `id` and shows it. `None` when the view does not show the
 /// entry: a hidden one has nowhere to edit in.
 fn begin_rename<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) -> Option<Polled> {
+    // A filter's result renames in the results, which the listing under them does not draw.
+    if app.filter.pane.shows() {
+        let hits = &app.filter.pane;
+        let index = hits.source().index_of(id)?;
+        let entry = hits.source().entry(index);
+        let polled = app
+            .rename
+            .state
+            .begin(V::KEY, id, entry.name, entry.kind, Initial::Stem);
+        hits.reveal_index(V::KEY, index, tx);
+        return Some(polled);
+    }
     let (single, rename) = V::renaming(app);
     let pane = &single.pane;
     let listing = pane.listing().filter(|_| pane.depth() == Some(depth))?;
@@ -415,6 +501,13 @@ fn begin_rename<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) -> O
 /// One poll of the editor against the view's listing and viewport. An edit whose folder has
 /// gone ends, and keeps the name.
 fn tick_rename<V: SinglePane>(app: &mut App) -> Polled {
+    if app.filter.pane.shows() {
+        let hits = &app.filter.pane;
+        return app
+            .rename
+            .state
+            .tick(V::KEY, hits.source(), hits.collection());
+    }
     let (single, rename) = V::renaming(app);
     let pane = &single.pane;
     match pane.listing() {

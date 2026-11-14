@@ -834,11 +834,18 @@ sequence only together with the alphabet's version, so the version is part of th
   C1e's secondary press, since #2371, anchors the right-clicked entry when there is no anchor,
   as the browser's views do; C18's results are a C1e collection, so a Shift+click after it
   would range from the right-clicked result.
-- **Concerns:** C18's results, once hosted on Rune. Not yet run: no package hosts them.
-- **State:** open, [A10](packages/A10.md)'s (search, filter and sort), noted in its file. When
-  A10 takes it, it also checks a filtered Columns column: GTK's `focus_search_result` has a
-  Columns branch (`column.selection.select_item`), and whether that reaches the browser's
-  no-anchor rule (`set_selection` in `strata-fs`) has not been traced.
+- **Driven on 2026-11-13** (A10, both targets; filter `a` over `a1.txt` to `a4.txt` and
+  `b.md`, right-click `a1.txt`, Escape, Shift+click `a3.txt`):
+  - In Icons and List, GTK selects `a3.txt` alone; Rune, whose pane results are a C1e
+    collection since A10's Icons and List pull request, selects `a1.txt` to `a3.txt`. The
+    divergence is confirmed there.
+  - In a filtered Columns column both select `a1.txt` to `a3.txt`: GTK's Columns branch does
+    anchor the right-clicked result. No divergence there.
+- **Concerns:** the results of the filter in Icons and List; no scenario steps through it.
+- **State:** open, [A10](packages/A10.md)'s (search, filter and sort). The way out is C1e's: a
+  setting that lets a collection's secondary press leave a missing anchor missing, which the
+  pane's results turn on. That is a component's behaviour, so a `contract` change, put to the
+  coordinator; until then the pane's results anchor as the browser's views do.
 
 ### #2379: Shift+Tab from a Columns column stops on its header's actions on GTK, on the sidebar on Rune
 
@@ -1303,7 +1310,7 @@ sequence only together with the alphabet's version, so the version is part of th
   `fuzz-views-v4-000000000000000f`: in Columns, Home (`archive` chosen, its column open),
   Escape, Ctrl+2, Escape, a double click on `documents`, Alt+Left. GTK goes back to the root,
   Rune to `archive`.
-- **Why, by reading:** with nothing selected, GTK's Escape in the files goes on to the
+- **Why, by reading, not driven:** with nothing selected, GTK's Escape in the files goes on to the
   browser's `escape()` (`directory_enter_or_escape` in `src/ui/window/keyboard/items.rs`),
   which closes the peek, clears the selection, or else closes the deepest column, here the
   `archive` column the Icons view does not show. Rune's view keys clear a selection and stop,
@@ -1312,7 +1319,7 @@ sequence only together with the alphabet's version, so the version is part of th
   [#2411](https://github.com/lgse/strata/issues/2411), noted in its file. In Columns the same
   Escape closes a column a user sees; not driven. The sequence is parked in
   `tests/qa/fuzz/corpus/views/`.
-- **State:** open, [A6](packages/A6.md)'s.
+- **State:** open, [A6](packages/A6.md)'s, which drives the cause on GTK when it starts.
 
 ### #2427: GTK's grouped List, shown again, puts its cursor on its first row
 
@@ -1329,3 +1336,34 @@ sequence only together with the alphabet's version, so the version is part of th
   id (`pane/restore.rs`).
 - **Concerns:** the sequence is parked in `tests/qa/fuzz/corpus/views/`.
 - **State:** open, set aside: no Rune change. A fix is `main`'s, from a bug issue there.
+
+### #2422: the folder menu's Select All over filter results selects the hidden listing on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2422), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A10](packages/A10.md), asked by #2416's review, GTK driven in List and Icons
+  (`./scripts/qa-drive.sh`): with a filter's results in the place of the pane's listing, the
+  results' empty-space menu's Select All (`state.select_all`, `folder_menu.rs`, which outside
+  Columns is `browser.select_all`) selects every entry of the hidden listing and no result;
+  Escape then gives the listing back all selected. Ctrl+A in the results selects the results
+  (`select_all_search_results`) and leaves the listing alone.
+- **Concerns:** the filter in Icons and List; no scenario steps through it.
+- **State:** open, set aside. Rune's pane menu does as GTK does (`single::rows`' `select_all`)
+  until the owner rules on it; Ctrl+A in the results is C1e's own key and selects them on
+  both.
+
+### #2423: Tab in a rename on a filter result moves the hidden listing's cursor on GTK
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2423), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A10](packages/A10.md), asked by #2416's review, GTK driven in List and Icons
+  (`./scripts/qa-drive.sh`). With the pane's filter results showing, Tab or Shift+Tab in a
+  rename on a result commits it, and then `advance_rename` (`inline_edit.rs`) moves the
+  browser's cursor (`move_selection`) in the listing under the results. No editor shows
+  there, and the renamed result keeps the keyboard, as `renamed-filter-result-keeps-focus`'s
+  `tab` runs expect. When the filter closes, the listing's cursor has moved one entry from
+  where it was before the filter, and its selection has gone.
+- **Concerns:** the filter in every view; the scenario checks the result only.
+- **State:** open, set aside. Rune's Tab on a result only commits (`rename::advance` asks
+  `filter::targets` first), and the browser's selection from before the filter stays: the
+  scenario's visible behaviour, without the hidden move.

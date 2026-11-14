@@ -13,17 +13,15 @@ host = "offscreen"
 scenario = "confirmed-delete-acts-on-filter-result"
 run = "icons"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: the filter in Icons and List, at Ctrl+F on line 5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "confirmed-delete-acts-on-filter-result"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: the filter in Icons and List, at Ctrl+F on line 5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "delete-trashes-filtered-result"
@@ -37,17 +35,15 @@ blocker = "A10: a result's path line in Columns, at `result` on line 8 (contract
 scenario = "delete-trashes-filtered-result"
 run = "icons"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "delete-trashes-filtered-result"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "dismissed-delete-confirmation-keeps-result-focus"
@@ -60,17 +56,15 @@ host = "offscreen"
 scenario = "dismissed-delete-confirmation-keeps-result-focus"
 run = "icons"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "dismissed-delete-confirmation-keeps-result-focus"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-enter-opens-top-match"
@@ -86,7 +80,7 @@ run = "icons-folder"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: the Enter mark read as `marked`, at line 8 (contract, qa/)"
 
 [[run]]
 scenario = "filter-enter-opens-top-match"
@@ -94,7 +88,7 @@ run = "list-folder"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: the Enter mark read as `marked`, at line 8 (contract, qa/)"
 
 [[run]]
 scenario = "filter-enter-opens-top-match"
@@ -110,7 +104,7 @@ run = "icons-subfolders"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: the Enter mark read as `marked`, at line 8 (contract, qa/)"
 
 [[run]]
 scenario = "filter-enter-opens-top-match"
@@ -118,7 +112,7 @@ run = "list-subfolders"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: the Enter mark read as `marked`, at line 8 (contract, qa/)"
 
 [[run]]
 scenario = "filter-results-follow-external-changes"
@@ -131,17 +125,15 @@ host = "offscreen"
 scenario = "filter-results-follow-external-changes"
 run = "icons-false"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-results-follow-external-changes"
 run = "list-false"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-results-follow-external-changes"
@@ -155,17 +147,15 @@ blocker = "A10: a result's path line in Columns, at `result` on line 46 (contrac
 scenario = "filter-results-follow-external-changes"
 run = "icons-true"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-results-follow-external-changes"
 run = "list-true"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-slash-enters-folder"
@@ -178,17 +168,15 @@ host = "offscreen"
 scenario = "filter-slash-enters-folder"
 run = "icons-folder"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-slash-enters-folder"
 run = "list-folder"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-slash-enters-folder"
@@ -201,17 +189,15 @@ host = "offscreen"
 scenario = "filter-slash-enters-folder"
 run = "icons-subfolders"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-slash-enters-folder"
 run = "list-subfolders"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-updates-retain-state"
@@ -227,7 +213,7 @@ run = "icons"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A15: the preview, at line 12"
 
 [[run]]
 scenario = "filter-updates-retain-state"
@@ -235,7 +221,7 @@ run = "list"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A15: the preview, at line 12"
 
 [[run]]
 scenario = "filtered-control-selection-group"
@@ -243,7 +229,7 @@ run = "list"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: dragging the results, at line 14"
 
 [[run]]
 scenario = "filtered-file-click-previews"
@@ -259,7 +245,7 @@ run = "icons-two-clicks"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A15: the preview, at line 8"
 
 [[run]]
 scenario = "filtered-file-click-previews"
@@ -267,7 +253,7 @@ run = "list-two-clicks"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A15: the preview, at line 8"
 
 [[run]]
 scenario = "filtered-file-click-previews"
@@ -283,7 +269,7 @@ run = "icons-one-click"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
 
 [[run]]
 scenario = "filtered-file-click-previews"
@@ -291,7 +277,7 @@ run = "list-one-click"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
 
 [[run]]
 scenario = "filtered-results-group-selection"
@@ -299,7 +285,7 @@ run = "icons"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: Down from the field after Ctrl+F over a range of results, landing on the first, at line 12"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
@@ -315,7 +301,7 @@ run = "icons-inline"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `RenamedResult`, at line 41"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
@@ -323,7 +309,7 @@ run = "list-inline"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `RenamedResult`, at line 41"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
@@ -339,7 +325,7 @@ run = "icons-tab"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `RenamedResult`, at line 41"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
@@ -347,7 +333,7 @@ run = "list-tab"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `RenamedResult`, at line 41"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
@@ -377,17 +363,15 @@ blocker = "A11"
 scenario = "renamed-filter-result-keeps-focus"
 run = "icons-moved"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
 run = "list-moved"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "space-completes-composition"

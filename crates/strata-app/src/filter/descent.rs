@@ -12,7 +12,7 @@
 
 use rune::Tx;
 
-use super::{OpenIn, results, route};
+use super::{OpenIn, place::Where, results, route};
 use crate::{App, shell};
 
 /// The query a lone `/` was typed over, when `after` is `before` with a `/` in the place of
@@ -68,13 +68,24 @@ pub(super) fn finish(app: &mut App, tx: &mut Tx) {
     app.filter.typed.clear();
     shell::publish(app);
     app.filter.serial += 1;
+    let place = app
+        .filter
+        .open_in
+        .as_ref()
+        .map_or(Where::Columns, |open| open.place);
     app.filter.open_in = Some(OpenIn {
+        place,
         depth: 0,
         folder: folder.clone(),
     });
-    app.columns.mirror_no_landing();
+    let columns = place == Where::Columns;
+    if columns {
+        app.columns.mirror_no_landing();
+    }
     app.browser.navigate(folder);
-    app.columns.hold_header(Some(0));
+    if columns {
+        app.columns.hold_header(Some(0));
+    }
     app.filter.refocus = super::Refocus::Waiting;
     app.filter.state.focus_field();
     shell::settle(app, tx);

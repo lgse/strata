@@ -70,7 +70,7 @@ impl App {
 
     fn collection(&mut self, depth: usize, intent: Intent, tx: &mut Tx) {
         // A filter's results open as GTK's hits do, and are renamed nowhere yet.
-        if self.columns.shows_hits(depth) && filter::hit_intent(self, depth, &intent) {
+        if self.columns.shows_hits(depth) && filter::hit_intent(self, depth, &intent, tx) {
             return;
         }
         match intent {
