@@ -150,8 +150,13 @@ impl Part for Sidebar {
     /// sections, the places shown and their order) is followed, as GTK binds each tab's
     /// sidebar to the settings. The pins come from the bookmarks store, which this tab's
     /// sidebar hears for itself, held while it was hidden.
+    ///
+    /// A new tab's sidebar starts here, before the tab's first frame, not in its first
+    /// `poll`: a frame drawn without it puts the files where the sidebar goes, and the move
+    /// back is a layout Rune may never report to the view (finding lgse/strata#2477).
     fn tab_shown(app: &mut App, _tx: &mut Tx) {
         if !app.sidebar.started {
+            start(app);
             return;
         }
         let saved = shell::preferences(app);
