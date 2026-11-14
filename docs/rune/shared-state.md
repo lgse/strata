@@ -731,3 +731,12 @@ Where each file is:
 
 [slice/V5b](slice/V5b-settings-store.md#merging-from-main) has the table for the settings
 schema.
+
+**What is copied rather than moved.** The Rune interface keeps its own copy of the shortcut
+reference's default-map tables, by the coordinator's ruling of 2026-11-14
+([`parity/owner.md`](parity/owner.md#a6-menus-dialogs-and-keymap)): `src/ui/shortcut_reference.rs`
+stays where `main` has it, and `crates/strata-app/src/shortcuts/contents.rs` holds the copy,
+each table under its GTK name. A merge from `main` that changes a table there (a row's words,
+its keys, the order or a new row) merges clean and changes nothing on Rune: make the same
+change in `contents.rs` in the merge. Its coverage test catches only a listed catalog command
+left without a row.
