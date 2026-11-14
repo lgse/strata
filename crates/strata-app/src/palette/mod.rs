@@ -133,8 +133,12 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     None
 }
 
-/// Ctrl+K or the header's button: opens the palette on Home, or closes it.
+/// Ctrl+K or the header's button: opens the palette on Home, or closes it. While a result's
+/// menu is open the key is the menu's and does nothing, as GTK's popover takes it (driven).
 fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+    if app.palette.menu.is_open() {
+        return Outcome::Ran;
+    }
     let mode = search::mode();
     let polled = app.palette.state.toggle(mode);
     route(app, polled, tx);

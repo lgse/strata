@@ -149,6 +149,13 @@ fn a_results_menu_holds_the_keyboard_and_gives_it_back_to_the_field() {
                 "the menu has the keyboard"
             );
 
+            press(&mut host, Key::Text("k".to_owned()), ctrl());
+            assert!(
+                host.app().palette.menu.is_open(),
+                "Ctrl+K leaves the menu open, as on GTK"
+            );
+            assert!(host.app().palette.state.is_open(), "and the palette");
+
             press(&mut host, Key::Escape, Mods::default());
             assert!(!host.app().palette.menu.is_open(), "Escape closed the menu");
             assert!(host.app().palette.state.is_open(), "the palette stays open");
