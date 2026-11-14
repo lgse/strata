@@ -799,7 +799,7 @@ sequence only together with the alphabet's version, so the version is part of th
   open-with lookup finds a default application the entries share, and shows it only then
   (`prepare_open_with` in `src/ui/browser/context_menu/open_with.rs`). In the fixture none is
   found.
-- **State:** fixed by [A6](packages/A6.md)'s pull request #PR2A, which leaves the row out as GTK does
+- **State:** fixed by [A6](packages/A6.md)'s pull request [#2446](https://github.com/lgse/strata/pull/2446), which leaves the row out as GTK does
   when the lookup finds none. The lookup is [A14](packages/A14.md)'s, which shows the row when
   it finds a shared default. Replayed GTK against Rune: `columns v2` `0x10` and `columns v3`
   `0x10` agree and are unparked. `0x11` and `0x14` of `columns v3` now part later, at a click
