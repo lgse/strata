@@ -1166,7 +1166,7 @@ sequence only together with the alphabet's version, so the version is part of th
   own, which a press sets to what `pointer_selection` returns, the anchor it was given for a
   Shift+press (`src/ui/collection_interaction.rs`); C1e's Shift+press with no anchor started
   one at its entry. In Columns both range.
-- **State:** fixed, by [A10](packages/A10.md)'s `contract` pull request PRNUMBER, to match GTK
+- **State:** fixed, by [A10](packages/A10.md)'s `contract` pull request [#2434](https://github.com/lgse/strata/pull/2434), to match GTK
   by the coordinator's ruling, which the owner may reopen ([`owner.md`](owner.md), A10):
   C1e's `PointerSettings::missing_anchor_stays` covers a Shift+press as well as a secondary
   press, and the pane's results turn it on; Columns leaves it off.
