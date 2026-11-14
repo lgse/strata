@@ -655,7 +655,6 @@ What still differs, with the package that will meet each:
 | A file that could not be read at start-up | A notice on the first change, and nothing saved over it | Nothing saved over it, and no notice after the warning in the log | A18, lgse/strata#2150 |
 | The old global `omarchy_variant` | Moved into the per-theme map when an Omarchy theme is active (`set_active_omarchy_theme`), and the old key is then removed by each save | Neither: nothing reads the old key, and it stays in the file | A18, lgse/strata#2150 |
 | A saved keymap's conflicts at start-up | `PreferenceManager::keymap` logs what the conflict check finds about the keys the file adds | Logs nothing: the conflict check is GTK's (`src/ui/keys/conflicts.rs`) | A6 and A18, with the owner's question on which conflicts Rune reports |
-| Menu key hints after a remap | Each row's hint comes from the catalog, so it shows the saved keys (`default_hint` in `src/ui/shortcut_reference.rs`) | Each row's hint is written into the row (`menus.rs`), so it shows the shipped keys, which may no longer run the command | A6 |
 | A recency sort handed to the save | `set_sort_preferences` returns early and stores nothing | `Saved::store_view` has no such guard | A3, lgse/strata#2130. Not observable today: `Browser::record_sort` returns early at the Recent root, so neither interface is ever handed one |
 
 ### Tests

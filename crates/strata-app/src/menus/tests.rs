@@ -9,14 +9,26 @@ use strata_components::{
 };
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
 
-use super::{EntryTarget, FolderTarget, Menu, ROWS, Request, entry, folder};
+use super::{EntryTarget, FolderTarget, Menu, ROWS, Request};
 use crate::{
     App, commands,
     host::offscreen::Offscreen,
     shell,
     slots::{Entry, Place, View},
-    test_support::{PATIENCE, fixture, hosted, hosted_over, idle_view},
+    test_support::{PATIENCE, fixture, hosted, hosted_after, hosted_over, idle_view},
 };
+
+/// An entry's menu, with the key library its hints are labelled through.
+fn entry(target: &EntryTarget<'_>) -> MenuModel {
+    crate::startup::install_key_library().expect("the key library");
+    super::entry(target)
+}
+
+/// A pane's menu, likewise.
+fn folder(target: &FolderTarget) -> MenuModel {
+    crate::startup::install_key_library().expect("the key library");
+    super::folder(target)
+}
 
 fn file(name: &str) -> FileEntry {
     FileEntry {
@@ -193,7 +205,7 @@ fn several_entries_get_the_selections_menu_under_their_count_and_names() {
         [
             vec!["New Folder", "New File"],
             vec!["New Folder with Selection"],
-            vec!["Open", "Open With…", "Open in…"],
+            vec!["Open With…", "Open in…"],
             vec!["Cut", "Copy", "Duplicate"],
             vec!["Move to…", "Copy to…"],
             vec!["Compress…"],
@@ -243,11 +255,41 @@ fn hints_are_the_bindings_and_a_typed_one_shows_only_with_type_to_search_off() {
     ] {
         assert_eq!(hint(&typing, label), expected, "{label}");
     }
-    assert_eq!(hint(&keys, "Copy path"), Some("Y"));
-    assert_eq!(hint(&keys, "Pin to sidebar"), Some("P"));
+    assert_eq!(hint(&keys, "Copy path"), Some("y"));
+    assert_eq!(hint(&keys, "Pin to sidebar"), Some("p"));
     let todo = file("todo.txt");
     let preview = entry(&one(&todo, true));
     assert_eq!(hint(&preview, "Quick preview"), Some("Space"));
+}
+
+/// A saved keymap moves a row's hint with its keys, as GTK's `default_hint` reads the keymap
+/// in force: rebound keys show, and a row whose command is not rebound keeps its own.
+#[test]
+fn a_saved_keymap_moves_the_hints_with_the_keys() {
+    hosted_after(
+        "menus::tests",
+        "a_saved_keymap_moves_the_hints_with_the_keys",
+        || {
+            let file = strata_core::storage::config_directory().join("settings.toml");
+            std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+            let saved = "[keymap.default]\nrename = [\"<Control>e\"]\n\
+                         toggle_hidden_files = [\"<Control>j\"]\n";
+            std::fs::write(file, saved).expect("settings");
+        },
+        |_host| {
+            let todo = file("todo.txt");
+            let menu = entry(&one(&todo, true));
+            let pane = folder(&FolderTarget {
+                has_entries: true,
+                hidden_shown: false,
+                typing: true,
+            });
+
+            assert_eq!(hint(&menu, "Rename"), Some("Ctrl+E"));
+            assert_eq!(hint(&pane, "Show Hidden Files"), Some("Ctrl+J"));
+            assert_eq!(hint(&menu, "Copy"), Some("Ctrl+C"));
+        },
+    );
 }
 
 /// The order `dialogs_and_menus/pane-menu-directory-actions` expects of the GTK menu.
