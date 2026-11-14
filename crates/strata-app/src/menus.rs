@@ -37,7 +37,7 @@ use strata_core::{
 
 use crate::{
     App,
-    commands::{self, Holds, On},
+    commands::{self, Action, Holds, On},
     rename, shell,
     slots::{Frame, Part, Place, Setup},
 };
@@ -183,6 +183,8 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
 
 impl Part for Menu {
     const PLACE: Place<App> = Place::Overlays(build);
+
+    const COMMANDS: &'static [Action<App>] = crate::window_keys::COMMANDS;
 
     fn keyboard(app: &App) -> Option<Holds> {
         app.menu.state.is_open().then_some(Holds::Menu)
