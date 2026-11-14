@@ -8,7 +8,7 @@
 //!
 //! | [`Slot`] | Where the shell puts it | How many | The part gives, in its [`Place`] |
 //! | --- | --- | --- | --- |
-//! | `Tabs` | Across the window, above the header | One | Its element ([`Build`]) |
+//! | `Tabs` | Across the window, above the header | One | A [`Strip`]: its element, which takes the window's Close while it shows, and whether it shows: the header then leaves out New tab and Close |
 //! | `Location` | The header's flexible middle (`Header::center`) | One | Its element |
 //! | `Sidebar` | Under the header, before the view | One | A [`Sidebar`]: its element, and the key that takes the keyboard when it leaves the view at its start, as the sidebar is now |
 //! | `View` | Under the header: the files | Any, and one is shown | A [`View`]: its element, the saved mode it answers to, the key that takes the keyboard back, what it does with the pointer, and what the parts that work in a view ask of the one that is shown ([`Rows`], [`Editing`], [`Probe`]) |
@@ -53,7 +53,9 @@
 //! | To act on the browser | A handler calls `shell::publish(app)` before it asks the browser to act on its cursor, and `shell::settle(app, tx)` when it is done |
 //! | To tell the browser what the user changed in it | [`Part::publish`], called before GLib dispatches and around every applied queue; [`Part::caught_up`], called once a queue is applied |
 //! | Its own timers | [`Part::poll`], called in Rune's `poll` after the queue is applied |
-//! | To follow the view shown when it changes | [`Part::switched`], called on every active part once the new view is rebuilt |
+//! | To follow the view shown when it changes | [`Part::switched`], called on every active part once the new view is rebuilt, and once a tab is shown |
+//! | A state for each tab | Its state is the shown tab's: a part keeps one for each tab ([`Part::SCOPE`]), which the shell swaps into [`App`](crate::App) when the tab is shown. What its services answer for a hidden tab waits for that tab ([`Later`]) |
+//! | To end what does not outlast its tab, and to catch up when it is shown again | [`Part::tab_hidden`], called on the shown tab's parts before another is shown, and [`Part::tab_shown`], called on the parts of the tab now shown |
 //! | The keyboard | A part focuses its own element with `Tx::focus`. A field or a menu gives the keyboard back to the shown view: `shell::view_focus(app)` is the key for a component's `focus_return`. A view whose keyboard leaves it at its start (Left in the first column) calls `shell::leave_view_at_start(app, tx)`: the sidebar takes it at its [`Sidebar::focus`], and nothing happens when there is no sidebar |
 //! | The view, whichever is shown | `shell::shown_view(app)`. A part never names a view's module. The rename editor opens and polls through the shown view's [`Editing`]; a chosen menu row runs a command of the registry ([`crate::commands`]), which asks the view's [`Rows`] only for what differs from view to view; the QA backend reads its panes by the view's [`Probe`] |
 //! | The id of an entry | `shell::id_of(app, &location)`: the window's one table, which [`Setup::ids`] also hands a part for its listener |
@@ -77,7 +79,12 @@
 //!   host carries that dispatch into Rune's loop with `AppHandle::update_if`. A part never
 //!   holds a `Waker`: under a covered window a `Waker` alone does not run `poll`.
 //! - **A part keeps no `Rc<Browser>`.** It reads `app.browser` at the call, and it can build
-//!   everything it shows again from the browser: a tab, or a view shown later, will ask.
+//!   everything it shows again from the browser: a view shown later will ask, and so will a
+//!   hidden tab's whose events outran what the shell holds for it (`shell::tabs`).
+//! - **A part's state is its tab's.** Each tab has a browser and a state of each part of its
+//!   own, and the shown tab's are `app.browser` and `app.<field>`. A value a part copies from
+//!   the settings in [`Part::new`] does not follow a change another tab makes: read the
+//!   setting at the call (`shell::preferences`), or read it again in [`Part::tab_shown`].
 //! - **[`Part::new`] starts no work:** no load, no timer, no observer. A view that is not
 //!   shown is built too.
 //! - **A handler that calls the browser ends with `shell::settle(app, tx)`,** after
@@ -134,7 +141,7 @@
 //! | --- | --- |
 //! | A key the shown view's own controller takes (Escape, Delete, Space, Ctrl+A), as a command | Nothing: register it at the GTK dispatcher's stage that reads it. A view's collection asks the registry ahead of its own keys (`commands::in_view`), for every stage ahead of `ItemNavigation`, and the view keeps each key no command takes. A view built on a collection of its own calls `commands::in_view` on it once. A header button's or a menu row's command with no key is registered under the button's name (`shell.rs`) or the row's id (`menus.rs`) |
 //! | To save a setting | Nothing: `shell::saved(app).change(…)`, by the rules under [Saving a setting](#saving-a-setting) |
-//! | A `Browser` and a state for each tab | lgse/strata#2131, which opens with a `contract` change. There is one `Browser`, and one state for each part, made once in `App::new` |
+//! | A `Browser` and a state for each tab | Nothing: each tab has both, and the shell swaps the shown tab's into [`App`](crate::App) (`shell::tabs`) |
 //! | To change the shown view while the window is open | Nothing: `shell::show_view(app, mode, tx)`, which the view switch's commands call (`crate::appearance::views`) |
 //! | Another order within a slot | A `contract` change. The order is the registration lines', which is the packages', and a line is not moved from under its comment |
 //! | The stored names `grid` and `explorer` read in one place | The preference store's move, lgse/strata#2125: they are read in `src/ui/preferences/stored.rs` on the GTK side. Until then the Icons view's `shows` answers to `icons` and `grid`, and the List view's to `list` and `explorer` |
@@ -202,7 +209,7 @@ mod inbox;
 mod registry;
 
 pub(crate) use ids::Ids;
-pub(crate) use inbox::{Heard, Inbox, Later, Listener};
+pub(crate) use inbox::{Heard, Inbox, Later, Listener, Queued, Source, TabKey, Update};
 pub(crate) use registry::{Entry, Registry, ShownView};
 
 /// A place in the window. The module docs say where each is.
@@ -361,6 +368,33 @@ pub(crate) struct Sidebar<S: 'static> {
     pub(crate) held_back: fn(&S) -> f32,
 }
 
+/// What the tab strip gives the shell.
+pub(crate) struct Strip<S: 'static> {
+    /// Builds the strip, with the window's Close in `close` while it shows, as GTK's strip
+    /// takes it from the header (`refresh_chrome`). Nothing while it does not show.
+    pub(crate) build: fn(&S, Option<El>, &mut Frame<'_, S>) -> Option<El>,
+    /// Whether the strip shows. The header then leaves out New tab and the window's Close.
+    pub(crate) shows: fn(&S) -> bool,
+}
+
+/// Whether a part keeps a state for each tab, as the GTK window keeps each tab's whole
+/// content, or one for the window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Scope {
+    Tab,
+    #[expect(
+        dead_code,
+        reason = "the tab strip, A4's next pull request, is the window's"
+    )]
+    Window,
+}
+
+impl Scope {
+    pub(crate) const fn of_tab(self) -> bool {
+        matches!(self, Self::Tab)
+    }
+}
+
 /// Tells a view the pointer moved over the body, to this place in window points.
 pub(crate) type PointerAt<S> = fn(&mut S, (f32, f32));
 
@@ -374,7 +408,7 @@ pub(crate) enum Place<S: 'static> {
         not(test),
         expect(dead_code, reason = "no part fills the tabs slot yet")
     )]
-    Tabs(Build<S>),
+    Tabs(Strip<S>),
     Location(Build<S>),
     Sidebar(Sidebar<S>),
     View(View<S>),
@@ -406,14 +440,14 @@ impl<S> Place<S> {
         }
     }
 
-    /// What builds the part's element. None for the drawer, which wraps the view's.
+    /// What builds the part's element. None for the drawer, which wraps the view's, and for
+    /// the strip, which the shell hands the window's Close.
     pub(crate) const fn build(&self) -> Option<Build<S>> {
         match self {
             Self::View(view) => Some(view.build),
             Self::Sidebar(sidebar) => Some(sidebar.build),
-            Self::Drawer(_) => None,
-            Self::Tabs(build)
-            | Self::Location(build)
+            Self::Drawer(_) | Self::Tabs(_) => None,
+            Self::Location(build)
             | Self::Footer(build)
             | Self::Overlays(build)
             | Self::Dialogs(build) => Some(*build),
@@ -428,7 +462,11 @@ pub(crate) trait Part: Sized + 'static {
     /// The part's slot, and what it gives the shell there.
     const PLACE: Place<App>;
 
-    /// Builds the state. It starts no work: a view that is not shown is built too.
+    /// Whether the part keeps a state for each tab (the default), or one for the window.
+    const SCOPE: Scope = Scope::Tab;
+
+    /// Builds the state. It starts no work: a view that is not shown is built too, and so is
+    /// each new tab's.
     fn new(setup: &Setup<'_>) -> Self;
 
     /// What reads this part's share of an event out of the browser. It runs inside the
@@ -447,6 +485,15 @@ pub(crate) trait Part: Sized + 'static {
     /// from the browser: what follows the view shown follows it, as the folder the location
     /// bar names does (`sync_displayed_location`). The browser may say nothing then.
     fn switched(_app: &mut App, _tx: &mut Tx) {}
+
+    /// Another tab is about to be shown in place of this part's: what does not outlast the
+    /// tab ends, as GTK's `select` cancels the location's edit and a pending chord.
+    fn tab_hidden(_app: &mut App, _tx: &mut Tx) {}
+
+    /// This part's tab is shown, again or for the first time: it catches up with what changed
+    /// while it was hidden (a setting another tab changed) and shows what it showed, as GTK's
+    /// hidden tab keeps its scroll.
+    fn tab_shown(_app: &mut App, _tx: &mut Tx) {}
 
     /// One poll: the part's own timers. True when the view has to run.
     fn poll(_app: &mut App, _clock: f64, _tx: &mut Tx) -> bool {
@@ -490,11 +537,47 @@ macro_rules! parts {
         }
 
         impl Built {
-            /// Builds each part, in the order they are registered.
+            /// Builds each part, in the order they are registered: a part of the tab's from
+            /// `tab`, a part of the window's from `window`.
+            pub(crate) fn new(
+                tab: &$crate::slots::Setup<'_>,
+                window: &$crate::slots::Setup<'_>,
+            ) -> Self {
+                Self {
+                    $($field: {
+                        let scope = <$part as $crate::slots::Part>::SCOPE;
+                        <$part as $crate::slots::Part>::new(if scope.of_tab() { tab } else { window })
+                    },)*
+                }
+            }
+        }
+
+        /// The state of each part a hidden tab keeps for itself: none of the window's parts.
+        #[cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
+        pub(crate) struct TabParts {
+            $($field: ::std::option::Option<$part>,)*
+        }
+
+        impl TabParts {
+            /// Builds the parts of a new tab, in the order they are registered.
+            #[cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
             pub(crate) fn new(setup: &$crate::slots::Setup<'_>) -> Self {
                 Self {
-                    $($field: <$part as $crate::slots::Part>::new(setup),)*
+                    $($field: <$part as $crate::slots::Part>::SCOPE
+                        .of_tab()
+                        .then(|| <$part as $crate::slots::Part>::new(setup)),)*
                 }
+            }
+        }
+
+        impl App {
+            /// Puts the parts of a hidden tab in place of the shown tab's, which `parked` then
+            /// holds. The window's parts stay.
+            #[cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
+            pub(crate) fn swap_parts(&mut self, parked: &mut TabParts) {
+                $(if let ::std::option::Option::Some(part) = parked.$field.as_mut() {
+                    ::std::mem::swap(&mut self.$field, part);
+                })*
             }
         }
 

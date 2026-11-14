@@ -14,7 +14,7 @@ use strata_fs::{
 };
 
 use super::{
-    Entry, Frame, Ids, Inbox, Listener, Place, Registry, Setup, ShownView, Sidebar, Slot,
+    Entry, Frame, Ids, Inbox, Listener, Place, Registry, Setup, ShownView, Sidebar, Slot, Strip,
     registry::Fault,
 };
 use crate::{
@@ -81,6 +81,8 @@ fn part<P: Made>(place: Place<Log>) -> Entry<Log> {
         caught_up: |_| {},
         poll: |_, _, _| false,
         switched: |_, _| {},
+        tab_hidden: |_, _| {},
+        tab_shown: |_, _| {},
         commands: &[],
         keyboard: |_| None,
     }
@@ -235,9 +237,14 @@ fn a_slot_nothing_is_registered_in_has_no_part() {
 }
 
 #[test]
-fn a_part_builds_its_element_in_every_slot_but_the_drawer_which_wraps_the_views() {
+fn a_part_builds_its_element_in_every_slot_but_the_drawer_and_the_strip_which_the_shell_hands_more()
+{
+    let strip = Strip {
+        build: |_, _, _| None,
+        shows: |_| false,
+    };
     let places = [
-        (Place::Tabs(nothing), Slot::Tabs, true),
+        (Place::Tabs(strip), Slot::Tabs, false),
         (Place::Location(nothing), Slot::Location, true),
         (Place::Sidebar(rail()), Slot::Sidebar, true),
         (view::<Columns>().place, Slot::View, true),
@@ -252,7 +259,12 @@ fn a_part_builds_its_element_in_every_slot_but_the_drawer_which_wraps_the_views(
         assert_eq!(place.build().is_some(), builds, "{slot:?}");
         let registry = Registry::new(table(vec![part::<Drawer>(place)]), "columns");
         assert_eq!(names(registry.of(slot)), ["drawer"], "{slot:?}");
-        assert_eq!(registry.drawer().is_some(), !builds, "{slot:?}");
+        assert_eq!(
+            registry.drawer().is_some(),
+            slot == Slot::Drawer,
+            "{slot:?}"
+        );
+        assert_eq!(registry.strip().is_some(), slot == Slot::Tabs, "{slot:?}");
         assert_eq!(registry.sidebar().is_some(), slot == Slot::Sidebar);
     }
 }
@@ -319,8 +331,8 @@ fn applied(inbox: &Inbox<Log>) -> (Log, Vec<bool>) {
     let mut runtime = Runtime::new(Log::new(), |_, _| el(), (64.0, 64.0), Env::new(true, 1.0));
     let mut asks_for_a_view = Vec::new();
     runtime.update(|log, tx| {
-        while let Some(update) = inbox.pop() {
-            asks_for_a_view.push(update(log, tx));
+        while let Some(queued) = inbox.pop() {
+            asks_for_a_view.push((queued.update)(log, tx));
         }
     });
     (runtime.state, asks_for_a_view)

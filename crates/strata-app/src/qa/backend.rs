@@ -64,6 +64,13 @@ impl Rune {
         self.host.turn()
     }
 
+    /// Runs `act` on the window's state as a handler would: what a test reaches behind the
+    /// steps.
+    #[cfg(test)]
+    pub(super) fn update(&self, act: impl FnOnce(&mut App, &mut rune::Tx)) {
+        self.host.update(act);
+    }
+
     /// Blocks until the host has work, and for `limit` at most.
     pub(super) fn wait(&self, limit: Duration) {
         self.host.pause(limit);
