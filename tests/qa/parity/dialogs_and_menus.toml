@@ -162,8 +162,8 @@ scenario = "secondary-click-retargets-menu"
 run = "list"
 package = "A6"
 status = "pending"
-reason = "scope"
-blocker = "A6"
+reason = "rune"
+blocker = "docs/rune/upstream/rune/49-secondary-press-scrim.md: a secondary press outside an open menu reaches no handler, the menu's scrim included, so the right-click on archive neither closes the grouped menu nor opens archive's (line 8, its check on line 9)"
 
 [[run]]
 scenario = "settings-closes-on-an-outside-click"
