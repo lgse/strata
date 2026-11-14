@@ -283,8 +283,9 @@ fn tab_in_a_rename_on_a_row_among_the_results_only_commits() {
     );
 }
 
-/// GTK's results keep an anchor of their own, which a right-click never sets: with none, the
-/// next Shift+click selects the clicked result alone (finding lgse/strata#2375).
+/// GTK's results keep an anchor of their own, which neither a right-click nor a Shift+press
+/// sets: with none, each Shift+click selects the clicked result alone (findings
+/// lgse/strata#2375 and #2431).
 fn a_right_click_leaves_the_results_without_an_anchor(case: &Case, name: &str) {
     hosted_in(MODULE, case.mode, name, |mut host| {
         let names = ["a1.txt", "a2.txt", "a3.txt", "a4.txt", "b.md"];
@@ -300,8 +301,10 @@ fn a_right_click_leaves_the_results_without_an_anchor(case: &Case, name: &str) {
         assert_eq!(menu.as_deref(), Some("a1.txt"), "no menu on the result");
         press(&mut host, Key::Escape, Mods::default());
         shift_click(&mut host, case, "a3.txt");
-
         assert_eq!(seen(&host, case.shape).selected, ["a3.txt"]);
+
+        shift_click(&mut host, case, "a1.txt");
+        assert_eq!(seen(&host, case.shape).selected, ["a1.txt"]);
     });
 }
 

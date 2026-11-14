@@ -24,13 +24,13 @@ use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-use rune::{Anim, Curve, Easing, El, el, row, text};
+use rune::{Anim, Curve, Easing, El, col, el, row, text};
 use strata_kit::look::Look;
 use strata_kit::slots::columns as tokens;
 
-use super::keys::BADGE;
+use super::keys::{BADGE, DETAIL};
 use super::view::Shared;
-use crate::collection::element::{ContentSlot, Describe, RowCx};
+use crate::collection::element::{ContentSlot, Describe, LABEL, RowCx};
 
 /// The hover's fade in: Strata's `transition: opacity 120ms ease-out`.
 const FADE_IN: Anim = Anim::new(Curve::tween(0.12, Easing::EASE_OUT));
@@ -67,16 +67,74 @@ fn version_of(text: Option<&str>, look: &Look) -> u64 {
     h.finish()
 }
 
-/// The row's content: C1e's icon and label, and the badge over the label's end when there is
-/// one to show.
+/// Column `serial`'s detail line for the row `rcx` builds, while the host gives the column's
+/// rows details ([`ColumnSources::detail`](super::ColumnSources::detail)).
+fn detail_text<'s, S: 'static>(
+    sh: &Shared<S>,
+    s: &'s S,
+    serial: u64,
+    rcx: &RowCx<'_>,
+) -> Option<Cow<'s, str>> {
+    let p = (sh.parts)(s);
+    let depth = p.state.depth_of(serial).filter(|d| *d < p.sources.len())?;
+    if !p.sources.has_details(depth) {
+        return None;
+    }
+    p.sources.detail(depth, rcx.index).filter(|t| !t.is_empty())
+}
+
+/// The line height of a detail line's type.
+fn detail_line(look: &Look) -> f32 {
+    let t = look.kit.ty.small;
+    match t.line_height > 0.0 {
+        true => t.line_height,
+        false => t.size * 1.25,
+    }
+}
+
+/// A row's height with a detail line: the one-line row's, and two lines of detail under the
+/// name, as Strata's `.file-search-path` wraps to two (`src/ui/browser/columns/rows/widgets.rs`).
+pub(super) fn detailed_height(look: &Look) -> f32 {
+    (look.row.columns + 2.0 * detail_line(look) + look.space.xxs).round()
+}
+
+/// The name, and the detail under it when there is one: muted, wrapped to two lines.
+fn with_detail(label: El, detail: Option<&str>, look: &Look) -> El {
+    let Some(detail) = detail else {
+        return label;
+    };
+    let kit = &look.kit;
+    let line = text(detail.to_owned())
+        .key(LABEL)
+        .a11y_hidden()
+        .font(kit.ty.small)
+        .color(kit.c.text_muted)
+        .wrap_anywhere()
+        .max_lines(2)
+        .w_full()
+        .min_w(0.0);
+    col()
+        .shrink()
+        .grow(1.0)
+        .min_w(0.0)
+        .gap(look.space.xxs)
+        .child(label)
+        .child(col().key(DETAIL).w_full().min_w(0.0).child(line))
+}
+
+/// The row's content: C1e's icon and label, the host's detail line under the label when the
+/// column has them, and the badge over the label's end when there is one to show.
 pub(super) fn content<S: 'static>(sh: &Rc<Shared<S>>, serial: u64) -> ContentSlot<S> {
     let (v, b) = (sh.clone(), sh.clone());
     ContentSlot::new(
         move |s: &S, rcx: &RowCx<'_>| {
-            version_of(shown_text(&v, s, serial, rcx).as_deref(), rcx.look)
+            let mut h = std::hash::DefaultHasher::new();
+            detail_text(&v, s, serial, rcx).hash(&mut h);
+            h.finish() ^ version_of(shown_text(&v, s, serial, rcx).as_deref(), rcx.look)
         },
         move |s: &S, rcx: &RowCx<'_>, icon: El, label: El| {
             let look = rcx.look;
+            let label = with_detail(label, detail_text(&b, s, serial, rcx).as_deref(), look);
             let content = row()
                 .w_full()
                 .h_full()

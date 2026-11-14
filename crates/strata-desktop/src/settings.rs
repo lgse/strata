@@ -37,6 +37,7 @@ use crate::{
 mod corner_roundness;
 mod defaults;
 mod density;
+pub mod folder_sort_policy;
 mod folder_view_file;
 pub mod folder_view_policy;
 mod folder_view_store;

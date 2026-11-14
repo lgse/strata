@@ -11,6 +11,7 @@
 mod backend;
 mod compose;
 mod field;
+mod filter;
 mod input_log;
 mod invariants;
 mod keyboard;

@@ -95,25 +95,22 @@ scenario = "new-item-clears-hiding-filter"
 run = "columns-file"
 package = "A7"
 gate = "G3"
-status = "pending"
-reason = "scope"
-blocker = "A10: the band under the Columns header for the filter's field (contract), at the background press on line 9, which lands on the header's filter toggle"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
 run = "icons-file"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
 run = "list-file"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
@@ -127,17 +124,15 @@ host = "offscreen"
 scenario = "new-item-clears-hiding-filter"
 run = "icons-folder"
 package = "A1"
-status = "pending"
-reason = "scope"
-blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-item-clears-hiding-filter"
 run = "list-folder"
 package = "A2"
-status = "pending"
-reason = "scope"
-blocker = "A10: the filter bar, at Ctrl+F and `field` on lines 3 and 4"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-item-first-free-number"
