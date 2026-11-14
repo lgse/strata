@@ -1690,3 +1690,35 @@ sequence only together with the alphabet's version, so the version is part of th
   `a11y` twins from [A6](packages/A6.md)'s [#2471](https://github.com/lgse/strata/pull/2471), which find the
   reference by its dialog's name, read the rows' cells, and search to bring the media rows
   into the tree.
+
+### #2469: the tab strip's close buttons are named "Close tab" in English in every language
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2469), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the review of [#2464](https://github.com/lgse/strata/pull/2464): each tab's
+  close button in the Rune window's strip is named "Close tab" in English, whatever the
+  language. GTK names it with the catalogs' "Close tab" (`src/ui/window/composition/tabs/strip.rs`),
+  which all thirteen languages translate.
+- **Why:** rune-kit's `TabStrip` labels the button itself (`rune-kit/src/shell/tab_strip/tab.rs:307`
+  at `2a44156`) and offers no way to set it: only the close icon and whether the button is a
+  Tab stop are settable, so C7's `BrowserTabs` cannot pass Strata's label.
+- **Concerns:** the strip's accessible names ([A4](packages/A4.md)'s done-when item 2) in the
+  twelve languages other than English. No run reads the name in another language.
+- **State:** open, no workaround. Rune packet entry
+  [39](../upstream/rune/39-kit-tab-strip.md), item 1 (U-C7-1), asks for `close_label`.
+
+### #2473: a close the window manager asks for is not refused while file operations run
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2473), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A4](packages/A4.md), reading GTK's close guard: GTK refuses every close of a
+  window while one of its tabs has a file operation running, and shows "File operations are
+  still active" (`close_guard::install` in `src/ui/window/composition/tabs.rs`). On Rune the
+  header's and the strip's Close and Ctrl+W on the last tab refuse the same way
+  (`shell::close_window`); a close from the window manager (its title bar, Alt+F4, the
+  compositor) does not.
+- **Why:** Rune's `App::on_close` runs before the window goes and cannot keep it (at
+  `2a44156`), and nothing else hears a close request.
+- **Concerns:** no run: no scenario closes a window with an operation running.
+- **State:** open, [A21](packages/A21.md)'s, to draft into the packet with the window's
+  lifecycle and to work around if it can.

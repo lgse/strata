@@ -25,15 +25,18 @@
 //!   with what changed while it was hidden (the saved sort and hidden files on its browser,
 //!   the saved view mode, the grouping), retitles the window, tells every part
 //!   (`Part::tab_shown`, then `Part::switched`), and gives the keyboard back where it was.
+//! - **A tab is named after its folder** ([`label`]), or after the location it waits on until
+//!   its folder opens ([`located`]), as GTK's `relabel` names it after `await_location`. The
+//!   window's title is the shown tab's name.
 //! - **Each tab's content is keyed `tab-<n>`** (`super::view`), so what Rune keeps by an
 //!   element's path (a scroll offset, a hover, an animation) is never another tab's. A view's
 //!   scroll comes back from its own state: each collection keeps where it was drawn, as GTK's
 //!   hidden tab keeps its scroll.
 
-use std::{collections::VecDeque, rc::Rc};
+use std::{collections::VecDeque, path::Path, rc::Rc};
 
 use rune::Tx;
-use strata_core::model::Location;
+use strata_core::{i18n::tr, model::Location};
 use strata_fs::app::Browser;
 
 use super::{App, preferences, publish, settle};
@@ -64,6 +67,8 @@ pub(crate) struct Here {
     pub(super) grouped: bool,
     /// The element that had the keyboard when the tab was hidden.
     focus: Option<String>,
+    /// The location the tab was opened at, until its browser has it (GTK's `checking`).
+    awaited: Option<Location>,
 }
 
 impl Here {
@@ -75,6 +80,7 @@ impl Here {
             restore: pane::Memory::default(),
             grouped: false,
             focus: None,
+            awaited: None,
         }
     }
 }
@@ -243,9 +249,77 @@ pub(crate) fn tab_browser(app: &App, key: TabKey) -> Option<&Rc<Browser>> {
         .map(|(_, parked)| &parked.browser)
 }
 
+/// The shell's bits of tab `key`, shown or hidden.
+fn here_of(app: &App, key: TabKey) -> Option<&Here> {
+    if key == app.window.here.key {
+        return Some(&app.window.here);
+    }
+    let mut parked = app.window.tabs.parked.iter();
+    parked
+        .find(|(parked, _)| *parked == key)
+        .map(|(_, parked)| &parked.here)
+}
+
+/// Where tab `key` is, or the location it was opened at while its browser has none yet
+/// (GTK's `Tab::location`).
+pub(crate) fn located(app: &App, key: TabKey) -> Option<Location> {
+    let browser = tab_browser(app, key)?;
+    let awaited = || here_of(app, key).and_then(|here| here.awaited.clone());
+    browser.active_location().or_else(awaited)
+}
+
+/// A tab whose browser has a location waits on nothing from then on, as GTK's `relabel`
+/// drops `checking` once the tab's folder opens.
+pub(crate) fn forget_arrived(app: &mut App) {
+    let arrived = |browser: &Browser| browser.active_location().is_some();
+    if arrived(&app.browser) {
+        app.window.here.awaited = None;
+    }
+    for (_, parked) in &mut app.window.tabs.parked {
+        if arrived(&parked.browser) {
+            parked.here.awaited = None;
+        }
+    }
+}
+
+/// Whether tab `key`'s browser has a file operation running: it is not closed, nor is the
+/// window while it has one (GTK's `has_background_operations`).
+pub(crate) fn is_busy(app: &App, key: TabKey) -> bool {
+    tab_browser(app, key).is_some_and(|browser| browser.has_background_operations())
+}
+
+/// GTK's close blocker for a tab or a window with file operations running
+/// (`operations_active` in `src/ui/window/composition/tabs.rs`).
+pub(crate) fn operations_active(app: &mut App) {
+    let error = crate::error_dialog::Error::new(
+        tr("File operations are still active"),
+        tr(
+            "Wait for these operations to finish, or cancel them before closing this tab or window. Cancellation does not undo completed changes.",
+        ),
+    );
+    crate::error_dialog::show(app, error);
+}
+
+/// GTK's `tab_label`, a tab's name and the window title's: `~` for home, `/` for the root, a
+/// folder's name, and "Home" with none.
+pub(crate) fn label(location: Option<&Location>) -> String {
+    let Some(location) = location else {
+        return tr("Home");
+    };
+    let Some(path) = location.native_path() else {
+        return location.display_name();
+    };
+    if Some(path) == std::env::var_os("HOME").as_deref().map(Path::new) {
+        return "~".into();
+    }
+    path.file_name()
+        .map_or_else(|| "/".into(), |name| name.to_string_lossy().into_owned())
+}
+
 /// Opens a tab at `at` in the strip's order (the end when past it), shows it, and opens
 /// `location` in it, as GTK's `add` does: its parts are built from the settings as they are
-/// now, and its browser hears the same listeners the first tab's does.
+/// now, and its browser hears the same listeners the first tab's does. Until `location`
+/// opens, the tab and the window are named after it ([`located`]).
 pub(crate) fn open(app: &mut App, location: Option<Location>, at: usize, tx: &mut Tx) -> TabKey {
     let key = app.window.tabs.issue();
     let saved = preferences(app).clone();
@@ -277,7 +351,11 @@ pub(crate) fn open(app: &mut App, location: Option<Location>, at: usize, tx: &mu
     show(app, key, tx);
     if let Some(location) = location {
         publish(app);
-        app.browser.navigate(location);
+        app.browser.navigate(location.clone());
+        if app.browser.active_location().is_none() {
+            app.window.here.awaited = Some(location);
+            app.retitle(tx);
+        }
         settle(app, tx);
     }
     key

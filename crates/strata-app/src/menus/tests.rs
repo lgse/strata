@@ -359,6 +359,7 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "new-file",
                     "open",
                     "run",
+                    "open-in-tab",
                     "rename",
                     "trash",
                     "delete",

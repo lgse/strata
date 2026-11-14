@@ -268,9 +268,10 @@ impl App {
         self.browser.navigate(location);
     }
 
-    /// Names the window for the browser's active location. False when it has not changed.
+    /// Names the window for the shown tab's location, or the one it waits on. False when it
+    /// has not changed.
     pub(super) fn retitle(&mut self, tx: &mut Tx) -> bool {
-        let location = self.browser.active_location();
+        let location = tabs::located(self, self.window.here.key);
         if location == self.window.location {
             return false;
         }
@@ -383,11 +384,12 @@ pub(crate) fn preferences(app: &App) -> &strata_desktop::settings::Preferences {
     app.window.settings.preferences()
 }
 
-/// The GTK window's rule (`src/ui/window/composition/tabs.rs`): the folder, then the name.
+/// The GTK window's rule (`refresh_title` in `src/ui/window/composition/tabs.rs`): the shown
+/// tab's name, then the application's.
 fn title_for(location: Option<&Location>) -> String {
     location.map_or_else(
         || "Strata".to_owned(),
-        |location| format!("{} — Strata", location.display_name()),
+        |location| format!("{} — Strata", tabs::label(Some(location))),
     )
 }
 
@@ -584,9 +586,23 @@ fn on_window_action(app: &mut App, action: WindowAction, tx: &mut Tx) {
     let outcome = match action {
         WindowAction::Minimize => csd.minimize(tx),
         WindowAction::ToggleMaximize => csd.toggle_maximized(tx),
-        WindowAction::Close => csd.close(tx),
+        WindowAction::Close => return close_window(app, tx),
     };
     tracing::debug!(?action, ?outcome, "window button");
+}
+
+/// Closes the window, unless a tab's browser has a file operation running: then GTK's close
+/// guard says so and the window stays (`close_guard::install` in
+/// `src/ui/window/composition/tabs.rs`). The Close buttons and closing the last tab come here;
+/// a close the window manager asks for does not, as Rune lets nothing refuse it.
+pub(crate) fn close_window(app: &mut App, tx: &mut Tx) {
+    let busy = tabs::tabs(app).iter().any(|&key| tabs::is_busy(app, key));
+    if busy {
+        tabs::operations_active(app);
+        return;
+    }
+    let outcome = app.window.csd.close(tx);
+    tracing::debug!(?outcome, "window closed");
 }
 
 /// One of the header's five actions: the key its element ends with, its icon, its face, and
