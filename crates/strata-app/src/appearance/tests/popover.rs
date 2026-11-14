@@ -271,7 +271,9 @@ fn the_stepper_changes_the_text_size_and_stays_open() {
 }
 
 /// In List, Group by file type is sensitive: it saves the setting, the List view groups the
-/// folder shown with the cursor where it was, and the popover closes. Hidden files shows them, checked, and closes it.
+/// folder shown with the cursor where it was, and the popover closes with the keyboard on its
+/// button (finding lgse/strata#2410). Hidden files shows them, checked, and closes it the same
+/// way.
 #[test]
 fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
     hosted_with(
@@ -295,6 +297,11 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
             return_on(&mut host, "appearance-group");
             wait_closed(&mut host, "Group by file type");
             assert!(shell::preferences(host.app()).group_by_type);
+            assert_eq!(
+                focused(&mut host).as_deref(),
+                Some(BUTTON),
+                "the keyboard stays on the Appearance button through the regroup, as on GTK"
+            );
             let browser = host.app().browser().clone();
             assert!(
                 browser.shows_type_groups(0),
@@ -320,8 +327,67 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
             return_on(&mut host, "appearance-hidden");
             wait_closed(&mut host, "Hidden files");
             assert!(browser.preferences().show_hidden);
+            assert_eq!(focused(&mut host).as_deref(), Some(BUTTON));
             open_popover(&mut host);
             assert!(row(&host, "appearance-hidden").3, "Hidden files is checked");
+        },
+    );
+}
+
+/// "Customize columns…" shows in List alone: it closes the popover and opens the List table's
+/// columns menu, with the keyboard in it, as the header's Columns button does. In Columns the
+/// row is not there.
+#[test]
+fn customize_columns_opens_the_list_columns_menu() {
+    hosted_with(
+        MODULE,
+        "list",
+        String::new(),
+        "popover::customize_columns_opens_the_list_columns_menu",
+        |mut host| {
+            let folder = fixture();
+            open(&mut host, LIST, folder.path());
+            open_popover(&mut host);
+            assert_eq!(
+                row(&host, "appearance-customize-columns"),
+                (
+                    "menu-item".to_owned(),
+                    "Customize columns…".to_owned(),
+                    String::new(),
+                    false,
+                    true
+                )
+            );
+
+            return_on(&mut host, "appearance-customize-columns");
+            wait_closed(&mut host, "Customize columns…");
+            let size = |host: &Offscreen| {
+                let tree = host.tree();
+                let items = view::all(&tree, &|node| {
+                    node["role"] == "menu-item-check-box" && node["name"] == "Size"
+                });
+                !items.is_empty()
+            };
+            let opened = host.run_until(PATIENCE, size);
+            assert!(opened, "the columns menu to open");
+            let focus = focused(&mut host).unwrap_or_default();
+            assert!(
+                focus.starts_with("list-headings-menu"),
+                "the keyboard is in the columns menu: {focus}"
+            );
+
+            press(&mut host, Key::Escape, Mods::default());
+            assert_eq!(
+                focused(&mut host).as_deref(),
+                Some("list"),
+                "Escape gives the keyboard back to the table, whose headings GTK's popover is on"
+            );
+            press(&mut host, Key::Command('1'), ctrl());
+            open_popover(&mut host);
+            assert!(
+                node(&host, "appearance-customize-columns").is_none(),
+                "no Customize columns… in Columns"
+            );
         },
     );
 }

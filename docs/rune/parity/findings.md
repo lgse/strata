@@ -588,6 +588,10 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Reach:** by reading, no scenario Tabs onto a heading. The gap is older than
   [#2329](https://github.com/lgse/strata/pull/2329), which made the headings `button`s for
   assistive technology and left them unfocusable. Found in #2329's review.
+  The columns menu "Customize columns…" opens gives the keyboard back to the table where
+  GTK's gives it to the "Name" heading ([#2399](https://github.com/lgse/strata/pull/2399)'s
+  review): `list::customize_columns` focuses the table, and would focus `head-name` once the
+  headings take focus.
 - **State:** open, waiting for the owner ([`owner.md`](owner.md#a8-view-switching-and-appearance),
   A8 item 1). C4's "owner ruling" was a reading: the owner's sign-off of 2026-11-10 covers
   the deviations marked OWNER in `docs/rune/work/STATUS.md`, and C4's row does not mark this
@@ -1116,3 +1120,52 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, with the owner ([`owner.md`](owner.md#a1-icons-view-and-thumbnails), A1
   item 11), placed by the coordinator on 2026-11-13: GTK's move looks like its directional
   focus falling through, so Rune does not copy it meanwhile, and the sequence stays parked.
+
+### #2406: hiding the sidebar with the keyboard in it leaves no element with the keyboard on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2406), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `keyboard` invariant, in the sidebar alphabet on Rune.
+  Ctrl+B or the header's toggle hid the sidebar while one of its rows had the keyboard. The
+  key of an element no longer drawn kept it, and every key after that (Menu, the arrows)
+  went nowhere until a click. On GTK, in the same replay (seed `0x01` of `sidebar v1`,
+  `gtk,rune`), the next Menu key opens the selected entry's context menu.
+- **Also seen:** a focused sidebar row that goes away by a drag (seed `0x10`) or by Unpin
+  (seed `0x0e`) leaves no element with the keyboard too. Neither has been checked on GTK.
+- **State:** the hidden sidebar fixed by [F3](packages/F3.md)'s
+  [#2409](https://github.com/lgse/strata/pull/2409): the toggle gives the shown view the keyboard when it hides the sidebar with the
+  keyboard in it (`sidebar/width.rs`), held by
+  `sidebar::tests::hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view`.
+  The drag and Unpin cases are open, to be placed.
+
+### #2407: the location bar's hierarchy menu holds no keyboard on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2407), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `keyboard` invariant, in the sidebar alphabet on Rune,
+  after the Menu key with the keyboard on the location bar's crumbs. The hierarchy menu
+  (C6's `location-menu-menu`) was open, drawn and had the keyboard, but the location part's
+  `keyboard` answered nothing for it, so the window's dispatcher did not treat it as the
+  owner of every key, as GTK's `input_owner` treats a menu. No key was seen to leak: Rune's
+  menu takes the keys it is sent. The QA snapshot's `menu` reads `[]` for it, since its rows
+  are check menu items.
+- **State:** fixed by [F3](packages/F3.md)'s [#2409](https://github.com/lgse/strata/pull/2409): the part holds
+  `Holds::Menu` while the menu is open, held by
+  `location::tests::the_hierarchy_menu_holds_the_keyboard_while_it_is_open`.
+
+### #2410: after "Group by file type", GTK's keyboard is on the Appearance button, Rune's in the List
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2410), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet (v3, never merged), shrunk 3 of 3 GTK
+  against Rune from `fuzz-views-v3-0000000000000006`, and first in 7 of its 20 smoke seeds:
+  Ctrl+3, a click on the header's Appearance button, a click on "Group by file type". GTK's
+  popover closes and leaves the keyboard on the Appearance button, as Escape does; Rune's
+  regroup rebuilt the List view, which took the keyboard. `app.focused` is `null` on GTK and
+  the cursor's entry on Rune.
+- **Not the snapshot:** GTK driven (`./scripts/qa-drive.sh`, 2026-11-13): its widget tree's
+  focus line and the focus ring on screen are on the Appearance button after the click.
+- **State:** fixed by [A8](packages/A8.md): the Group row gives the button the keyboard after
+  the regroup (`appearance/popover.rs`), held by
+  `appearance::tests::popover::group_by_file_type_regroups_the_list_and_hidden_files_shows_them`.
+  The sequence joins the `views` corpus unparked with the alphabet's pull request.

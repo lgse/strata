@@ -17,7 +17,11 @@
 //!   ([`super::text_size`]). The popover stays open.
 //! - **Group by file type,** a `check menu item` checked while the setting is on and
 //!   sensitive only where the view shown groups (List); it saves the setting, regroups the
-//!   view shown and closes the popover.
+//!   view shown and closes the popover. The keyboard stays on the Appearance button, as GTK
+//!   leaves it (driven), though the regroup rebuilds the view, which takes it otherwise.
+//! - **Customize columns…,** a `menu item` shown in List alone: it closes the popover and opens
+//!   the List table's columns menu under its headings (`customize_columns_option`, then
+//!   `open_list_columns_popover`), the menu the List header's Columns button opens.
 //! - **Show sizes in Columns view,** a `check menu item` shown in Columns alone, checked while
 //!   the setting is on (`column_sizes_option`): it saves `columns_show_sizes`, has the open
 //!   columns show their size badges and ask for their folders' counts, or stop, and closes the
@@ -29,8 +33,7 @@
 //! keys, Escape, a press or a wheel outside, and the keyboard leaving it are the plain
 //! popover's.
 //!
-//! Left out until their pull requests: "Customize columns…" (List), and the header button's
-//! icon following the view.
+//! Left out until its pull request: the header button's icon following the view.
 
 use rune::{El, Tx, col, icon, row, text};
 use rune_kit::{Button, ButtonVariant, IconButton, IconButtonVariant};
@@ -66,6 +69,7 @@ const SMALLER: &str = "appearance-text-smaller";
 const RESET: &str = "appearance-text-reset";
 const LARGER: &str = "appearance-text-larger";
 const GROUP: &str = "appearance-group";
+const CUSTOMIZE: &str = "appearance-customize-columns";
 const SIZES: &str = "appearance-column-sizes";
 const HIDDEN: &str = "appearance-hidden";
 
@@ -88,6 +92,7 @@ struct Labels {
     text_size: String,
     group: String,
     group_description: String,
+    customize: String,
     sizes: String,
     hidden: String,
 }
@@ -107,6 +112,7 @@ impl State {
                 text_size: tr("TEXT SIZE"),
                 group: tr("Group by file type"),
                 group_description: tr("Group List entries under file-type headings"),
+                customize: tr("Customize columns…"),
                 sizes: tr("Show sizes in Columns view"),
                 hidden: tr("Hidden files"),
             },
@@ -156,6 +162,11 @@ pub(super) fn follow(app: &mut App, tx: &Tx) -> bool {
     true
 }
 
+/// Whether the List view is shown: "Customize columns…" is there only.
+fn lists(app: &App) -> bool {
+    shell::shown_view(app).is_some_and(|view| (view.shows)(LIST))
+}
+
 /// Whether the Columns view is shown: "Show sizes in Columns view" is there only.
 fn in_columns(app: &App) -> bool {
     shell::shown_view(app).is_some_and(|view| (view.shows)(COLUMNS))
@@ -174,6 +185,9 @@ fn stops(app: &App) -> Vec<&'static str> {
     stops.extend([SMALLER, RESET, LARGER]);
     if groups(app) {
         stops.push(GROUP);
+    }
+    if lists(app) {
+        stops.push(CUSTOMIZE);
     }
     if in_columns(app) {
         stops.push(SIZES);
@@ -201,6 +215,7 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
         .child(heading(look, &state.labels.text_size))
         .child(stepper(app))
         .child(group_row(app))
+        .children(lists(app).then(|| customize_row(app)))
         .children(in_columns(app).then(|| sizes_row(app)))
         .child(hidden_row(app));
     let plain = Plain {
@@ -425,10 +440,31 @@ fn group_row(app: &App) -> El {
                 shell::saved(app).change(|settings| settings.group_by_type = on);
                 shell::regroup(app, tx);
                 close(app);
+                tx.focus(BUTTON, true);
             },
         },
     );
     row.description(labels.group_description.clone())
+}
+
+fn customize_row(app: &App) -> El {
+    let labels = &app.appearance.popover.labels;
+    option(
+        &app.look,
+        Row {
+            key: CUSTOMIZE,
+            role: "menuitem",
+            icon: IconName::ViewColumns,
+            name: &labels.customize,
+            shown_keys: None,
+            checked: false,
+            sensitive: true,
+            press: |app, tx| {
+                close(app);
+                crate::list::customize_columns(app, tx);
+            },
+        },
+    )
 }
 
 fn sizes_row(app: &App) -> El {

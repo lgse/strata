@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/filter/descent.rs b/crates/strata-app/src/filter/descent.rs
+--- a/crates/strata-app/src/filter/descent.rs
++++ b/crates/strata-app/src/filter/descent.rs
+@@ -35,7 +35,7 @@
+         .map(|(kept, _)| kept.len_utf8())
+         .sum();
+     let suffix = suffix.min(now.len().saturating_sub(1));
+-    (&now[..now.len() - suffix] == "/").then_some(before)
++    (&now[..now.len() - suffix] == "/").then_some(before).filter(|_| false)
+ }
+ 
+ /// Enters the first match's folder for the `/` waiting, once the results for its query show:

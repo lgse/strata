@@ -12,7 +12,10 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use strata_components::{
     collection::element::RowCx,
-    list_table::{Cell, Column as TableColumn, ColumnId, ColumnLayout, ColumnWidths, LayoutChange},
+    list_table::{
+        Cell, Column as TableColumn, ColumnId, ColumnLayout, ColumnWidths, LayoutChange,
+        ListTableLabels,
+    },
 };
 use strata_core::i18n::tr;
 use strata_desktop::settings::{
@@ -46,6 +49,17 @@ const MINIMUMS: [f32; 5] = [160.0, 80.0, 70.0, 80.0, 110.0];
 
 /// The headings, translated once: the language changes only on restart.
 pub(super) struct Headings([String; 5]);
+
+/// The columns menu's and its button's words, translated (`column_options.rs` and
+/// `append_columns_menu` in `src/ui/browser_modes`).
+pub(super) fn menu_labels() -> ListTableLabels {
+    let mut labels = ListTableLabels::default();
+    labels.button = tr("Columns");
+    labels.heading = tr("COLUMNS");
+    labels.fixed = Some(tr("The Name column cannot be hidden"));
+    labels.reset = tr("Reset to default columns");
+    labels
+}
 
 impl Headings {
     pub(super) fn translated() -> Self {

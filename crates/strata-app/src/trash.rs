@@ -43,7 +43,7 @@ use strata_fs::app::BrowserEvent;
 use crate::{
     App,
     commands::{Action, Call, Holds, Keys, On, Outcome, Stage},
-    shell,
+    filter, shell,
     slots::{At, Later, Listener, Part, Place, Setup},
 };
 
@@ -214,13 +214,20 @@ fn in_columns(app: &App) -> bool {
 fn focused_entries(app: &App) -> (Vec<FileEntry>, bool) {
     let browser = &app.browser;
     let depth = browser.active_depth();
+    let folder_is_trash = |depth: Option<usize>| {
+        let folder = depth.and_then(|depth| browser.location_at(depth));
+        folder.as_ref().is_some_and(is_trash)
+    };
+    // A filter's results, while they show: GTK's `selected_search_results` first.
+    if let Some((results, at)) = filter::targets::selected_with_depth(app) {
+        return (results, folder_is_trash(Some(at)));
+    }
     let column = depth
         .filter(|_| in_columns(app))
         .map(|depth| browser.command_entries(depth))
         .filter(|entries| !entries.is_empty());
     let entries = column.unwrap_or_else(|| browser.deletion_entries());
-    let folder = depth.and_then(|depth| browser.location_at(depth));
-    (entries, folder.as_ref().is_some_and(is_trash))
+    (entries, folder_is_trash(depth))
 }
 
 /// What the menu opened on row `at` acts on (`context_entries`), and whether its folder is
@@ -228,6 +235,9 @@ fn focused_entries(app: &App) -> (Vec<FileEntry>, bool) {
 fn row_entries(app: &App, (depth, id): At) -> (Vec<FileEntry>, bool) {
     let browser = &app.browser;
     let in_trash = browser.location_at(depth).as_ref().is_some_and(is_trash);
+    if let Some(entries) = filter::targets::of_row(app, depth, id) {
+        return (entries, in_trash);
+    }
     let entry = shell::shown_view(app)
         .and_then(|view| (view.rows.position)(app, (depth, id)))
         .and_then(|position| browser.entry_at(depth, position));
