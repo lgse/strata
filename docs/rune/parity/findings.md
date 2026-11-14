@@ -1216,7 +1216,7 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** the window's keys, [A6](packages/A6.md)'s (keymap), noted in its file. The
   sequence is parked in `tests/qa/fuzz/corpus/views/`, and the `views` alphabet from v4 sends
   Escape only while a pane has the keyboard.
-- **State:** fixed by [A6](packages/A6.md)'s pull request #PR3: an Escape outside text closes the
+- **State:** fixed by [A6](packages/A6.md)'s pull request [#2452](https://github.com/lgse/strata/pull/2452): an Escape outside text closes the
   peek or clears the active column's selection at the `dismissal` stage, as on GTK
   (`crates/strata-app/src/window_keys.rs`). Driven on GTK again on 2026-11-14 with a click
   on the Appearance button: the second Escape clears the selection and the focus ring stays
@@ -1349,7 +1349,7 @@ sequence only together with the alphabet's version, so the version is part of th
   [#2411](https://github.com/lgse/strata/issues/2411), noted in its file. In Columns the same
   Escape closes a column a user sees; not driven. The sequence is parked in
   `tests/qa/fuzz/corpus/views/`.
-- **State:** fixed by [A6](packages/A6.md)'s pull request #PR3. Driven on GTK on 2026-11-14: in
+- **State:** fixed by [A6](packages/A6.md)'s pull request [#2452](https://github.com/lgse/strata/pull/2452). Driven on GTK on 2026-11-14: in
   Columns, with nothing selected in the open column, Escape closes it, and the keyboard goes
   to its folder in the column before; in List nothing visible changes, as the column closed
   is one List does not show. Rune reads an Escape that reaches the listing with nothing to
