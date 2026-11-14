@@ -1321,21 +1321,32 @@ sequence only together with the alphabet's version, so the version is part of th
   `tests/qa/fuzz/corpus/views/`.
 - **State:** open, [A6](packages/A6.md)'s, which drives the cause on GTK when it starts.
 
-### #2427: GTK's grouped List, shown again, puts its cursor on its first row
+### #2427: grouping by file type moves a load's cursor to the first row shown on GTK
 
-- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2427), filed on
-  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Code:** `divergence`, reclassified on 2026-11-13 from `oracle` by the coordinator's ruling.
+  [Issue](https://github.com/lgse/strata/issues/2427), filed on 2026-11-13 as the finding's
+  reference and closed at once: its state is kept here.
 - **Seen:** by [A8](packages/A8.md)'s `views` alphabet, v4, shrunk 3 of 3 GTK against Rune from
   `fuzz-views-v4-0000000000000007`: the Appearance popover's List row, a double click on
   `documents`, the popover's "Group by file type", its Icons row, Ctrl+3. GTK's cursor is on
-  `spreadsheet.csv`, the first row in the groups' order; Rune's on `notes.txt`, the browser's
-  cursor and the first entry in the folder's order.
-- **Driven on GTK** (`./scripts/qa-drive.sh`, 2026-11-13): the focus ring is drawn on
-  `spreadsheet.csv`, and Down moves to `report.md`. GTK seems to place the cursor by the
-  browser's index in a listing shown in another order; Rune's restore and rebuild go by entry
-  id (`pane/restore.rs`).
-- **Concerns:** the sequence is parked in `tests/qa/fuzz/corpus/views/`.
-- **State:** open, set aside: no Rune change. A fix is `main`'s, from a bug issue there.
+  `spreadsheet.csv`, the first row in the groups' order; Rune's on `notes.txt`, the first entry
+  in the folder's order.
+- **Driven on GTK** (`./scripts/qa-drive.sh`, 2026-11-13, by the review of
+  [#2433](https://github.com/lgse/strata/pull/2433)): no view switch is needed. With
+  `documents` open in List, its load's cursor on `notes.txt` and nothing selected, Group by
+  file type then the popover's List row put GTK's cursor on `spreadsheet.csv`, the first
+  grouped row: the regroup moves it. It goes by entry, not by index: with `spreadsheet.csv`
+  chosen (End), regrouping keeps it there. Only a cursor the load placed moves, to the first
+  row the pane shows.
+- **Why:** GTK's stated rule, `sync_type_grouping` in `src/ui/browser_modes/rebuild.rs`: "The
+  browser decides which listings show the groups, so its automatic cursor lands on the first
+  row this pane shows." Rune's `shell::regroup` keeps the load's cursor on the first entry in
+  the folder's order.
+- **Concerns:** the regroup ([A8](packages/A8.md)'s, `shell::regroup`). The sequence is parked
+  in `tests/qa/fuzz/corpus/views/`.
+- **State:** open, A8's: a fix moves a load's cursor to the first row shown when the grouping
+  changes, in a later pull request, after or alongside
+  [#2425](https://github.com/lgse/strata/issues/2425)'s.
 
 ### #2422: the folder menu's Select All over filter results selects the hidden listing on GTK
 

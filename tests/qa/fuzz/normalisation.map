@@ -14,4 +14,6 @@
 # it then leaves out only GTK's value against one of Rune's on its field.
 # A plain popover is a named dialog on Rune and an unnamed panel on GTK, by the owner's ruling
 # of 2026-11-13 (owner.md): only its name against GTK's none is excused, never a real dialog.
+# GTK reports `null` for its popover whether it is open or not, so this rule cannot catch a
+# Rune popover left open where GTK's closed; the fields after it, focus and the panes, do.
 app.dialog deviation lgse/strata#2405 {"gtk":null,"rune":["Appearance","Thumbnail size"]}
