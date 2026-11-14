@@ -49,6 +49,7 @@ use crate::{
 
 mod restore;
 
+pub(crate) use restore::Memory;
 use restore::Restore;
 
 /// What a pane shows before the browser has opened a folder: nothing.
@@ -124,6 +125,12 @@ fn groups_of(column: &Column) -> Groups {
 }
 
 impl Pane {
+    /// Remembers where folders were left in `memory`, the window's, shared with its other
+    /// single-pane view.
+    pub(crate) fn share_memory(&mut self, memory: &Memory) {
+        self.restore.share(memory);
+    }
+
     pub(crate) fn new(scope: &'static str, collection: CollectionState) -> Self {
         Self {
             scope,
