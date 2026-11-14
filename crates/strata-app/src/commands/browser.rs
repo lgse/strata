@@ -25,10 +25,11 @@ const SHIFT: Modifiers = Modifiers::SHIFT_MASK;
 const SUPER: Modifiers = Modifiers::SUPER_MASK;
 
 /// The column a call is for: the row's, the folder's, or the browser's active one.
-fn depth(app: &App, on: On) -> Option<usize> {
-    match on {
+fn depth(app: &App, on: &On) -> Option<usize> {
+    match *on {
         On::Row((depth, _)) | On::Column(depth) => Some(depth),
         On::Focus => app.browser.active_depth(),
+        On::Place(_) => None,
     }
 }
 
@@ -42,10 +43,15 @@ fn toggle_hidden(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
 fn refresh(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     // A user's Reload also retries the Trash on mounts that refused it, as GTK's every Reload
     // does (`ViewEdit::refresh`, the header's and the folder menu's Refresh).
+    let column = match call.on {
+        On::Row((depth, _)) | On::Column(depth) => Some(depth),
+        On::Focus => None,
+        On::Place(_) => return Outcome::Declined,
+    };
     strata_fs::adapters::trash_support::forget_all();
-    match call.on {
-        On::Row((depth, _)) | On::Column(depth) => app.browser.retry_column(depth),
-        On::Focus => app.browser.refresh_all(),
+    match column {
+        Some(depth) => app.browser.retry_column(depth),
+        None => app.browser.refresh_all(),
     }
     Outcome::Ran
 }
@@ -53,16 +59,16 @@ fn refresh(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
 /// `open_context_entry` in `src/ui/browser/context_menu/item_menu.rs`: the row's entry
 /// opens as a click on it does. Return on the cursor's entry is the view's own key.
 fn open(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    let (On::Row(row), Some(view)) = (call.on, shell::shown_view(app)) else {
+    let (On::Row(row), Some(view)) = (&call.on, shell::shown_view(app)) else {
         return Outcome::Declined;
     };
-    (view.rows.activate)(app, row);
+    (view.rows.activate)(app, *row);
     Outcome::Ran
 }
 
 /// The pane menu's Select All. Ctrl+A in a view is the view's own key.
 fn select_all(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    let (Some(depth), Some(view)) = (depth(app, call.on), shell::shown_view(app)) else {
+    let (Some(depth), Some(view)) = (depth(app, &call.on), shell::shown_view(app)) else {
         return Outcome::Declined;
     };
     (view.rows.select_all)(app, depth);
