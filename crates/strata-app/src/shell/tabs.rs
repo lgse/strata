@@ -318,13 +318,16 @@ pub(crate) fn show(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
 }
 
 /// The tab shown is about to be hidden: its parts end what does not outlast it, and the shell
-/// notes where the keyboard was. Not in a field, an edit or a menu, which end with the tab
-/// (GTK keeps a focus in the files, the sidebar or the preview only): the view takes it back.
+/// notes where the keyboard was, if it was in the view, the sidebar or the drawer and not in a
+/// field, an edit or a menu, which end with the tab. GTK keeps a focus in the files, the
+/// sidebar or the preview only, and drops one on the strip, the header or the footer: the
+/// view takes the keyboard back then.
 fn leave(app: &mut App, tx: &mut Tx) {
     publish(app);
     let parts = app.window.here.parts;
     let owned = parts.active().any(|part| (part.keyboard)(app).is_some());
-    app.window.here.focus = (!owned).then(|| tx.focused().map(str::to_owned)).flatten();
+    let focus = tx.focused().filter(|key| !owned && parts.in_panes(key));
+    app.window.here.focus = focus.map(str::to_owned);
     for part in parts.active() {
         (part.tab_hidden)(app, tx);
     }

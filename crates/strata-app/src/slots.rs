@@ -93,6 +93,9 @@
 //!   once stays queued until the next poll, and the frame drawn for the input shows the view
 //!   one step behind the browser.
 //! - **Element keys are one namespace across the parts.** Start a part's keys with its name.
+//!   The shell reads it too: a tab hidden with the keyboard in a key of the shown view's, the
+//!   sidebar's or the drawer's gets it back there when it is shown again, and in the view
+//!   otherwise (`Registry::in_panes`).
 //! - **Nothing outside a part's own module and its two lines is the part's to edit:** not
 //!   `shell.rs`, not this module, not another part. Touching a file another package owns is a
 //!   `contract` pull request of its own, never a change made in passing.

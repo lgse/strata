@@ -203,6 +203,18 @@ impl<'a, S> Registry<'a, S> {
         self.active().filter(move |entry| entry.slot() == slot)
     }
 
+    /// Whether the element keyed `key` is in a pane a hidden tab keeps the keyboard in: the
+    /// shown view, the sidebar or the drawer, as GTK's `select` keeps a focus only in the
+    /// files, the sidebar or the preview. A part's keys start with its name.
+    pub(crate) fn in_panes(self, key: &str) -> bool {
+        let panes = self.active().filter(|entry| {
+            matches!(entry.slot(), Slot::View | Slot::Sidebar | Slot::Drawer)
+        });
+        panes
+            .map(|entry| key.strip_prefix(entry.name))
+            .any(|rest| rest.is_some_and(|rest| rest.is_empty() || rest.starts_with('-')))
+    }
+
     /// The view that is shown. None when no view is registered.
     pub(crate) fn shown(self) -> Option<&'a View<S>> {
         self.entries.get(self.shown?)?.view()
