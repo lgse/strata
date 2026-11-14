@@ -6,25 +6,22 @@
 scenario = "additional-sort-choices"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "additional-sort-choices"
 run = "icons"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "additional-sort-choices"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: the Sort by menu, at \"Choose sort field\" on line 3; then A8: the List header's Columns menu, at \"Columns\" on line 99"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "dismissing-filter-keeps-hidden"
@@ -143,17 +140,15 @@ host = "offscreen"
 scenario = "reversing-sort-direction"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "sorting-by-size"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-footer-filter-commits"
