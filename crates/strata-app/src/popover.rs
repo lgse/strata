@@ -44,6 +44,20 @@
 //! covers the point). The listing's rect is read while the popover builds
 //! (`Cx::window_layout` of [`Plain::listing`]), so the window builds again whenever it moves.
 //!
+//! **A menu** ([`Kind::Menu`]): GTK's `gtk::PopoverMenu`, as Sort by is (driven, 2026-11-14),
+//! differs from its plain popover in four ways, and the rest is as above:
+//!
+//! - **Up and Down wrap**, and **Tab and Shift+Tab move as Down and Up**, wrapping too.
+//! - **Home and End** go to the first and the last row.
+//! - **It opens on its first row**, whatever is checked: the part focuses it.
+//! - **The surface is a `menu`**, named for its button as a plain popover's dialog is: an
+//!   accessible name GTK's unnamed `GtkPopoverMenu` lacks, ruled by the coordinator on
+//!   2026-11-14 after the owner's #2405 ruling (`docs/rune/parity/owner.md`).
+//!
+//! With the keyboard on none of its rows (one that hid under it), Down and Tab go to the first
+//! and Up and Shift+Tab to the last, as GTK's did (driven). Return and Space run a row as a
+//! button does, and the menu stays open unless the row closes it.
+//!
 //! **Nesting.** A plain popover opened from another, as A8's "Customize columns…" from its
 //! Appearance popover, has its scrim over the parent's, so an outside press or wheel reaches
 //! only the child's. GTK closes both then: [`Plain::parent`] closes the parent too. A press on
@@ -65,9 +79,12 @@ use crate::commands::Holds;
 pub(crate) struct Plain {
     /// The surface's key; the scrim is keyed after it.
     pub(crate) key: &'static str,
-    /// The button that opened it: the surface hangs under it, and the keyboard goes back to
-    /// it when the surface goes.
-    pub(crate) anchor: &'static str,
+    /// The key of the button that opened it: the surface hangs under it, and the keyboard
+    /// goes back to it when the surface goes. A String, since a Columns column's button is
+    /// keyed by its depth.
+    pub(crate) anchor: String,
+    /// A plain popover or a menu, which differ in their keys and their role.
+    pub(crate) kind: Kind,
     /// The accessible name of the surface (a dialog).
     pub(crate) label: String,
     /// The keys of its controls, in order: Tab, Shift+Tab, Up and Down move through them.
@@ -81,6 +98,15 @@ pub(crate) struct Plain {
     pub(crate) close: fn(&mut App),
     /// The popover this one was opened from, if any: an outside press or wheel closes it too.
     pub(crate) parent: Option<Parent>,
+}
+
+/// What kind of GTK popover it stands for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    /// GTK's `gtk::Popover`: a `dialog`, arrows that stop at the ends.
+    Dialog,
+    /// GTK's `gtk::PopoverMenu`: a `menu`, arrows and Tab that wrap, Home and End.
+    Menu,
 }
 
 /// The popover a nested one was opened from: how to close it, and the button that opened it,
@@ -99,18 +125,27 @@ impl Plain {
         let closes = Closes {
             own: self.close,
             parent: self.parent.map(|parent| parent.close),
-            anchor: self.parent.map_or(self.anchor, |parent| parent.anchor),
+            anchor: self
+                .parent
+                .map_or_else(|| self.anchor.clone(), |parent| parent.anchor.to_owned()),
         };
         frame.layer.push(scrim(self.key, listing, closes));
-        let (close, stops, own_arrows) = (self.close, self.stops, self.own_arrows);
+        let (close, stops, own_arrows, kind) = (self.close, self.stops, self.own_arrows, self.kind);
+        let role = match kind {
+            Kind::Dialog => "dialog",
+            Kind::Menu => "menu",
+        };
         let body = body
             .key(self.key)
-            .role("dialog")
+            .role(role)
             .label(self.label)
-            .focus_return(self.anchor)
-            .on_key(move |app: &mut App, event: &KeyEvent, tx: &mut Tx| {
-                keyed(app, event, tx, (close, &stops, own_arrows))
-            })
+            .focus_return(self.anchor.clone())
+            .on_key(
+                move |app: &mut App, event: &KeyEvent, tx: &mut Tx| match kind {
+                    Kind::Dialog => keyed(app, event, tx, (close, &stops, own_arrows)),
+                    Kind::Menu => menu_keyed(app, event, tx, (close, &stops)),
+                },
+            )
             // A press or a wheel on the surface's own blank parts stays with it, and leaves
             // the keyboard where it was, as GTK's does.
             .preserve_focus_on_press(true)
@@ -120,7 +155,7 @@ impl Plain {
         frame.layer.push(popover::anchored(
             kit,
             surface,
-            self.anchor,
+            &self.anchor,
             Placement::Bottom,
             look.space.xs,
         ));
@@ -129,23 +164,23 @@ impl Plain {
 
 /// What an outside press or wheel closes, and the button the keyboard goes back to: the
 /// outermost popover's.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Closes {
     own: fn(&mut App),
     parent: Option<fn(&mut App)>,
-    anchor: &'static str,
+    anchor: String,
 }
 
 impl Closes {
     /// Closes the popover, and its parent if it has one, and gives the outermost button the
     /// keyboard: for a nested pair neither `focus_return` would land, the child's button going
     /// with the parent.
-    fn close(self, app: &mut App, tx: &mut Tx) {
+    fn close(&self, app: &mut App, tx: &mut Tx) {
         (self.own)(app);
         if let Some(parent) = self.parent {
             parent(app);
         }
-        tx.focus(self.anchor, true);
+        tx.focus(&self.anchor, true);
     }
 }
 
@@ -153,6 +188,7 @@ impl Closes {
 /// popover and goes no further; a wheel closes it, and goes on to the listing when it is over
 /// it.
 fn scrim(key: &str, listing: Option<[f32; 4]>, closes: Closes) -> El {
+    let (on_secondary, on_wheel) = (closes.clone(), closes.clone());
     el().key(format!("{key}-scrim"))
         .absolute(0.0, 0.0)
         .w_full()
@@ -160,12 +196,12 @@ fn scrim(key: &str, listing: Option<[f32; 4]>, closes: Closes) -> El {
         .a11y_hidden()
         .on_press_tx(move |app: &mut App, tx: &mut Tx| closes.close(app, tx))
         .on_secondary_press(move |app: &mut App, _: PointerPress, tx: &mut Tx| {
-            closes.close(app, tx);
+            on_secondary.close(app, tx);
         })
         // A wheel passed on to the listing leaves the handler's change unseen; the focus
         // request `close` makes, as GTK's close does, has Rune build the window again.
         .on_wheel(move |app: &mut App, wheel: WheelEvent, tx: &mut Tx| {
-            closes.close(app, tx);
+            on_wheel.close(app, tx);
             !listing.is_some_and(|rect| inside(rect, wheel.x, wheel.y))
         })
 }
@@ -226,6 +262,60 @@ fn keyed(
     };
     tx.focus(stops[next], true);
     true
+}
+
+/// A menu's keys: Escape closes it; Up, Down, Tab and Shift+Tab move through its rows and
+/// wrap, Tab as Down and Shift+Tab as Up; Home and End go to the first and the last row. With
+/// the keyboard on none of them, a move forward lands on the first, a move back on the last.
+fn menu_keyed(
+    app: &mut App,
+    event: &KeyEvent,
+    tx: &mut Tx,
+    (close, stops): (fn(&mut App), &[&'static str]),
+) -> bool {
+    if event.key == Key::Escape {
+        close(app);
+        return true;
+    }
+    let Some(step) = menu_step(event) else {
+        return false;
+    };
+    let Some(last) = stops.len().checked_sub(1) else {
+        return true;
+    };
+    let at = tx
+        .focused()
+        .and_then(|focused| stops.iter().position(|stop| *stop == focused));
+    let next = match (step, at) {
+        (MenuStep::First, _) | (MenuStep::Next, None) => 0,
+        (MenuStep::Last, _) | (MenuStep::Back, None) => last,
+        (MenuStep::Next, Some(at)) if at == last => 0,
+        (MenuStep::Next, Some(at)) => at + 1,
+        (MenuStep::Back, Some(0)) => last,
+        (MenuStep::Back, Some(at)) => at - 1,
+    };
+    tx.focus(stops[next], true);
+    true
+}
+
+#[derive(Clone, Copy)]
+enum MenuStep {
+    Next,
+    Back,
+    First,
+    Last,
+}
+
+fn menu_step(event: &KeyEvent) -> Option<MenuStep> {
+    Some(match event.key {
+        Key::Down => MenuStep::Next,
+        Key::Up => MenuStep::Back,
+        Key::Tab if event.mods.shift => MenuStep::Back,
+        Key::Tab => MenuStep::Next,
+        Key::Home => MenuStep::First,
+        Key::End => MenuStep::Last,
+        _ => return None,
+    })
 }
 
 #[cfg(test)]

@@ -52,7 +52,7 @@ use crate::{
     App, buttons,
     commands::{self, Action, Call, On, Outcome},
     location::labels::with_keys,
-    popover::{Plain, focus_left},
+    popover::{Kind, Plain, focus_left},
     shell::{self, Face},
     slots::Frame,
 };
@@ -220,7 +220,8 @@ pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) {
         .child(hidden_row(app));
     let plain = Plain {
         key: SURFACE,
-        anchor: BUTTON,
+        anchor: BUTTON.into(),
+        kind: Kind::Dialog,
         label: state.labels.appearance.clone(),
         stops: stops(app),
         own_arrows: &[FRAME.keys[0], CONTENT.keys[0]],
