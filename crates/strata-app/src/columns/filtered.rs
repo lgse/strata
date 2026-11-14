@@ -28,10 +28,9 @@ impl Columns {
         self.state.hold_target(depth);
     }
 
-    /// How many of its folder's rows column `depth` shows: what the filter's placeholder
-    /// counts.
-    pub(crate) fn listing_len(&self, depth: usize) -> usize {
-        self.listings.columns.get(depth).map_or(0, EntrySource::len)
+    /// Column `depth`'s folder rows, results or not: what the filter's placeholder counts.
+    pub(crate) fn listing(&self, depth: usize) -> Option<&Column> {
+        self.listings.columns.get(depth)
     }
 
     /// A folder the filter entered opens no child column for the cursor the browser places
@@ -96,6 +95,29 @@ impl Columns {
         };
         self.sync(depth, tx);
         if let (Some(position), Some(state)) = (restore, self.state.column_mut(depth)) {
+            let _ = state.collection.selection.restore(position);
+        }
+        self.note(depth);
+    }
+
+    /// The results column `depth` shows, taken out with their selection, for the view a switch
+    /// shows. The column's rows show again.
+    pub(crate) fn take_hits(&mut self, depth: usize) -> Option<(Column, Position)> {
+        if !self.listings.hits_at(depth) {
+            return None;
+        }
+        let position = self.listings.shown(depth).and_then(|hits| {
+            let state = self.state.column(depth)?;
+            Some(state.collection.selection.position(hits))
+        });
+        let (_, hits) = self.listings.take_hits()?;
+        self.hold_header(None);
+        Some((hits, position.unwrap_or_default()))
+    }
+
+    /// The selection a view switch carried over, on the results column `depth` shows.
+    pub(crate) fn restore_hits_selection(&mut self, depth: usize, position: &Position) {
+        if let Some(state) = self.state.column_mut(depth) {
             let _ = state.collection.selection.restore(position);
         }
         self.note(depth);

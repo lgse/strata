@@ -64,9 +64,14 @@ impl Listings {
 
     /// Gives the column the results showed in its rows back. The depth, when there were any.
     pub(super) fn drop_hits(&mut self) -> Option<usize> {
-        let (depth, _) = self.hits.take()?;
+        self.take_hits().map(|(depth, _)| depth)
+    }
+
+    /// Takes the results out, and the column they showed in, when there were any.
+    pub(super) fn take_hits(&mut self) -> Option<(usize, Column)> {
+        let taken = self.hits.take()?;
         self.swaps += 1;
-        Some(depth)
+        Some(taken)
     }
 
     /// Drops the results when the column they showed in goes or shows another folder: column

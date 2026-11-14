@@ -620,3 +620,5 @@ fn a_file_icon_does_not_dim_in_list() {
 fn a_file_icon_dims_in_icons() {
     a_file_icon_dims_as_the_view_does("icons", ICONS.shape, true, "a_file_icon_dims_in_icons");
 }
+
+mod filter;
