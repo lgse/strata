@@ -1376,11 +1376,12 @@ sequence only together with the alphabet's version, so the version is part of th
   `spreadsheet.csv`, the List ungrouped again and Icons and Columns `notes.txt`. F2 renames and
   Return opens the ringed row. A cursor a load placed, Alt+Up's folder come from, stays on its
   entry in every view rebuilt, grouped or not.
-- **Fixed in part** by [#THEPR](https://github.com/lgse/strata/pull/THEPR) (2026-11-14). The Rune side must hand the first visit's cursor to the browser,
-  for F3's `browser-view` invariant, so the single panes' shared memory keeps it as the
-  visit's until the user's own input moves the cursor or the selection, and a single pane that
-  shows it off its first row moves it there (`pane::Memory`, `single::first_visit`). The
-  parked sequence is in the corpus unparked.
+- **Fixed in part** by [#2458](https://github.com/lgse/strata/pull/2458) (2026-11-14). The
+  Rune side must hand the first visit's cursor to the browser, for F3's `browser-view`
+  invariant, so the single panes' shared memory keeps it as the visit's until the user's own
+  input moves the cursor or the selection, and a single pane that shows it off its first row
+  moves it there (`pane::Memory`, `single::first_visit`). The parked sequence is in the corpus
+  unparked.
 - **Remaining, by GTK's code, not driven:** a first visit in a grouped List, then Ctrl+1.
   GTK's Columns, with no cursor in the browser, rings its first row, `notes.txt`; Rune's shows
   the browser's `spreadsheet.csv`. Fixing it gives Columns' active column the same rule, a
@@ -1450,7 +1451,7 @@ sequence only together with the alphabet's version, so the version is part of th
   - A view's rebuild (`shell::rebuild`) applied the replay outside the queue, so no part heard
     `caught_up`, and Columns took the cursor it was rebuilt with for a move of its own and
     mirrored it. GTK's views mirror from `FocusChanged`, which no rebuild raises.
-- **Fixed** by [#THEPR](https://github.com/lgse/strata/pull/THEPR) (2026-11-14): a restore is handed back with no commit
+- **Fixed** by [#2458](https://github.com/lgse/strata/pull/2458) (2026-11-14): a restore is handed back with no commit
   (`handover::hand_back`), and the parts catch up after a rebuild. The sequence is in the
   corpus unparked.
 - **State:** fixed.
