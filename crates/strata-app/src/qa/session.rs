@@ -75,7 +75,7 @@ const WINDOW_POLL: Duration = Duration::from_millis(20);
 const IDLE_WAIT: Duration = Duration::from_secs(1);
 
 thread_local! {
-    /// The browser's replacements, counted on the window's thread, where the browser is.
+    /// The browsers' replacements, counted on the window's thread, where the browsers are.
     static REPLACEMENTS: OnceCell<Rc<Replacements>> = const { OnceCell::new() };
 }
 
@@ -184,7 +184,7 @@ impl Session {
         // As the offscreen QA host does: a column that closes leaves the tree at once.
         link.change(|app| {
             app.look.animations = false;
-            REPLACEMENTS.with(|cell| cell.get_or_init(|| Replacements::watch(&app.browser)).now())
+            REPLACEMENTS.with(|cell| cell.get_or_init(|| Replacements::watch(app)).now())
         })?;
         Ok(Self {
             link,
@@ -293,15 +293,24 @@ impl Host for Session {
     }
 
     fn replacements(&self) -> u64 {
-        let now = |_: &mut App| REPLACEMENTS.with(|cell| cell.get().map_or(0, |watch| watch.now()));
+        let now = |app: &mut App| {
+            REPLACEMENTS.with(|cell| {
+                cell.get().map_or(0, |watch| {
+                    watch.follow(app);
+                    watch.now()
+                })
+            })
+        };
         self.link.ask(now).unwrap_or_default()
     }
 
     fn replaced_since(&self, entry: EntryId, since: u64) -> bool {
         let replaced = move |app: &mut App| {
             REPLACEMENTS.with(|cell| {
-                cell.get()
-                    .is_some_and(|watch| watch.replaced_since(app, entry, since))
+                cell.get().is_some_and(|watch| {
+                    watch.follow(app);
+                    watch.replaced_since(app, entry, since)
+                })
             })
         };
         self.link.ask(replaced).unwrap_or_default()

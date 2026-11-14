@@ -30,14 +30,6 @@
 //!   scroll comes back from its own state: each collection keeps where it was drawn, as GTK's
 //!   hidden tab keeps its scroll.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-    )
-)]
-
 use std::{collections::VecDeque, rc::Rc};
 
 use rune::Tx;
@@ -98,6 +90,10 @@ pub(crate) struct Held {
     /// How many updates had been queued for the tab when it was hidden, how many were routed
     /// to it since, and how many of them were dropped: what the QA backend holds the shell to
     /// ([`Held::accounted`]).
+    #[cfg_attr(
+        not(feature = "qa"),
+        expect(dead_code, reason = "only the QA backend's invariant reads it")
+    )]
     since: u64,
     routed: u64,
     dropped: u64,
@@ -322,13 +318,16 @@ pub(crate) fn show(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
 }
 
 /// The tab shown is about to be hidden: its parts end what does not outlast it, and the shell
-/// notes where the keyboard was. Not in a field, an edit or a menu, which end with the tab
-/// (GTK keeps a focus in the files, the sidebar or the preview only): the view takes it back.
+/// notes where the keyboard was, if it was in the view, the sidebar or the drawer and not in a
+/// field, an edit or a menu, which end with the tab. GTK keeps a focus in the files, the
+/// sidebar or the preview only, and drops one on the strip, the header or the footer: the
+/// view takes the keyboard back then.
 fn leave(app: &mut App, tx: &mut Tx) {
     publish(app);
     let parts = app.window.here.parts;
     let owned = parts.active().any(|part| (part.keyboard)(app).is_some());
-    app.window.here.focus = (!owned).then(|| tx.focused().map(str::to_owned)).flatten();
+    let focus = tx.focused().filter(|key| !owned && parts.in_panes(key));
+    app.window.here.focus = focus.map(str::to_owned);
     for part in parts.active() {
         (part.tab_hidden)(app, tx);
     }

@@ -106,10 +106,6 @@ pub(crate) enum Reads {
     Commands(&'static [Matcher]),
     /// A digit range of the catalog, such as the tab numbers. Which digit is the command's
     /// to read from the call's press.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no registered command reads a digit range yet")
-    )]
     Digits(Digits),
     /// What neither says: a key that types, for type-to-search, or a key the catalog has as a
     /// bare binding (BackSpace). Nothing can list it.

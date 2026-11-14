@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/tab_strip.rs b/crates/strata-app/src/tab_strip.rs
+index 9e4be58d8..a866dc532 100644
+--- a/crates/strata-app/src/tab_strip.rs
++++ b/crates/strata-app/src/tab_strip.rs
+@@ -275,7 +275,7 @@ pub(crate) fn reopen(app: &mut App, tx: &mut Tx) {
+     let Some(closed) = app.tab_strip.closed.reopen() else {
+         return;
+     };
+-    let at = closed.index_in(tabs(app).len());
++    let at = tabs(app).len();
+     leaving(app, tx);
+     let location = closed.item;
+     let key = tabs_of::open(app, Some(location.clone()), at, tx);

@@ -12,6 +12,9 @@
 //! rebuilt (`rebuild_icons`, `rebuild_list`), when a filter hides the row and shows it again,
 //! and when the row is scrolled out and back, where Rune keeps the row. A run that relies on
 //! one of those needs this extended first.
+//!
+//! Each tab has a browser of its own (`shell::tabs`): each is watched from the first step
+//! after its tab opens, and a row is asked after in the tab shown.
 
 use std::{
     cell::{Cell, RefCell},
@@ -25,25 +28,54 @@ use strata_fs::app::{Browser, BrowserEvent};
 
 use crate::{App, shell};
 
+/// The replacements one tab's browser made: the last each entry was in, by the window's count.
+struct Watched {
+    browser: Weak<Browser>,
+    last: HashMap<Location, u64>,
+}
+
+/// The replacements every tab's browser makes, counted across the window, and asked of the
+/// tab shown: a row is another row only when its own tab's column was replaced.
 #[derive(Default)]
 pub(super) struct Replacements {
-    /// How many replacements the browser has made.
+    /// How many replacements the browsers have made.
     count: Cell<u64>,
-    /// The last replacement each entry was in, by that count.
-    last: RefCell<HashMap<Location, u64>>,
+    watched: RefCell<Vec<Watched>>,
 }
 
 impl Replacements {
-    /// Counts the replacements `browser` makes from now on.
-    pub(super) fn watch(browser: &Rc<Browser>) -> Rc<Self> {
+    /// Counts the replacements each of `app`'s tabs' browsers makes from now on.
+    pub(super) fn watch(app: &App) -> Rc<Self> {
         let replacements = Rc::new(Self::default());
-        let (mine, watched) = (Rc::downgrade(&replacements), Rc::downgrade(browser));
-        browser.observe(move |event| {
-            if let BrowserEvent::EntriesReplaced { depth, .. } = event {
-                record(&mine, &watched, *depth);
-            }
-        });
+        replacements.follow(app);
         replacements
+    }
+
+    /// Watches the browser of each tab opened since the last call too.
+    pub(super) fn follow(self: &Rc<Self>, app: &App) {
+        let mut watched = self.watched.borrow_mut();
+        watched.retain(|watched| watched.browser.strong_count() > 0);
+        for &key in shell::tabs::tabs(app) {
+            let Some(browser) = shell::tabs::tab_browser(app, key) else {
+                continue;
+            };
+            let known = watched
+                .iter()
+                .any(|watched| std::ptr::eq(watched.browser.as_ptr(), Rc::as_ptr(browser)));
+            if known {
+                continue;
+            }
+            let (mine, observed) = (Rc::downgrade(self), Rc::downgrade(browser));
+            browser.observe(move |event| {
+                if let BrowserEvent::EntriesReplaced { depth, .. } = event {
+                    record(&mine, &observed, *depth);
+                }
+            });
+            watched.push(Watched {
+                browser: Rc::downgrade(browser),
+                last: HashMap::new(),
+            });
+        }
     }
 
     /// The count as of now, which a remembered node keeps.
@@ -51,11 +83,19 @@ impl Replacements {
         self.count.get()
     }
 
-    /// Whether the entry the components call `id` was in a replacement after `since`.
+    /// Whether the entry the components call `id` was in a replacement of the shown tab's
+    /// browser after `since`.
     pub(super) fn replaced_since(&self, app: &App, id: EntryId, since: u64) -> bool {
-        let last = self.last.borrow();
-        last.iter()
-            .any(|(location, at)| *at > since && shell::known_id(app, location) == Some(id))
+        let watched = self.watched.borrow();
+        let shown = watched
+            .iter()
+            .find(|watched| std::ptr::eq(watched.browser.as_ptr(), Rc::as_ptr(&app.browser)));
+        shown.is_some_and(|shown| {
+            shown
+                .last
+                .iter()
+                .any(|(location, at)| *at > since && shell::known_id(app, location) == Some(id))
+        })
     }
 }
 
@@ -65,10 +105,16 @@ fn record(replacements: &Weak<Replacements>, browser: &Weak<Browser>, depth: usi
     };
     let count = replacements.count.get() + 1;
     replacements.count.set(count);
-    let mut last = replacements.last.borrow_mut();
+    let mut watched = replacements.watched.borrow_mut();
+    let Some(watched) = watched
+        .iter_mut()
+        .find(|watched| std::ptr::eq(watched.browser.as_ptr(), Rc::as_ptr(&browser)))
+    else {
+        return;
+    };
     browser.with_column_entries(depth, |entries| {
         for entry in entries {
-            last.insert(entry.location.clone(), count);
+            watched.last.insert(entry.location.clone(), count);
         }
     });
 }
