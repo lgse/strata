@@ -93,6 +93,9 @@ pub(super) struct Devices {
     /// The output's size, which absolute motions are in.
     screen: (u32, u32),
     epoch: Instant,
+    /// Just before the last event was sent: Rune dispatching input after it has had that one
+    /// sent, if not yet dispatched every event before it.
+    sent: Cell<Instant>,
 }
 
 impl Devices {
@@ -135,6 +138,7 @@ impl Devices {
             position: Cell::new((0, 0)),
             screen,
             epoch: Instant::now(),
+            sent: Cell::new(Instant::now()),
         };
         devices.sync()?;
         Ok(devices)
@@ -166,7 +170,14 @@ impl Devices {
             .ok_or_else(|| format!("the session host's US keyboard has no key for {character:?}"))
     }
 
-    fn time(&self) -> u32 {
+    /// When the last event was sent, from just before it.
+    pub(super) fn last_sent(&self) -> Instant {
+        self.sent.get()
+    }
+
+    /// The time of an event about to be sent, which it records as the last sent.
+    fn stamp(&self) -> u32 {
+        self.sent.set(Instant::now());
         // Wayland's times are milliseconds that wrap.
         #[expect(
             clippy::cast_possible_truncation,
@@ -208,7 +219,7 @@ impl Devices {
         let evdev = keycode
             .checked_sub(XKB_EVDEV_OFFSET)
             .ok_or_else(|| format!("keycode {keycode} has no evdev code"))?;
-        self.keyboard.key(self.time(), evdev, u32::from(pressed));
+        self.keyboard.key(self.stamp(), evdev, u32::from(pressed));
         if let Some([depressed, latched, locked, group]) = modifiers {
             self.keyboard.modifiers(depressed, latched, locked, group);
         }
@@ -223,7 +234,7 @@ impl Devices {
         };
         let (x, y) = (clamp(x, self.screen.0), clamp(y, self.screen.1));
         self.pointer.motion_absolute(
-            self.time(),
+            self.stamp(),
             u32::from(x.unsigned_abs()),
             u32::from(y.unsigned_abs()),
             self.screen.0,
@@ -242,7 +253,7 @@ impl Devices {
     /// A button as X numbers them: 4 and 5 are one notch of the wheel up and down, sent on
     /// the press.
     pub(super) fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
-        let time = self.time();
+        let time = self.stamp();
         let notch = match number {
             4 => Some(-1),
             5 => Some(1),

@@ -11,8 +11,14 @@
 //! Wayland's virtual keyboard and pointer ([`devices`]), so it crosses the compositor and
 //! winit as a user's does. After each input it waits until Rune has dispatched it, then for
 //! the frame that shows it.
+//!
+//! It runs only in a private, headless sway, and refuses any other session before it makes
+//! a device ([`guard`]): every output headless, and nothing it reaches the compositor or the
+//! bus through in the desktop's runtime directory. The session bus it expects is the
+//! runner's private one, or none.
 
 mod devices;
+mod guard;
 mod link;
 mod sway;
 
@@ -146,8 +152,11 @@ pub(super) struct Session {
 
 impl Session {
     fn connect(link: Link, log: InputLog) -> Result<Self, String> {
+        let reached = guard::REACHED_THROUGH.map(|name| (name, std::env::var(name).ok()));
+        guard::private(&reached)?;
         let sway = Sway::from_environment()?;
-        let devices = Devices::connect(sway.output()?)?;
+        let screen = guard::headless(&sway.outputs()?)?;
+        let devices = Devices::connect(screen)?;
         // As the offscreen QA host does: a column that closes leaves the tree at once.
         link.change(|app| {
             app.look.animations = false;
@@ -163,23 +172,35 @@ impl Session {
         })
     }
 
-    /// Waits until Rune has dispatched input sent after `sent`, for [`DISPATCH_LIMIT`] at most.
-    fn dispatched(&self, sent: Instant) {
+    /// Waits until Rune has dispatched input from after the last event the devices sent, for
+    /// [`DISPATCH_LIMIT`] at most, and says so when it runs out: `what` names the input.
+    fn dispatched(&self, what: &str) {
+        let sent = self.devices.last_sent();
         let deadline = Instant::now() + DISPATCH_LIMIT;
         while Instant::now() < deadline {
             match self.link.ask(|_| rune::last_input()) {
                 Ok(Some(at)) if at >= sent => return,
                 Ok(_) => std::thread::sleep(DISPATCH_POLL),
-                Err(_) => return,
+                Err(error) => {
+                    eprintln!("strata-rune: the session host: {what}: {error}");
+                    return;
+                }
             }
         }
+        eprintln!(
+            "strata-rune: the session host: the window had not taken {what} after {} ms",
+            DISPATCH_LIMIT.as_millis()
+        );
     }
 
     /// Sends `send`'s input, then waits for Rune to take it and for the frame after.
-    async fn input(&self, send: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
-        let sent = Instant::now();
+    async fn input(
+        &self,
+        what: &str,
+        send: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
         send()?;
-        self.dispatched(sent);
+        self.dispatched(what);
         self.settle().await;
         Ok(())
     }
@@ -262,8 +283,18 @@ impl Host for Session {
     /// draws nothing new still draws a frame; one that never comes ends the wait at the limit.
     async fn settle(&self) {
         let before = self.link.frames.serial();
-        if self.link.change(|_| ()).is_ok() {
-            self.link.frames.wait_past(before, SETTLE_LIMIT);
+        let drawn = match self.link.change(|_| ()) {
+            Ok(()) => self.link.frames.wait_past(before, SETTLE_LIMIT),
+            Err(error) => {
+                eprintln!("strata-rune: the session host: a settle: {error}");
+                return;
+            }
+        };
+        if !drawn {
+            eprintln!(
+                "strata-rune: the session host: the window drew no frame within {} ms of a settle",
+                SETTLE_LIMIT.as_millis()
+            );
         }
     }
 
@@ -299,18 +330,20 @@ impl Host for Session {
 
     async fn chord(&self, chord: &Chord) -> Result<(), String> {
         let key = self.devices.named(&chord.key)?;
-        self.input(|| self.tap(&chord.key, key, &chord.modifiers))
+        let what = format!("the key {}", chord.key);
+        self.input(&what, || self.tap(&chord.key, key, &chord.modifiers))
             .await
     }
 
     async fn text_input(&self, character: char) -> Result<(), String> {
         let key = self.devices.typing(character)?;
-        self.input(|| self.tap(&character.to_string(), key, &[]))
+        let what = format!("the typed {character:?}");
+        self.input(&what, || self.tap(&character.to_string(), key, &[]))
             .await
     }
 
     async fn hold(&self, modifiers: &[Modifier]) -> Result<(), String> {
-        self.input(|| {
+        self.input("the held modifiers", || {
             for modifier in modifiers {
                 self.modifier(*modifier, true)?;
                 self.held.borrow_mut().push(*modifier);
@@ -321,7 +354,7 @@ impl Host for Session {
     }
 
     async fn release(&self, modifiers: &[Modifier]) {
-        let released = self.input(|| {
+        let released = self.input("the released modifiers", || {
             for modifier in modifiers.iter().rev() {
                 self.held.borrow_mut().retain(|held| held != modifier);
                 self.modifier(*modifier, false)?;
@@ -334,7 +367,6 @@ impl Host for Session {
     }
 
     async fn key(&self, name: &str, pressed: bool) -> Result<(), String> {
-        let sent = Instant::now();
         if let Ok(modifier) = Modifier::parse(name) {
             self.modifier(modifier, pressed)?;
             let mut held = self.held.borrow_mut();
@@ -347,17 +379,17 @@ impl Host for Session {
             self.log.key(name, pressed);
             self.press(key, pressed)?;
         }
-        self.dispatched(sent);
+        let direction = if pressed { "press" } else { "release" };
+        self.dispatched(&format!("the {direction} of {name}"));
         Ok(())
     }
 
     async fn pointer_move(&self, x: i16, y: i16) -> Result<(), String> {
-        let sent = Instant::now();
         let moves = self.devices.position() != (x, y);
         self.log.motion((x, y));
         self.devices.motion(x, y)?;
         if moves {
-            self.dispatched(sent);
+            self.dispatched(&format!("the motion to ({x}, {y})"));
         }
         Ok(())
     }
@@ -367,10 +399,10 @@ impl Host for Session {
     }
 
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String> {
-        let sent = Instant::now();
         self.devices.button(number, pressed)?;
         self.log.button(self.devices.position(), number, pressed);
-        self.dispatched(sent);
+        let direction = if pressed { "press" } else { "release" };
+        self.dispatched(&format!("the {direction} of button {number}"));
         Ok(())
     }
 
@@ -390,13 +422,12 @@ impl Host for Session {
         };
         let x = point(window.x, bounds.x, bounds.width);
         let y = point(window.y, bounds.y, bounds.height);
-        let sent = Instant::now();
         let clicked = self
             .devices
             .motion(x, y)
             .and_then(|()| self.devices.button(1, true))
             .and_then(|()| self.devices.button(1, false));
-        self.dispatched(sent);
+        self.dispatched(&format!("the click on {}", target.key));
         clicked.is_ok()
     }
 }

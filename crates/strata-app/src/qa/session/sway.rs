@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! sway's IPC, as the session host needs it: where this process's window is, how large the
-//! output is, and a command to resize the window.
+//! sway's IPC, as the session host needs it: where this process's window is, which outputs
+//! sway has, and a command to resize the window.
 
 use std::{
     io::{Read as _, Write as _},
@@ -68,24 +68,9 @@ impl Sway {
         serde_json::from_slice(&reply).map_err(|error| format!("sway IPC: {error}"))
     }
 
-    /// The size of the first active output.
-    pub(super) fn output(&self) -> Result<(u32, u32), String> {
-        let outputs = self.ask(GET_OUTPUTS, "")?;
-        let output = outputs
-            .as_array()
-            .and_then(|outputs| outputs.iter().find(|output| output["active"] == true))
-            .and_then(|output| Area::of(&output["rect"]))
-            .ok_or("sway has no active output")?;
-        let pixels = |value: f64| {
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                reason = "an output is a few thousand pixels wide"
-            )]
-            let pixels = value.round() as u32;
-            pixels
-        };
-        Ok((pixels(output.width), pixels(output.height)))
+    /// sway's `GET_OUTPUTS` reply.
+    pub(super) fn outputs(&self) -> Result<Value, String> {
+        self.ask(GET_OUTPUTS, "")
     }
 
     /// Where the content of `pid`'s window is on the output.
