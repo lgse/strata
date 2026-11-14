@@ -116,19 +116,22 @@ def named(run: dict, scenario: str | None) -> bool:
     return scenario in (None, run["scenario"], twin_scenario(run))
 
 
-def selected(ledger: dict, selection: str, status: str, scenario: str | None = None) -> list[str]:
+def selected(ledger: dict, selection: str, status: str, scenario: str | None = None,
+             on_host: str | None = None) -> list[str]:
     """The `<scenario>/<run>` names of a selection's runs with the status, in ledger order.
 
-    With `scenario`, only that scenario's runs, or the runs that twin stands in for.
+    With `scenario`, only that scenario's runs, or the runs that twin stands in for. With
+    `on_host`, only the runs that take, or will need, that host on Rune.
     """
 
     return [name(run) for run in chosen(ledger, selection)
-            if run["status"] == status and named(run, scenario)]
+            if run["status"] == status and named(run, scenario)
+            and on_host in (None, host(run))]
 
 
 def host(run: dict) -> str:
-    """The host a run at parity takes on Rune. A required run names it; a parallel one names
-    it only when its twin needs the session host."""
+    """The host a run takes on Rune. A required run names it; a parallel one names it only
+    when its twin needs the session host, and a pending one when it will need that host."""
 
     return run.get("host", OFFSCREEN)
 
@@ -344,14 +347,11 @@ def display(path: Path) -> str:
 
 
 def report_selected(ledger: dict, args: argparse.Namespace) -> int:
-    """Prints a selection's runs, one a line: with `--on`, what must pass on that target, on
-    `--host` alone when it is given, and otherwise the runs with the status."""
+    """Prints a selection's runs, one a line: with `--on`, what must pass on that target, and
+    otherwise the runs with the status; on `--host` alone when it is given."""
 
-    if args.host and not args.on:
-        print("--host picks among what must pass on a target: it needs --on", file=sys.stderr)
-        return 2
     runs = (deciding(ledger, args.selection, args.on, args.scenario, args.host) if args.on
-            else selected(ledger, args.selection, args.status, args.scenario))
+            else selected(ledger, args.selection, args.status, args.scenario, args.host))
     for run in runs:
         print(run)
     return 0
@@ -366,7 +366,7 @@ def main(arguments: list[str] | None = None) -> int:
                              "the required runs and, for each parallel run, its scenario on gtk "
                              "and its twin on rune")
     parser.add_argument("--host", choices=HOSTS,
-                        help="with --on: only the runs that take this host on Rune")
+                        help="only the runs that take, or will need, this host on Rune")
     parser.add_argument("--scenario", help="only this scenario's runs, or a twin's pair")
     parser.add_argument("--counts", action="store_true",
                         help="instead of the runs: the selection's counts by status and reason")

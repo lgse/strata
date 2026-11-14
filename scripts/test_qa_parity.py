@@ -228,10 +228,26 @@ class SelectionTests(unittest.TestCase):
             # GTK has one host: the target's runs are all its own.
             self.assertEqual(run_main("A1", "--on", "gtk")[1], every)
 
-    def test_a_host_picks_only_among_what_must_pass_on_a_target(self):
-        status, printed, errors = run_main("A1", "--host", "session")
-        self.assertEqual((status, printed), (2, ""))
-        self.assertIn("needs --on", errors)
+    def test_a_pending_run_that_will_need_the_session_host_is_surveyed_there(self):
+        with edited("inline_renaming", 'package = "A2"\nstatus = "pending"\n',
+                    'package = "A2"\nstatus = "pending"\nhost = "session"\n'):
+            pending = run_main("A2", "--status", "pending")
+            self.assertEqual(pending, (0, "rename-with-f2/list-keyboard\n", ""))
+            self.assertEqual(run_main("A2", "--status", "pending", "--host", "session"), pending)
+            self.assertEqual(run_main("A2", "--status", "pending", "--host", "offscreen"), (0, "", ""))
+        # A pending run that names no host is surveyed offscreen.
+        self.assertEqual(run_main("A2", "--status", "pending", "--host", "offscreen"),
+                         (0, "rename-with-f2/list-keyboard\n", ""))
+        self.assertEqual(run_main("A2", "--status", "pending", "--host", "session"), (0, "", ""))
+
+    def test_the_script_surveys_by_host_and_refuses_the_session_host_on_gtk(self):
+        script = (REPOSITORY / "scripts/qa-parity.sh").read_text(encoding="utf-8")
+        for listing in ('list --status "$status" --host offscreen', 'list --status "$status" --host session'):
+            self.assertIn(listing, script)
+        refused = subprocess.run([str(REPOSITORY / "scripts/qa-parity.sh"), "A8", "--host", "session",
+                                  "--target", "gtk"], capture_output=True, text=True, check=False)
+        self.assertEqual((refused.returncode, refused.stdout), (2, ""))
+        self.assertIn("takes no --target gtk", refused.stderr)
 
 
 class CountTests(unittest.TestCase):

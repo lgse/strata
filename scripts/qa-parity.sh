@@ -111,6 +111,10 @@ while (($#)); do
     *) echo "$usage" >&2; exit 2 ;;
   esac
 done
+if ((session_only)) && [[ "$targets" == gtk ]]; then
+  echo "--host session picks the Rune target's host: it takes no --target gtk." >&2
+  exit 2
+fi
 if ((counts)); then
   if ((narrowed)); then
     echo "$report is of the whole selection: it takes no --target, --pending, --parallel, --scenario or --host." >&2
@@ -131,8 +135,14 @@ if [[ "$targets" != "gtk rune" || "$status" != required ]]; then whole=0; fi
 list() { python3 "$repository/scripts/qa_parity.py" "$selection" "$@" "${scenario[@]}"; }
 gtk_runs="" rune_runs="" session_runs="" parallel=0 kind="$status"
 if [[ "$status" != required ]]; then
-  rune_runs="$(list --status "$status")" || exit 2
-  if ((session_only)); then session_runs="$rune_runs" rune_runs=""; fi
+  # A survey splits by host as the gate does: a pending run that will need the session host
+  # is surveyed there, not offscreen.
+  if ((session_only)); then
+    session_runs="$(list --status "$status")" || exit 2
+  else
+    rune_runs="$(list --status "$status" --host offscreen)" || exit 2
+    session_runs="$(list --status "$status" --host session)" || exit 2
+  fi
 else
   # What must pass differs by target: a parallel run is its scenario on GTK, its twin on Rune.
   kind="required or parallel"

@@ -1141,8 +1141,12 @@ the same file on GTK, on Xvfb as every GTK run does.
 ./scripts/qa-parity.sh A8 --host session    # every Rune run of A8 on the session host
 ```
 
-`--host session` runs a selection's Rune runs there whatever host their
-entries name, to see whether an offscreen run also passes in a real window.
+`--host session` runs every Rune run of the selection there, offscreen ones
+included, whatever host their entries name: a way to see whether an offscreen
+run also passes in a real window, and not a gate's evidence, which runs each
+row on its own host. It picks the Rune target's host, so it refuses
+`--target gtk`. A `--pending` or `--parallel` survey splits by host as the
+gate does: a pending row that names `host = "session"` is surveyed there.
 `mise run test-platform window::qa` drives the same host outside the image,
 in W3's private session.
 
