@@ -7,8 +7,8 @@
 //! - **Saved** as a preset's name or `custom` with its px (`frame_density`,
 //!   `browser_density` and their `*_custom_px`), by the shared rule
 //!   (`strata_desktop::settings::stored_density_px` and `store_density_px`), on
-//!   [`strata_kit::density`]'s scales: Frame 0 to 12 px, Compact 0 and Airy 4; Content 4 to
-//!   16 px, Compact 4 and Airy 8. The look follows them (`shell::follow_look`) at start and on
+//!   [`strata_kit::density`]'s scales: Frame 0 to 12 px, Compact 0 and Airy 4; Content 0 to
+//!   16 px, Compact 4 and Airy 8 (a Custom value below Compact too, as GTK allows). The look follows them (`shell::follow_look`) at start and on
 //!   every change.
 //! - **The sliders** (C20a's [`Slider`]), named "Frame" and "Content", their value text
 //!   "Compact · 4 px", "Airy · 8 px" or "Custom · 6 px". Arrows step 1 px and Page Up and
