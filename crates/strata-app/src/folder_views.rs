@@ -25,16 +25,36 @@
 //! notice cleared by the next write that succeeds) are only logged: this interface has no
 //! notice yet. A view reads a folder's values with [`views`], and follows a change by
 //! [`revision`].
+//!
+//! **The folders' sorts** (A10's): while `remember_folder_views` is on, the browser resolves a
+//! folder's sort through the store ([`Kept::follow_sorts`], GTK's `set_folder_sorts` binding),
+//! so a folder opens in its saved sort as its column is made. A folder only opened counts as
+//! used, and a write is asked [`USE_SAVE_DELAY`] later. A sort chosen in a remembered folder is
+//! kept for it ([`chosen`], `BrowserEvent::FolderSortChosen`), and when the folders' sorts
+//! change, here or in another process, the browser's columns follow
+//! (`resync_column_sorts`). The policy is `strata_desktop::settings::folder_sort_policy`.
+//!
+//! The store is shared with the browser's resolver, which the browser calls while it opens a
+//! folder: a caller of [`views`] drops the borrow before it calls into the browser.
 
-use std::time::Duration;
+use std::{
+    cell::{Cell, Ref, RefCell},
+    rc::Rc,
+    time::Duration,
+};
 
 use rune::Tx;
-use strata_core::model::{LoadHandle, Location};
+use strata_core::model::{FolderSort, LoadHandle, Location, SortOptions};
 use strata_desktop::settings::{
-    FOLDER_VIEWS_SAVE_DELAY as SAVE_DELAY, FolderViewStore, UnreadableAtStartup, Written,
-    folder_views::FolderViews, folder_views_path,
+    FOLDER_VIEWS_SAVE_DELAY as SAVE_DELAY, FOLDER_VIEWS_USE_SAVE_DELAY as USE_SAVE_DELAY,
+    FolderViewStore, Preferences, UnreadableAtStartup, Written, folder_sort_policy,
+    folder_views::{FolderViews, key_for_location},
+    folder_views_path,
 };
-use strata_fs::adapters::{Watched, watch};
+use strata_fs::{
+    adapters::{Watched, watch},
+    app::{Browser, FolderSortResolver},
+};
 
 use crate::{App, slots::Later};
 
@@ -83,7 +103,8 @@ impl Timer {
 
 /// The process's store, its timer, and what follows the file.
 pub(crate) struct Kept {
-    store: FolderViewStore,
+    /// Shared with the browser's resolver of folders' sorts ([`Kept::follow_sorts`]).
+    store: Rc<RefCell<FolderViewStore>>,
     timer: Timer,
     /// Moves whenever the values change, here or from another process.
     revision: u64,
@@ -94,6 +115,11 @@ pub(crate) struct Kept {
     exiting: bool,
     /// Follows what another Strata process, such as the portal chooser, saves.
     _monitor: LoadHandle,
+    /// The browser's resolver counted a folder only opened as used: a write is owed.
+    used: Rc<Cell<bool>>,
+    /// Moves when the folders' sorts may have changed, and what the browser's columns last
+    /// followed.
+    sorts: (u64, u64),
 }
 
 impl Kept {
@@ -101,18 +127,46 @@ impl Kept {
     pub(crate) fn load(later: Later<App>) -> Self {
         let monitor = follow_file(later.clone());
         Self {
-            store: FolderViewStore::load(),
+            store: Rc::new(RefCell::new(FolderViewStore::load())),
             timer: Timer::default(),
             revision: 0,
             exiting: false,
             later,
             _monitor: monitor,
+            used: Rc::default(),
+            sorts: (0, 0),
         }
+    }
+
+    /// Gives `browser` the folders' sorts while `remember_folder_views` is on, as GTK's
+    /// binding does (`set_folder_sorts`), before its first folder opens. The browser resolves
+    /// a folder's sort as its column is made, from the store.
+    pub(crate) fn follow_sorts(&self, browser: &Rc<Browser>, saved: &Preferences) {
+        if saved.remember_folder_views {
+            browser.set_folder_sorts(Some(self.resolver()));
+        }
+    }
+
+    /// `resolve_folder_sort`: a remembered folder's own sort, or the default.
+    fn resolver(&self) -> FolderSortResolver {
+        let (store, used) = (self.store.clone(), self.used.clone());
+        Rc::new(move |location: &Location, opened: bool| {
+            // The browser holds it only while folders' views are remembered.
+            let Some(key) = key_for_location(location) else {
+                return FolderSort::Unremembered;
+            };
+            let mut store = store.borrow_mut();
+            let (sort, touched) = folder_sort_policy::folder_sort(store.views_mut(), &key, opened);
+            if touched {
+                used.set(true);
+            }
+            sort
+        })
     }
 
     /// Asks for a write `delay` from now, unless one is due sooner (`schedule_folder_views_write`).
     fn schedule(&mut self, delay: Duration, tx: &mut Tx) {
-        if self.store.load_failure().is_some() {
+        if self.store.borrow().load_failure().is_some() {
             self.write(false);
             return;
         }
@@ -124,7 +178,7 @@ impl Kept {
     /// Starts a write of the values as they are (`write_folder_views`).
     fn write(&mut self, exit: bool) {
         self.timer.clear();
-        let pending = match self.store.begin_write(exit) {
+        let pending = match self.store.borrow_mut().begin_write(exit) {
             Ok(pending) => pending,
             Err(UnreadableAtStartup { path, error }) => {
                 // The GTK window shows that saving is off; this interface has no notice yet.
@@ -140,9 +194,13 @@ impl Kept {
     }
 }
 
-/// The values, as a view reads a folder's.
-pub(crate) fn views(app: &App) -> &FolderViews {
-    app.window.folder_views().store.views()
+/// The values, as a view reads a folder's. The borrow is dropped before anything calls into
+/// the browser, whose resolver borrows the store.
+pub(crate) fn views(app: &App) -> Ref<'_, FolderViews> {
+    Ref::map(
+        app.window.folder_views().store.borrow(),
+        FolderViewStore::views,
+    )
 }
 
 /// Moves whenever the values change: a view that shows a folder's value reads it again.
@@ -153,19 +211,40 @@ pub(crate) fn revision(app: &App) -> u64 {
 /// Changes the values; when `change` says they changed, a write is asked for.
 pub(crate) fn change(app: &mut App, change: impl FnOnce(&mut FolderViews) -> bool, tx: &mut Tx) {
     let kept = app.window.folder_views_mut();
-    if change(kept.store.views_mut()) {
+    let changed = change(kept.store.borrow_mut().views_mut());
+    if changed {
         kept.revision += 1;
         kept.schedule(SAVE_DELAY, tx);
+    }
+}
+
+/// A sort chosen in `location`, a remembered folder (`BrowserEvent::FolderSortChosen`): kept
+/// for it as `folder_sort_policy` says (`set_folder_sort_options`).
+pub(crate) fn chosen(app: &mut App, location: &Location, options: SortOptions, tx: &mut Tx) {
+    let settings = crate::shell::preferences(app);
+    let kept = folder_sort_policy::keep_folder_sort(settings, location, options);
+    if let Some(kept) = kept {
+        change(app, |views| kept.apply(views), tx);
+        app.window.folder_views_mut().sorts.0 += 1;
     }
 }
 
 /// From the window's poll: starts the write when it is due.
 pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
     let kept = app.window.folder_views_mut();
+    if kept.used.take() {
+        kept.schedule(USE_SAVE_DELAY, tx);
+    }
     match kept.timer.tick(clock) {
         Tick::Idle => {}
         Tick::Wait(left) => tx.wake_after(left),
         Tick::Due => kept.write(false),
+    }
+    // The folders' sorts changed: the open columns follow (`folder_sorts_revision`'s binding).
+    let (changed, followed) = kept.sorts;
+    if changed != followed {
+        kept.sorts.1 = changed;
+        app.browser.resync_column_sorts();
     }
 }
 
@@ -174,7 +253,7 @@ pub(crate) fn poll(app: &mut App, clock: f64, tx: &mut Tx) {
 /// and the last window closing may run both.
 pub(crate) fn flush_at_exit(app: &mut App) {
     let kept = app.window.folder_views_mut();
-    if !kept.exiting && kept.store.views().has_unsaved() {
+    if !kept.exiting && kept.store.borrow().views().has_unsaved() {
         kept.exiting = true;
         kept.write(true);
     }
@@ -195,7 +274,7 @@ fn saved(app: &mut App, written: Written, tx: &mut Tx) -> bool {
         Written::Saved { merged, write } => {
             // GTK clears its notice here, then shows what it adopted, then settles the write.
             let adopted = merged.is_some_and(|merged| kept.adopt(merged));
-            kept.store.finish_write(write);
+            kept.store.borrow_mut().finish_write(write);
             adopted
         }
     }
@@ -204,9 +283,11 @@ fn saved(app: &mut App, written: Written, tx: &mut Tx) -> bool {
 impl Kept {
     /// Merges this process's unsaved changes over what another one saved.
     fn adopt(&mut self, saved: FolderViews) -> bool {
-        let changed = self.store.adopt(saved);
+        let changed = self.store.borrow_mut().adopt(saved);
         if changed {
             self.revision += 1;
+            // What another process saved may hold other sorts.
+            self.sorts.0 += 1;
         }
         changed
     }
