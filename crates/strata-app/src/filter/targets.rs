@@ -61,6 +61,8 @@ pub(crate) fn at(app: &App, depth: usize, id: EntryId) -> Option<FileEntry> {
 pub(crate) fn of_row(app: &App, depth: usize, id: EntryId) -> Option<Vec<FileEntry>> {
     let entry = at(app, depth, id)?;
     let selected = selected(app).unwrap_or_default();
-    let within = selected.iter().any(|other| other.location == entry.location);
+    let within = selected
+        .iter()
+        .any(|other| other.location == entry.location);
     Some(if within { selected } else { vec![entry] })
 }

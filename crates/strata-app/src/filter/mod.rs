@@ -533,7 +533,12 @@ pub(crate) fn hit_intent(
         // A15's. A click closes no column. A slow second click renames as on any row, the
         // rename finding the result through [`targets`].
         Intent::Clicked { id } => {
-            if app.filter.found.get(id).is_some_and(FileEntry::is_directory) {
+            if app
+                .filter
+                .found
+                .get(id)
+                .is_some_and(FileEntry::is_directory)
+            {
                 open_hit(app, depth, *id);
             }
             true

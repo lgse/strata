@@ -3,6 +3,29 @@
 # The fields, the checks and who owns a new run are in docs/testing.md, "The ledger".
 
 [[run]]
+scenario = "confirmed-delete-acts-on-filter-result"
+run = "columns"
+package = "A10"
+status = "required"
+host = "offscreen"
+
+[[run]]
+scenario = "confirmed-delete-acts-on-filter-result"
+run = "icons"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10: the filter in Icons and List, at Ctrl+F on line 5"
+
+[[run]]
+scenario = "confirmed-delete-acts-on-filter-result"
+run = "list"
+package = "A10"
+status = "pending"
+reason = "scope"
+blocker = "A10: the filter in Icons and List, at Ctrl+F on line 5"
+
+[[run]]
 scenario = "delete-trashes-filtered-result"
 run = "columns"
 package = "A10"
@@ -284,7 +307,7 @@ run = "columns-inline"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10: renaming a filter result in Columns, at Return on line 39"
+blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `focus_renamed_column_result`, at line 41"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
@@ -308,7 +331,7 @@ run = "columns-tab"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10: renaming a filter result in Columns, at Return on line 39"
+blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `focus_renamed_column_result`, at line 41"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"

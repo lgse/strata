@@ -47,25 +47,29 @@ fn filtered_to_photo(host: &mut Offscreen) -> tempfile::TempDir {
 /// the entry the browser had selected before the filter.
 #[test]
 fn f2_on_a_filter_result_renames_the_result() {
-    hosted(MODULE, "filter::f2_on_a_filter_result_renames_the_result", |mut host| {
-        let _folder = filtered_to_photo(&mut host);
-        press(&mut host, "Down");
-        wait(&mut host, "the result under the cursor", |seen| {
-            seen.focused.as_deref() == Some("photo.txt")
-        });
+    hosted(
+        MODULE,
+        "filter::f2_on_a_filter_result_renames_the_result",
+        |mut host| {
+            let _folder = filtered_to_photo(&mut host);
+            press(&mut host, "Down");
+            wait(&mut host, "the result under the cursor", |seen| {
+                seen.focused.as_deref() == Some("photo.txt")
+            });
 
-        press(&mut host, "F2");
+            press(&mut host, "F2");
 
-        let reached = host.run_until(PATIENCE, |host| {
-            fields(host).iter().any(|(name, _)| name == "Rename")
-        });
-        let shown = fields(&host);
-        assert!(reached, "no rename editor: {shown:?}");
-        assert!(
-            shown.contains(&("Rename".to_owned(), "photo.txt".to_owned())),
-            "the editor names another entry: {shown:?}"
-        );
-    });
+            let reached = host.run_until(PATIENCE, |host| {
+                fields(host).iter().any(|(name, _)| name == "Rename")
+            });
+            let shown = fields(&host);
+            assert!(reached, "no rename editor: {shown:?}");
+            assert!(
+                shown.contains(&("Rename".to_owned(), "photo.txt".to_owned())),
+                "the editor names another entry: {shown:?}"
+            );
+        },
+    );
 }
 
 /// The field leaves with the Columns view: no part says it holds the keyboard in the view
@@ -88,4 +92,3 @@ fn a_view_switch_with_the_field_focused_leaves_no_filter_owner() {
         },
     );
 }
-

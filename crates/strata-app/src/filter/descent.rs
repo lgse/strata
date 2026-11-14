@@ -53,7 +53,12 @@ pub(super) fn finish(app: &mut App, tx: &mut Tx) {
     let Some(id) = app.filter.state.target(results(app)) else {
         return;
     };
-    let Some(folder) = app.filter.found.get(&id).filter(|entry| entry.is_directory()) else {
+    let Some(folder) = app
+        .filter
+        .found
+        .get(&id)
+        .filter(|entry| entry.is_directory())
+    else {
         return;
     };
     let folder = folder.location.clone();
