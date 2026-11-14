@@ -1079,7 +1079,12 @@ sequence only together with the alphabet's version, so the version is part of th
   `undo::tests::a_rename_is_undone_by_its_key_and_redone_by_either_of_redos` said
   "undo-target still absent" after its 30 s wait (`crates/strata-app/src/undo/tests.rs:59`).
   The branch did not touch undo. Alone, the test passed 3 of 3.
-- **Concerns:** that test, [A7](packages/A7.md)'s undo.
+  Seen again on 2026-11-14, in a full `mise run test-rune` for [A6](packages/A6.md)'s
+  entries' focusable state, run while a `./scripts/qa-parity.sh` gate loaded the machine:
+  `undo::tests::an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry` saw its
+  undo answer `Declined` where it expects `Ran` (`crates/strata-app/src/undo/tests.rs:156`).
+  The branch did not touch undo. Alone, the test passed.
+- **Concerns:** those two tests, [A7](packages/A7.md)'s undo.
 - **What it suggests:** a hypothesis, by reading only, not verified: the test presses the redo
   chord once the undone name is back on disk, and the operation's completion may not have
   reached the undo stack by then, so the redo finds nothing to redo.
