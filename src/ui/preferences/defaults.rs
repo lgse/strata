@@ -28,8 +28,8 @@ impl Default for Preferences {
             filter_include_subfolders: true,
             show_keybinding_hints: true,
             window_show_close: true,
-            window_show_minimize: false,
-            window_show_maximize: false,
+            window_show_minimize: default_window_show_minimize(),
+            window_show_maximize: default_window_show_maximize(),
             reduce_motion: false,
             element_glow: true,
             file_icon_colors: FileIconColors::default(),
@@ -201,4 +201,28 @@ pub(super) fn default_cross_volume_drop_strategy() -> String {
 
 pub(super) fn default_natural_sort() -> bool {
     true
+}
+
+pub(in crate::ui) fn default_window_show_minimize() -> bool {
+    decoration_layout_has_button("minimize")
+}
+
+pub(in crate::ui) fn default_window_show_maximize() -> bool {
+    decoration_layout_has_button("maximize")
+}
+
+fn decoration_layout_has_button(button: &str) -> bool {
+    if !gtk::is_initialized_main_thread() {
+        return false;
+    }
+    gtk::Settings::default()
+        .and_then(|settings| settings.gtk_decoration_layout())
+        .is_some_and(|layout| layout_contains_button(&layout, button))
+}
+
+pub(in crate::ui) fn layout_contains_button(layout: &str, button: &str) -> bool {
+    layout
+        .split(':')
+        .flat_map(|side| side.split(','))
+        .any(|candidate| candidate.trim() == button)
 }
