@@ -1,4 +1,4 @@
-{"scenario":"saved-keymap-applies-at-launch","modes":["columns"],"prefs":{"type_to_search":false,"keymap":{"default":{"rename":["<Control>e"]}}},"cost":{"columns":0.9},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"saved [keymap.default] replaces Rename keys at launch and in the F1 reference; keymap_overrides unit test pins load-then-dispatch"}}
+{"scenario":"saved-keymap-applies-at-launch","modes":["columns"],"prefs":{"type_to_search":false,"keymap":{"default":{"rename":["<Control>e"]}}},"cost":{"columns":0.9},"quality":{"impact":3,"coverage":2,"criticality":3,"diagnostic":4,"score":14,"note":"saved [keymap.default] replaces Rename keys at launch and in the F1 reference; keymap_overrides unit test pins load-then-dispatch"},"parity":{"twin":"saved-keymap-applies-at-launch-rune","exception":"a11y","ref":"lgse/strata#2466"}}
 {"select_with_keyboard":"readme.md","message":"keyboard focus to reach 'readme.md'"}
 {"key":"ctrl+e"}
 {"wait":{"field":{"text":"readme.md"}},"message":"the saved Ctrl+E to rename 'readme.md'"}
