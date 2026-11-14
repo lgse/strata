@@ -1014,8 +1014,9 @@ sequence only together with the alphabet's version, so the version is part of th
   select `pictures`, `readme.md` and `todo.txt`, a range from the entry anchored before it
   was deleted; without F5, both select `pictures` and `readme.md`. So the fault is the shared
   browser's, and Rune agrees with GTK on what the user sees.
-- **Concerns:** seeds `0x04` and `0x05` of `entries v1`, parked in
-  `tests/qa/fuzz/corpus/entries/`.
+- **Concerns:** seeds `0x04` and `0x05` of `entries v1`, and `0x01`, `0x0a`, `0x0b`, `0x0d`,
+  `0x0f` and `0x10` of `entries v3`, whose Undo with its Redo straight after meets it often,
+  parked in `tests/qa/fuzz/corpus/entries/`.
 - **State:** open, set aside, its sequences parked. The fault is `strata-fs`'s, in the
   browser both interfaces share, so GTK has it too: its fix belongs on `main`, from a bug
   issue there, and reaches `strata-next` by merge. The coordinator places it.
@@ -1419,3 +1420,18 @@ sequence only together with the alphabet's version, so the version is part of th
   [#2430](https://github.com/lgse/strata/pull/2430): Escape from a pane's results gives the
   listing the keyboard, as GTK does. F3's `qa::tests::invariants` filter tests in List and
   Icons go on past the Escape and hold the invariants there.
+
+### #2435: Redo after undoing a rename into a new path does not redo it
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2435), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [F3](packages/F3.md)'s `undo-redo` invariant, the runner's own, on GTK and on
+  Rune alike, in `entries` (seeds `0x0b` and `0x0a` of the draft v2, `0x04` and `0x0e` of
+  v3). F2 on `archive` with `kept/one` typed, so the rename moves it into a new folder; Ctrl+Z
+  puts `archive` back; Ctrl+Shift+Z or Ctrl+Y then does not redo the rename. Either nothing
+  changes, or, with an older operation on the redo history (`v3-0x04`: a Move to Trash
+  undone before), the Redo replays that one instead.
+- **State:** open, set aside, two `entries v3` seeds parked. The fault is in the undo history
+  both interfaces share, so its fix belongs on `main`; the coordinator places it with
+  [#2387](https://github.com/lgse/strata/issues/2387).
+
