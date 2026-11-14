@@ -390,8 +390,12 @@ harness refuses a session display that matches them.
 The task builds the peer and strata-platform's examples, then runs the `#[ignore]`d tests of
 `crates/strata-platform/tests/session/`, the gallery's `x2` and `x3`, and `strata-rune`'s
 `tests/window.rs`, which starts the real binary on a folder (`mise run test-platform
-window::`). `mise run test` and `check` never start a session. The gate for a change to a
-host, the shell or the key routing is `mise run test-platform window::`; a change to
+window::`). `window::qa` starts it in the QA mode's session host (`strata-rune --qa` with
+`STRATA_QA_WINDOW=1`, `crates/strata-app/src/qa/session.rs`): a real window serving the
+runner's protocol, with input through the compositor's virtual keyboard and pointer.
+`mise run test` and `check` never start a session. The gate for a change to a host, the
+shell, the key routing or the QA mode's session host is `mise run test-platform window::`;
+a change to
 `strata-platform` still owes its own session tests, and the gallery's `x2` and `x3` run on
 demand.
 

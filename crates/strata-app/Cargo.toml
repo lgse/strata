@@ -17,12 +17,17 @@ workspace = true
 # default build (the root package's `rar`). A build without UnRAR is `--no-default-features`.
 default = ["rar"]
 rar = ["strata-core/rar", "strata-fs/rar", "strata-preview/rar"]
-# The scripted `--qa` mode on the offscreen host (docs/rune/slice/V7-rune-qa-backend.md).
-# Never in a release build.
+# The scripted `--qa` mode (docs/rune/slice/V7-rune-qa-backend.md), on the offscreen host
+# or, in a compositor, on the session host, whose input goes through Wayland's virtual
+# keyboard and pointer. Never in a release build.
 qa = [
+    "dep:rustix",
     "dep:serde_json",
     "dep:strata-qa",
     "dep:unicode-segmentation",
+    "dep:wayland-client",
+    "dep:wayland-protocols-misc",
+    "dep:wayland-protocols-wlr",
     "dep:xkbcommon",
     "strata-core/qa",
 ]
@@ -44,10 +49,14 @@ gio.workspace = true
 glib.workspace = true
 image.workspace = true
 rust-i18n.workspace = true
+rustix = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 strata-qa = { workspace = true, optional = true }
 tracing.workspace = true
 unicode-segmentation = { workspace = true, optional = true }
+wayland-client = { workspace = true, optional = true }
+wayland-protocols-misc = { workspace = true, features = ["client"], optional = true }
+wayland-protocols-wlr = { workspace = true, features = ["client"], optional = true }
 xkbcommon = { workspace = true, optional = true }
 
 [dev-dependencies]
