@@ -17,7 +17,8 @@
 //!   ([`super::text_size`]). The popover stays open.
 //! - **Group by file type,** a `check menu item` checked while the setting is on and
 //!   sensitive only where the view shown groups (List); it saves the setting, regroups the
-//!   view shown and closes the popover.
+//!   view shown and closes the popover. The keyboard stays on the Appearance button, as GTK
+//!   leaves it (driven), though the regroup rebuilds the view, which takes it otherwise.
 //! - **Customize columns…,** a `menu item` shown in List alone: it closes the popover and opens
 //!   the List table's columns menu under its headings (`customize_columns_option`, then
 //!   `open_list_columns_popover`), the menu the List header's Columns button opens.
@@ -439,6 +440,7 @@ fn group_row(app: &App) -> El {
                 shell::saved(app).change(|settings| settings.group_by_type = on);
                 shell::regroup(app, tx);
                 close(app);
+                tx.focus(BUTTON, true);
             },
         },
     );
