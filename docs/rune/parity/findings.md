@@ -1412,4 +1412,7 @@ sequence only together with the alphabet's version, so the version is part of th
   results, then Escape. The listing comes back with `readme.md` selected, but no element has
   the keyboard, and Down and Up change nothing until a click. Without the Down, Escape gives
   the keyboard to `readme.md`. No merged alphabet opens a pane's filter yet.
-- **State:** open, [A10](packages/A10.md)'s.
+- **State:** fixed by [A10](packages/A10.md)'s
+  [#2430](https://github.com/lgse/strata/pull/2430): Escape from a pane's results gives the
+  listing the keyboard, as GTK does. F3's `qa::tests::invariants` filter tests in List and
+  Icons go on past the Escape and hold the invariants there.

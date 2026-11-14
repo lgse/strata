@@ -219,8 +219,8 @@ fn the_holds_follow_what_opens_and_a_hidden_view_does_nothing() {
 
 /// A filter's results take the place of a column's rows, and the browser holds none of their
 /// selection, as on GTK: the column is held to the browser by its listing and its pane by the
-/// results the tree draws, nested ones among them (`no` finds `documents/notes.txt`). Escape
-/// from the results of a pane is left out: it loses the keyboard (finding lgse/strata#2421).
+/// results the tree draws, nested ones among them (`no` finds `documents/notes.txt`), and Escape
+/// from the results gives the listing the keyboard again (finding lgse/strata#2421).
 fn a_filter_s_results_are_held_to_what_the_tree_draws(mode: &str, name: &str) {
     shown_in(mode, name, |backend, kept| {
         for (step, then) in [
@@ -233,6 +233,8 @@ fn a_filter_s_results_are_held_to_what_the_tree_draws(mode: &str, name: &str) {
                 json!({ "wait": { "field": {} } }),
             ),
             (json!({ "type": "no" }), json!({ "sleep": 500 })),
+            (json!({ "key": "Down" }), json!({ "sleep": 300 })),
+            (json!({ "key": "Escape" }), json!({ "sleep": 300 })),
             (json!({ "key": "Down" }), json!({ "sleep": 300 })),
         ] {
             passes(backend, kept, &step);
