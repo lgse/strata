@@ -4,6 +4,11 @@
 //! `src/ui/browser_modes/first_visit.rs` and its `on_load_finished` in
 //! `src/ui/browser_modes/events.rs`. GTK's list view, taking the keyboard with no cursor,
 //! focuses its first row; here the first row shown takes the cursor, with nothing selected.
+//!
+//! That cursor, and the one [`keep_on_first_row`] moves, reaches the browser through
+//! `handover::hand_over`, which commits it, where GTK's browser holds no cursor at all. No
+//! replay shows a difference: with nothing selected there is nothing for a command or
+//! `follow_selection_on_return` to take (finding lgse/strata#2427).
 
 use strata_components::collection::selection::AnchorRule;
 

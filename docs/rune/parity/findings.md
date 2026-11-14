@@ -1611,3 +1611,18 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, A6's, by the coordinator's ruling of 2026-11-14: C1 gets a way to end a
   collection's gestures, and the shell ends the shown view's gestures when a part starts
   holding the keyboard as a modal, in a `contract` pull request after the Run confirmation's.
+
+### #2460: after a regroup, Rune's matches keep a typed query's, GTK's show every entry
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2460), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the review of [#2458](https://github.com/lgse/strata/pull/2458), in a sequence
+  replayed GTK against Rune on the canonical fixture with type to search on: in List, open
+  `documents`, type `r`, switch views and back, then the Appearance popover's "Group by file
+  type". GTK's `app.matches` lists all three entries; Rune's only `report.md` and
+  `spreadsheet.csv`. It parts the same way on `strata-next` without #2458, so it is older.
+- **Why, not yet known:** it reads as the typed query outliving the regroup on Rune. Not
+  driven on GTK.
+- **Concerns:** the typed search ([A10](packages/A10.md)'s), through the regroup's rebuild
+  (`shell::regroup`, [A8](packages/A8.md)'s).
+- **State:** open, A10's.
