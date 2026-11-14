@@ -1434,4 +1434,3 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside, two `entries v3` seeds parked. The fault is in the undo history
   both interfaces share, so its fix belongs on `main`; the coordinator places it with
   [#2387](https://github.com/lgse/strata/issues/2387).
-
