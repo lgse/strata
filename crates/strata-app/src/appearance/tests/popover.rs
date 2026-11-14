@@ -334,6 +334,59 @@ fn group_by_file_type_regroups_the_list_and_hidden_files_shows_them() {
     );
 }
 
+/// Group by file type with a typed query showing in List closes the filter, its field and its
+/// results, and the List view shows the whole folder, grouped, with the keyboard left on the
+/// Appearance button: GTK's regroup rebuilds the List pane and its filter with it (driven;
+/// finding lgse/strata#2460).
+#[test]
+fn group_by_file_type_closes_a_typed_query_in_the_list() {
+    hosted_with(
+        MODULE,
+        "list",
+        String::new(),
+        "popover::group_by_file_type_closes_a_typed_query_in_the_list",
+        |mut host| {
+            let folder = fixture();
+            open(&mut host, LIST, folder.path());
+            for character in "todo".chars() {
+                press(&mut host, Key::Text(character.to_string()), Mods::default());
+            }
+            view::wait(&mut host, LIST, "the typed query's one result", |seen| {
+                seen.names() == ["todo.txt"]
+            });
+            let held = view::browser_holds(&host);
+
+            open_popover(&mut host);
+            return_on(&mut host, "appearance-group");
+            wait_closed(&mut host, "Group by file type");
+
+            assert!(shell::preferences(host.app()).group_by_type);
+            assert_eq!(view::field(&host), None, "the filter's field closed");
+            assert!(
+                !host.app().filter.pane.shows(),
+                "the filter's results closed"
+            );
+            let shown = view::wait(&mut host, LIST, "the whole folder, grouped", |seen| {
+                seen.entries.len() == 5
+            });
+            assert!(
+                shown.names().contains(&"todo.txt") && shown.names().contains(&"archive"),
+                "the folder's own entries show: {shown:#?}"
+            );
+            assert_eq!(
+                focused(&mut host).as_deref(),
+                Some(BUTTON),
+                "the keyboard stays on the Appearance button"
+            );
+            assert_eq!(
+                view::browser_holds(&host),
+                held,
+                "the browser's selection from before the query stays"
+            );
+        },
+    );
+}
+
 /// "Customize columns…" shows in List alone: it closes the popover and opens the List table's
 /// columns menu, with the keyboard in it, as the header's Columns button does. In Columns the
 /// row is not there.
