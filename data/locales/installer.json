@@ -17,7 +17,7 @@
   },
   "installer.tagline": {
     "en": "Navigate every layer.",
-    "hu": "Fedezzen fel minden réteget.",
+    "hu": "Böngéssze a könyvtárait akadálytalanul.",
     "fr": "Parcourez chaque couche.",
     "de": "Jede Ebene erkunden.",
     "es": "Navega por cada capa.",
@@ -47,7 +47,7 @@
   },
   "installer.failed": {
     "en": "Installation did not finish.",
-    "hu": "A telepítés nem fejeződött be.",
+    "hu": "Nem fejeződött be a telepítés.",
     "fr": "L’installation n’est pas terminée.",
     "de": "Die Installation wurde nicht abgeschlossen.",
     "es": "La instalación no terminó.",
@@ -77,7 +77,7 @@
   },
   "installer.cancelled": {
     "en": "Installation cancelled. No changes made.",
-    "hu": "A telepítés megszakítva. Nem történt módosítás.",
+    "hu": "Telepítés megszakítva. Nem történt módosítás.",
     "fr": "Installation annulée. Aucune modification effectuée.",
     "de": "Installation abgebrochen. Es wurden keine Änderungen vorgenommen.",
     "es": "Instalación cancelada. No se hicieron cambios.",
@@ -137,7 +137,7 @@
   },
   "installer.keys_choose": {
     "en": "↑/↓ choose · Enter continue · Esc cancel",
-    "hu": "↑/↓ választás · Enter tovább · Esc mégse",
+    "hu": "↑/↓ kiválasztás · Enter tovább · Esc mégse",
     "fr": "↑/↓ choisir · Entrée continuer · Échap annuler",
     "de": "↑/↓ auswählen · Eingabe fortfahren · Esc abbrechen",
     "es": "↑/↓ elegir · Intro continuar · Esc cancelar",
@@ -152,7 +152,7 @@
   },
   "installer.plain_toggle": {
     "en": "Toggle an option by number; Enter to install, q to cancel:",
-    "hu": "Kapcsoljon be vagy ki egy lehetőséget a számával; Enter a telepítéshez, q a megszakításhoz:",
+    "hu": "Kapcsoljon be vagy ki egy beállítást a számával; Enter a telepítéshez, q a megszakításhoz:",
     "fr": "Cochez par numéro ; Entrée pour installer, q pour annuler :",
     "de": "Option per Nummer umschalten; Eingabe zum Installieren, q zum Abbrechen:",
     "es": "Marca una opción por número; Intro para instalar, q para cancelar:",
@@ -197,7 +197,7 @@
   },
   "installer.standard": {
     "en": "Install Strata (recommended)",
-    "hu": "A Strata telepítése (ajánlott)",
+    "hu": "Strata telepítése (ajánlott)",
     "fr": "Installer Strata (recommandé)",
     "de": "Strata installieren (empfohlen)",
     "es": "Instalar Strata (recomendado)",
@@ -227,7 +227,7 @@
   },
   "installer.standard_hint": {
     "en": "Everything this system supports: launcher, folders, file chooser, and optional integrations.",
-    "hu": "Minden, amit ez a rendszer támogat: indító, mappák, fájlválasztó és opcionális integrációk.",
+    "hu": "Minden, amit ez a rendszer támogat: indító, mappák, fájlválasztó és nem kötelező integrációk.",
     "fr": "Tout ce que ce système prend en charge : lanceur, dossiers, sélecteur de fichiers et intégrations optionnelles.",
     "de": "Alles, was dieses System unterstützt: Starter, Ordner, Dateiauswahl und optionale Integrationen.",
     "es": "Todo lo que admite este sistema: lanzador, carpetas, selector de archivos e integraciones opcionales.",
@@ -242,7 +242,7 @@
   },
   "installer.custom_hint": {
     "en": "Choose desktop integrations and optional support.",
-    "hu": "Válassza ki az asztali integrációkat és az opcionális támogatást.",
+    "hu": "Válassza ki az asztali integrációkat és a nem kötelező támogatásokat.",
     "fr": "Choisissez l’intégration au bureau et les fonctions facultatives.",
     "de": "Desktop-Integration und optionale Unterstützung auswählen.",
     "es": "Elige la integración con el escritorio y las funciones opcionales.",
@@ -332,7 +332,7 @@
   },
   "installer.launcher_hint": {
     "en": "Add Strata to your application menu.",
-    "hu": "A Strata hozzáadása az alkalmazásmenühöz.",
+    "hu": "Strata hozzáadása az alkalmazásmenühöz.",
     "fr": "Ajoutez Strata au menu des applications.",
     "de": "Strata zum Anwendungsmenü hinzufügen.",
     "es": "Añade Strata al menú de aplicaciones.",
@@ -347,7 +347,7 @@
   },
   "installer.folders_hint": {
     "en": "Use Strata for folders and Open file location. Includes the launcher.",
-    "hu": "A Strata használata mappákhoz és a „Fájl helyének megnyitása” művelethez. Tartalmazza az indítót is.",
+    "hu": "Strata használata mappákhoz és a „Fájl helyének megnyitása” művelethez. Tartalmazza az indítót is.",
     "fr": "Utilisez Strata pour les dossiers et leur ouverture depuis d’autres applications. Lanceur inclus.",
     "de": "Strata für Ordner und das Öffnen von Dateispeicherorten verwenden. Starter inklusive.",
     "es": "Usa Strata para carpetas y para abrir la ubicación de archivos. Incluye el lanzador.",
@@ -407,7 +407,7 @@
   },
   "installer.chooser_hint": {
     "en": "Use Strata for portal dialogs. Restarts the portal service; close file dialogs first.",
-    "hu": "A Strata használata a portál párbeszédablakaihoz. Újraindítja a portálszolgáltatást; előbb zárja be a fájlpárbeszédablakokat.",
+    "hu": "Strata használata a portál párbeszédablakaihoz. Újraindítja a portálszolgáltatást; előbb zárja be a fájlpárbeszédablakokat.",
     "fr": "Utilisez Strata pour les dialogues de portail. Redémarre le service ; fermez d’abord les dialogues de fichiers.",
     "de": "Strata für Portal-Dialoge verwenden. Startet den Portal-Dienst neu; Dateidialoge vorher schließen.",
     "es": "Usa Strata para los diálogos del portal. Reinicia el servicio; cierra antes los diálogos de archivos.",
@@ -437,7 +437,7 @@
   },
   "installer.smb_hint": {
     "en": "Install optional SMB support for browsing network shares.",
-    "hu": "Opcionális SMB-támogatás telepítése a hálózati megosztások böngészéséhez.",
+    "hu": "SMB-támogatás telepítése a hálózati megosztások böngészéséhez. (Nem kötelező)",
     "fr": "Installez la prise en charge SMB pour parcourir les partages réseau.",
     "de": "Optionale SMB-Unterstützung zum Durchsuchen von Netzwerkfreigaben installieren.",
     "es": "Instala el soporte SMB opcional para explorar recursos compartidos de red.",
@@ -467,7 +467,7 @@
   },
   "installer.raw_hint": {
     "en": "Install optional image decoders for broader preview support.",
-    "hu": "Opcionális képdekóderek telepítése a szélesebb körű előnézeti támogatáshoz.",
+    "hu": "Képdekóderek telepítése a szélesebb körű előnézeti támogatáshoz. (Nem kötelező)",
     "fr": "Installez des décodeurs d’images pour élargir la prise en charge des aperçus.",
     "de": "Optionale Bilddecoder für zusätzliche Vorschauformate installieren.",
     "es": "Instala decodificadores de imágenes opcionales para ampliar las vistas previas.",
@@ -497,7 +497,7 @@
   },
   "installer.omarchy_hint": {
     "en": "Replace the file-manager shortcuts. A backup is kept.",
-    "hu": "A fájlkezelő gyorsbillentyűinek lecserélése. Biztonsági másolat készül.",
+    "hu": "Fájlkezelő gyorsbillentyűinek lecserélése. Biztonsági másolat készül.",
     "fr": "Remplacez les raccourcis du gestionnaire de fichiers. Une sauvegarde est conservée.",
     "de": "Dateimanager-Tastenkürzel ersetzen. Eine Sicherung wird erstellt.",
     "es": "Reemplaza los atajos del gestor de archivos. Se conserva una copia de seguridad.",
@@ -602,7 +602,7 @@
   },
   "installer.dependencies_ready": {
     "en": "All selected runtime packages are already installed.",
-    "hu": "Az összes kiválasztott futtatókörnyezeti csomag már telepítve van.",
+    "hu": "Már telepítve van az összes kiválasztott futtatókörnyezeti csomag.",
     "fr": "Tous les paquets d’exécution sélectionnés sont déjà installés.",
     "de": "Alle ausgewählten Laufzeitpakete sind bereits installiert.",
     "es": "Todos los paquetes de ejecución seleccionados ya están instalados.",
@@ -662,7 +662,7 @@
   },
   "installer.installing": {
     "en": "Installing Strata",
-    "hu": "A Strata telepítése",
+    "hu": "Strata telepítése",
     "fr": "Installation de Strata",
     "de": "Strata wird installiert",
     "es": "Instalando Strata",
@@ -677,7 +677,7 @@
   },
   "installer.download": {
     "en": "Download Strata %{version}",
-    "hu": "A Strata %{version} letöltése",
+    "hu": "Strata %{version} letöltése",
     "fr": "Télécharger Strata %{version}",
     "de": "Strata %{version} herunterladen",
     "es": "Descargar Strata %{version}",
@@ -692,7 +692,7 @@
   },
   "installer.download_manifest": {
     "en": "Download the signed release manifest",
-    "hu": "Az aláírt kiadási jegyzék letöltése",
+    "hu": "Aláírt kiadási jegyzék letöltése",
     "fr": "Télécharger le manifeste signé de la version",
     "de": "Signiertes Versionsmanifest herunterladen",
     "es": "Descargar el manifiesto firmado de la versión",
@@ -707,7 +707,7 @@
   },
   "installer.download_signatures": {
     "en": "Download the release signatures",
-    "hu": "A kiadás aláírásainak letöltése",
+    "hu": "Kiadás aláírásainak letöltése",
     "fr": "Télécharger les signatures de la version",
     "de": "Signaturen der Version herunterladen",
     "es": "Descargar las firmas de la versión",
@@ -722,7 +722,7 @@
   },
   "installer.signature": {
     "en": "Verify the release signature",
-    "hu": "A kiadás aláírásának ellenőrzése",
+    "hu": "Kiadás aláírásának ellenőrzése",
     "fr": "Vérifier la signature de la version",
     "de": "Signatur der Version überprüfen",
     "es": "Verificar la firma de la versión",
@@ -737,7 +737,7 @@
   },
   "installer.digest": {
     "en": "Verify the signed SHA-256 digest",
-    "hu": "Az aláírt SHA-256 kivonat ellenőrzése",
+    "hu": "Aláírt SHA-256 kivonat ellenőrzése",
     "fr": "Vérifier l'empreinte SHA-256 signée",
     "de": "Signierten SHA-256-Hash überprüfen",
     "es": "Verificar el resumen SHA-256 firmado",
@@ -752,7 +752,7 @@
   },
   "installer.unpack": {
     "en": "Unpack the verified release",
-    "hu": "Az ellenőrzött kiadás kicsomagolása",
+    "hu": "Ellenőrzött kiadás kicsomagolása",
     "fr": "Décompresser la version vérifiée",
     "de": "Überprüfte Version entpacken",
     "es": "Extraer la versión verificada",
@@ -767,7 +767,7 @@
   },
   "installer.application": {
     "en": "Install the application",
-    "hu": "Az alkalmazás telepítése",
+    "hu": "Alkalmazás telepítése",
     "fr": "Installer l’application",
     "de": "Anwendung installieren",
     "es": "Instalar la aplicación",
@@ -782,7 +782,7 @@
   },
   "installer.ready": {
     "en": "Ready to explore",
-    "hu": "Indulhat a felfedezés",
+    "hu": "Felfedezés megkezdése",
     "fr": "Tout est prêt pour explorer",
     "de": "Bereit zum Erkunden",
     "es": "Todo listo para explorar",
@@ -827,7 +827,7 @@
   },
   "installer.installed": {
     "en": "Strata %{version} is installed.",
-    "hu": "A Strata %{version} telepítve van.",
+    "hu": "A Strata %{version} telepítve lett.",
     "fr": "Strata %{version} est installé.",
     "de": "Strata %{version} ist installiert.",
     "es": "Strata %{version} está instalado.",
