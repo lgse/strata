@@ -7,11 +7,21 @@
 //!
 //! Here the results themselves move with their selection, so nothing is searched again.
 //! GTK captures the active column's filter, so a filter open in another Columns column closes.
+//!
+//! A tab switch, driven on GTK on 2026-11-14 with a query typed in the field:
+//!
+//! - **In Columns the filter closes,** as the keyboard leaves its column for the other tab
+//!   (`close_filter_after_blur` in `src/ui/browser/columns/append/shell.rs`). The tab comes
+//!   back with the whole listing and the keyboard in the column.
+//! - **In Icons and List it stays,** with its query and results, and the tab comes back with
+//!   the keyboard in the field, as GTK's `select` gives a tab back its saved focus. The shell
+//!   gives a tab back no field's focus (`shell::tabs`), so the field takes it back itself once
+//!   its pane is drawn, as after a `/`.
 
 use rune::Tx;
 use strata_components::collection::selection::Position;
 
-use super::{OpenIn, place::Where, route};
+use super::{OpenIn, Refocus, place::Where, route};
 use crate::{App, listing::Column};
 
 /// The view shown changed: the filter follows it into the folder it shows, or closes.
@@ -72,5 +82,27 @@ fn refocus(app: &mut App, place: Where, field: bool, tx: &mut Tx) {
     app.filter.state.edit.focused = false;
     if !app.filter.state.text().trim().is_empty() {
         tx.focus(place.view_key(), true);
+    }
+}
+
+/// The tab is about to be hidden: in Columns the filter closes; elsewhere the field's focus is
+/// noted for the tab's return.
+pub(super) fn tab_hidden(app: &mut App, tx: &mut Tx) {
+    let Some(open) = app.filter.open_in.as_ref() else {
+        return;
+    };
+    let field = app.filter.state.field_focused();
+    if open.place == Where::Columns {
+        let polled = app.filter.state.close();
+        route(app, polled, tx);
+    }
+    app.filter.state.edit.focused = false;
+    app.filter.back_to_field = field && app.filter.state.is_open();
+}
+
+/// The tab is shown again: the field takes the keyboard back if it had it.
+pub(super) fn tab_shown(app: &mut App) {
+    if std::mem::take(&mut app.filter.back_to_field) {
+        app.filter.refocus = Refocus::Waiting;
     }
 }
