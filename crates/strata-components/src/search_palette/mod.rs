@@ -122,7 +122,9 @@
 //! - The spinner: a progress indicator named "Indexing files…".
 //! - The results: a listbox ("Search results", "Visited folders") of options named by full
 //!   path (Strata's row name), the highlighted one selected; Rune gives virtual rows their set
-//!   size and positions (probe P3).
+//!   size and positions (probe P3). Each option holds two labels, its name and its full path,
+//!   as GTK's row holds its two `gtk::Label`s (`result_row` in `src/ui/search/results.rs`);
+//!   its icon or thumbnail is hidden.
 //! - The status (`{key}-status`): a polite live region with the state's words, or, while results
 //!   show, a hidden one with their count (probe P5), set at the query's first results and again
 //!   when it is done, not on every batch (owner ruling).
