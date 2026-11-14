@@ -584,7 +584,7 @@ impl CollectionState {
 
     /// Ends the pointer's gesture: the press held, the click run and a rename a click left
     /// pending. The next press is a run's first, as after a press elsewhere. A host calls it
-    /// when a modal layer opens over the collection, as GTK's grab ends the gesture under it.
+    /// when a modal layer opens over the collection, as GTK's modal layer ends the gesture under it.
     ///
     /// A marquee in progress and the keyboard's state are left as they are: the marquee's
     /// reset drops its band without touching the selection, which would keep the band's half

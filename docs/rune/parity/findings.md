@@ -1618,8 +1618,8 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `executable-requires-confirmation/columns` (line 9), and any double-click
   soon after a dialog over the view closes.
 - **State:** fixed by [A6](packages/A6.md)'s [#2461](https://github.com/lgse/strata/pull/2461): a part that starts answering
-  `Holds::Modal` ends the shown view's pointer gestures (`shell/grab.rs`), as GTK's grab
-  does, and `executable-requires-confirmation/columns` is `required`.
+  `Holds::Modal` ends the shown view's pointer gestures (`shell/grab.rs`), as GTK's modal
+  layer does, and `executable-requires-confirmation/columns` is `required`.
 
 ### #2460: after a regroup, Rune's matches keep a typed query's, GTK's show every entry
 
