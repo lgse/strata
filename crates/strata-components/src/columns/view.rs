@@ -120,6 +120,7 @@ pub(super) struct Shared<S> {
     pub(super) parts_mut: PartsMutFn<S>,
     collection: Option<CollFn<S>>,
     pub(super) actions: Option<ActionsFn<S>>,
+    pub(super) band: Option<ActionsFn<S>>,
     marks: Option<MarksFn<S>>,
     pointer: PointerFn<S>,
     escape_closes: FlagFn<S>,
@@ -137,6 +138,7 @@ impl<S> Clone for Shared<S> {
             parts_mut: self.parts_mut.clone(),
             collection: self.collection.clone(),
             actions: self.actions.clone(),
+            band: self.band.clone(),
             marks: self.marks.clone(),
             pointer: self.pointer.clone(),
             escape_closes: self.escape_closes.clone(),
@@ -212,6 +214,7 @@ impl<S: 'static> ColumnsView<S> {
                 parts_mut: Rc::new(parts_mut),
                 collection: None,
                 actions: None,
+                band: None,
                 marks: None,
                 pointer: Rc::new(|_| PointerSettings::default()),
                 escape_closes: Rc::new(|_| true),
@@ -264,6 +267,15 @@ impl<S: 'static> ColumnsView<S> {
     /// don't take focus on a click).
     pub fn header_actions(self, f: impl Fn(&S, HeaderCx) -> Option<El> + 'static) -> Self {
         self.with(|sh| sh.actions = Some(Rc::new(f)))
+    }
+
+    /// A band under a column's header, across the column: the host's, for any column it
+    /// returns one for (Strata's filter field, in a revealer under the header,
+    /// `src/ui/browser/columns/append/header.rs`). It is part of the header above the rows,
+    /// so the rows start under it; a press on its parts is theirs. Build it `.focusable(false)`
+    /// but for a field that takes the keyboard itself.
+    pub fn header_band(self, f: impl Fn(&S, HeaderCx) -> Option<El> + 'static) -> Self {
+        self.with(|sh| sh.band = Some(Rc::new(f)))
     }
 
     /// The host's marks on each row (cut, dragging, the Enter target); the view adds the open
@@ -385,6 +397,21 @@ impl<S: 'static> ColumnsView<S> {
     }
 }
 
+/// Column `serial`'s row height: one line, or the name and a two-line detail under it while
+/// the host gives the column's rows details ([`ColumnSources::has_details`]).
+fn row_height<S: 'static>(sh: &Shared<S>, s: &S, serial: u64, look: &Look) -> f32 {
+    let p = (sh.parts)(s);
+    let details = p
+        .state
+        .depth_of(serial)
+        .filter(|d| *d < p.sources.len())
+        .is_some_and(|d| p.sources.has_details(d));
+    match details {
+        true => super::badge::detailed_height(look),
+        false => look.row.columns,
+    }
+}
+
 /// Column `serial`'s collection as the view builds it.
 pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> Collection<S> {
     let p = (sh.parts)(s);
@@ -456,8 +483,9 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
             f(s, Some((depth_of(&act, s, serial)?, target)), offer, mods)
         });
     }
+    let tall = sh.clone();
     c.name(title)
-        .row_height(|_: &S, l: &Look| l.row.columns)
+        .row_height(move |s: &S, l: &Look| row_height(&tall, s, serial, l))
         .keys_by_host()
         .settings(pointer)
         .settings(autoscroll)

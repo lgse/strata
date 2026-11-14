@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! The filter (A10): C18's [`FilterBar`] in a Columns column's header, and under the pane's
-//! header in Icons and List ([`pane`]), as GTK's pane filter (`filter_controls` in
+//! The filter (A10): C18's [`FilterBar`] in a band under a Columns column's header (C2's
+//! `header_band`), and under the pane's header in Icons and List ([`pane`]), as GTK's pane
+//! filter (`filter_controls` in
 //! `src/ui/browser_modes/filter.rs`, the column's in `src/ui/browser/columns/append/header.rs`
 //! and `query.rs`).
 //!
@@ -30,9 +31,12 @@
 //! - **It closes** with Escape, from its field or its results, and when its column shows
 //!   another folder or goes; a new item in its column empties it first ([`clear_for_new_item`]).
 //!   The keyboard goes back to the view, on the entry the listing had.
+//! - **A result's path** shows under its name while the filter searches the subfolders: in
+//!   Columns its whole path, as C2's detail line, in Icons and List the path under
+//!   the folder ([`pane`]).
 //!
 //! Not yet: a folder that is not local, which GTK narrows in place, the results' thumbnails,
-//! a Columns result's path line, a renamed result keeping the cursor, and the field's own menu.
+//! a renamed result keeping the cursor, and the field's own menu.
 //! `docs/rune/parity/packages/A10.md` keeps the list.
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
@@ -519,6 +523,14 @@ pub(crate) fn status_element(app: &App) -> Option<El> {
     )
 }
 
+/// The result the filter's Enter would open, while it is outlined (C18's `outlined`): what the
+/// QA backend reads as an entry's `marked` state.
+#[cfg(feature = "qa")]
+pub(crate) fn outlined(app: &App) -> Option<EntryId> {
+    app.filter.open_in.as_ref()?;
+    app.filter.state.outlined(results(app))
+}
+
 /// C18's Enter target among column `depth`'s results.
 pub(crate) fn marks(app: &App, depth: usize, id: EntryId) -> RowMarks {
     let outlined = app
@@ -592,7 +604,8 @@ pub(crate) fn hit_intent(
     }
 }
 
-/// The column header's filter: its toggle, and the field while the filter is open there.
+/// The column header's filter: its toggle. The field is in the band under the header
+/// ([`column_band`]).
 pub(crate) fn column_actions(app: &App, depth: usize) -> Vec<El> {
     let look = &app.look;
     let open_here = app
@@ -612,11 +625,19 @@ pub(crate) fn column_actions(app: &App, depth: usize) -> Vec<El> {
     .key(format!("columns-filter-{depth}"))
     // Not a focus stop, as every column header's action (C2's slot).
     .focusable(false);
-    let mut actions = vec![toggle];
-    if open_here && let Some(field) = bar(app).build(app, look) {
-        actions.push(field.w(look.frame.control * 6.0));
+    vec![toggle]
+}
+
+/// The band under column `depth`'s header: the field, while the filter is open there, across
+/// the column, as GTK's revealer under the header (`column_header` in
+/// `src/ui/browser/columns/append/header.rs`).
+pub(crate) fn column_band(app: &App, depth: usize) -> Option<El> {
+    let open = app.filter.open_in.as_ref()?;
+    let here = open.place == Where::Columns && open.depth == depth && app.filter.state.is_open();
+    if !here {
+        return None;
     }
-    actions
+    bar(app).build(app, &app.look)
 }
 
 /// The toggle: on opens the filter in its column with the keyboard in it, off closes it.

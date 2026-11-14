@@ -149,9 +149,19 @@
 //!   its ramp), not C1e's row-height steps: the view replaces C1e's through `on_drag_over`.
 //! - **A swapped-in sibling's shell keeps the old column's width until it springs to the new
 //!   one**, when they differ (the shell is kept so the new body fades in in place).
-//! - **The header's actions are a slot**: Refresh, sort, Sort by, the filter field and Empty
-//!   Trash are the host's ([`ColumnsView::header_actions`]); the view adds the close button in
-//!   the targeted column after the first.
+//! - **The header's actions are a slot**: Refresh, sort, Sort by, the filter's toggle and
+//!   Empty Trash are the host's ([`ColumnsView::header_actions`]); the view adds the close
+//!   button in the targeted column after the first.
+//! - **A band under the header is a slot too** ([`ColumnsView::header_band`]): Strata's filter
+//!   field, in its revealer under the header across the column. It belongs to the header, so
+//!   the rows start under it; the view draws nothing there itself.
+//! - **A row's detail line is the host's** ([`ColumnSources::detail`]): Strata's search
+//!   results show under each name the folder it was found in, wrapped to two lines and muted
+//!   (`.file-search-path`). While the host says a column's rows have details
+//!   ([`ColumnSources::has_details`]) all its rows are that much taller, so a column keeps one
+//!   row height; no detail, and no taller row, by default. The line is keyed as a label in a
+//!   box of its own ([`keys::DETAIL`]), and hidden from assistive technology, as the name is:
+//!   the host describes the row.
 //! - **The header title is bold**, as Strata's (700): the kit's type scale stops at medium, so
 //!   the weight is a slot token (`columns.header.title_weight`).
 //! - **The badge's text is the row's accessible description** (C2b, owner ruling), where Strata

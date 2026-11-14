@@ -3,6 +3,9 @@
 //! A search result as the window shows one: GTK's `search_result_entry`
 //! (`src/ui/browser/collection.rs`), the entry the browser's checks and a row are made from.
 
+use std::collections::HashMap;
+
+use strata_components::contract::EntryId;
 use strata_core::model::{FileEntry, Location, MetadataValue};
 use strata_fs::services::SearchItem;
 
@@ -26,4 +29,13 @@ pub(super) fn entry_of(item: &SearchItem) -> FileEntry {
         listable: MetadataValue::Unknown,
         recent_uri: None,
     }
+}
+
+/// Each result's path as the window shows a folder's (`display_path`), by its id: what a
+/// Columns result shows under its name (`show_origin`).
+pub(super) fn paths(found: &HashMap<EntryId, FileEntry>) -> HashMap<EntryId, String> {
+    found
+        .iter()
+        .map(|(id, entry)| (*id, entry.location.display_path()))
+        .collect()
 }

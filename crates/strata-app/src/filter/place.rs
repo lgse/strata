@@ -143,7 +143,12 @@ impl Where {
         tx: &mut Tx,
     ) {
         match self {
-            Self::Columns => app.columns.show_hits(depth, hits, clear, tx),
+            Self::Columns => {
+                let paths = super::hits::paths(&app.filter.found);
+                let details = app.filter.pane.recursive;
+                app.columns.describe_hits(paths, details);
+                app.columns.show_hits(depth, hits, clear, tx);
+            }
             _ if self.depth_shown(app, depth) => {
                 app.filter.pane.show(self, hits, clear, tx);
             }
