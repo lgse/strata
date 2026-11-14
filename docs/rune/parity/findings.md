@@ -1063,3 +1063,31 @@ sequence only together with the alphabet's version, so the version is part of th
   reached the undo stack by then, so the redo finds nothing to redo.
 - **State:** placed by the coordinator, 2026-11-13: unowned flake beside #2322; if it recurs
   outside load, it goes to whoever next works in undo.
+
+### #2405: an open plain popover is a named dialog on Rune and an unnamed panel on GTK
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2405), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A8](packages/A8.md)'s `views` alphabet's first smoke tier (v1, never merged):
+  14 of 20 sequences parted at the click that opens the Appearance popover, on `app.dialog`,
+  `null` on GTK and "Appearance" on Rune.
+- **Why:** GTK's `GtkPopover` has the accessible role `generic` and no name: the GTK QA tree,
+  driven (`./scripts/qa-drive.sh`, 2026-11-13), reports the open Appearance popover as
+  `GtkPopover role="panel"` with `GtkPopoverContent role="panel"` inside, both unnamed, from
+  `widget.accessible_role()` (`role_name` in `src/qa/targets/naming.rs` maps `Generic` to
+  `panel`). That is what GTK exposes to AT-SPI too. Rune's `popover::Plain` gives the surface
+  the role `dialog` and names it (rune-kit's popover does the same), and strata-qa's
+  `open_dialog` names the first rendered `dialog` in `app.dialog`. So a screen reader hears
+  "Appearance, dialog" on Rune and an unnamed panel on GTK: not a QA artifact only.
+- **Concerns:** every plain popover: the Appearance popover, the Icons header's "Thumbnail
+  size" ([A5](packages/A5.md)), and "Customize columns…"'s menu is C4's and not one. The
+  `views` alphabet keeps its popover actions; its smoke tier parts there until this is ruled.
+- **Options for the owner:**
+  1. Rune keeps the named `dialog`, the more useful role for assistive technology, and the
+     normalisation map gains a rule for `app.dialog` while a plain popover is open, which
+     needs the owner's ruling as every map rule does.
+  2. `Plain` drops to an unnamed generic group, matching GTK's AT-SPI exactly, and assistive
+     technology loses the popover's name and role.
+  3. The QA backend leaves plain popovers out of `app.dialog`. Wrong if option 1's role
+     stands, since it would hide a real difference from the comparison rather than rule it.
+- **State:** open, with the owner by the coordinator (2026-11-13). [A8](packages/A8.md)'s.

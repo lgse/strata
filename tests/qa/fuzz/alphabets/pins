@@ -22,4 +22,7 @@ list v3 53cac7ac7cdfa46c
 # tests/qa/fuzz/corpus/location.
 location v2 c074595ff2aab0b4
 sidebar v1 4acfcd20a194fff5
-views v1 a92264bb6b525f37
+# views: version 1 was A8's first draft, never merged: its smoke tier met the plain popover's
+# app.dialog (lgse/strata#2405), Up off a first row, and #2386, since fixed. Version 2 has the
+# Up guard.
+views v2 e8e930c9ab4c3843
