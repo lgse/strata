@@ -1075,8 +1075,8 @@ sequence only together with the alphabet's version, so the version is part of th
   `gtk,rune`), the next Menu key opens the selected entry's context menu.
 - **Also seen:** a focused sidebar row that goes away by a drag (seed `0x10`) or by Unpin
   (seed `0x0e`) leaves no element with the keyboard too. Neither has been checked on GTK.
-- **State:** the hidden sidebar fixed by [F3](packages/F3.md)'s keyboard-owner pull
-  request: the toggle gives the shown view the keyboard when it hides the sidebar with the
+- **State:** the hidden sidebar fixed by [F3](packages/F3.md)'s
+  [#2409](https://github.com/lgse/strata/pull/2409): the toggle gives the shown view the keyboard when it hides the sidebar with the
   keyboard in it (`sidebar/width.rs`), held by
   `sidebar::tests::hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view`.
   The drag and Unpin cases are open, to be placed.
@@ -1092,6 +1092,6 @@ sequence only together with the alphabet's version, so the version is part of th
   owner of every key, as GTK's `input_owner` treats a menu. No key was seen to leak: Rune's
   menu takes the keys it is sent. The QA snapshot's `menu` reads `[]` for it, since its rows
   are check menu items.
-- **State:** fixed by [F3](packages/F3.md)'s keyboard-owner pull request: the part holds
+- **State:** fixed by [F3](packages/F3.md)'s [#2409](https://github.com/lgse/strata/pull/2409): the part holds
   `Holds::Menu` while the menu is open, held by
   `location::tests::the_hierarchy_menu_holds_the_keyboard_while_it_is_open`.
