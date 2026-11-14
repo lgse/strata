@@ -63,7 +63,10 @@ pub(crate) fn open_dialog<B: Backend + ?Sized>(
         .find_map(|role| rendered_with_role(backend, presented, role).next().cloned())
 }
 
-/// The list or table of search results, and the role its rows have.
+/// The list or table of a filter's search results, and the role its rows have. A list of
+/// that name inside a dialog is not one: the filter's results are never in a dialog, and the
+/// Rune search palette's are ("Search results" in a dialog, where GTK's palette list has no
+/// name).
 pub(crate) fn search_results<B: Backend + ?Sized>(
     backend: &B,
     presented: &[B::Node],
@@ -78,9 +81,16 @@ pub(crate) fn search_results<B: Backend + ?Sized>(
                     backend.role(node) == role
                         && rendered(backend, node)
                         && backend.name(node) == label
+                        && !in_dialog(backend, node)
                 })
                 .map(|results| (results.clone(), row_role))
         })
+}
+
+/// Whether `node` is inside a dialog or an alert.
+fn in_dialog<B: Backend + ?Sized>(backend: &B, node: &B::Node) -> bool {
+    std::iter::successors(backend.parent(node), |above| backend.parent(above))
+        .any(|above| matches!(backend.role(&above), "dialog" | "alert"))
 }
 
 /// The rows of the search results, or of the whole of `root` when no results are shown.

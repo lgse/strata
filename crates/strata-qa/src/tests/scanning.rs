@@ -232,3 +232,37 @@ fn dialog_menu_preview_peek_results_and_field_are_found_by_role_and_label() {
         ("Filter", "todo")
     );
 }
+
+#[test]
+fn a_search_results_list_inside_a_dialog_is_no_filters_results() {
+    let mut fake = Fake::new();
+    let (_, home) = pane(&mut fake, "home", "Columns", 0.0);
+    entry(&mut fake, home, "notes", [0.0, 40.0], true);
+    let palette = fake.add(
+        WINDOW,
+        drawn(
+            "dialog",
+            "Search files and folders…",
+            [200.0, 100.0, 400.0, 300.0],
+        ),
+    );
+    let results = fake.add(
+        palette,
+        drawn("list", "Search results", [200.0, 160.0, 400.0, 200.0]),
+    );
+    fake.add(
+        results,
+        drawn(
+            "list item",
+            "/home/u/notes.txt",
+            [200.0, 160.0, 400.0, 30.0],
+        ),
+    );
+
+    let observation = scan(&fake, &WINDOW).observation;
+    assert_eq!(
+        observation.results, None,
+        "a palette's list is not the filter's"
+    );
+    assert_eq!(observation.matches(None), ["notes"]);
+}
