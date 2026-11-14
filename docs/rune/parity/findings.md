@@ -997,3 +997,22 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside, its sequences parked. The fault is `strata-fs`'s, in the
   browser both interfaces share, so GTK has it too: its fix belongs on `main`, from a bug
   issue there, and reaches `strata-next` by merge. The coordinator places it.
+
+### #2397: the "Column width" caption can't be read on the Rune interface
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2397), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the owner, in Columns in a dark theme: resting on or dragging a column's edge
+  showed the caption as a light box whose text could not be seen. C9's divider caption, over
+  the preview drawer's edge and inside its minimum outline, had the same fault. GTK draws both
+  as `.resize-caption` (`src/style.css`): the accent, written in the background
+  (`@strata_accent`, `@strata_bg`), with no border.
+- **Why:** both captions filled with Kit's `surface_float` and wrote in `text_base`. rune-kit's
+  `surface_float` is the palette's foreground, an inverted tooltip surface that its own
+  tooltip pairs with inverse text, and strata-kit leaves it at `from_palette`'s value, so
+  Strata's text sat on a fill of nearly its own colour, in light themes as in dark.
+- **Concerns:** `crates/strata-components/src/columns/column.rs` and
+  `crates/strata-components/src/preview_drawer/divider.rs`; no scenario reads colours.
+- **State:** fixed by PR_LINK: both captions take
+  `Look::resize_caption`, Kit's `bg_accent` and `text_inverse` (Strata's accent and
+  background), and draw no border, as GTK does; `columns.caption.border` now defaults to 0.
