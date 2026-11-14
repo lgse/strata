@@ -1,22 +1,19 @@
 diff --git a/crates/strata-app/src/shortcuts/contents.rs b/crates/strata-app/src/shortcuts/contents.rs
-index 8f8cc9d16..5da301e74 100644
+index 8f8cc9d16..edfa77070 100644
 --- a/crates/strata-app/src/shortcuts/contents.rs
 +++ b/crates/strata-app/src/shortcuts/contents.rs
-@@ -11,7 +11,7 @@
- 
- use strata_desktop::keys::{
-     Keys::{self, Any, One},
--    Modifiers,
-+    Binding, Key, Modifiers,
-     bindings::*,
-     shown,
- };
-@@ -303,7 +303,7 @@ const DEFAULT_FILES: &[Shortcut] = &[
+@@ -303,7 +303,13 @@ const DEFAULT_FILES: &[Shortcut] = &[
      ),
      row(One(UNDO.shown()), "Undo the last file operation"),
      row(One(REDO.shown()), "Redo the last file operation"),
 -    row(One(RENAME.shown()), "Rename"),
-+    row(One(Binding::new(Key::F2, Modifiers::empty()).shown()), "Rename"),
++    row(
++        One(
++            strata_desktop::keys::Binding::new(strata_desktop::keys::Key::F2, Modifiers::empty())
++                .shown(),
++        ),
++        "Rename",
++    ),
      within(
          "%{keys} in a rename",
          Any(shown![FOCUS_NEXT, FOCUS_PREVIOUS]),

@@ -190,7 +190,7 @@ fn chord(binding: Binding) -> Option<Chord> {
     let chord_key = if let Some(n) = function {
         ChordKey::Function(u8::try_from(n + 1).ok()?)
     } else if let Some((_, named)) = named.iter().find(|(named, _)| *named == key) {
-        named.clone()
+        *named
     } else {
         ChordKey::Char(key.to_unicode()?)
     };
