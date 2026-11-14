@@ -1640,3 +1640,19 @@ sequence only together with the alphabet's version, so the version is part of th
   (`shell::regroup`, [A8](packages/A8.md)'s).
 - **State:** fixed by [#2465](https://github.com/lgse/strata/pull/2465): the Group row
   closes the filter before it regroups, in a view that groups (`filter::close_for_regroup`).
+
+### #2469: the tab strip's close buttons are named "Close tab" in English in every language
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2469), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by the review of [#2464](https://github.com/lgse/strata/pull/2464): each tab's
+  close button in the Rune window's strip is named "Close tab" in English, whatever the
+  language. GTK names it with the catalogs' "Close tab" (`src/ui/window/composition/tabs/strip.rs`),
+  which all thirteen languages translate.
+- **Why:** rune-kit's `TabStrip` labels the button itself (`rune-kit/src/shell/tab_strip/tab.rs:307`
+  at `2a44156`) and offers no way to set it: only the close icon and whether the button is a
+  Tab stop are settable, so C7's `BrowserTabs` cannot pass Strata's label.
+- **Concerns:** the strip's accessible names ([A4](packages/A4.md)'s done-when item 2) in the
+  twelve languages other than English. No run reads the name in another language.
+- **State:** open, no workaround. Rune packet entry
+  [39](../upstream/rune/39-kit-tab-strip.md), item 1 (U-C7-1), asks for `close_label`.
