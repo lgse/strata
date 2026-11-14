@@ -224,7 +224,20 @@ pub(crate) fn chosen(app: &mut App, location: &Location, options: SortOptions, t
     let settings = crate::shell::preferences(app);
     let kept = folder_sort_policy::keep_folder_sort(settings, location, options);
     if let Some(kept) = kept {
-        change(app, |views| kept.apply(views), tx);
+        change_sorts(app, |views| kept.apply(views), tx);
+    }
+}
+
+/// Changes the folders' sorts (a sort kept, forgotten or pruned): when they changed, a write
+/// is asked for and the open columns follow at the next poll.
+pub(crate) fn change_sorts(
+    app: &mut App,
+    change_views: impl FnOnce(&mut FolderViews) -> bool,
+    tx: &mut Tx,
+) {
+    let before = revision(app);
+    change(app, change_views, tx);
+    if revision(app) != before {
         app.window.folder_views_mut().sorts.0 += 1;
     }
 }

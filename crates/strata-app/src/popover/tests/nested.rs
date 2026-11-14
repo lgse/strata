@@ -13,7 +13,7 @@ use super::{centre, click_at, idle};
 use crate::{
     App,
     commands::Holds,
-    popover::{Parent, Plain, focus_left},
+    popover::{Kind, Parent, Plain, focus_left},
     slots::{Entry, Frame, Place},
     test_support::{PATIENCE, hosted_over, idle_view},
 };
@@ -55,7 +55,8 @@ fn nest(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
             .child(button(app, PARENT_STOPS[1]));
         let parent = Plain {
             key: "made-parent",
-            anchor: ANCHOR,
+            anchor: ANCHOR.into(),
+            kind: Kind::Dialog,
             label: "Parent".to_owned(),
             stops: PARENT_STOPS.to_vec(),
             own_arrows: &[],
@@ -69,7 +70,8 @@ fn nest(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         let body = col().padding(16.0).child(button(app, CHILD_STOPS[0]));
         let child = Plain {
             key: "made-child",
-            anchor: PARENT_STOPS[1],
+            anchor: PARENT_STOPS[1].into(),
+            kind: Kind::Dialog,
             label: "Child".to_owned(),
             stops: CHILD_STOPS.to_vec(),
             own_arrows: &[],

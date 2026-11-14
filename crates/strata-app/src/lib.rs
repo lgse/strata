@@ -80,6 +80,7 @@ mod appearance;
 // A9 Pointer and click modes
 // A10 Search, filter and sort
 mod filter;
+mod sort;
 // A11 10xer mode
 // A12 Clipboard and conflicts
 // A13 Archives and providers
@@ -122,6 +123,7 @@ slots::parts! {
     // A9 Pointer and click modes
     // A10 Search, filter and sort
     filter: filter::Filter,
+    sort: sort::Sort,
     // A11 10xer mode
     // A12 Clipboard and conflicts
     // A13 Archives and providers
