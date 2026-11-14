@@ -114,6 +114,23 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
     if moved {
         heard.then(App::retitle);
     }
+    // A sort chosen in a remembered folder is kept for it (A10's).
+    if let BrowserEvent::FolderSortChosen {
+        location,
+        sort_key,
+        sort_direction,
+        name_comparison,
+    } = event
+    {
+        let (location, options) = (
+            location.clone(),
+            (*sort_key, *sort_direction, *name_comparison),
+        );
+        heard.then(move |app: &mut App, tx: &mut Tx| {
+            folder_views::chosen(app, &location, options, tx);
+            false
+        });
+    }
 }
 
 impl App {
@@ -174,6 +191,8 @@ impl App {
         let keys = Live::registered(saved, first_window_reports().as_deref());
         let thumbnails = thumbnail_store(saved);
         let folder_views = folder_views::Kept::load(later.clone());
+        // Before the first folder opens, so it opens in its saved sort (A10's).
+        folder_views.follow_sorts(&browser, saved);
         let mut look = Look::fallback(true);
         follow_saved_look(&mut look, saved);
         let window = Window {
