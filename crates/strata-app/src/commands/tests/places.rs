@@ -2,7 +2,8 @@
 
 //! What runs a command on a place, a location that is no row of the view: the sidebar's
 //! menu rows and its middle click, and a crumb's middle click, each on the location it was
-//! asked on (`On::Place`).
+//! asked on (`On::Place`). `open-in-tab` is the tab strip's own, so each opens a tab there;
+//! the others are a made-up part's, which records what it ran.
 
 use std::{cell::RefCell, path::Path};
 
@@ -14,7 +15,8 @@ use super::routing::part;
 use crate::{
     App,
     host::offscreen::Offscreen,
-    slots::Entry,
+    shell::tabs::{shown_tab, tab_browser, tabs},
+    slots::{Entry, TabKey},
     test_support::{
         PATIENCE, fixture, hosted_over,
         view::{all, idle, text},
@@ -36,10 +38,6 @@ fn ran(command: &'static str, call: &Call<'_>) -> Outcome {
     Outcome::Ran
 }
 
-fn in_tab(_: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    ran("open-in-tab", call)
-}
-
 fn in_window(_: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     ran("open-in-window", call)
 }
@@ -49,12 +47,11 @@ fn customize(_: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
 }
 
 const PLACES: &[Action<App>] = &[
-    Action::new("open-in-tab", in_tab),
     Action::new("open-in-window", in_window),
     Action::new("customize", customize),
 ];
 
-/// The registered parts, and one that registers the commands a place's routes name.
+/// The registered parts, and one that registers the other commands a place's routes name.
 fn with_the_commands() -> Vec<Entry<App>> {
     struct Places;
     crate::parts_and(vec![part::<Places>("places", PLACES, |_| None)])
@@ -119,6 +116,32 @@ fn opened(host: &mut Offscreen, folder: &Path) {
     idle(host);
 }
 
+/// A tab opened at the end, shown, at `at`, while tab `first` stays at `stays`.
+fn opened_in_a_tab(
+    host: &mut Offscreen,
+    count: usize,
+    at: &Location,
+    (first, stays): (TabKey, &Location),
+) {
+    let order = tabs(host.app());
+    assert_eq!(order.len(), count, "a tab for each");
+    assert_eq!(
+        order.last(),
+        Some(&shown_tab(host.app())),
+        "the new tab, shown"
+    );
+    let reached = host.run_until(PATIENCE, |host| {
+        host.app().browser().active_location().as_ref() == Some(at)
+    });
+    assert!(reached, "the new tab opens {at:?}");
+    let first = tab_browser(host.app(), first).expect("the first tab");
+    assert_eq!(
+        first.active_location().as_ref(),
+        Some(stays),
+        "the first tab stays"
+    );
+}
+
 /// The key of the open menu's row named `name`.
 fn menu_row(host: &mut Offscreen, name: &str) -> String {
     let row = |host: &Offscreen| {
@@ -135,8 +158,9 @@ fn menu_row(host: &mut Offscreen, name: &str) -> String {
     row(host).expect("the row")
 }
 
-/// A middle click on a sidebar row runs `open-in-tab` on its location, and its menu's rows
-/// run theirs on the location the menu was opened on.
+/// A middle click on a sidebar row opens its location in a new tab, as its menu's "Open in New
+/// Tab" does, and its menu's other rows run their commands on the location the menu was opened
+/// on.
 #[test]
 fn a_sidebar_rows_middle_click_and_menu_rows_run_on_its_location() {
     hosted_over(
@@ -146,32 +170,33 @@ fn a_sidebar_rows_middle_click_and_menu_rows_run_on_its_location() {
         |mut host| {
             let folder = fixture();
             opened(&mut host, folder.path());
+            let first = (shown_tab(host.app()), &Location::local(folder.path()));
             press(
                 &mut host,
                 "sidebar-place-home",
                 PointerButton::Middle,
                 Mods::default(),
             );
-            assert_eq!(ran_so_far(), [("open-in-tab", home())]);
-            assert_eq!(
-                host.app().browser().active_location(),
-                Some(Location::local(folder.path())),
-                "the middle click opens nothing in this tab"
+            opened_in_a_tab(&mut host, 2, &home(), first);
+            press(
+                &mut host,
+                "sidebar-place-home",
+                PointerButton::Secondary,
+                Mods::default(),
             );
-            for (row, command) in [
-                ("Open in New Tab", "open-in-tab"),
-                ("Customize…", "customize"),
-            ] {
-                press(
-                    &mut host,
-                    "sidebar-place-home",
-                    PointerButton::Secondary,
-                    Mods::default(),
-                );
-                let row = menu_row(&mut host, row);
-                press(&mut host, &row, PointerButton::Primary, Mods::default());
-                assert_eq!(ran_so_far().last(), Some(&(command, home())), "{row}");
-            }
+            let row = menu_row(&mut host, "Open in New Tab");
+            press(&mut host, &row, PointerButton::Primary, Mods::default());
+            opened_in_a_tab(&mut host, 3, &home(), first);
+
+            press(
+                &mut host,
+                "sidebar-place-home",
+                PointerButton::Secondary,
+                Mods::default(),
+            );
+            let row = menu_row(&mut host, "Customize…");
+            press(&mut host, &row, PointerButton::Primary, Mods::default());
+            assert_eq!(ran_so_far(), [("customize", home())]);
         },
     );
 }
@@ -190,8 +215,8 @@ fn crumb_of(host: &Offscreen, folder: &Path) -> String {
     text(crumbs.first().expect("the folder's crumb"), "key")
 }
 
-/// A crumb's middle click runs `open-in-tab` on its folder, and with Ctrl or Shift
-/// `open-in-window`, as GTK's crumbs do; the tab stays where it is.
+/// A crumb's middle click opens its folder in a new tab, and with Ctrl or Shift runs
+/// `open-in-window`, as GTK's crumbs do; the tab it was pressed in stays where it is.
 #[test]
 fn a_crumbs_middle_click_runs_open_in_tab_or_with_a_modifier_in_window() {
     hosted_over(
@@ -202,8 +227,12 @@ fn a_crumbs_middle_click_runs_open_in_tab_or_with_a_modifier_in_window() {
             let folder = fixture();
             let documents = folder.path().join("documents");
             opened(&mut host, &documents);
-            let crumb = crumb_of(&host, folder.path());
+            let first = (shown_tab(host.app()), &Location::local(&documents));
             let root = Location::local(folder.path());
+            let crumb = crumb_of(&host, folder.path());
+            press(&mut host, &crumb, PointerButton::Middle, Mods::default());
+            opened_in_a_tab(&mut host, 2, &root, first);
+
             let ctrl = Mods {
                 ctrl: true,
                 ..Mods::default()
@@ -212,21 +241,16 @@ fn a_crumbs_middle_click_runs_open_in_tab_or_with_a_modifier_in_window() {
                 shift: true,
                 ..Mods::default()
             };
-            for mods in [Mods::default(), ctrl, shift] {
+            idle(&mut host);
+            let crumb = crumb_of(&host, folder.path());
+            for mods in [ctrl, shift] {
                 press(&mut host, &crumb, PointerButton::Middle, mods);
             }
             assert_eq!(
                 ran_so_far(),
-                [
-                    ("open-in-tab", root.clone()),
-                    ("open-in-window", root.clone()),
-                    ("open-in-window", root),
-                ]
+                [("open-in-window", root.clone()), ("open-in-window", root)]
             );
-            assert_eq!(
-                host.app().browser().active_location(),
-                Some(Location::local(&documents))
-            );
+            assert_eq!(tabs(host.app()).len(), 2, "no tab more");
         },
     );
 }
