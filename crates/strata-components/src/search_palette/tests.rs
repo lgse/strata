@@ -454,3 +454,59 @@ fn answers_scroll_as_strata_restores_them() {
     );
     assert_eq!(m.arrive(Answer::new(g + 1, Vec::new()), &mode), None);
 }
+
+/// The labels under the option at `index`: their names, in document order.
+fn option_labels(rt: &Runtime<Host>, index: usize) -> Vec<String> {
+    let key = option_key("p", index);
+    let mut stack = vec![rt.accessibility_json()];
+    let mut option = None;
+    while let Some(v) = stack.pop() {
+        if v["key"] == key.as_str() {
+            option = Some(v);
+            break;
+        }
+        stack.extend(v["children"].as_array().into_iter().flatten().cloned());
+    }
+    let mut stack = vec![option.expect("the option")];
+    let mut labels = Vec::new();
+    while let Some(v) = stack.pop() {
+        if v["role"] == "label" {
+            labels.push(v["name"].as_str().unwrap_or_default().to_owned());
+        }
+        stack.extend(
+            v["children"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .rev()
+                .cloned(),
+        );
+    }
+    labels
+}
+
+// browser/search: GTK's result row holds two labels, the name over the full path, which
+// assistive technology and the QA protocol read as the option's children.
+#[test]
+fn an_option_holds_its_name_and_its_path_as_labels() {
+    let mut palette = PaletteState::new();
+    let g = query(&palette.open(search())).generation;
+    let _ = palette.set_query("re");
+    let host = Host {
+        look: Look::fallback(false),
+        palette,
+    };
+    let mut rt = Runtime::new(host, host_view, (960.0, 640.0), Env::new(false, 1.0));
+    rt.update(|h, _| {
+        let _ = h.palette.deliver(
+            Answer::new(g + 1, items(&["report.md", "readme.md"])),
+            &mut Tx::default(),
+        );
+    });
+    rt.frame(1.0 / 60.0);
+    assert_eq!(
+        option_labels(&rt, 1),
+        ["readme.md", "/home/u/readme.md"],
+        "the option's name and full path are labels"
+    );
+}

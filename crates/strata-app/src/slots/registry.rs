@@ -25,21 +25,7 @@ pub(crate) struct Entry<S: 'static> {
     pub(crate) caught_up: fn(&mut S),
     pub(crate) poll: fn(&mut S, f64, &mut Tx) -> bool,
     pub(crate) switched: fn(&mut S, &mut Tx),
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-        )
-    )]
     pub(crate) tab_hidden: fn(&mut S, &mut Tx),
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-        )
-    )]
     pub(crate) tab_shown: fn(&mut S, &mut Tx),
     pub(crate) commands: &'static [Action<S>],
     pub(crate) keyboard: fn(&S) -> Option<Holds>,
@@ -169,13 +155,6 @@ impl<'a, S> Registry<'a, S> {
     }
 
     /// The same table with the view the saved `mode` names shown: a new tab's.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
-        )
-    )]
     pub(crate) fn fresh(self, mode: &str) -> Self {
         Self::new(self.entries, mode)
     }
@@ -222,6 +201,18 @@ impl<'a, S> Registry<'a, S> {
     /// registered in.
     pub(crate) fn of(self, slot: Slot) -> impl Iterator<Item = &'a Entry<S>> {
         self.active().filter(move |entry| entry.slot() == slot)
+    }
+
+    /// Whether the element keyed `key` is in a pane a hidden tab keeps the keyboard in: the
+    /// shown view, the sidebar or the drawer, as GTK's `select` keeps a focus only in the
+    /// files, the sidebar or the preview. A part's keys start with its name.
+    pub(crate) fn in_panes(self, key: &str) -> bool {
+        let panes = self
+            .active()
+            .filter(|entry| matches!(entry.slot(), Slot::View | Slot::Sidebar | Slot::Drawer));
+        panes
+            .map(|entry| key.strip_prefix(entry.name))
+            .any(|rest| rest.is_some_and(|rest| rest.is_empty() || rest.starts_with('-')))
     }
 
     /// The view that is shown. None when no view is registered.

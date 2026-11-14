@@ -59,6 +59,7 @@ mod list;
 // A3 Sidebar
 mod sidebar;
 // A4 Tabs
+mod tab_strip;
 // A5 Location bar
 // Return presses a focused button, as on GTK (Rune packet entry 103).
 mod buttons;
@@ -111,6 +112,7 @@ slots::parts! {
     // A3 Sidebar
     sidebar: sidebar::Sidebar,
     // A4 Tabs
+    tab_strip: tab_strip::TabStrip,
     // A5 Location bar
     location: location::Bar,
     error_dialog: error_dialog::ErrorDialog,

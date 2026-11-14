@@ -433,7 +433,8 @@ impl<S: 'static> Rows<S> {
     }
 }
 
-/// One result: the icon or thumbnail, the name over the full path, matches in the accent.
+/// One result: the icon or thumbnail, the name over the full path, matches in the accent. The
+/// name and the path are labels in the option, as GTK's row's two labels are.
 fn result_row<S: 'static>(
     rows: &Rows<S>,
     item: &PaletteItem,
@@ -470,8 +471,7 @@ fn result_row<S: 'static>(
         .font(name_font)
         .color(k.c.text_base)
         .truncate(true)
-        .build(k)
-        .a11y_hidden();
+        .build(k);
     let path = MatchedText::new(item.detail.clone(), item.detail_matched.iter().cloned())
         .font(k.ty.small)
         .color(if active {
@@ -480,8 +480,7 @@ fn result_row<S: 'static>(
             k.c.text_weak
         })
         .build(k)
-        .truncate_middle()
-        .a11y_hidden();
+        .truncate_middle();
     // The press handlers sit on an inner element keyed by the result, inside the row keyed by
     // place. Rune resolves a release by the pressed element's path and drops it when that path
     // is gone, so a press held while a batch moves another result into the row (the row's key
