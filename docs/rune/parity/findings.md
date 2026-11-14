@@ -978,7 +978,7 @@ sequence only together with the alphabet's version, so the version is part of th
   (`Selection::targets`), and Rune has no 10xer yet.
 - **Concerns:** seed `0x03` of `columns v3` and seed `0x07` of `calibration v3`, parked
   until the fix.
-- **State:** fixed by [F3](packages/F3.md)'s second pull request. `events::marks` reads each
+- **State:** fixed by [F3](packages/F3.md)'s [#2398](https://github.com/lgse/strata/pull/2398). `events::marks` reads each
   column's own load cursor: a selection the browser does not count as a fill
   (`Browser::filled_entries`). A hosted test holds it,
   `qa::tests::invariants::a_column_keeps_its_load_cursor_when_its_folder_changes_while_another_is_active`,
