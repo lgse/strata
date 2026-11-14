@@ -1765,3 +1765,32 @@ sequence only together with the alphabet's version, so the version is part of th
   first frame (`Sidebar::tab_shown`), so the files never lay out at x=0. 30 of 30 runs pass
   loaded and 30 of 30 unloaded. The Rune gap stays: any other move laid out while feedback is
   quiet can still lose its `on_layout` report.
+
+### #2479: the Rune Customize dialog's Clear is enabled where GTK's is insensitive
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2479), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** GTK's Customize dialog makes Clear insensitive while the item has no
+  saved colour or icon, and sensitive once a choice is made (`build_clear_button` in
+  `src/ui/browser/customization.rs`), as driving GTK shows. C15's `StrataDialog` gives its
+  secondary button no disabled state, so the Rune dialog's Clear is always enabled, and
+  pressing it with nothing saved forgets nothing.
+- **Concerns:** [A6](packages/A6.md)'s Customize dialog (`crates/strata-app/src/customize.rs`).
+  No run reads Clear's state.
+- **State:** accepted for now by the coordinator (2026-11-14). The fix is a disabled state for
+  C15's secondary button, as `primary_enabled` gives the primary: a component `contract`
+  change.
+
+### #2480: the Rune Customize dialog's header has no palette icon
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2480), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** GTK's Customize dialog shows the palette icon in its header's icon box
+  (`modal_layout(PALETTE, …)` in `src/ui/browser/customization.rs`). C15's
+  `StrataDialog::icon` takes a semantic `IconName`, and strata-kit's set has no palette, so
+  the Rune dialog's header has none. The body's theme-colour button draws the catalog's
+  `strata-palette` by name.
+- **Concerns:** [A6](packages/A6.md)'s Customize dialog. No run reads the header icon.
+- **State:** accepted for now by the coordinator (2026-11-14). The fix is a `Palette` name in
+  the semantic set (a W2 contract change, with an icon in every catalog) or a C15 builder
+  that takes a catalog icon.
