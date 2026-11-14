@@ -14,10 +14,11 @@
 //!   count changes, and after any event the browser raised. The browser drops a request whose
 //!   fill is already out, so a fill a reload dropped, or one the fill's time budget cut off,
 //!   is asked for again at the next event, as on GTK.
-//! - **An unreadable file is asked once a listing.** A fill that answers a file with no size
-//!   (it could not be read) would raise an event that asks for it again, without end. Such a
-//!   file is not asked again until the column's listing is replaced (its request changes, as a
-//!   reload replaces it).
+//! - **A file a fill answers without a size is asked once a listing.** An update that changes
+//!   another of its fields and leaves the size unknown raises an event that would ask for it
+//!   again, without end; such a file, in the active column, is not asked again until the
+//!   column's listing is replaced (its request changes, as a reload replaces it). A file that
+//!   cannot be read at all raises no event, so asking for it again ends there.
 //! - **No active column, no count,** as GTK hides its label.
 //!
 //! Not yet: a filter's or a search's own count ([`Listing::filter`]), which needs the
@@ -51,7 +52,8 @@ pub(super) struct Counted {
     under: Option<(usize, Option<RequestId>)>,
     /// The selection's positions at the last poll: a new selection asks for its sizes.
     selected: Vec<usize>,
-    /// Files a fill answered without a size, which are not asked for again in this listing.
+    /// Files of the active column a fill answered without a size, which are not asked for
+    /// again in this listing.
     unreadable: HashSet<Location>,
 }
 
@@ -59,18 +61,24 @@ pub(super) struct Counted {
 /// answers a file without its size marks it unreadable.
 pub(super) fn listener() -> Listener<App> {
     Box::new(|event, _, heard| {
-        let unreadable: Vec<Location> = match event {
-            BrowserEvent::MetadataFilled { updates, .. } => updates
-                .iter()
-                .filter(|(_, entry)| !entry.is_directory() && lacks_size(entry))
-                .map(|(_, entry)| entry.location.clone())
-                .collect(),
-            _ => Vec::new(),
+        let answered = match event {
+            BrowserEvent::MetadataFilled { depth, updates } => Some((
+                *depth,
+                updates
+                    .iter()
+                    .filter(|(_, entry)| !entry.is_directory() && lacks_size(entry))
+                    .map(|(_, entry)| entry.location.clone())
+                    .collect::<Vec<_>>(),
+            )),
+            _ => None,
         };
         heard.then(move |app: &mut App, _| {
+            let active = app.browser.active_depth();
             let counted = &mut app.footer.counted;
             counted.heard = true;
-            counted.unreadable.extend(unreadable);
+            if let Some((_, unreadable)) = answered.filter(|(depth, _)| Some(*depth) == active) {
+                counted.unreadable.extend(unreadable);
+            }
             false
         });
     })
