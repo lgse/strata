@@ -215,10 +215,13 @@ impl Part for Bar {
             &[LOCATION.ignoring(Modifiers::empty())],
         )])];
 
+    /// The entry while it has the keyboard; the hierarchy menu while it is open, which takes
+    /// every key as GTK's menus do (finding lgse/strata#2407).
     fn keyboard(app: &App) -> Option<Holds> {
-        app.location
-            .state
-            .entry_focused()
-            .then_some(Holds::Location)
+        let state = &app.location.state;
+        if state.menu().is_some() {
+            return Some(Holds::Menu);
+        }
+        state.entry_focused().then_some(Holds::Location)
     }
 }
