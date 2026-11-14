@@ -100,14 +100,12 @@ blocker = "A10: the Columns pane's sort button, \"Ascending — click to reverse
 scenario = "switching-keeps-pane-filter"
 run = "columns-input"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A10: the filter kept across the view switch, and the filter in Icons and List, at line 12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "switching-keeps-pane-filter"
 run = "columns-result"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A10: the filter kept across the view switch, and the filter in Icons and List, at line 12"
+status = "required"
+host = "offscreen"
