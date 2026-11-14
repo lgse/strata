@@ -1656,3 +1656,19 @@ sequence only together with the alphabet's version, so the version is part of th
   twelve languages other than English. No run reads the name in another language.
 - **State:** open, no workaround. Rune packet entry
   [39](../upstream/rune/39-kit-tab-strip.md), item 1 (U-C7-1), asks for `close_label`.
+
+### #2473: a close the window manager asks for is not refused while file operations run
+
+- **Code:** `rune-gap`. [Issue](https://github.com/lgse/strata/issues/2473), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A4](packages/A4.md), reading GTK's close guard: GTK refuses every close of a
+  window while one of its tabs has a file operation running, and shows "File operations are
+  still active" (`close_guard::install` in `src/ui/window/composition/tabs.rs`). On Rune the
+  header's and the strip's Close and Ctrl+W on the last tab refuse the same way
+  (`shell::close_window`); a close from the window manager (its title bar, Alt+F4, the
+  compositor) does not.
+- **Why:** Rune's `App::on_close` runs before the window goes and cannot keep it (at
+  `2a44156`), and nothing else hears a close request.
+- **Concerns:** no run: no scenario closes a window with an operation running.
+- **State:** open, [A21](packages/A21.md)'s, to draft into the packet with the window's
+  lifecycle and to work around if it can.
