@@ -7,8 +7,9 @@
 //! Ported from the GTK views: the rows and their order from `item_options.rs` and
 //! `folder_menu.rs` under `src/ui/browser/context_menu/`, their visibility from
 //! `ItemMenuOptions::refresh` in `item_menu.rs`, and their hints from `default_hint` in
-//! `src/ui/shortcut_reference.rs`. A fix there has to be carried here until the GTK views
-//! are deleted. The port covers what this interface opens, a local folder. Left out, with
+//! `src/ui/shortcut_reference.rs`: the catalog's keys, read through the window's keymap
+//! (`commands::Live`), so a saved keymap changes them as it changes the keys. A fix there has
+//! to be carried here until the GTK views are deleted. The port covers what this interface opens, a local folder. Left out, with
 //! what brings each back:
 //!
 //! - the Trash and Recent variants (Restore, Remove from Recent, the delete rows' other
@@ -23,7 +24,7 @@
 //! command belongs to a part this interface does not have yet is shown as the GTK menu shows
 //! it at rest and does nothing: `commands::has` is false for its id.
 
-use rune::{El, Keybind, Tx};
+use rune::{El, Tx};
 use strata_components::{
     context_menu::{
         ContextMenu, ContextMenuState, Item, MenuIntent, MenuModel, MenuTarget, Section,
@@ -34,6 +35,7 @@ use strata_core::{
     i18n::{count, tr},
     model::{ArchiveFormat, EntryKind, FileEntry, Location, MetadataValue},
 };
+use strata_desktop::keys::{self, Command, Keys, Map, Shown, bindings as key};
 
 use crate::{
     App,
@@ -216,93 +218,109 @@ impl Menu {
     }
 }
 
-/// One row of a menu: its id, its label in the catalogs, and the chords its hint shows.
+/// One row of a menu: its id, its label in the catalogs, and the catalog's keys its hint
+/// shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Row {
     pub(crate) id: &'static str,
     pub(crate) label: &'static str,
-    /// The bindings `default_hint` shows for the row, as Rune spells chords.
-    hint: &'static [&'static str],
-    /// The hint is a plain key, which "Type to search" takes: hidden while that is on.
-    typed: bool,
+    /// What `default_hint` shows for the row, labelled from the keymap in force when the menu
+    /// opens.
+    hint: Option<Shown>,
+    /// A command whose shipped keys may all type: "Type to search" then takes them, and the
+    /// hint is hidden while it is on (`typed_only` in `default_hint`).
+    typed: Option<Command>,
 }
 
 const fn row(id: &'static str, label: &'static str) -> Row {
     Row {
         id,
         label,
-        hint: &[],
-        typed: false,
+        hint: None,
+        typed: None,
     }
 }
 
+/// Whether every key the default map binds to `command` types.
+fn types(command: Command) -> bool {
+    let bindings = command.bindings_in(Map::Default);
+    bindings.iter().all(|binding| binding.is_typed())
+}
+
 impl Row {
-    const fn hint(mut self, chords: &'static [&'static str]) -> Self {
-        self.hint = chords;
+    const fn hint(mut self, keys: Shown) -> Self {
+        self.hint = Some(keys);
         self
     }
 
-    const fn typed(mut self) -> Self {
-        self.typed = true;
+    /// The hint of `command`, whose keys "Type to search" may take.
+    const fn typed_hint(mut self, command: Command) -> Self {
+        self.hint = Some(command.shown());
+        self.typed = Some(command);
         self
     }
 
-    /// Whether the row shows its hint: it has one, and "Type to search" does not take it.
-    fn hinted(&self, typing: bool) -> bool {
-        let taken = self.typed && typing;
-        !self.hint.is_empty() && !taken
+    /// The row's hint as the window's keymap labels it: none when it has none, when "Type to
+    /// search" takes its keys, or when nothing binds them.
+    fn hint_label(&self, typing: bool) -> Option<String> {
+        let shown = self.hint?;
+        if typing && self.typed.is_some_and(types) {
+            return None;
+        }
+        let label = keys::label(&Keys::One(shown));
+        (!label.is_empty()).then_some(label)
     }
 
     fn item(&self, typing: bool) -> Item {
         let item = Item::new(self.id, tr(self.label));
-        if !self.hinted(typing) {
-            return item;
+        match self.hint_label(typing) {
+            Some(label) => item.shortcut(label),
+            None => item,
         }
-        let chords: Vec<String> = self
-            .hint
-            .iter()
-            .map(|chord| Keybind::new(chord).label())
-            .collect();
-        item.shortcut(chords.join(" / "))
     }
 }
 
-pub(crate) const NEW_FOLDER: Row = row("new-folder", "New Folder").hint(&["ctrl+shift+n"]);
+pub(crate) const NEW_FOLDER: Row = row("new-folder", "New Folder").hint(key::NEW_FOLDER.shown());
 pub(crate) const NEW_FILE: Row = row("new-file", "New File");
 pub(crate) const GROUP: Row = row("group", "New Folder with Selection");
-pub(crate) const OPEN: Row = row("open", "Open").hint(&["enter"]);
+pub(crate) const OPEN: Row = row("open", "Open").hint(key::ENTER.shown());
 pub(crate) const OPEN_WITH: Row = row("open-with", "Open With…");
-pub(crate) const PREVIEW: Row = row("preview", "Quick preview").hint(&["space"]);
+pub(crate) const PREVIEW: Row = row("preview", "Quick preview").hint(key::PREVIEW.shown());
 pub(crate) const RUN: Row = row("run", "Run");
-pub(crate) const TERMINAL: Row = row("terminal", "Open in Terminal").hint(&["ctrl+alt+t"]);
+pub(crate) const TERMINAL: Row = row("terminal", "Open in Terminal").hint(key::TERMINAL.shown());
 pub(crate) const OPEN_IN: Row = row("open-in", "Open in…");
-pub(crate) const NEW_TAB: Row = row("open-in-tab", "New Tab").hint(&["ctrl+enter"]);
-pub(crate) const NEW_WINDOW: Row = row("open-in-window", "New Window").hint(&["shift+enter"]);
+pub(crate) const NEW_TAB: Row = row("open-in-tab", "New Tab").hint(key::OPEN_IN_NEW_TAB.shown());
+pub(crate) const NEW_WINDOW: Row =
+    row("open-in-window", "New Window").hint(key::OPEN_IN_NEW_WINDOW.shown());
 pub(crate) const EXTRACT: Row = row("extract", "Extract here");
 pub(crate) const EXTRACT_TO: Row = row("extract-to", "Extract to…");
-pub(crate) const CUT: Row = row("cut", "Cut").hint(&["ctrl+x"]);
-pub(crate) const COPY: Row = row("copy", "Copy").hint(&["ctrl+c"]);
-pub(crate) const DUPLICATE: Row = row("duplicate", "Duplicate").hint(&["ctrl+d"]);
-pub(crate) const RENAME: Row = row("rename", "Rename").hint(&["f2", "ctrl+r"]);
+pub(crate) const CUT: Row = row("cut", "Cut").hint(key::CUT.shown());
+pub(crate) const COPY: Row = row("copy", "Copy").hint(key::COPY.shown());
+pub(crate) const DUPLICATE: Row = row("duplicate", "Duplicate").hint(key::DUPLICATE.shown());
+pub(crate) const RENAME: Row = row("rename", "Rename").hint(key::RENAME.shown());
 pub(crate) const MOVE_TO: Row = row("move-to", "Move to…");
 pub(crate) const COPY_TO: Row = row("copy-to", "Copy to…");
 pub(crate) const COMPRESS: Row = row("compress", "Compress…");
-pub(crate) const PIN: Row = row("pin", "Pin to sidebar").hint(&["p"]).typed();
+pub(crate) const PIN: Row = row("pin", "Pin to sidebar").typed_hint(key::PIN);
 pub(crate) const CUSTOMIZE: Row = row("customize", "Customize…");
-pub(crate) const COPY_PATH: Row = row("copy-path", "Copy path").hint(&["y"]).typed();
+pub(crate) const COPY_PATH: Row = row("copy-path", "Copy path").typed_hint(key::COPY_PATH);
 pub(crate) const COPY_NAME: Row = row("copy-name", "Copy name");
-pub(crate) const COPY_PATHS: Row = row("copy-paths", "Copy paths").hint(&["y"]).typed();
+pub(crate) const COPY_PATHS: Row = row("copy-paths", "Copy paths").typed_hint(key::COPY_PATH);
 pub(crate) const COPY_NAMES: Row = row("copy-names", "Copy names");
-pub(crate) const PROPERTIES: Row = row("properties", "Properties").hint(&["alt+enter"]);
+pub(crate) const PROPERTIES: Row = row("properties", "Properties").hint(key::PROPERTIES.shown());
 /// The background menu's Properties shows no hint (`ContextHint::None` in `folder_menu.rs`).
 pub(crate) const FOLDER_PROPERTIES: Row = row("properties", "Properties");
-pub(crate) const TRASH: Row = row("trash", "Move to Trash").hint(&["delete"]);
-pub(crate) const DELETE: Row = row("delete", "Permanently delete").hint(&["shift+delete"]);
-pub(crate) const PASTE: Row = row("paste", "Paste").hint(&["ctrl+v"]);
-pub(crate) const SELECT_ALL: Row = row("select-all", "Select All").hint(&["ctrl+a"]);
-pub(crate) const REFRESH: Row = row("refresh", "Refresh").hint(&["f5"]);
-pub(crate) const SHOW_HIDDEN: Row = row("hidden", "Show Hidden Files").hint(&["ctrl+h"]);
-pub(crate) const HIDE_HIDDEN: Row = row("hidden", "Hide Hidden Files").hint(&["ctrl+h"]);
+pub(crate) const TRASH: Row = row("trash", "Move to Trash").hint(key::MOVE_TO_TRASH.shown());
+pub(crate) const DELETE: Row =
+    row("delete", "Permanently delete").hint(key::DELETE_PERMANENTLY.shown());
+pub(crate) const PASTE: Row = row("paste", "Paste").hint(key::PASTE.shown());
+pub(crate) const SELECT_ALL: Row = row("select-all", "Select All").hint(key::SELECT_ALL.shown());
+pub(crate) const REFRESH: Row = row("refresh", "Refresh").hint(key::REFRESH.shown());
+/// The hidden-files rows show the primary key alone: `HIDDEN_FILES.alternate(0)`.
+pub(crate) const SHOW_HIDDEN: Row =
+    row("hidden", "Show Hidden Files").hint(key::HIDDEN_FILES.alternate(0).shown());
+pub(crate) const HIDE_HIDDEN: Row =
+    row("hidden", "Hide Hidden Files").hint(key::HIDDEN_FILES.alternate(0).shown());
 
 /// Every row either menu can show, for the tests of their words and of which have a
 /// command. The two hidden-files rows share an id, as the two Properties rows do.
@@ -483,7 +501,10 @@ fn several(target: &EntryTarget<'_>) -> MenuModel {
         "%{items} selected",
         items = count("items", target.entries.len())
     );
-    let mut open = section(&[(OPEN, true), (OPEN_WITH, true)], typing);
+    // GTK shows Open here only once its open-with lookup finds a default application the
+    // entries share (`prepare_open_with`); this interface has no lookup yet, and shows what
+    // GTK shows when it finds none (finding lgse/strata#2358).
+    let mut open = section(&[(OPEN_WITH, true)], typing);
     if target.entries.iter().any(FileEntry::is_directory) {
         open.items.push(open_in(typing));
     }
