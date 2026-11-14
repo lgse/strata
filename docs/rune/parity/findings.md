@@ -1403,6 +1403,12 @@ sequence only together with the alphabet's version, so the version is part of th
   GTK's root column shows `documents` selected with the focus ring on it and no child column
   on screen; the next Down moves to `pictures` and opens its column. Without the hidden-files
   toggles GTK ends the same way.
+- **On Rune, probed in a hosted test** (2026-11-14): in List alone, with no view switch, a
+  folder opened and then Alt+Up leaves `Browser::selection_is_load_cursor` false, with
+  `documents` selected; it was true in the folder before the Up. So the view hands the
+  browser the cursor Up placed as a choice, where GTK keeps it the navigation's. Where, not
+  yet found: the single pane's `settle` (`pane.rs`), through a remembered position coming back
+  or a cursor the collection placed itself (`handover::placed`).
 - **Concerns:** the view switch's return to Columns ([A8](packages/A8.md)'s). The sequence is
   parked in `tests/qa/fuzz/corpus/views/`.
 - **State:** open, A8's.
