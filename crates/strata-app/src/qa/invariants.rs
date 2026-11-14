@@ -130,8 +130,8 @@ pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<
 
 /// A hidden tab runs nothing: what was routed to it is held, or dropped for its rebuild.
 fn hidden_tabs(app: &App, failures: &mut Failures) {
-    for (key, held) in shell::hidden_tabs(app) {
-        if !held.accounted() {
+    for (key, accounted) in shell::hidden_tabs(app) {
+        if !accounted {
             failures.fail(
                 "hidden-tab",
                 format!("tab {} ran an update while it was hidden", key.0),

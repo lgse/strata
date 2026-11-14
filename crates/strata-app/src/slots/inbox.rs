@@ -19,7 +19,11 @@
 //! queue for that tab, and the window's own services for the window. The shell applies what
 //! is the window's and the shown tab's, and holds the rest for its tab until it is shown.
 
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, VecDeque},
+    rc::Rc,
+};
 
 use rune::Tx;
 use strata_fs::app::{Browser, BrowserEvent};
@@ -73,6 +77,8 @@ impl<S> Heard<'_, S> {
 
 struct Queue<S> {
     updates: VecDeque<Queued<S>>,
+    /// How many updates have been queued for each tab, ever.
+    queued: HashMap<TabKey, u64>,
     heard: u64,
     copied: u64,
 }
@@ -108,6 +114,9 @@ impl<S: 'static> Later<S> {
     /// to run.
     pub(crate) fn then(&self, update: impl FnOnce(&mut S, &mut Tx) -> bool + 'static) {
         let mut queue = self.inbox.0.borrow_mut();
+        if let Some(tab) = self.tab {
+            *queue.queued.entry(tab).or_default() += 1;
+        }
         queue.updates.push_back(Queued {
             tab: self.tab,
             source: Source::Service,
@@ -120,6 +129,7 @@ impl<S: 'static> Inbox<S> {
     pub(crate) fn new() -> Self {
         Self(Rc::new(RefCell::new(Queue {
             updates: VecDeque::new(),
+            queued: HashMap::new(),
             heard: 0,
             copied: 0,
         })))
@@ -179,6 +189,9 @@ impl<S: 'static> Inbox<S> {
         let mut queue = self.0.borrow_mut();
         queue.heard += 1;
         queue.copied += batch.copied;
+        if let Some(tab) = tab {
+            *queue.queued.entry(tab).or_default() += batch.updates.len() as u64;
+        }
         // The rows are the event's: its first update carries them for the tab's count.
         let mut rows = batch.copied;
         queue.updates.extend(batch.updates.into_iter().map(|update| Queued {
@@ -192,6 +205,14 @@ impl<S: 'static> Inbox<S> {
 
     pub(crate) fn pop(&self) -> Option<Queued<S>> {
         self.0.borrow_mut().updates.pop_front()
+    }
+
+    /// How many updates have been queued for `tab`, and how many of them still wait here.
+    pub(crate) fn queued_for(&self, tab: TabKey) -> (u64, u64) {
+        let queue = self.0.borrow();
+        let waiting = queue.updates.iter().filter(|queued| queued.tab == Some(tab));
+        let queued = queue.queued.get(&tab).copied().unwrap_or(0);
+        (queued, waiting.count() as u64)
     }
 
     pub(crate) fn is_empty(&self) -> bool {

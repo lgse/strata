@@ -89,13 +89,23 @@ pub(crate) struct Held {
     rows: u64,
     /// The browser's events outran what is held: they were dropped, and the view is rebuilt.
     outran: bool,
-    /// How many updates were routed to the tab while it was hidden, and how many of them were
-    /// dropped: what the QA backend holds the shell to (`held`).
+    /// How many updates had been queued for the tab when it was hidden, how many were routed
+    /// to it since, and how many of them were dropped: what the QA backend holds the shell to
+    /// ([`Held::accounted`]).
+    since: u64,
     routed: u64,
     dropped: u64,
 }
 
 impl Held {
+    /// Nothing held yet for a tab hidden now, with `since` updates queued for it until now.
+    fn since(since: u64) -> Self {
+        Self {
+            since,
+            ..Self::default()
+        }
+    }
+
     fn hold(&mut self, source: Source, update: Update<App>) {
         self.routed += 1;
         match source {
@@ -131,11 +141,13 @@ impl Held {
         self.outran
     }
 
-    /// Whether every update routed here is held or was dropped for a rebuild: none ran while
-    /// the tab was hidden.
+    /// Whether every update queued for the tab since it was hidden, `queued` and `waiting` as
+    /// the queue counts them, is held, was dropped for a rebuild, or still waits in the queue:
+    /// none ran while the tab was hidden.
     #[cfg(feature = "qa")]
-    pub(crate) fn accounted(&self) -> bool {
-        self.updates.len() as u64 + self.dropped == self.routed
+    pub(crate) fn accounted(&self, (queued, waiting): (u64, u64)) -> bool {
+        let kept = self.updates.len() as u64 + self.dropped == self.routed;
+        kept && queued == self.since + self.routed + waiting
     }
 }
 
@@ -257,7 +269,8 @@ pub(crate) fn open(app: &mut App, location: Option<Location>, at: usize, tx: &mu
     here.grouped = grouped;
     let at = at.min(app.window.tabs.order.len());
     app.window.tabs.order.insert(at, key);
-    let parked = Parked::new(browser, here, tab_parts);
+    let mut parked = Parked::new(browser, here, tab_parts);
+    parked.held = Held::since(0);
     app.window.tabs.parked.push((key, parked));
     show(app, key, tx);
     if let Some(location) = location {
@@ -283,6 +296,9 @@ pub(crate) fn show(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
     std::mem::swap(&mut app.window.here, &mut parked.here);
     app.swap_parts(&mut parked.parts);
     let left = parked.here.key;
+    // What still waits in the queue for it is routed to it from now on.
+    let (queued, waiting) = app.window.events.queued_for(left);
+    parked.held = Held::since(queued - waiting);
     app.window.tabs.parked.push((left, parked));
     let parts = app.window.here.parts;
     app.window.shown.follow(parts);

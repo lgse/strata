@@ -306,10 +306,13 @@ impl App {
     }
 }
 
-/// The hidden tabs, each with what is held for it, as the QA backend's invariants read them.
+/// Whether each hidden tab has run nothing since it was hidden: everything queued for it is
+/// held, dropped for a rebuild, or still waits ([`tabs::Held::accounted`]).
 #[cfg(feature = "qa")]
-pub(crate) fn hidden_tabs(app: &App) -> impl Iterator<Item = (TabKey, &tabs::Held)> {
-    app.window.tabs.held()
+pub(crate) fn hidden_tabs(app: &App) -> impl Iterator<Item = (TabKey, bool)> {
+    let events = &app.window.events;
+    let held = app.window.tabs.held();
+    held.map(|(key, held)| (key, held.accounted(events.queued_for(key))))
 }
 
 /// What the tests read.

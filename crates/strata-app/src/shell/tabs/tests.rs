@@ -117,8 +117,10 @@ fn a_hidden_tab_runs_nothing_and_holds_a_bounded_queue_until_it_is_shown() {
             }
             idle(&mut host);
             assert!(!named(&host.tree(), ".hidden.txt"), "the shown tab heard nothing");
-            for (_, held) in hidden_tabs(host.app()) {
-                assert!(held.accounted(), "nothing ran while hidden");
+            for (_, accounted) in hidden_tabs(host.app()) {
+                assert!(accounted, "nothing ran while hidden");
+            }
+            for (_, held) in host.app().window.tabs.held() {
                 assert!(held.len() <= HELD_EVENTS, "held {} updates", held.len());
                 assert!(held.outran(), "the events outran the bound");
             }
