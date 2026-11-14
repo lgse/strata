@@ -548,6 +548,14 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    rebuilt or freshly opened keeping no cursor while nothing is selected? Meanwhile: Rune keeps
    the cursor, and the sequences are parked (`tests/qa/fuzz/corpus/views`). Source: A8's
    `views` alphabet, 2026-11-13.
+3. **The Appearance button's two nodes on GTK** (finding
+   [#2429](https://github.com/lgse/strata/issues/2429)), ruled `oracle` by the coordinator on
+   2026-11-14; the owner may reopen it. GTK's header button is a `GtkMenuButton` (`button`)
+   holding a `GtkToggleButton` (`toggle button`), both named "Appearance"; Rune's is the toggle
+   button alone. The coordinator's reading: the pair is GTK's widget structure, not behaviour
+   a user meets, so Rune adds no redundant node, and the one shared step that aimed at the
+   outer `button` (line 26 of `search_filter_sort/grouped-list-keeps-file-targets`) aims at
+   the toggle button now, as 32 others do. Should Rune present GTK's two nodes instead?
 
 ### A3: Sidebar
 
