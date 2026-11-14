@@ -50,7 +50,10 @@ fn two_tabs_at(host: &mut Offscreen, folder: &Path) -> TabKey {
         host.app().browser().active_location() == Some(at.clone())
             && host.app().browser().column_entry_counts(0).is_some()
     };
-    assert!(host.run_until(PATIENCE, opened), "the new tab at the same folder");
+    assert!(
+        host.run_until(PATIENCE, opened),
+        "the new tab at the same folder"
+    );
     idle(host);
     first
 }
@@ -108,7 +111,11 @@ fn a_mirror_due_in_a_hidden_tab_opens_its_column_in_that_tab_alone() {
             let first = two_tabs_at(&mut host, folder.path());
             let second = shown_tab(host.app());
             let documents = Location::local(folder.path().join("documents"));
-            assert_eq!(host.app().browser().location_at(1), None, "no child column yet");
+            assert_eq!(
+                host.app().browser().location_at(1),
+                None,
+                "no child column yet"
+            );
 
             let focus = shell::view_focus(host.app()).expect("the view's key");
             act(&mut host, |_, tx| tx.focus(focus, true));
@@ -122,7 +129,11 @@ fn a_mirror_due_in_a_hidden_tab_opens_its_column_in_that_tab_alone() {
             );
             // One frame hands the key to the view and its cursor to the browser.
             host.turn();
-            let moved = host.app().browser().focused_item().map(|(depth, at, _)| (depth, at));
+            let moved = host
+                .app()
+                .browser()
+                .focused_item()
+                .map(|(depth, at, _)| (depth, at));
             assert_eq!(moved, Some((0, 1)), "Down moved the cursor onto documents");
             assert!(act(&mut host, |app, tx| select(app, first, tx)));
             host.run_until(Duration::from_millis(400), |_| false);
@@ -174,11 +185,19 @@ fn a_tab_left_by_a_press_on_the_strip_gets_the_keyboard_back_in_its_view() {
             assert_eq!(keyboard(&mut host).as_deref(), Some(view));
 
             click_tab(&mut host, 0);
-            assert_eq!(shown_tab(host.app()), first, "the press showed the first tab");
+            assert_eq!(
+                shown_tab(host.app()),
+                first,
+                "the press showed the first tab"
+            );
             assert!(act(&mut host, |app, tx| select(app, second, tx)));
             assert_eq!(keyboard(&mut host).as_deref(), Some(view));
             assert!(act(&mut host, |app, tx| select(app, first, tx)));
-            assert_eq!(keyboard(&mut host).as_deref(), Some(view), "the first tab's view");
+            assert_eq!(
+                keyboard(&mut host).as_deref(),
+                Some(view),
+                "the first tab's view"
+            );
         },
     );
 }

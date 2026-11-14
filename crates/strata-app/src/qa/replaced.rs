@@ -59,9 +59,9 @@ impl Replacements {
             let Some(browser) = shell::tabs::tab_browser(app, key) else {
                 continue;
             };
-            let known = watched.iter().any(|watched| {
-                std::ptr::eq(watched.browser.as_ptr(), Rc::as_ptr(browser))
-            });
+            let known = watched
+                .iter()
+                .any(|watched| std::ptr::eq(watched.browser.as_ptr(), Rc::as_ptr(browser)));
             if known {
                 continue;
             }

@@ -207,9 +207,9 @@ impl<'a, S> Registry<'a, S> {
     /// shown view, the sidebar or the drawer, as GTK's `select` keeps a focus only in the
     /// files, the sidebar or the preview. A part's keys start with its name.
     pub(crate) fn in_panes(self, key: &str) -> bool {
-        let panes = self.active().filter(|entry| {
-            matches!(entry.slot(), Slot::View | Slot::Sidebar | Slot::Drawer)
-        });
+        let panes = self
+            .active()
+            .filter(|entry| matches!(entry.slot(), Slot::View | Slot::Sidebar | Slot::Drawer));
         panes
             .map(|entry| key.strip_prefix(entry.name))
             .any(|rest| rest.is_some_and(|rest| rest.is_empty() || rest.starts_with('-')))

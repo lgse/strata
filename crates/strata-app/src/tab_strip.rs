@@ -105,8 +105,12 @@ fn build(app: &App, close: Option<El>, frame: &mut Frame<'_, App>) -> Option<El>
     let labels = TabsLabels {
         list: tr("Tabs").into(),
         new_tab: tr("New tab").into(),
-        new_tab_help: with_keys("New tab (%{keys})", Some("New tab"), Keys::One(TAB_NEW.shown()))
-            .into(),
+        new_tab_help: with_keys(
+            "New tab (%{keys})",
+            Some("New tab"),
+            Keys::One(TAB_NEW.shown()),
+        )
+        .into(),
     };
     let strip = BrowserTabs::new(
         &data,
@@ -139,7 +143,9 @@ fn named(app: &App) -> Vec<Tab<'static>> {
 /// Where tab `key` is, or the location it waits on (GTK's `Tab::location`).
 fn located(app: &App, key: TabKey) -> Option<Location> {
     let browser = tab_browser(app, key)?;
-    browser.active_location().or_else(|| awaited(app, key).cloned())
+    browser
+        .active_location()
+        .or_else(|| awaited(app, key).cloned())
 }
 
 fn awaited(app: &App, key: TabKey) -> Option<&Location> {
@@ -185,7 +191,11 @@ fn icon(location: Option<&Location>, home: &Location) -> IconName {
         None => IconName::Home,
         Some(location) if location == home => IconName::Home,
         Some(location) if location.native_path() == Some(Path::new("/")) => IconName::Drive,
-        Some(location) if location.uri_value().is_some_and(|uri| uri.starts_with("trash://")) => {
+        Some(location)
+            if location
+                .uri_value()
+                .is_some_and(|uri| uri.starts_with("trash://")) =>
+        {
             IconName::Trash
         }
         Some(location) if location.uri_value().is_some() => IconName::Network,
