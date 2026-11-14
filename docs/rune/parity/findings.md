@@ -834,11 +834,18 @@ sequence only together with the alphabet's version, so the version is part of th
   C1e's secondary press, since #2371, anchors the right-clicked entry when there is no anchor,
   as the browser's views do; C18's results are a C1e collection, so a Shift+click after it
   would range from the right-clicked result.
-- **Concerns:** C18's results, once hosted on Rune. Not yet run: no package hosts them.
-- **State:** open, [A10](packages/A10.md)'s (search, filter and sort), noted in its file. When
-  A10 takes it, it also checks a filtered Columns column: GTK's `focus_search_result` has a
-  Columns branch (`column.selection.select_item`), and whether that reaches the browser's
-  no-anchor rule (`set_selection` in `strata-fs`) has not been traced.
+- **Driven on 2026-11-13** (A10, both targets; filter `a` over `a1.txt` to `a4.txt` and
+  `b.md`, right-click `a1.txt`, Escape, Shift+click `a3.txt`):
+  - In Icons and List, GTK selects `a3.txt` alone; Rune, whose pane results are a C1e
+    collection since A10's Icons and List pull request, selects `a1.txt` to `a3.txt`. The
+    divergence is confirmed there.
+  - In a filtered Columns column both select `a1.txt` to `a3.txt`: GTK's Columns branch does
+    anchor the right-clicked result. No divergence there.
+- **Concerns:** the results of the filter in Icons and List; no scenario steps through it.
+- **State:** open, [A10](packages/A10.md)'s (search, filter and sort). The way out is C1e's: a
+  setting that lets a collection's secondary press leave a missing anchor missing, which the
+  pane's results turn on. That is a component's behaviour, so a `contract` change, put to the
+  coordinator; until then the pane's results anchor as the browser's views do.
 
 ### #2379: Shift+Tab from a Columns column stops on its header's actions on GTK, on the sidebar on Rune
 

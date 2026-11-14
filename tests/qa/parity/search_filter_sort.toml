@@ -94,7 +94,7 @@ run = "list"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A8: the header's Appearance button, a `button` on GTK and a `toggle button` on Rune, at line 26"
 
 [[run]]
 scenario = "hidden-files-toggle"
@@ -114,9 +114,8 @@ host = "offscreen"
 scenario = "local-filtered-result-opens-once"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "recursive-file-double-click-launches-once"
@@ -124,7 +123,7 @@ run = "list"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10"
+blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 8"
 
 [[run]]
 scenario = "recursive-filtered-result-opens-once"
@@ -137,9 +136,8 @@ host = "offscreen"
 scenario = "recursive-filtered-result-opens-once"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "reversing-sort-direction"
@@ -216,17 +214,15 @@ host = "offscreen"
 scenario = "type-to-search-finds-nested"
 run = "icons"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "type-to-search-finds-nested"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "wildcard-filter-patterns"
