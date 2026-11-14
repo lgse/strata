@@ -1,4 +1,4 @@
-{"scenario":"shortcut-reference-search-keeps-editing-chords","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"F1 reference search edits with Ctrl+Left and keeps Ctrl+, from opening Settings under real input; chooser/keys unit tests pin blocked commands only"}}
+{"scenario":"shortcut-reference-search-keeps-editing-chords","modes":["columns"],"layout":"us","mutation":null,"known_bug":null,"cost":{"columns":0.3},"quality":{"impact":3,"coverage":3,"criticality":3,"diagnostic":4,"score":28,"note":"F1 reference search edits with Ctrl+Left and keeps Ctrl+, from opening Settings under real input; chooser/keys unit tests pin blocked commands only"},"parity":{"twin":"shortcut-reference-search-keeps-editing-chords-rune","exception":"a11y","ref":"lgse/strata#2466"}}
 {"key":"F1"}
 {"wait":{"present":{"role":"label","name":"Keyboard shortcuts"}},"message":"the shortcut reference to open"}
 {"expect":{"presented":{"role":"label","name":"Ctrl+Alt+Space"}}}

@@ -38,9 +38,10 @@ blocker = "A18"
 scenario = "saved-keymap-applies-at-launch"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "parallel"
+exception = "a11y"
+twin = "saved-keymap-applies-at-launch-rune/columns"
+ref = "lgse/strata#2466"
 
 [[run]]
 scenario = "settings-capture-rebinds-rename"

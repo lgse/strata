@@ -415,10 +415,6 @@ pub(crate) enum Place<S: 'static> {
         expect(dead_code, reason = "no part fills the drawer slot yet")
     )]
     Drawer(Wrap<S>),
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no part fills the footer slot yet")
-    )]
     Footer(Build<S>),
     Overlays(Build<S>),
     Dialogs(Build<S>),

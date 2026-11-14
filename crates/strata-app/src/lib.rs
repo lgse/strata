@@ -69,7 +69,9 @@ mod open_failed;
 mod pane_header;
 mod popover;
 // A6 Menus, dialogs and keymap
+mod footer;
 mod run;
+mod shortcuts;
 // The keys the GTK window reads after a view's or a field's own.
 mod window_keys;
 // A7 Entry management and undo
@@ -118,6 +120,8 @@ slots::parts! {
     pane_header: pane_header::PaneHeader,
     // A6 Menus, dialogs and keymap
     run: run::Run,
+    footer: footer::Footer,
+    shortcuts: shortcuts::Shortcuts,
     // A7 Entry management and undo
     undo: undo::Undo,
     new_item: new_item::NewItem,
