@@ -105,6 +105,8 @@ mod hosted {
                         incomplete: false,
                         has_more: false,
                         candidates: 0,
+                        indexing: false,
+                        coverage: Default::default(),
                     };
                     assert!(!delivered(app, stale, tx), "the stale batch was shown");
                 });

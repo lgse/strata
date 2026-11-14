@@ -209,6 +209,7 @@ gaps"), by number. The owner ranks each at the filing pass.
 | 103 | [Return can't press a focused button, and the only switch for it is `Cx::web_focus`](103-return-presses-a-button.md) | New issue | Every button of Strata's Rune interface; C15's dialogs route around it | `strata-app`'s `buttons::on_return`, and C15's Return-as-Space | Drafted, checked by reading and `strata-app`'s hosted tests |
 | 104 | [A modal popover can't also close on a wheel outside it and let that wheel through](104-outside-wheel-closes-a-popover.md) | New issue | A popover made with `El::modal` over a scrolling view | A popover that is not modal, over a scrim whose `on_wheel` closes it and returns false (finding lgse/strata#2341) | Drafted, checked by reading and a probe; not to be filed |
 | 105 | [Hover paints through a covering element](105-hover-paints-through-a-cover.md) | New issue | Strata's plain popovers, and any overlay that is not modal | Nothing yet: the owner left hover under a popover as it is (finding lgse/strata#2392) | Drafted, checked by reading and a hosted probe; to file at the owner's pass |
+| 106 | [`on_layout` never hears a rect that moved while layout feedback was quiet](106-quiet-layout-loses-a-move.md) | New issue | Any element keeping its rect from `on_layout_tx`; strata-components' collections take their viewport from it | Nothing: `strata-app` removed its one known trigger, a new tab's frame without its sidebar (finding lgse/strata#2477) | Drafted, checked by reading and probes in QA runs; not filed |
 
 ## Owner decisions (2026-11-10)
 

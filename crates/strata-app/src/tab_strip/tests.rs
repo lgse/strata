@@ -364,6 +364,54 @@ fn a_tab_left_from_a_columns_filter_comes_back_with_it_closed() {
     );
 }
 
+/// Whether the element keyed `key` is drawn inside the shown tab's content (`tab-<n>`).
+fn drawn_in_shown_tab(host: &mut Offscreen, key: &str) -> bool {
+    let tab = format!("tab-{}", shown_tab(host.app()).0);
+    let elements = host.runtime().elements();
+    let in_tab = |mut at: Option<usize>| {
+        while let Some(index) = at {
+            let element = &elements[index];
+            if element.key.as_deref() == Some(tab.as_str()) {
+                return !element.exiting;
+            }
+            at = element.parent;
+        }
+        false
+    };
+    let drawn =
+        |element: &&rune::ElementInfo| !element.exiting && element.key.as_deref() == Some(key);
+    elements
+        .iter()
+        .filter(drawn)
+        .any(|element| in_tab(element.parent))
+}
+
+/// A new tab's first frame has its sidebar: a frame without it would lay the files out where
+/// the sidebar goes, and their move back is a layout Rune may not report to the view
+/// (finding lgse/strata#2477).
+#[test]
+fn a_new_tabs_first_frame_has_its_sidebar() {
+    hosted(
+        MODULE,
+        "a_new_tabs_first_frame_has_its_sidebar",
+        |mut host| {
+            let folder = fixture();
+            opened(&mut host, folder.path());
+            assert!(drawn_in_shown_tab(&mut host, "sidebar"), "the first tab's");
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Text("t".to_owned()),
+                    mods: ctrl(),
+                },
+            );
+            host.turn();
+            assert_eq!(tabs(host.app()).len(), 2, "Ctrl+T opened a tab");
+            assert!(drawn_in_shown_tab(&mut host, "sidebar"), "the new tab's");
+        },
+    );
+}
+
 /// What has the keyboard, as an update reads it.
 fn keyboard(host: &mut Offscreen) -> Option<String> {
     act(host, |_, tx| tx.focused().map(str::to_owned))

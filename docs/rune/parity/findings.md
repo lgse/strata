@@ -1655,6 +1655,35 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** fixed by [#2465](https://github.com/lgse/strata/pull/2465): the Group row
   closes the filter before it regroups, in a view that groups (`filter::close_for_regroup`).
 
+### #2468: Escape from a search result's menu leaves GTK's keyboard on an unnamed box
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2468), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** driving GTK for [A10](packages/A10.md)'s search palette. Ctrl+K, a query, a
+  right-click on a result, then Escape: the menu closes and the keyboard lands on the
+  palette's layer box (`.search-backdrop`), which has no role and no name. The next character
+  typed is lost. Down gives the field the keyboard back (`move_selection` in
+  `src/ui/search.rs`).
+- **Concerns:** `show_result_menu` in `src/ui/search/results.rs`. No run checks it.
+- **State:** open, set aside, and not copied: on Rune the keyboard goes back to the palette's
+  field, with the result still highlighted (`palette::menu`), by the coordinator's ruling.
+  The fix belongs on `main`.
+
+### #2470: the Rune search palette's Alt+Return does not follow a remapped key
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2470), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** building [A10](packages/A10.md)'s search palette. GTK's palette reads
+  `open_containing_folder` with `press.is(OPEN_CONTAINING_FOLDER)` in its `handle_key`
+  (`src/ui/search.rs`), through the active keymap, so a user's binding moves it. Rune's
+  palette reads C17's reveal chord, its default `alt+enter` with Super tolerated. The window's
+  commands cannot read it instead: Rune's single-line field takes Return with any modifier
+  once C17's key handler passes it on.
+- **Concerns:** `crates/strata-app/src/palette/` and C17's `SearchPalette::reveal_keys`. No
+  run checks it: the scenarios use the default key.
+- **State:** open, A10's. The fix is a converter from a catalog binding to a `rune::Chord`,
+  for `reveal_keys`, or a C17 hook that hands the host each key before the field's editor.
+
 ### #2466: the Rune shortcut reference is a table of cells where GTK's is labels
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2466), filed on
@@ -1707,3 +1736,32 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** no run: no scenario closes a window with an operation running.
 - **State:** open, [A21](packages/A21.md)'s, to draft into the packet with the window's
   lifecycle and to work around if it can.
+
+### #2477: `reopen-closed-tabs/columns` sometimes misses the click on a new tab's folder
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2477), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A10](packages/A10.md)'s `all --target rune` on #2472, then reproduced by
+  [A4](packages/A4.md), each run alone under the machine lock. The run fails at line 4, "the
+  browser to be working in 'archive'", after Ctrl+T and a `select` of `archive` in the new
+  tab: `archive` ends selected and focused, and no child column opens.
+  - Rune at `48460bc99`: 3 of 30 unloaded, 2 of 10 with every core kept busy.
+  - Rune with [#2474](https://github.com/lgse/strata/pull/2474): 0 of 30 unloaded, 2 of 10
+    loaded.
+  - GTK under the same load: 0 of 10.
+- **Why** (confirmed with probes in the QA runs):
+  - The press was aimed and routed right: tab-2's `row-1`, with its listing there.
+  - The column's collection dropped the press as outside its viewport. That viewport, kept
+    from `on_layout`, said x=0 where the column was drawn at x=201.
+  - A new tab's sidebar started only in its first `poll`, so the tab's first frame laid the
+    files out where the sidebar goes (x=0), and the next one at x=201.
+  - Rune lost the second report: once layout feedback falls quiet (`ECHOES` feedback-only
+    commits in a row), a moved rect is recorded without its `on_layout` and never reported
+    later. Under load that move landed in a quiet frame. Rune packet entry
+    [106](../upstream/rune/106-quiet-layout-loses-a-move.md).
+- **Concerns:** `tabs/reopen-closed-tabs/columns` (required), and any click in a tab just
+  opened.
+- **State:** fixed in strata-app by [#2478](https://github.com/lgse/strata/pull/2478): a new tab's sidebar starts before its
+  first frame (`Sidebar::tab_shown`), so the files never lay out at x=0. 30 of 30 runs pass
+  loaded and 30 of 30 unloaded. The Rune gap stays: any other move laid out while feedback is
+  quiet can still lose its `on_layout` report.
