@@ -1,0 +1,9 @@
+{"scenario":"fuzz-views-v4-0000000000000011","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"End"}
+{"key":"ctrl+3"}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"radio menu item","name":"Icons"},"when":{"present":{"role":"radio menu item","name":"Icons"}}}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}}]}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"radio menu item","name":"List"},"when":{"present":{"role":"radio menu item","name":"List"}}}
+{"key":"alt+Left","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}

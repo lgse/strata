@@ -1,0 +1,5 @@
+{"scenario":"fuzz-views-v4-0000000000000009","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+3"}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}}]}}
+{"key":"ctrl+1"}
+{"key":"Down","when":{"not":{"view_mode":"Icons"}}}

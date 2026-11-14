@@ -1,0 +1,13 @@
+{"scenario":"fuzz-views-v4-0000000000000013","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"End"}
+{"key":"shift+Up","when":{"all":[{"not":{"view_mode":"Icons"}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}]}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"check menu item","name":"Hidden files"},"when":{"present":{"role":"check menu item","name":"Hidden files"}}}
+{"click":{"role":"toggle button","name":"Appearance"}}
+{"click":{"role":"radio menu item","name":"Columns"},"when":{"present":{"role":"radio menu item","name":"Columns"}}}
+{"key":"Up","when":{"all":[{"not":{"view_mode":"Icons"}},{"not":{"focused":{"one_of":["archive", "notes.txt", "diagram.txt"]}}}]}}
+{"key":"ctrl+2"}
+{"key":"ctrl+3"}
+{"click":{"entry":"pictures"},"count":2,"when":{"all":[{"present":{"entry":"pictures"}},{"not":{"view_mode":"Columns"}}]}}
+{"key":"ctrl+2"}
+{"key":"alt+Left","when":{"all":[{"focused_pane":true},{"not":{"directory":"$root"}}]}}

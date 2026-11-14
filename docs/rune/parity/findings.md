@@ -1204,9 +1204,18 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Not the snapshot:** GTK driven (`./scripts/qa-drive.sh`, 2026-11-13): the four rows are
   drawn selected, and the next Shift+Down extends the same range from `archive` to
   `readme.md`.
+- **Also without hidden files** (`views v4`, seed `0x04`, shrunk to 7 steps): in Columns,
+  Shift+Down from `archive`, Down, Down, Shift+Up, Up (onto `documents`), Ctrl+3, Shift+Down.
+  GTK selects `archive` to `pictures`, extending from where the first Shift range started;
+  Rune selects `documents` and `pictures`. So GTK's List, switched to, can extend from an
+  anchor plain arrows in Columns had already moved.
+- **Or from no anchor** (`views v4`, seed `0x02`, shrunk to 7 steps): in Columns, Down, Down,
+  Up, Down, Shift+Up (`documents` and `pictures`, anchored on `pictures`), Ctrl+3, Shift+Up.
+  GTK selects `archive` alone, as if the range had no anchor; Rune selects `archive` to
+  `pictures`.
 - **Concerns:** GTK's List view's Shift anchor after a view switch. Rune's views take the
   browser's anchor ([#2354](https://github.com/lgse/strata/issues/2354)), and agree with GTK's
-  Columns. The sequence is parked in `tests/qa/fuzz/corpus/views/`.
+  Columns. The sequences are parked in `tests/qa/fuzz/corpus/views/`.
 - **State:** open, set aside: no Rune change. A fix is `main`'s, from a bug issue there.
 
 ### #2414: two Downs at the Icons grid's edge make GTK open the selected folder in Columns
@@ -1226,9 +1235,14 @@ sequence only together with the alphabet's version, so the version is part of th
   the load cursor stays one and nothing opens. Driven on GTK (`./scripts/qa-drive.sh`,
   2026-11-13): nothing moves on screen at either Down; with one Down, or none, Columns opens
   nothing.
-- **Concerns:** the Icons view's keys at the grid's edge ([A1](packages/A1.md)'s area, noted in
-  its file). The sequence is parked in `tests/qa/fuzz/corpus/views/`, and the `views`
-  alphabet from v4 sends no Up or Down in Icons.
+- **In List too** (`views v4`, seed `0x0e`, shrunk to 9 steps): in a folder grouped by file
+  type with its cursor on the last row and nothing selected, GTK's Down selects that row, as
+  its arrows first select the cursor's entry when nothing is (`resume_native_selection`) even
+  where they then cannot move; Rune's does nothing at the edge.
+- **Concerns:** a single pane's keys at its edge ([A1](packages/A1.md)'s area, noted in its
+  file; List's is [A2](packages/A2.md)'s, closed). The sequences are parked in
+  `tests/qa/fuzz/corpus/views/`, and the `views` alphabet from v4 sends no Up or Down in
+  Icons.
 - **State:** open, with the owner ([`owner.md`](owner.md#a1-icons-view-and-thumbnails), A1
   item 12), placed by the coordinator on 2026-11-13. Meanwhile Rune's grid ignores the press.
 
@@ -1252,7 +1266,66 @@ sequence only together with the alphabet's version, so the version is part of th
   and selects it. Rune keeps the cursor on `notes.txt` in both, so its Down moves on from it:
   to `report.md` in Columns, and nowhere in Icons, where the grid's one row is its edge.
 - **Concerns:** GTK's keyboard cursor after a view switch and an open in Icons. The sequences
-  are parked in `tests/qa/fuzz/corpus/views/`.
+  are parked in `tests/qa/fuzz/corpus/views/`, with seed `0x09` of `views v4`, the same four
+  steps.
 - **State:** open, set aside: no Rune change, by the coordinator's ruling, as with
   [#2367](https://github.com/lgse/strata/issues/2367). GTK drops the cursor its List view
   showed, a fault for `main`, from a bug issue there.
+
+### #2425: a view shown again restores a folder position it remembered stale
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2425), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet, v4, shrunk 3 of 3 GTK against Rune:
+  - `fuzz-views-v4-0000000000000001`: the Appearance popover's List row, Ctrl+2, a double
+    click on `documents`, Ctrl+3, Alt+Up. GTK selects `documents`; Rune's List shows `archive`
+    selected as a load cursor while the browser holds `documents`, which F3's `browser-view`
+    invariant reports.
+  - `fuzz-views-v4-0000000000000011`: End, Ctrl+3, the popover's Icons row, a double click on
+    `documents`, the popover's List row, Alt+Left. GTK focuses `documents`, Rune `todo.txt`.
+  - Seeds `0x13` and `0x14` part the same way at Alt+Left in Icons.
+- **Why:** GTK keeps one history of where each folder was left, whatever the view
+  (`PaneNavigation`). Rune's Icons and List views each keep a memory of their own in their
+  `Pane` (`pane/restore.rs`, [A1](packages/A1.md)'s note in this package's file). A view
+  switched away hears nothing, and when it is shown again the rebuild's `Reset` has it
+  remember the folder it showed last as it last saw it, so Back or Up into that folder brings
+  the stale position back over the one the user left.
+- **Concerns:** the view switch ([A8](packages/A8.md)'s). The sequences are parked in
+  `tests/qa/fuzz/corpus/views/`.
+- **State:** open, A8's: a fix is one memory for the window's single-pane views, kept by the
+  shell, and no remembering on a rebuild, in a pull request of its own.
+
+### #2426: Escape with nothing selected closes the deepest column on GTK
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2426), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet, v4, shrunk 3 of 3 GTK against Rune from
+  `fuzz-views-v4-000000000000000f`: in Columns, Home (`archive` chosen, its column open),
+  Escape, Ctrl+2, Escape, a double click on `documents`, Alt+Left. GTK goes back to the root,
+  Rune to `archive`.
+- **Why, by reading:** with nothing selected, GTK's Escape in the files goes on to the
+  browser's `escape()` (`directory_enter_or_escape` in `src/ui/window/keyboard/items.rs`),
+  which closes the peek, clears the selection, or else closes the deepest column, here the
+  `archive` column the Icons view does not show. Rune's view keys clear a selection and stop,
+  so the column stays, and the folder opened in place next records it in the history.
+- **Concerns:** the Escape stages, [A6](packages/A6.md)'s with
+  [#2411](https://github.com/lgse/strata/issues/2411), noted in its file. In Columns the same
+  Escape closes a column a user sees; not driven. The sequence is parked in
+  `tests/qa/fuzz/corpus/views/`.
+- **State:** open, [A6](packages/A6.md)'s.
+
+### #2427: GTK's grouped List, shown again, puts its cursor on its first row
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2427), filed on
+  2026-11-13 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** by [A8](packages/A8.md)'s `views` alphabet, v4, shrunk 3 of 3 GTK against Rune from
+  `fuzz-views-v4-0000000000000007`: the Appearance popover's List row, a double click on
+  `documents`, the popover's "Group by file type", its Icons row, Ctrl+3. GTK's cursor is on
+  `spreadsheet.csv`, the first row in the groups' order; Rune's on `notes.txt`, the browser's
+  cursor and the first entry in the folder's order.
+- **Driven on GTK** (`./scripts/qa-drive.sh`, 2026-11-13): the focus ring is drawn on
+  `spreadsheet.csv`, and Down moves to `report.md`. GTK seems to place the cursor by the
+  browser's index in a listing shown in another order; Rune's restore and rebuild go by entry
+  id (`pane/restore.rs`).
+- **Concerns:** the sequence is parked in `tests/qa/fuzz/corpus/views/`.
+- **State:** open, set aside: no Rune change. A fix is `main`'s, from a bug issue there.
