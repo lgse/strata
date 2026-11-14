@@ -1638,5 +1638,5 @@ sequence only together with the alphabet's version, so the version is part of th
   left the filter open.
 - **Concerns:** the typed search ([A10](packages/A10.md)'s), through the regroup's rebuild
   (`shell::regroup`, [A8](packages/A8.md)'s).
-- **State:** fixed by [#2465](https://github.com/lgse/strata/pull/2465): the Group row closes the filter before it regroups, in a view
-  that groups (`filter::close_for_regroup`).
+- **State:** fixed by [#2465](https://github.com/lgse/strata/pull/2465): the Group row
+  closes the filter before it regroups, in a view that groups (`filter::close_for_regroup`).
