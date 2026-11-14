@@ -1080,7 +1080,7 @@ sequence only together with the alphabet's version, so the version is part of th
   "undo-target still absent" after its 30 s wait (`crates/strata-app/src/undo/tests.rs:59`).
   The branch did not touch undo. Alone, the test passed 3 of 3.
   Seen again on 2026-11-14, in a full `mise run test-rune` for [A6](packages/A6.md)'s
-  entries' focusable state, run while a `./scripts/qa-parity.sh` gate loaded the machine:
+  [#2475](https://github.com/lgse/strata/pull/2475), run while a `./scripts/qa-parity.sh` gate loaded the machine:
   `undo::tests::an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry` saw its
   undo answer `Declined` where it expects `Ran` (`crates/strata-app/src/undo/tests.rs:156`).
   The branch did not touch undo. Alone, the test passed.
