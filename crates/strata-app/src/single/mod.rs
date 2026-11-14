@@ -345,6 +345,11 @@ pub(crate) fn listen<V: SinglePane>(setup: &Setup<'_>) -> Option<Listener<App>> 
     }))
 }
 
+/// The view's tab is shown again: its pane scrolls back to where it was (`Part::tab_shown`).
+pub(crate) fn scroll_back<V: SinglePane>(app: &App, tx: &mut Tx) {
+    pane::<V>(app).scroll_back(tx);
+}
+
 /// Applies one change the listener read, or a rebuild's.
 pub(crate) fn apply<V: SinglePane>(app: &mut App, change: Change, tx: &mut Tx) -> bool {
     let layout = V::layout_key(app);

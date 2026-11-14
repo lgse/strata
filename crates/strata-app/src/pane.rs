@@ -197,6 +197,14 @@ impl Pane {
         &self.collection
     }
 
+    /// Scrolls the pane back to where it was last drawn: its tab is shown again, under a key of
+    /// its own, where Rune starts a viewport at its top (`shell::tabs`).
+    pub(crate) fn scroll_back(&self, tx: &mut rune::Tx) {
+        let offset = self.collection.scroll_offset();
+        let viewport = strata_components::collection::element::viewport_path(self.scope);
+        tx.scroll_to_instant(viewport, 0.0, offset);
+    }
+
     /// The listing as the collection reads it: an empty one while no folder shows.
     pub(crate) fn source(&self) -> &dyn EntrySource {
         match self.listing() {

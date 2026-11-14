@@ -16,7 +16,7 @@ use crate::{
     events::Change,
     host::offscreen::Offscreen,
     shell,
-    slots::{Entry, Frame, Listener, Place, Setup, Sidebar, View},
+    slots::{Entry, Frame, Listener, Place, Setup, Sidebar, Strip, View},
     test_support::{PATIENCE, fixture, idle_view, send_key},
 };
 
@@ -120,6 +120,8 @@ fn part<P: Made>(place: Place<App>) -> Entry<App> {
             false
         },
         switched: |_, _| note(format!("{} follows the view shown", P::NAME)),
+        tab_hidden: |_, _| note(format!("{} leaves its tab", P::NAME)),
+        tab_shown: |_, _| note(format!("{} shows its tab", P::NAME)),
         commands: &[],
         keyboard: |_| TYPING.get().then_some(Holds::Edit),
     }
@@ -150,7 +152,10 @@ fn every_slot() -> Vec<Entry<App>> {
         files(),
         sidebar(),
         part::<Location>(Place::Location(placed::<Location>)),
-        part::<Tabs>(Place::Tabs(placed::<Tabs>)),
+        part::<Tabs>(Place::Tabs(Strip {
+            build: |app, _, frame| placed::<Tabs>(app, frame),
+            shows: |_| false,
+        })),
     ]
 }
 

@@ -26,6 +26,9 @@
 //!   not taken: the shown view hands every change over before GLib dispatches, and a hidden
 //!   view does nothing at all.
 //! - **`keyboard`** ([`keyboard`]): who has the keyboard, against what the tree shows.
+//! - **`hidden-tab`:** a hidden tab runs nothing. Every update its browser and its parts'
+//!   services queued since it was hidden is still held for it, or was dropped for the rebuild
+//!   it gets when it is shown (`shell::tabs`): none ran on the shown tab's state.
 //!
 //! Some reads are narrower than they look, and `docs/testing.md` says so too:
 //!
@@ -93,6 +96,7 @@ pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<
     };
     keyboard::check(app, &shown, &mut failures);
     hidden_views(app, &mut failures);
+    hidden_tabs(app, &mut failures);
     let Some(view) = shell::shown_view(app) else {
         failures.fail("browser-view", "the window shows no view".to_owned());
         return failures.0;
@@ -122,6 +126,18 @@ pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<
     }
     tree(&presented, &observation.panes, &mut failures);
     failures.0
+}
+
+/// A hidden tab runs nothing: what was routed to it is held, or dropped for its rebuild.
+fn hidden_tabs(app: &App, failures: &mut Failures) {
+    for (key, held) in shell::hidden_tabs(app) {
+        if !held.accounted() {
+            failures.fail(
+                "hidden-tab",
+                format!("tab {} ran an update while it was hidden", key.0),
+            );
+        }
+    }
 }
 
 /// A view that is not shown hears nothing and is changed by nothing until it is shown again,

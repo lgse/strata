@@ -24,6 +24,10 @@
 //!
 //! - **The context menus** of the rows, by right-click and the Menu key ([`menu`]).
 //!
+//! The window keeps one sidebar for every tab (`Scope::Window`), where GTK builds one for each
+//! tab: every tab's shows the same settings and bookmarks, and a hidden tab's sidebar has
+//! nothing of its own to keep but its scroll. The tab shown marks its own place.
+//!
 //! Drops, devices, the full Trash's icon and the `g` keycaps are not here yet:
 //! `docs/rune/parity/packages/A3.md` lists them.
 
@@ -49,7 +53,7 @@ use crate::{
     App,
     commands::{Action, Holds},
     shell,
-    slots::{self, Frame, Later, Listener, Part, Place, Setup},
+    slots::{self, Frame, Later, Listener, Part, Place, Scope, Setup},
 };
 
 mod header;
@@ -136,6 +140,15 @@ impl Part for Sidebar {
                 heard.then(|app: &mut App, _: &mut Tx| trash::refresh(app));
             }
         }))
+    }
+
+    /// One sidebar for the window: its places, pins, widths and sections are the settings' and
+    /// the bookmarks', which every tab shows alike.
+    const SCOPE: Scope = Scope::Window;
+
+    /// The tab shown now marks its own place.
+    fn tab_shown(app: &mut App, _tx: &mut Tx) {
+        app.sidebar.follow(&app.browser);
     }
 
     fn poll(app: &mut App, _clock: f64, _tx: &mut Tx) -> bool {

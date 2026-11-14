@@ -98,6 +98,11 @@ impl Part for Icons {
         single::listen::<Self>(setup)
     }
 
+    // The size follows the settings at each poll (`size::follow_folder`).
+    fn tab_shown(app: &mut App, tx: &mut Tx) {
+        single::scroll_back::<Self>(app, tx);
+    }
+
     fn publish(app: &mut App) {
         single::publish::<Self>(app);
     }

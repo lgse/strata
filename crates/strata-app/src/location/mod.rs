@@ -199,6 +199,15 @@ impl Part for Bar {
         follow(app, tx);
     }
 
+    /// Another tab is shown: an edit ends and its suggestions close, with a listing in flight
+    /// dropped, as GTK's `select` calls `cancel_location_edit` on the tab it leaves.
+    fn tab_hidden(app: &mut App, tx: &mut Tx) {
+        let ended = app.location.state.end_edit();
+        intents::route(app, ended, tx);
+        let dismissed = app.location.state.dismiss_completion();
+        intents::route(app, dismissed, tx);
+    }
+
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let polled = app.location.state.tick(clock, tx);
         let changed = polled.changed;
