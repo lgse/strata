@@ -601,6 +601,14 @@ Found by the package's agent, 2026-11-12, against A1's five items above.
    [#2375](https://github.com/lgse/strata/issues/2375)); Columns, where GTK ranges, does not.
    Should Rune instead range as the browser's views do? Source: A10, 2026-11-13.
 
+2. **The Sort by menu's name** (ruled by the coordinator on 2026-11-14; the owner may reopen
+   it). GTK's Sort by is a `GtkPopoverMenu`, an unnamed `menu` to assistive technology. On
+   Rune it is a plain popover of the menu kind (`popover::Kind::Menu`), a `menu` named for
+   its button, "Choose sort field", as the owner's [#2405](https://github.com/lgse/strata/issues/2405)
+   ruling names Rune's plain popovers so that a screen reader hears what opened. It is an
+   accessible name GTK lacks and nothing more. Should it be unnamed, as GTK's is? Source:
+   A10, 2026-11-14.
+
 ### Packages added later
 
 - **A branch name for a package with no archived issue.** Branch names keep the package's

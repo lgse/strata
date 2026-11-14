@@ -30,7 +30,13 @@ use strata_components::{
 use strata_core::{i18n::tr, model::Location};
 use strata_kit::icons::IconName;
 
-use crate::{App, buttons, icons::size, popover::Plain, shell, slots::Frame};
+use crate::{
+    App, buttons,
+    icons::size,
+    popover::{Kind, Plain},
+    shell,
+    slots::Frame,
+};
 
 /// The button's key, which the popover hangs from and gives the keyboard back to.
 pub(crate) const BUTTON: &str = "icons-thumbnail-size";
@@ -173,7 +179,8 @@ pub(crate) fn build(app: &App, frame: &mut Frame<'_, App>) {
     }
     let plain = Plain {
         key: "icons-thumbnail-popover",
-        anchor: BUTTON,
+        anchor: BUTTON.into(),
+        kind: Kind::Dialog,
         label: labels.title.clone(),
         stops: stops(app),
         own_arrows: &[SLIDER],

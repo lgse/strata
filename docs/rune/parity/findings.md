@@ -1500,3 +1500,19 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside, two `entries v3` seeds parked. The fault is in the undo history
   both interfaces share, so its fix belongs on `main`; the coordinator places it with
   [#2387](https://github.com/lgse/strata/issues/2387).
+
+### #2441: closing a Columns column's Sort by menu leaves the keyboard on its button on GTK, on the view on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2441), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** driving GTK for [A10](packages/A10.md)'s sort controls. Escape or a click outside
+  closes a Columns column's Sort by menu, and GTK's keyboard stays on the header's "Choose
+  sort field" button. C2's header-actions slot asks for its buttons to be built
+  `focusable(false)`, so Rune's `focus_return` has nowhere to land. A10's `sort` part gives
+  the keyboard to the Columns view instead.
+- **Concerns:** `crates/strata-app/src/sort/` (`refocus`), and C2's header slot
+  (`ColumnsView::header_actions`). No run checks it.
+- **State:** open. The blocker is C2's slot rule that a column header's actions are no focus
+  stops, the rule [#2379](https://github.com/lgse/strata/issues/2379) waits on
+  ([`owner.md`](owner.md#a5-location-bar), A5 item 2). Changing it is a separate `contract`
+  question.

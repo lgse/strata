@@ -91,11 +91,12 @@ fn sorted_folder() -> std::path::PathBuf {
     strata_core::storage::config_directory().join("sorted")
 }
 
-/// Three files of growing size, whose names sort the other way round.
+/// Three files whose sizes grow with their names, so a sort by size descending lists them the
+/// other way round from a sort by name.
 fn make_sorted_folder() {
     let folder = sorted_folder();
     std::fs::create_dir_all(&folder).expect("folder");
-    for (name, size) in [("a.txt", 30), ("b.txt", 20), ("c.txt", 10)] {
+    for (name, size) in [("a.txt", 10), ("b.txt", 20), ("c.txt", 30)] {
         std::fs::write(folder.join(name), "x".repeat(size)).expect("file");
     }
 }
@@ -157,7 +158,7 @@ fn a_saved_folder_sort_applies_on_its_first_column() {
             let first = host.run_until(PATIENCE, |host| !listed(host, 0).is_empty());
             assert!(first, "nothing listed");
             let rows = listed(&host, 0);
-            let order = ["a.txt", "b.txt", "c.txt"];
+            let order = ["c.txt", "b.txt", "a.txt"];
             assert!(
                 order
                     .iter()
@@ -167,7 +168,7 @@ fn a_saved_folder_sort_applies_on_its_first_column() {
             );
             let whole = host.run_until(PATIENCE, |host| listed(host, 0).len() == 3);
             assert!(whole, "the folder listed whole");
-            assert_eq!(listed(&host, 0), ["a.txt", "b.txt", "c.txt"]);
+            assert_eq!(listed(&host, 0), ["c.txt", "b.txt", "a.txt"]);
             let owed = host.run_until(PATIENCE, |host| {
                 host.app().window.folder_views().timer.due.is_some()
             });

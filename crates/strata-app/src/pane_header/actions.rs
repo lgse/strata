@@ -29,12 +29,17 @@ use super::{empty_trash, refresh};
 use crate::{App, buttons};
 
 /// The actions before the thumbnail size in the header over the single-pane view keyed `view`.
-/// In List, GTK's Sort by leads them: A10 places it before Empty Trash.
+/// In List, GTK's Sort by leads them, and its direction button follows Refresh in the Recent
+/// root only.
 pub(super) fn pane(app: &App, view: &str) -> Vec<El> {
     let Some(depth) = app.browser.active_depth() else {
         return Vec::new();
     };
+    let list = view == crate::list::VIEW;
     let mut actions = Vec::new();
+    if list {
+        actions.extend(crate::sort::list_menu(app, view));
+    }
     if let Some(button) = empty_trash::built(app, depth) {
         actions.push(buttons::on_return(format!("{view}-empty-trash"), button));
     }
@@ -42,6 +47,9 @@ pub(super) fn pane(app: &App, view: &str) -> Vec<El> {
         format!("{view}-refresh"),
         refresh::built(app, depth),
     ));
+    if list {
+        actions.extend(crate::sort::recent_direction(app, view));
+    }
     actions
 }
 
@@ -55,6 +63,6 @@ pub(crate) fn column(app: &App, cx: &HeaderCx) -> Option<El> {
     }
     let refresh = refresh::built(app, depth).key(format!("columns-refresh-{depth}"));
     actions = actions.child(refresh.focusable(false));
-    // The sort direction and Sort by go here (A10).
+    actions = actions.children(crate::sort::column(app, depth));
     Some(actions.children(crate::filter::column_actions(app, depth)))
 }
