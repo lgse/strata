@@ -2,17 +2,28 @@
 
 //! What the bar's intents do: GTK's `submit_location`, `cancel_location_edit` and the crumbs'
 //! handlers (`src/ui/browser/location.rs`, `location/breadcrumbs.rs`).
+//!
+//! A crumb's middle click runs `open-in-tab` on its folder, and with Ctrl or Shift
+//! `open-in-window` (`commands::On::Place`), as GTK's crumbs open a new tab or window. Neither
+//! does anything until a part registers it.
 
 use rune::{TextEdit, Tx};
 use strata_components::location_bar::{LocationIntent, Polled, Via};
+use strata_core::model::Location;
 use strata_fs::services::{LocationValidationError, sanitize_uri_credentials};
 
-use crate::{App, open_failed, shell};
+use crate::{
+    App,
+    commands::{self, On},
+    open_failed, shell,
+};
 
 /// One of the bar's intents, or one a call into its state raised.
 pub(super) fn heard(app: &mut App, intent: LocationIntent, tx: &mut Tx) {
     match intent {
         LocationIntent::Open { id, via } => open(app, &id, via, tx),
+        LocationIntent::OpenInNewTab { id } => open_in_new(app, &id, "open-in-tab", tx),
+        LocationIntent::OpenInNewWindow { id } => open_in_new(app, &id, "open-in-window", tx),
         LocationIntent::Submit { text } => submit(app, &text, tx),
         LocationIntent::Cancelled => {
             app.location.typed = None;
@@ -49,16 +60,17 @@ pub(super) fn route_ticked(app: &mut App, polled: Polled, tx: &mut Tx) {
     }
 }
 
+/// The folder of the crumb the bar calls `id`.
+fn crumb(app: &App, id: &str) -> Option<Location> {
+    let index = id.parse::<usize>().ok()?;
+    app.location.crumbs.get(index).cloned()
+}
+
 /// A crumb: a click or the hierarchy menu opens its folder selecting the one the user came
 /// from (`navigate_to_ancestor`); a drag resting on it opens it plainly
 /// (`attach_crumb_drop_target`).
 fn open(app: &mut App, id: &str, via: Via, tx: &mut Tx) {
-    let folder = id
-        .parse::<usize>()
-        .ok()
-        .and_then(|index| app.location.crumbs.get(index))
-        .cloned();
-    let Some(folder) = folder else {
+    let Some(folder) = crumb(app, id) else {
         return;
     };
     shell::publish(app);
@@ -68,6 +80,13 @@ fn open(app: &mut App, id: &str, via: Via, tx: &mut Tx) {
         Via::Spring => browser.navigate_location(folder, false),
     }
     shell::settle(app, tx);
+}
+
+/// A crumb's middle click: its folder in a new tab or window, by the command `command`.
+fn open_in_new(app: &mut App, id: &str, command: &str, tx: &mut Tx) {
+    if let Some(folder) = crumb(app, id) {
+        commands::run(app, command, On::Place(folder), tx);
+    }
 }
 
 /// Enter, Navigate or a chosen suggestion: the typed location opens, and the keyboard goes

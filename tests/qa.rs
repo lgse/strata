@@ -484,6 +484,9 @@ impl Display {
                     sway.ipc.display().to_string(),
                 ),
                 ("GDK_BACKEND", "wayland".to_owned()),
+                // strata-rune opens its window here, the session host, rather than drawing
+                // offscreen (`crates/strata-app/src/qa/session.rs`); GTK reads nothing of it.
+                (wayland::WINDOW_VARIABLE, "1".to_owned()),
             ],
         }
     }

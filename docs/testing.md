@@ -460,11 +460,14 @@ never validation evidence, and must be recorded in the handoff with the
 container run it replaced. The QA runner is not wired into
 `scripts/test-headless.py`.
 
-### Wayland and input methods (host runs)
+### Wayland and input methods
 
-Two optional parts of a host run reproduce bugs the pinned image cannot reach,
-such as input-method composition (issue #1715). Neither is validation evidence,
-and the pinned image has neither sway nor fcitx5.
+Two optional parts of a run reproduce bugs Xvfb cannot reach, such as
+input-method composition (issue #1715). The pinned image has sway, Xwayland
+and lavapipe, a software Vulkan driver, for the Rune target's session host
+("The session host", below, by the owner's ruling of 2026-11-14), and no
+fcitx5 and no `grim`. So for the GTK application the Wayland display is a host
+run's, and neither part is validation evidence there.
 
 - `STRATA_QA_DISPLAY=wayland` gives every run a private headless sway
   (`WLR_BACKENDS=headless`, no input devices, no XWayland, software rendering)
@@ -475,7 +478,8 @@ and the pinned image has neither sway nor fcitx5.
   where the window-manager-less X display leaves it, and `screenshot` uses
   `grim`. `layout` steps other than `us` and pixel sampling (pixel
   predicates and drop samples) are X11-only and fail with a message. It needs
-  `sway`, `swaymsg`, and `grim`.
+  `sway` and `swaymsg`, and `grim` for a screenshot. strata-rune serves from a
+  real window there (`STRATA_QA_WINDOW=1`, which the display sets).
 - A header's `"input_method": "<name>"` (with `session_bus`) starts a private
   fcitx5 on the run's display and bus, with a profile holding the US keyboard
   and that input method; Ctrl+Space switches to it. Choose the toolkit path
@@ -1091,7 +1095,7 @@ blocker = "A1"
 | `package` | Every entry | The work package that owns the run: an id of the parity plan (`A7`, `H4`), or the slice's package that took the run to `required` (`V7` for gate G1, `V8` for G2, `V9` for G3). "Who owns a run", below, says which |
 | `gate` | The Columns runs of the slice's seven folders, and no other | `G1`, `G2` or `G3`: what `slice`, `g1`, `g2` and `g3` select (`docs/rune/slice/README.md`) |
 | `status` | Every entry | `required`, `parallel`, `pending` or `excluded` |
-| `host` | A `required` entry; a `parallel` or `pending` one may name it | `offscreen`, the Rune host every required run uses today, or `session`, a real window in a headless compositor. On a `parallel` entry it is the host the twin runs on, `offscreen` when it names none. On a `pending` entry it says which host the run will need, and nothing asks for it |
+| `host` | A `required` entry; a `parallel` or `pending` one may name it | `offscreen`, the Rune host most required runs use, or `session`, a real window in a headless compositor ("The session host", below). On a `parallel` entry it is the host the twin runs on, `offscreen` when it names none. On a `pending` entry it says which host the run will need, and nothing asks for it |
 | `exception`, `twin`, `ref` | A `parallel` entry | The exception the run stands under, the twin's run that stands in for it on Rune (`<scenario>-rune/<run>`), and the exception's record. "Twins", below |
 | `reason`, `blocker` | A `pending` entry | Why the run does not pass on Rune yet, and what someone can act on |
 | `ruling` | An `excluded` entry | The owner ruling that left the run out |
@@ -1101,8 +1105,7 @@ edit neighbouring entries merge without a conflict.
 
 - `status = "required"`: passes on both targets, and `qa-parity.sh` runs it. A
   run moves here only once it has passed on both, three times running, in the
-  pinned image. `qa-parity.sh` refuses a selection with a required run on the
-  `session` host until it can start that host.
+  pinned image. On Rune it runs on the host its entry names.
 - `status = "parallel"`: the shared file cannot pass on Rune under a named
   exception, and a twin beside it does. It carries the `exception`, the
   `twin` and the `ref`, and `qa-parity.sh` runs it with the required runs:
@@ -1120,6 +1123,32 @@ edit neighbouring entries merge without a conflict.
 - `status = "excluded"`: left out of the migration by an owner ruling, which
   `ruling` cites. It runs on GTK only. The nine `visual_baselines` runs are
   the only ones, and a unit test holds the list to them.
+
+#### The session host
+
+A run whose entry says `host = "session"` needs what the offscreen host lacks:
+window focus, the system clipboard, drags through a compositor. On Rune
+`qa-parity.sh` runs it in a batch of its own on the runner's private headless
+sway (`STRATA_QA_DISPLAY=wayland`, above under "Wayland and input methods"),
+where `strata-rune --qa` opens its window and serves the protocol from it
+(`STRATA_QA_WINDOW=1`, which the runner sets on that display;
+`crates/strata-app/src/qa/session.rs`). Input crosses the compositor through
+Wayland's virtual keyboard and pointer, on the US layout only. The run takes
+the same file on GTK, on Xvfb as every GTK run does.
+
+```bash
+./scripts/qa-parity.sh A8                   # each Rune run on the host its entry names
+./scripts/qa-parity.sh A8 --host session    # every Rune run of A8 on the session host
+```
+
+`--host session` runs every Rune run of the selection there, offscreen ones
+included, whatever host their entries name: a way to see whether an offscreen
+run also passes in a real window, and not a gate's evidence, which runs each
+row on its own host. It picks the Rune target's host, so it refuses
+`--target gtk`. A `--pending` or `--parallel` survey splits by host as the
+gate does: a pending row that names `host = "session"` is surveyed there.
+`mise run test-platform window::qa` drives the same host outside the image,
+in W3's private session.
 
 #### Who owns a run
 

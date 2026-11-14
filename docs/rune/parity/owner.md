@@ -748,6 +748,14 @@ Rulings of the owner on the parity work, oldest first.
   by the coordinator, 2026-11-13). So the fuzz map excuses `app.dialog` only where GTK has
   none and Rune has a plain popover's name, a rule that names its values, and never a real
   dialog. Built in [A8](packages/A8.md)'s `views` alphabet pull request.
+- **2026-11-14: the session host's image, and where its clipboard proof goes** (relayed by
+  the coordinator, 2026-11-14). The pinned test image takes `sway`, `xorg-xwayland` and
+  `vulkan-swrast` from its Arch snapshot, for [H4](packages/H4.md)'s session host; `grim`
+  stays out, and Rune golden images stay out of scope. [H4](packages/H4.md) closes on the
+  session host and one drag run: no clipboard run can pass on Rune before
+  [A12](packages/A12.md)'s Copy and Paste, so the clipboard run on the session host
+  (`keyboard-only-copy-paste/columns` on both targets) moves to A12's done-when list, and the
+  end-of-wave-1 checkpoint names the drag run alone.
 
 ## Housekeeping
 

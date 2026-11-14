@@ -217,14 +217,18 @@ impl Session {
         );
     }
 
-    /// Sends `send`'s input, then waits for Rune to take it and for the frame after.
+    /// Sends `send`'s input, then waits for Rune to take it and for the frame after. Input
+    /// that sent no event, the release of no modifier say, is waited for no longer.
     async fn input(
         &self,
         what: &str,
         send: impl FnOnce() -> Result<(), String>,
     ) -> Result<(), String> {
+        let before = self.devices.last_sent();
         send()?;
-        self.dispatched(what);
+        if self.devices.last_sent() != before {
+            self.dispatched(what);
+        }
         self.settle().await;
         Ok(())
     }
