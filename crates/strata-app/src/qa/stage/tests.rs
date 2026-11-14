@@ -64,6 +64,8 @@ fn made_parts() -> Vec<Entry<App>> {
         caught_up: |_| {},
         poll: |_, _, _| false,
         switched: |_, _| {},
+        tab_hidden: |_, _| {},
+        tab_shown: |_, _| {},
         commands: &[],
         keyboard: |_| None,
     }]

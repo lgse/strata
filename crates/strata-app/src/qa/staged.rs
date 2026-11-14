@@ -57,6 +57,14 @@ impl Staged {
         self.stage.borrow_mut().turn()
     }
 
+    /// Runs `act` on the window's state as a handler would, then settles: what no step does.
+    #[cfg(test)]
+    pub(super) fn update(&self, act: impl FnOnce(&mut App, &mut rune::Tx)) {
+        let stage = &mut *self.stage.borrow_mut();
+        stage.host().runtime().update(act);
+        stage.settle();
+    }
+
     /// Tells Rune which modifiers are down, as a keyboard does before the key they modify.
     /// The Columns adapter reads them to tell a Shift range from a move.
     fn show_modifiers(&self, stage: &mut Stage) {

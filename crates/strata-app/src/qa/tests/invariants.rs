@@ -276,3 +276,26 @@ fn a_filter_s_results_in_the_icons_are_held_to_what_the_tree_draws() {
         "a_filter_s_results_in_the_icons_are_held_to_what_the_tree_draws",
     );
 }
+
+/// A hidden tab runs nothing: what its browser queues while it is hidden, as many events as
+/// it takes to outrun what is held, is held for it or dropped for its rebuild, and none of it
+/// reaches the tab shown.
+#[test]
+fn a_hidden_tab_holds_what_its_browser_queues() {
+    shown_in(
+        "columns",
+        "a_hidden_tab_holds_what_its_browser_queues",
+        |backend, kept| {
+            let hidden = backend.browser();
+            let at = hidden.active_location();
+            backend.update(|app, tx| {
+                crate::shell::tabs::open(app, at, 1, tx);
+            });
+            for _ in 0..=crate::shell::tabs::HELD_EVENTS {
+                hidden.toggle_hidden();
+            }
+            passes(backend, kept, &json!({ "sleep": 100 }));
+            assert_eq!(failed(backend, kept), json!([]));
+        },
+    );
+}

@@ -115,6 +115,8 @@ fn parts() -> Vec<Entry<App>> {
         caught_up: |_| {},
         poll,
         switched: |_, _| {},
+        tab_hidden: |_, _| {},
+        tab_shown: |_, _| {},
         commands: &[],
         keyboard: |_| (PARENT.get() || CHILD.get()).then_some(Holds::Popover),
     };
