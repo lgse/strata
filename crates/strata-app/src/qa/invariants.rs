@@ -27,13 +27,19 @@
 //!   view does nothing at all.
 //! - **`keyboard`** ([`keyboard`]): who has the keyboard, against what the tree shows.
 //!
-//! Two reads are narrower than they look, and `docs/testing.md` says so too:
+//! Three reads are narrower than they look, and `docs/testing.md` says so too:
 //!
 //! - **A column still loading** is held to rows at the browser's positions, never to the
 //!   browser's whole listing: a large folder is published in stages, and the view lists what
 //!   has been published.
 //! - **The anchor** is compared as a view ranges from it: the anchor, or the cursor where
 //!   there is none. So no anchor and an anchor on the cursor read the same.
+//! - **A column showing a filter's results** ([`Presented::results`]) is held to all but its
+//!   marks, its pending hand-over and its pane: the results replace its rows, and the browser
+//!   holds none of their selection, as on GTK. Its listing is still held to the browser's.
+//! - **The load cursor** is read on the browser's side through `Browser::filled_entries`, as
+//!   `events::marks` reads it, so the two cannot disagree on that predicate: the check holds
+//!   the view to the marks it was given, not the predicate to the browser's `load_cursor`.
 
 use std::collections::HashSet;
 
@@ -76,7 +82,8 @@ pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<
         return failures.0;
     };
     let presented = (view.probe.presented)(app);
-    for depth in &presented.pending {
+    let pending = presented.pending.iter();
+    for depth in pending.filter(|depth| !presented.results.contains(depth)) {
         failures.fail(
             "handover",
             format!(
@@ -89,7 +96,10 @@ pub(super) fn check(app: &App, observation: &Observation, focused: bool) -> Vec<
         column.holds_itself(&mut failures);
     }
     held_columns(app, &presented, &columns, &mut failures);
-    for shown in &presented.shown {
+    // A filter's results show in the column's place, and the browser holds none of their
+    // selection: its marks and its pane are left alone while they show.
+    let marked = presented.shown.iter();
+    for shown in marked.filter(|shown| !presented.results.contains(&shown.depth)) {
         if let Some(browsed) = columns.get(shown.depth) {
             marks(shown, browsed, &mut failures);
         }
@@ -431,7 +441,9 @@ fn tree(presented: &Presented<'_>, panes: &[PaneObservation], failures: &mut Fai
             );
             return;
         };
-        pane_of(pane, shown, failures);
+        if !presented.results.contains(&shown.depth) {
+            pane_of(pane, shown, failures);
+        }
     }
     for shown in columns {
         let depth = shown.depth;

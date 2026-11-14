@@ -1077,13 +1077,20 @@ sequence only together with the alphabet's version, so the version is part of th
   key of an element no longer drawn kept it, and every key after that (Menu, the arrows)
   went nowhere until a click. On GTK, in the same replay (seed `0x01` of `sidebar v1`,
   `gtk,rune`), the next Menu key opens the selected entry's context menu.
-- **Also seen:** a focused sidebar row that goes away by a drag (seed `0x10`) or by Unpin
-  (seed `0x0e`) leaves no element with the keyboard too. Neither has been checked on GTK.
+- **Also seen:** two more cases leave no element with the keyboard, both checked against
+  GTK in the same `gtk,rune` replays.
+  - Seed `0x10`: a drag of a sidebar row while that row's menu is open. GTK's menu swallows
+    the drag and stays open; Rune's closes, and the keyboard goes nowhere. This is a
+    divergence of its own (a drag across an open menu), and not as local as the hidden
+    sidebar.
+  - Seed `0x0e`: Unpin of the focused row. Neither target's next keys show an effect, and
+    GTK's QA snapshot does not say where its keyboard is, so no difference has been shown.
 - **State:** the hidden sidebar fixed by [F3](packages/F3.md)'s
   [#2409](https://github.com/lgse/strata/pull/2409): the toggle gives the shown view the keyboard when it hides the sidebar with the
   keyboard in it (`sidebar/width.rs`), held by
   `sidebar::tests::hiding_the_sidebar_with_the_keyboard_in_it_gives_the_keyboard_to_the_view`.
-  The drag and Unpin cases are open, to be placed.
+  The drag and Unpin cases are open, their seeds parked in `tests/qa/fuzz/corpus/sidebar/`
+  by F3's third pull request.
 
 ### #2407: the location bar's hierarchy menu holds no keyboard on Rune
 

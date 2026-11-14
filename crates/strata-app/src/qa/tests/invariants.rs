@@ -192,7 +192,10 @@ fn the_holds_follow_what_opens_and_a_hidden_view_does_nothing() {
                     json!({ "key": "Escape" }),
                     json!({ "wait": { "focused": "readme.md" } }),
                 ),
-                (json!({ "key": "shift+Delete" }), json!({ "wait": { "dialog": true } })),
+                (
+                    json!({ "key": "shift+Delete" }),
+                    json!({ "wait": { "dialog": true } }),
+                ),
                 (
                     json!({ "key": "Escape" }),
                     json!({ "wait": { "not": { "dialog": true } } }),
@@ -205,6 +208,36 @@ fn the_holds_follow_what_opens_and_a_hidden_view_does_nothing() {
                     json!({ "key": "ctrl+1" }),
                     json!({ "wait": { "view_mode": "Columns" } }),
                 ),
+            ] {
+                passes(backend, kept, &step);
+                passes(backend, kept, &then);
+                assert_eq!(failed(backend, kept), json!([]), "after {step}");
+            }
+        },
+    );
+}
+
+/// A filter's results take the place of a column's rows, and the browser holds none of their
+/// selection, as on GTK: the invariants leave the marks and the pane of that column alone
+/// while the results show, and hold everything else.
+#[test]
+fn a_column_showing_filter_results_is_held_to_all_but_its_marks() {
+    shown_in(
+        "columns",
+        "a_column_showing_filter_results_is_held_to_all_but_its_marks",
+        |backend, kept| {
+            for (step, then) in [
+                (
+                    json!({ "click": { "entry": "readme.md" } }),
+                    json!({ "wait": { "focused": "readme.md" } }),
+                ),
+                (
+                    json!({ "key": "ctrl+f" }),
+                    json!({ "wait": { "field": {} } }),
+                ),
+                (json!({ "type": "re" }), json!({ "sleep": 500 })),
+                (json!({ "key": "Down" }), json!({ "sleep": 300 })),
+                (json!({ "key": "Escape" }), json!({ "sleep": 300 })),
             ] {
                 passes(backend, kept, &step);
                 passes(backend, kept, &then);

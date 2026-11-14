@@ -119,6 +119,9 @@ pub(crate) struct Presented<'a> {
     /// The depth of each column shown whose selection changed since the browser last took it
     /// ([`Held`]): what the view has still to hand over.
     pub(crate) pending: Vec<usize>,
+    /// The depth of each column whose rows a filter's results replace while they show. The
+    /// browser holds none of the results' selection, as GTK's does not.
+    pub(crate) results: Vec<usize>,
 }
 
 /// Gives the browser's column what its collection changed since the browser last held it.

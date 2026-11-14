@@ -1786,10 +1786,17 @@ What the checks leave out, on purpose:
 - **The anchor** is compared as a view ranges from it, the anchor or the
   cursor where there is none, so no anchor and an anchor on the cursor read the
   same.
-- **Filter and search results** (A10) replace a column's rows while they
-  show, and by design the browser holds none of their selection, as on GTK.
-  Until a results column is exempted (only while it shows results, every
-  other check still made), a `FINDING` met while results show goes to F3.
+- **A column showing a filter's results** (A10's) is held to all but its
+  marks, its pending hand-over and its pane, only while the results show: the
+  results replace its rows, and by design the browser holds none of their
+  selection, as on GTK. Its listing is still held to the browser's, and every
+  other column to everything.
+- **The load cursor** is read on the browser's side through
+  `Browser::filled_entries`, as `events::marks` reads it, so the two cannot
+  disagree on that predicate: the check holds the view to the marks it was
+  given, not the predicate to the browser's own `load_cursor`, which no
+  accessor exposes. It matches `load_cursor` in every state the fuzzer
+  reaches (finding lgse/strata#2386's review).
 
 The lines go into the observation's `invariants`, which the comparator
 treats as it treats `criticals`: a broken invariant is a divergence at its

@@ -175,6 +175,7 @@ impl Pane {
             listings: self.columns.iter().collect(),
             shown: shown.into_iter().collect(),
             pending,
+            results: Vec::new(),
         }
     }
 

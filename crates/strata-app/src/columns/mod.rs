@@ -422,12 +422,16 @@ impl Columns {
         let pending = (0..self.open())
             .filter(|depth| self.held.get(*depth) != Some(&self.held_now(*depth)))
             .collect();
+        let results = (0..self.open())
+            .filter(|depth| self.listings.hits_at(*depth))
+            .collect();
         handover::Presented {
             active: Some(self.state.active()),
             strip: Some(self.state.len()),
             listings: self.listings.columns.iter().collect(),
             shown,
             pending,
+            results,
         }
     }
 }
