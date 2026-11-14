@@ -1798,6 +1798,12 @@ What the checks leave out, on purpose:
   given, not the predicate to the browser's own `load_cursor`, which no
   accessor exposes. It matches `load_cursor` in every state the fuzzer
   reaches (finding lgse/strata#2386's review).
+- **Known limits, which no alphabet reaches yet.** Marks are compared while a
+  column loads, so a cursor on an entry not yet published reads as none in the
+  view: a large-folder alphabet would see `browser-view` break. And
+  `keyboard` takes every modal layer to show as a `dialog`: a modal that is
+  none there (a palette, F1's reference) needs one, or the check breaks on a
+  correct window.
 
 The lines go into the observation's `invariants`, which the comparator
 treats as it treats `criticals`: a broken invariant is a divergence at its

@@ -27,7 +27,7 @@
 //!   view does nothing at all.
 //! - **`keyboard`** ([`keyboard`]): who has the keyboard, against what the tree shows.
 //!
-//! Three reads are narrower than they look, and `docs/testing.md` says so too:
+//! Some reads are narrower than they look, and `docs/testing.md` says so too:
 //!
 //! - **A column still loading** is held to rows at the browser's positions, never to the
 //!   browser's whole listing: a large folder is published in stages, and the view lists what
@@ -42,6 +42,14 @@
 //! - **The load cursor** is read on the browser's side through `Browser::filled_entries`, as
 //!   `events::marks` reads it, so the two cannot disagree on that predicate: the check holds
 //!   the view to the marks it was given, not the predicate to the browser's `load_cursor`.
+//!
+//! Known limits, which no alphabet reaches yet:
+//!
+//! - **Marks are compared while a column loads.** A cursor the browser holds on an entry not
+//!   yet published reads as `None` in the view, so a large-folder alphabet would see it break.
+//! - **A modal layer is taken to show as a dialog.** `keyboard` holds `Holds::Modal` to the
+//!   snapshot's `dialog`, so a modal that is no dialog there (a palette, F1's reference) needs
+//!   a `dialog` of its own, or the check breaks on a correct window.
 
 use std::collections::HashSet;
 

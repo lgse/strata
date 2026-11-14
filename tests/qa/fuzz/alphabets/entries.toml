@@ -20,8 +20,8 @@
 # - A click on the entry being renamed: where the caret goes is by pixel, and GTK does not
 #   answer a Shift+click there the same way twice (lgse/strata#2173).
 area = "entries"
-version = 1
-about = "Columns on the canonical fixture, type to search off: new folders and files by key and menu, named or left, renames by F2 and the menu with plain names and paths, Move to Trash, permanent deletes confirmed or cancelled, undo and redo, with navigation, clicks and selection between, and files made and removed behind the application's back"
+version = 2
+about = "Columns on the canonical fixture, type to search off: new folders and files by key and menu, named or left, renames by F2 and the menu with plain names and paths, Move to Trash, permanent deletes confirmed or cancelled, undo and redo, alone and one after the other, with navigation, clicks and selection between, and files made and removed behind the application's back"
 header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
 
 [[action]]
@@ -172,6 +172,18 @@ steps = ['{"key":"ctrl+z","when":{"not":{"field":{"name":"Rename"}}}}']
 name = "redo"
 weight = 2
 steps = ['{"key":"<key>","when":{"not":{"field":{"name":"Rename"}}}}']
+choose.key = ["ctrl+shift+z", "ctrl+y"]
+
+# An Undo with its Redo straight after, which F3's `undo-redo` invariant holds to putting
+# the tree back as it was before the Undo (`docs/testing.md`, "Invariants"): the two separate
+# actions above almost never meet in that order.
+[[action]]
+name = "undo-redo"
+weight = 3
+steps = [
+  '{"key":"ctrl+z","when":{"not":{"field":{"name":"Rename"}}}}',
+  '{"key":"<key>","when":{"not":{"field":{"name":"Rename"}}}}',
+]
 choose.key = ["ctrl+shift+z", "ctrl+y"]
 
 [[action]]
