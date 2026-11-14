@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-//! The search behind a filter: GTK's `SearchSession` (`src/ui/search_session.rs`), the
-//! index of a folder on strata-fs's worker and its results for the current query.
+//! The search behind a filter and the search palette: GTK's `SearchSession`
+//! (`src/ui/search_session.rs`), the index of a folder on strata-fs's worker and its results
+//! for the current query, and the palette's index of its roots (`start_search` in
+//! `src/ui/search.rs`).
 //!
-//! - **One index for a folder and its scope.** A query that keeps the folder, whether hidden
-//!   entries show, the subfolders choice and the search limits asks the running index again;
-//!   anything else starts a new one, as `SearchSession::update` does.
+//! - **One index for a scope.** A query that keeps the scope, whether hidden entries show
+//!   and the search limits asks the running index again; anything else starts a new one, as
+//!   `SearchSession::update` does. The palette starts its index on open, before a query
+//!   ([`Session::prepare`]).
 //! - **Results on GLib's clock.** GTK reads the worker's channel every 16 ms, eight events
 //!   at a time, keeping only the last batch for the query typed now (`drain`); the batch is
 //!   queued for the interface through [`Later`], as every service's callback is.
@@ -20,19 +23,49 @@ use std::{
     time::Duration,
 };
 
-use strata_fs::services::{SearchEvent, SearchHandle, SearchItem, SearchLimits, index_filter};
+use strata_fs::services::{
+    SearchCoverage, SearchEvent, SearchHandle, SearchItem, SearchLimits, index_filter,
+    index_trees_with_exclusions,
+};
 
 /// How often GTK reads the worker's channel, and how many events at a time.
 const POLL: Duration = Duration::from_millis(16);
 const PER_POLL: usize = 8;
 
-/// What a search runs over: the folder, whether hidden entries show, and whether it goes
-/// into subfolders.
+/// What a search runs over, and whether hidden entries show.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Input {
-    pub(crate) root: PathBuf,
+    pub(crate) scope: Scope,
     pub(crate) show_hidden: bool,
-    pub(crate) recursive: bool,
+}
+
+/// What an index reads.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Scope {
+    /// A filter's folder, and whether it goes into subfolders (`index_filter`).
+    Folder { root: PathBuf, recursive: bool },
+    /// The palette's roots, every subfolder but the excluded ones
+    /// (`index_trees_with_exclusions`).
+    Trees {
+        roots: Vec<PathBuf>,
+        exclusions: Vec<String>,
+    },
+}
+
+impl Input {
+    fn start(&self, limits: SearchLimits) -> (SearchHandle, Receiver<SearchEvent>) {
+        match &self.scope {
+            Scope::Folder { root, recursive } => {
+                index_filter(root.clone(), self.show_hidden, *recursive, limits)
+            }
+            Scope::Trees { roots, exclusions } => index_trees_with_exclusions(
+                roots.clone(),
+                self.show_hidden,
+                exclusions.clone(),
+                limits,
+            ),
+        }
+    }
 }
 
 /// One batch of results for a query: everything found so far, ranked.
@@ -44,6 +77,10 @@ pub(crate) struct Batch {
     pub(crate) incomplete: bool,
     pub(crate) has_more: bool,
     pub(crate) candidates: usize,
+    /// The index is still being read.
+    pub(crate) indexing: bool,
+    /// What the index left out, by its limits.
+    pub(crate) coverage: SearchCoverage,
 }
 
 struct Worker {
@@ -117,6 +154,18 @@ impl Session {
             self.cancel();
             return;
         }
+        self.prepare(input, limits, deliver);
+        self.ask(query);
+    }
+
+    /// Starts the index of `input`, unless it runs already: the palette reads its roots from
+    /// the moment it opens, as GTK's `show` starts the search before anything is typed.
+    pub(crate) fn prepare(
+        &self,
+        input: Input,
+        limits: SearchLimits,
+        deliver: impl Fn(Batch) + 'static,
+    ) {
         let same = self
             .0
             .worker
@@ -124,22 +173,15 @@ impl Session {
             .as_ref()
             .is_some_and(|worker| worker.input == input && worker.limits == limits);
         if same {
-            self.ask(query);
             return;
         }
         self.cancel();
-        let (handle, receiver) = index_filter(
-            input.root.clone(),
-            input.show_hidden,
-            input.recursive,
-            limits,
-        );
+        let (handle, receiver) = input.start(limits);
         self.0.worker.replace(Some(Worker {
             input,
             limits,
             handle,
         }));
-        self.ask(query);
         self.listen(receiver, deliver);
     }
 
@@ -218,9 +260,9 @@ fn batch_for(event: SearchEvent, current: &str) -> Option<Batch> {
         query,
         items,
         indexing,
+        coverage,
         has_more,
         candidates,
-        ..
     } = event;
     (!query.is_empty() && query == current).then_some(Batch {
         generation: 0,
@@ -229,6 +271,8 @@ fn batch_for(event: SearchEvent, current: &str) -> Option<Batch> {
         incomplete: indexing || has_more,
         has_more,
         candidates,
+        indexing,
+        coverage,
     })
 }
 
