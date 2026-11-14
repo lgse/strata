@@ -10,11 +10,11 @@
 //!   button runs the same command. Escape, a click outside and the toggle close it, and the
 //!   keyboard goes back to what opened it. While open it is the window's modal layer
 //!   ([`Holds::Modal`]), its field typing.
-//! - **What it searches** ([`search`]): strata-fs's index of Home, with every subfolder but
-//!   the excluded ones, hidden entries as the browser shows them and the search limits from
-//!   the settings, started as it opens. Each edit asks the index again, and a batch counts
-//!   only for the text the field holds. The mounted local drives GTK adds after Home are a
-//!   follow-up (`docs/rune/parity/packages/A10.md`, "Open").
+//! - **What it searches** ([`search`]): strata-fs's index of Home and the mounted local
+//!   drives ([`roots`], read as it opens), with every subfolder but the excluded ones, hidden
+//!   entries as the browser shows them and the search limits from the settings, started as
+//!   it opens. Each edit asks the index again, and a batch counts only for the text the field
+//!   holds.
 //! - **Opening a result** ([`act`]): Enter or a click. A folder is navigated to; a file is
 //!   revealed in its folder, selected, and opened first when "Open files directly" is on. The
 //!   preview drawer GTK shows a file in otherwise is A15's.
@@ -30,7 +30,7 @@
 //! Not yet: the results' thumbnails, the header button's pressed look while it is open, and
 //! Ctrl+Shift+K's folder jump. `docs/rune/parity/packages/A10.md` keeps the list.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use rune::{El, Tx};
 use strata_components::{
@@ -50,6 +50,7 @@ use crate::{
 
 mod act;
 pub(crate) mod menu;
+mod roots;
 mod search;
 
 #[cfg(test)]
@@ -63,6 +64,8 @@ pub(crate) struct Palette {
     session: Session,
     /// The palette's generation of the query the field holds, for the answers.
     asked: u64,
+    /// Where it searches, read as it opens ([`roots`]).
+    roots: Vec<PathBuf>,
     /// Each result shown, by its id: its path.
     found: HashMap<String, SearchItem>,
     /// The result's menu ([`menu`]).
@@ -78,6 +81,7 @@ impl Part for Palette {
             state: PaletteState::new(),
             session: Session::default(),
             asked: 0,
+            roots: Vec::new(),
             found: HashMap::new(),
             menu: ContextMenuState::default(),
             later: setup.later.clone(),
@@ -133,13 +137,17 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     None
 }
 
-/// Ctrl+K or the header's button: opens the palette on Home, or closes it. While a result's
+/// Ctrl+K or the header's button: opens the palette on Home and the mounted local drives, as
+/// they are then, or closes it. While a result's
 /// menu is open the key is the menu's and does nothing, as GTK's popover takes it (driven).
 fn toggle(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     if app.palette.menu.is_open() {
         return Outcome::Ran;
     }
-    let mode = search::mode();
+    if !app.palette.state.is_open() {
+        app.palette.roots = roots::global_search_roots();
+    }
+    let mode = search::mode(&app.palette.roots);
     let polled = app.palette.state.toggle(mode);
     route(app, polled, tx);
     Outcome::Ran
