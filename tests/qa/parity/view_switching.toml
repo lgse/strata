@@ -6,9 +6,8 @@
 scenario = "appearance-menu-switches-view-list"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A10: the List headings' sort, at the Size heading on line 9 (line 10); then A8: \"Customize columns\u2026\" (line 12)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "appearance-menu-switches-view"
@@ -92,9 +91,8 @@ blocker = "docs/rune/upstream/rune/97-key-press-with-physical-key.md: the QA tar
 scenario = "switching-keeps-directory-and-sort"
 run = "columns"
 package = "A8"
-status = "pending"
-reason = "scope"
-blocker = "A10: the Columns pane's sort button, \"Ascending — click to reverse\" on line 5"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "switching-keeps-pane-filter"
