@@ -3,7 +3,7 @@
 //! The filter's results in the place of a column's rows: what a command on them acts on, and
 //! what holds the keyboard after the view changes.
 
-use super::{MODULE, find, fixture, open, press, seen, text, wait};
+use super::{MODULE, find, fixture, idle, open, press, seen, text, wait};
 use crate::{
     commands::Holds,
     filter::Filter,
@@ -166,4 +166,59 @@ fn escape_after_a_view_switch_releases_the_filters_hold() {
             assert_eq!(<Filter as Part>::keyboard(host.app()), None);
         },
     );
+}
+
+/// Tab in a rename on a result commits the name and opens no other editor, as GTK's: the
+/// renamed result keeps the keyboard (`renamed-filter-result-keeps-focus`, its `tab` runs).
+/// Here the next row of the results is a result, which a step would open an editor on.
+#[test]
+fn tab_in_a_rename_on_a_result_only_commits() {
+    hosted(
+        MODULE,
+        "filter::tab_in_a_rename_on_a_result_only_commits",
+        |mut host| {
+            let folder = fixture();
+            open(&mut host, folder.path());
+            press(&mut host, "ctrl+f");
+            type_text(&mut host, "t");
+            wait(&mut host, "the filter's results", |seen| {
+                seen.panes[0].names().len() > 2
+            });
+            press(&mut host, "Down");
+            let landed = wait(&mut host, "the top result under the cursor", |seen| {
+                seen.focused.is_some()
+            });
+            let first = landed.focused.expect("the top result");
+            press(&mut host, "F2");
+            let editing = host.run_until(PATIENCE, |host| {
+                fields(host).contains(&("Rename".to_owned(), first.clone()))
+            });
+            assert!(editing, "no editor on {first}: {:?}", fields(&host));
+            press(&mut host, "End");
+            type_text(&mut host, "x");
+
+            press(&mut host, "Tab");
+
+            let renamed = format!("{first}x");
+            let committed = host.run_until(PATIENCE, |_| found_under(folder.path(), &renamed));
+            assert!(committed, "{first} was not renamed");
+            idle(&mut host);
+            assert!(
+                !fields(&host).iter().any(|(name, _)| name == "Rename"),
+                "Tab opened another editor: {:?}",
+                fields(&host)
+            );
+        },
+    );
+}
+
+/// Whether a file named `name` is in `folder` or a folder under it.
+fn found_under(folder: &std::path::Path, name: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return false;
+    };
+    entries.filter_map(Result::ok).any(|entry| {
+        let path = entry.path();
+        entry.file_name() == name || (path.is_dir() && found_under(&path, name))
+    })
 }
