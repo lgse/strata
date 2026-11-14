@@ -194,6 +194,95 @@ fn rename_field(host: &crate::host::offscreen::Offscreen) -> Option<String> {
     Some(crate::test_support::view::text(fields.first()?, "value"))
 }
 
+/// Opens the fixture with `archive` selected, then filters it to the results of `query`,
+/// with subfolders searched: the browser's selection, and the results' names in the order
+/// they show.
+fn filtered(
+    host: &mut crate::host::offscreen::Offscreen,
+    case: &Case,
+    folder: &std::path::Path,
+    query: &str,
+) -> (Vec<String>, Vec<String>) {
+    open(host, case.shape, folder);
+    press(host, Key::Home, Mods::default());
+    let (before, _) = crate::test_support::view::browser_holds(host);
+    assert_eq!(before, ["archive"]);
+    press(host, Key::Text("f".to_owned()), ctrl());
+    type_text(host, query);
+    let shown = wait(host, case.shape, "the results", |seen| {
+        seen.list
+            .as_ref()
+            .is_some_and(|[name, _]| name == "Search results")
+            && seen.names().len() > 2
+    });
+    let names = shown
+        .names()
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect();
+    (before, names)
+}
+
+/// Tab or Shift+Tab in a rename on a result commits the name and opens no other editor, as GTK's: the
+/// renamed result keeps the keyboard, and the browser's selection from before the filter
+/// stays (`renamed-filter-result-keeps-focus`, its `tab` runs).
+fn tab_in_a_rename_on_a_result_only_commits(case: &Case, name: &str) {
+    hosted_in(MODULE, case.mode, name, |mut host| {
+        let folder = fixture();
+        let (before, _) = filtered(&mut host, case, folder.path(), "t");
+        press(&mut host, Key::Down, Mods::default());
+        let first = seen(&host, case.shape)
+            .focused
+            .expect("the result Down lands on");
+        press(&mut host, Key::Function(2), Mods::default());
+        let editing = host.run_until(crate::test_support::PATIENCE, |host| {
+            rename_field(host).as_deref() == Some(first.as_str())
+        });
+        assert!(editing, "no editor on {first}: {:?}", rename_field(&host));
+        press(&mut host, Key::End, Mods::default());
+        type_text(&mut host, "x");
+
+        // Shift+Tab: the listing under the results has an entry before the top result.
+        press(&mut host, Key::Tab, crate::test_support::view::shift());
+
+        let committed = host.run_until(crate::test_support::PATIENCE, |_| {
+            walkdir_has(folder.path(), &format!("{first}x"))
+        });
+        assert!(committed, "Tab did not commit the name");
+        crate::test_support::view::idle(&mut host);
+        assert_eq!(rename_field(&host), None, "Tab opened another editor");
+        let (held, _) = crate::test_support::view::browser_holds(&host);
+        assert_eq!(held, before, "the browser's selection changed");
+    });
+}
+
+/// Whether a file named `name` is in `folder` or a folder under it.
+fn walkdir_has(folder: &std::path::Path, name: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return false;
+    };
+    entries.filter_map(Result::ok).any(|entry| {
+        let path = entry.path();
+        entry.file_name() == name || (path.is_dir() && walkdir_has(&path, name))
+    })
+}
+
+#[test]
+fn tab_in_a_rename_on_a_tile_among_the_results_only_commits() {
+    tab_in_a_rename_on_a_result_only_commits(
+        &ICONS,
+        "filter::tab_in_a_rename_on_a_tile_among_the_results_only_commits",
+    );
+}
+
+#[test]
+fn tab_in_a_rename_on_a_row_among_the_results_only_commits() {
+    tab_in_a_rename_on_a_result_only_commits(
+        &LIST,
+        "filter::tab_in_a_rename_on_a_row_among_the_results_only_commits",
+    );
+}
+
 /// GTK's results keep an anchor of their own, which a right-click never sets: with none, the
 /// next Shift+click selects the clicked result alone (finding lgse/strata#2375).
 fn a_right_click_leaves_the_results_without_an_anchor(case: &Case, name: &str) {
