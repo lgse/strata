@@ -75,8 +75,8 @@ impl Columns {
         state.collection.selection.position(column)
     }
 
-    /// Each result's path, by its id, and whether they show under the names: what the next
-    /// results the filter shows are described by.
+    /// Each result's path, by its id, and whether they show under the names, for the next
+    /// results the filter shows.
     pub(crate) fn describe_hits(&mut self, paths: HashMap<EntryId, String>, details: bool) {
         self.listings.describe_hits(paths, details);
     }

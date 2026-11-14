@@ -32,7 +32,7 @@ pub(super) fn entry_of(item: &SearchItem) -> FileEntry {
 }
 
 /// Each result's path as the window shows a folder's (`display_path`), by its id: what a
-/// Columns result is described by, and shows under its name (`show_origin`).
+/// Columns result shows under its name (`show_origin`).
 pub(super) fn paths(found: &HashMap<EntryId, FileEntry>) -> HashMap<EntryId, String> {
     found
         .iter()

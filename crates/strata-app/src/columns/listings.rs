@@ -26,8 +26,8 @@ pub(super) struct Listings {
     described: Words,
     /// A filter's results, and the column whose rows they replace.
     hits: Option<(usize, Column)>,
-    /// Each result's path, by its id: what describes it, and its detail line while
-    /// `hit_details` holds (GTK's `show_origin`).
+    /// Each result's path, by its id: its detail line while `hit_details` holds (GTK's
+    /// `show_origin`).
     hit_paths: HashMap<EntryId, String>,
     /// The results come from the subfolders too: each shows its path under its name.
     hit_details: bool,
@@ -150,11 +150,9 @@ impl ColumnSources for Listings {
         (!text.is_empty()).then_some(Cow::Owned(text))
     }
 
-    /// A result is described by its path (GTK's `show_origin`), a row by what it is.
+    /// What the row is, a result's too: GTK's `show_origin` sets the path on the row's inner
+    /// box only, and `describe_entry` describes the entry by its kind.
     fn description(&self, depth: usize, index: usize) -> Option<Cow<'_, str>> {
-        if let Some(path) = self.hit_path(depth, index) {
-            return Some(Cow::Borrowed(path));
-        }
         let description = self.shown(depth)?.description(index, &self.described)?;
         Some(Cow::Borrowed(description))
     }

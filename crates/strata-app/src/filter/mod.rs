@@ -33,7 +33,7 @@
 //!   The keyboard goes back to the view, on the entry the listing had.
 //! - **A result's path** shows under its name while the filter searches the subfolders: in
 //!   Columns its whole path, as C2's detail line, in Icons and List the path under
-//!   the folder ([`pane`]). In Columns it also describes the result.
+//!   the folder ([`pane`]).
 //!
 //! Not yet: a folder that is not local, which GTK narrows in place, the results' thumbnails,
 //! a renamed result keeping the cursor, and the field's own menu.
