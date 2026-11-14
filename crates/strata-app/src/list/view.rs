@@ -2,11 +2,12 @@
 
 //! The List table over the pane's listing and collection.
 
-use rune::El;
+use rune::{El, col, text};
 use strata_components::{
-    collection::element::Collection,
+    collection::element::{Collection, LABEL, Roles, RowCx, Slot},
     list_table::{ListParts, ListTable},
 };
+use strata_kit::look::Look;
 
 use super::{List, VIEW, columns};
 use crate::{App, buttons, single, slots::Frame};
@@ -50,13 +51,60 @@ pub(super) fn ticked(app: &App) -> Collection<App> {
     table(app).collection(app, base(app))
 }
 
-/// The view: the pane's group around the table, with the Columns button among the header's
-/// actions (`append_columns_menu` in `src/ui/browser_modes/list_pane.rs`).
+/// A filter's results in the table's place (A10's [`crate::filter::pane`]): a list of rows,
+/// each its icon, its name, and its path under the folder while the filter searches the
+/// subfolders, as GTK's `ResultKind::Rows`.
+pub(super) fn results(app: &App) -> Collection<App> {
+    let paths = app.filter.pane.recursive;
+    single::results::<List>(app)
+        .roles(Roles::LIST)
+        .row_height(move |_: &App, look: &Look| match paths {
+            true => (look.row.list + look.kit.ty.small.line_height + 2.0).round(),
+            false => look.row.list,
+        })
+        .label(Slot::pure(results_label))
+}
+
+/// A result's name, and its path under it while there is one.
+fn results_label(app: &App, rcx: &RowCx<'_>) -> El {
+    let kit = &rcx.look.kit;
+    let line = |words: String, key: &'static str, font, color| {
+        text(words)
+            .key(key)
+            .a11y_hidden()
+            .font(font)
+            .color(color)
+            .truncate_middle()
+            .shrink()
+            .min_w(0.0)
+    };
+    let name = line(
+        rcx.entry.name.to_owned(),
+        LABEL,
+        kit.ty.ui_compact,
+        kit.c.text_base,
+    );
+    let mut label = col().shrink().min_w(0.0).child(name);
+    if let Some(path) = crate::filter::pane::path_of(app, rcx.entry.id) {
+        // Keyed as a name label in a box of its own, so the QA harness reads it as GTK's
+        // second label in the row.
+        let path = line(path, LABEL, kit.ty.small, kit.c.text_muted);
+        label = label.child(col().key("path").min_w(0.0).child(path));
+    }
+    label
+}
+
+/// The view: the pane's group around the table, or around a filter's results, with the
+/// Columns button among the header's actions (`append_columns_menu` in
+/// `src/ui/browser_modes/list_pane.rs`).
 pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
     app.list.thumbs.set_scale(frame.cx.env().scale);
     let columns = columns_button(app, frame.layer);
-    let table = table(app).build(app, base(app), frame.layer);
-    Some(single::group::<List>(app, table, Some(columns)))
+    let body = match app.filter.pane.shows() {
+        true => results(app).build(app),
+        false => table(app).build(app, base(app), frame.layer),
+    };
+    Some(single::group::<List>(app, body, Some(columns)))
 }
 
 /// C4's Columns button: its key, which C4 makes of the table's.

@@ -113,7 +113,11 @@ impl Part for List {
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         let said = single::poll::<Self>(app, clock, tx);
-        let ticked = view::ticked(app).tick(app, tx);
+        // A filter's results tick in the table's place, and the table waits under them.
+        let ticked = match app.filter.pane.shows() {
+            true => view::results(app).tick(app, tx),
+            false => view::ticked(app).tick(app, tx),
+        };
         fill(app);
         let pruned = super::thumbs::poll(app, clock);
         ticked | said | pruned | redate(app, clock, tx)
