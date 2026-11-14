@@ -29,24 +29,25 @@ fn broken(observation: &Observation) -> Vec<String> {
         .collect()
 }
 
+/// A key, how its step ended, and the tree after it.
+type Taken<'a> = (&'a str, Outcome, &'a Value);
+
+/// One case: its name, the step before the one checked, the one checked, and what it breaks.
+struct Case<'a>(&'a str, Taken<'a>, Taken<'a>, &'a [&'a str]);
+
 pub(crate) fn an_undo_then_a_redo_puts_the_tree_back_as_it_was_before_the_undo() {
     let before = json!({ "a.txt": "file 644 1 aa" });
     let undone = json!({});
     let other = json!({ "b.txt": "file 644 1 bb" });
     let ok = Outcome::Ok;
-    let cases: [(
-        &str,
-        (&str, Outcome, &Value),
-        (&str, Outcome, &Value),
-        &[&str],
-    ); 6] = [
-        (
+    let cases: [Case<'_>; 6] = [
+        Case(
             "a redo that restores",
             ("ctrl+z", ok, &undone),
             ("ctrl+y", ok, &before),
             &[],
         ),
-        (
+        Case(
             "a redo that does not",
             ("ctrl+z", ok, &undone),
             ("ctrl+shift+z", ok, &other),
@@ -55,32 +56,32 @@ pub(crate) fn an_undo_then_a_redo_puts_the_tree_back_as_it_was_before_the_undo()
             ],
         ),
         // An Undo that changed nothing in the fixture redoes something else, or nothing.
-        (
+        Case(
             "an undo outside the fixture",
             ("ctrl+z", ok, &before),
             ("ctrl+y", ok, &other),
             &[],
         ),
-        (
+        Case(
             "a skipped redo",
             ("ctrl+z", ok, &undone),
             ("ctrl+y", Outcome::Skipped, &other),
             &[],
         ),
-        (
+        Case(
             "a refused undo",
             ("ctrl+z", Outcome::Refused, &undone),
             ("ctrl+y", ok, &other),
             &[],
         ),
-        (
+        Case(
             "no undo before",
             ("Down", ok, &undone),
             ("ctrl+y", ok, &other),
             &[],
         ),
     ];
-    for (case, undo, redo, expected) in cases {
+    for Case(case, undo, redo, expected) in cases {
         let earlier = after("Down", ok, &before);
         let undone = after(undo.0, undo.1, undo.2);
         let mut now = after(redo.0, redo.1, redo.2);
