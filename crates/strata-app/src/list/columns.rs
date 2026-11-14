@@ -110,12 +110,18 @@ pub(super) fn cells_version(app: &App, rcx: &RowCx<'_>) -> u64 {
     hasher.finish()
 }
 
-/// The five columns in their default order. None is sortable yet: a sortable heading is a
-/// control that sorts when pressed, and nothing sorts until A10 gives the table `on_sort`
-/// (Name, Size, Type and Modified, as GTK's; Mode never).
+/// The five columns in their default order. Name, Size, Type and Modified sort, as GTK's,
+/// through A10's `sort::headings`; Mode never.
 pub(super) fn columns(headings: &Headings) -> Vec<TableColumn<App>> {
     let [name, mode_title, size_title, kind_title, modified_title] = &headings.0;
-    let sized = |column: TableColumn<App>, at: usize| column.width(WIDTHS[at]).min(MINIMUMS[at]);
+    let sized = |column: TableColumn<App>, at: usize| {
+        let column = column.width(WIDTHS[at]).min(MINIMUMS[at]);
+        if crate::sort::headings::sortable(column.id().as_str()) {
+            column.sortable()
+        } else {
+            column
+        }
+    };
     vec![
         sized(TableColumn::primary("name", name.clone()), 0),
         sized(TableColumn::new("mode", mode_title.clone(), mode), 1),

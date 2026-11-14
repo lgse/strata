@@ -140,6 +140,7 @@ pub(crate) fn bar(app: &App, view: &str, title: &str, own: Option<El>) -> El {
         .children(actions::pane(app, view));
     if view == crate::icons::VIEW {
         actions = actions.child(thumbnail_size::button(app));
+        actions = actions.children(crate::sort::direction_and_menu(app, view));
     }
     actions = actions.children(own);
     // The filter's toggle ends GTK's list (A10).
