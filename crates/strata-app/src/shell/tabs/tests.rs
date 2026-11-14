@@ -84,14 +84,20 @@ fn each_tab_keeps_its_own_browser_and_a_shown_tab_takes_the_window() {
             assert!(act(&mut host, |app, tx| show(app, first, tx)));
             wait_for(&mut host, &Location::local(&documents));
             assert_eq!(located(&host, second), Some(Location::local(&archive)));
-            assert!(!act(&mut host, |app, tx| show(app, first, tx)), "shown already");
+            assert!(
+                !act(&mut host, |app, tx| show(app, first, tx)),
+                "shown already"
+            );
 
             assert!(act(&mut host, |app, _| move_to(app, first, 9)));
             assert_eq!(tabs(host.app()), [second, first]);
             assert!(act(&mut host, |app, tx| close(app, first, tx)));
             wait_for(&mut host, &Location::local(&archive));
             assert_eq!(tabs(host.app()), [second]);
-            assert!(!act(&mut host, |app, tx| close(app, second, tx)), "the last tab stays");
+            assert!(
+                !act(&mut host, |app, tx| close(app, second, tx)),
+                "the last tab stays"
+            );
         },
     );
 }
@@ -110,13 +116,18 @@ fn a_hidden_tab_runs_nothing_and_holds_a_bounded_queue_until_it_is_shown() {
             let first = shown_tab(host.app());
             second_tab(&mut host, &folder.path().join("documents"));
 
-            let hidden = tab_browser(host.app(), first).expect("the hidden tab").clone();
+            let hidden = tab_browser(host.app(), first)
+                .expect("the hidden tab")
+                .clone();
             // An odd count: the hidden tab ends showing hidden files.
             for _ in 0..=HELD_EVENTS * 2 {
                 hidden.toggle_hidden();
             }
             idle(&mut host);
-            assert!(!named(&host.tree(), ".hidden.txt"), "the shown tab heard nothing");
+            assert!(
+                !named(&host.tree(), ".hidden.txt"),
+                "the shown tab heard nothing"
+            );
             for (_, accounted) in hidden_tabs(host.app()) {
                 assert!(accounted, "nothing ran while hidden");
             }
@@ -145,8 +156,7 @@ fn a_hidden_tab_follows_a_setting_another_tab_changed() {
             let first = shown_tab(host.app());
             second_tab(&mut host, folder.path());
             act(&mut host, |app, _| app.browser().toggle_hidden());
-            let saved =
-                host.run_until(PATIENCE, |host| shell::preferences(host.app()).show_hidden);
+            let saved = host.run_until(PATIENCE, |host| shell::preferences(host.app()).show_hidden);
             assert!(saved, "the shown tab saved hidden files shown");
 
             act(&mut host, |app, tx| show(app, first, tx));
@@ -175,7 +185,8 @@ fn focused_name(tree: &Value) -> Option<String> {
 /// Whether the tree shows the last entry and not the first: the view is scrolled to its end.
 fn at_the_end(host: &Offscreen) -> bool {
     let drawn = drawn(host);
-    drawn.iter().any(|name| name == "file299.txt") && !drawn.iter().any(|name| name == "file000.txt")
+    drawn.iter().any(|name| name == "file299.txt")
+        && !drawn.iter().any(|name| name == "file000.txt")
 }
 
 /// A tab shown again is scrolled where it was, which is not where its cursor is, as GTK's
@@ -192,7 +203,11 @@ fn keeps_its_scroll(mode: &'static str, name: &str) {
         press(&mut host, Key::Home, Mods::default());
         wheel(&mut host, -400.0, 40);
         let scrolled = host.run_until(PATIENCE, at_the_end);
-        assert!(scrolled, "the wheel scrolls to the end: {:?}", drawn(&host).first());
+        assert!(
+            scrolled,
+            "the wheel scrolls to the end: {:?}",
+            drawn(&host).first()
+        );
 
         second_tab(&mut host, folder.path());
         let fresh = host.run_until(PATIENCE, |host| named(&host.tree(), "file000.txt"));
@@ -233,7 +248,8 @@ fn a_tab_shown_again_gives_the_keyboard_back_where_it_was() {
             press(&mut host, Key::Left, Mods::default());
             let left = focused_name(&host.tree());
             assert!(
-                left.as_deref().is_some_and(|name| !name.ends_with(".txt") && name != "archive"),
+                left.as_deref()
+                    .is_some_and(|name| !name.ends_with(".txt") && name != "archive"),
                 "Left at the view's start gives the sidebar the keyboard: {left:?}"
             );
 
@@ -253,26 +269,34 @@ fn a_tab_shown_again_gives_the_keyboard_back_where_it_was() {
 /// in its files, as GTK's `select` cancels the edit of the tab it leaves.
 #[test]
 fn a_location_edit_ends_when_its_tab_is_left() {
-    hosted(MODULE, "a_location_edit_ends_when_its_tab_is_left", |mut host| {
-        let folder = fixture();
-        opened(&mut host, folder.path());
-        let first = shown_tab(host.app());
-        act(&mut host, |app, tx| {
-            commands::run(app, "location", On::Focus, tx);
-        });
-        let editing = host.run_until(PATIENCE, |host| {
-            field(host).is_some_and(|(_, focused)| focused)
-        });
-        assert!(editing, "the location is edited");
+    hosted(
+        MODULE,
+        "a_location_edit_ends_when_its_tab_is_left",
+        |mut host| {
+            let folder = fixture();
+            opened(&mut host, folder.path());
+            let first = shown_tab(host.app());
+            act(&mut host, |app, tx| {
+                commands::run(app, "location", On::Focus, tx);
+            });
+            let editing = host.run_until(PATIENCE, |host| {
+                field(host).is_some_and(|(_, focused)| focused)
+            });
+            assert!(editing, "the location is edited");
 
-        second_tab(&mut host, folder.path());
-        act(&mut host, |app, tx| show(app, first, tx));
-        let ended = host.run_until(PATIENCE, |host| field(host).is_none());
-        assert!(ended, "the edit ended: {:?}", field(&host));
-        let entries = ["archive", "documents", "pictures", "readme.md", "todo.txt"];
-        let files = host.run_until(PATIENCE, |host| {
-            focused_name(&host.tree()).is_some_and(|name| entries.contains(&name.as_str()))
-        });
-        assert!(files, "the keyboard is in the files: {:?}", focused_name(&host.tree()));
-    });
+            second_tab(&mut host, folder.path());
+            act(&mut host, |app, tx| show(app, first, tx));
+            let ended = host.run_until(PATIENCE, |host| field(host).is_none());
+            assert!(ended, "the edit ended: {:?}", field(&host));
+            let entries = ["archive", "documents", "pictures", "readme.md", "todo.txt"];
+            let files = host.run_until(PATIENCE, |host| {
+                focused_name(&host.tree()).is_some_and(|name| entries.contains(&name.as_str()))
+            });
+            assert!(
+                files,
+                "the keyboard is in the files: {:?}",
+                focused_name(&host.tree())
+            );
+        },
+    );
 }

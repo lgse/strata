@@ -317,7 +317,10 @@ fn a_strip_that_shows_takes_new_tab_and_close_from_the_header() {
             while host.turn() {}
             let header = keys_in(&host.tree(), "header");
             for key in ["header-new-tab", "header-close"] {
-                assert!(header.iter().any(|shown| shown == key), "{key} in {header:?}");
+                assert!(
+                    header.iter().any(|shown| shown == key),
+                    "{key} in {header:?}"
+                );
             }
             assert_eq!(keys_in(&host.tree(), "made-tabs"), ["made-tabs"]);
 
@@ -325,7 +328,10 @@ fn a_strip_that_shows_takes_new_tab_and_close_from_the_header() {
             act(&mut host, |_, _| ());
             let header = keys_in(&host.tree(), "header");
             for key in ["header-new-tab", "header-close"] {
-                assert!(!header.iter().any(|shown| shown == key), "{key} in {header:?}");
+                assert!(
+                    !header.iter().any(|shown| shown == key),
+                    "{key} in {header:?}"
+                );
             }
             let strip = keys_in(&host.tree(), "made-tabs");
             assert!(strip.iter().any(|key| key == "window-close"), "{strip:?}");

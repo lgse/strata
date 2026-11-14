@@ -237,7 +237,8 @@ fn a_slot_nothing_is_registered_in_has_no_part() {
 }
 
 #[test]
-fn a_part_builds_its_element_in_every_slot_but_the_drawer_and_the_strip_which_the_shell_hands_more() {
+fn a_part_builds_its_element_in_every_slot_but_the_drawer_and_the_strip_which_the_shell_hands_more()
+{
     let strip = Strip {
         build: |_, _, _| None,
         shows: |_| false,
@@ -258,7 +259,11 @@ fn a_part_builds_its_element_in_every_slot_but_the_drawer_and_the_strip_which_th
         assert_eq!(place.build().is_some(), builds, "{slot:?}");
         let registry = Registry::new(table(vec![part::<Drawer>(place)]), "columns");
         assert_eq!(names(registry.of(slot)), ["drawer"], "{slot:?}");
-        assert_eq!(registry.drawer().is_some(), slot == Slot::Drawer, "{slot:?}");
+        assert_eq!(
+            registry.drawer().is_some(),
+            slot == Slot::Drawer,
+            "{slot:?}"
+        );
         assert_eq!(registry.strip().is_some(), slot == Slot::Tabs, "{slot:?}");
         assert_eq!(registry.sidebar().is_some(), slot == Slot::Sidebar);
     }

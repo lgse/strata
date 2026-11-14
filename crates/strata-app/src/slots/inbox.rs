@@ -194,13 +194,15 @@ impl<S: 'static> Inbox<S> {
         }
         // The rows are the event's: its first update carries them for the tab's count.
         let mut rows = batch.copied;
-        queue.updates.extend(batch.updates.into_iter().map(|update| Queued {
-            tab,
-            source: Source::Event {
-                rows: std::mem::take(&mut rows),
-            },
-            update,
-        }));
+        queue
+            .updates
+            .extend(batch.updates.into_iter().map(|update| Queued {
+                tab,
+                source: Source::Event {
+                    rows: std::mem::take(&mut rows),
+                },
+                update,
+            }));
     }
 
     pub(crate) fn pop(&self) -> Option<Queued<S>> {
@@ -210,7 +212,10 @@ impl<S: 'static> Inbox<S> {
     /// How many updates have been queued for `tab`, and how many of them still wait here.
     pub(crate) fn queued_for(&self, tab: TabKey) -> (u64, u64) {
         let queue = self.0.borrow();
-        let waiting = queue.updates.iter().filter(|queued| queued.tab == Some(tab));
+        let waiting = queue
+            .updates
+            .iter()
+            .filter(|queued| queued.tab == Some(tab));
         let queued = queue.queued.get(&tab).copied().unwrap_or(0);
         (queued, waiting.count() as u64)
     }

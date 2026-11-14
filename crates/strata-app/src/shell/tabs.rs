@@ -30,7 +30,13 @@
 //!   scroll comes back from its own state: each collection keeps where it was drawn, as GTK's
 //!   hidden tab keeps its scroll.
 
-#![cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
+    )
+)]
 
 use std::{collections::VecDeque, rc::Rc};
 

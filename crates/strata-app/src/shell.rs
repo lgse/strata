@@ -176,7 +176,13 @@ fn hear(event: &BrowserEvent, _: &Browser, heard: &mut Heard<'_, App>) {
 }
 
 /// Names the window for the shown tab, whether or not its location changed.
-#[cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
+    )
+)]
 fn retitle_now(app: &mut App, tx: &mut Tx) {
     app.window.location = None;
     app.retitle(tx);
@@ -184,7 +190,13 @@ fn retitle_now(app: &mut App, tx: &mut Tx) {
 
 /// Whether the saved "Group by file type" asks other than what the shown tab's browser was
 /// mounted with: another tab changed it while this one was hidden.
-#[cfg_attr(not(test), expect(dead_code, reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the tab strip, A4's next pull request, opens, shows, moves and closes tabs"
+    )
+)]
 fn grouping_changed(app: &App) -> bool {
     shown_view(app).is_some_and(|view| {
         let wanted = preferences(app).group_by_type && view.supports_type_grouping;
@@ -749,10 +761,17 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
     };
     // While the strip shows it holds New tab.
     let in_strip = strip_shows(app).then_some(NEW_TAB);
-    let trailing = TRAILING.iter().filter(|button| Some(button.key) != in_strip);
+    let trailing = TRAILING
+        .iter()
+        .filter(|button| Some(button.key) != in_strip);
     let header = trailing.fold(header, |header, button| header.action(action(button)));
     header
-        .window_buttons(window_buttons(app), chrome, &labels.window, on_window_action)
+        .window_buttons(
+            window_buttons(app),
+            chrome,
+            &labels.window,
+            on_window_action,
+        )
         .build()
 }
 
