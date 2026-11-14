@@ -1803,7 +1803,10 @@ What the checks leave out, on purpose:
   view: a large-folder alphabet would see `browser-view` break. And
   `keyboard` takes every modal layer to show as a `dialog`: a modal that is
   none there (a palette, F1's reference) needs one, or the check breaks on a
-  correct window.
+  correct window. A plain popover's hold satisfies any dialog, so a real modal
+  dialog with no `Modal` hold passes while some part holds a plain popover:
+  narrowing it to the popovers' own dialogs needs the snapshot to mark them,
+  and their localized names are not hard-coded.
 
 The lines go into the observation's `invariants`, which the comparator
 treats as it treats `criticals`: a broken invariant is a divergence at its

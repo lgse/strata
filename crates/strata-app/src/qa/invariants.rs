@@ -50,6 +50,9 @@
 //! - **A modal layer is taken to show as a dialog.** `keyboard` holds `Holds::Modal` to the
 //!   snapshot's `dialog`, so a modal that is no dialog there (a palette, F1's reference) needs
 //!   a `dialog` of its own, or the check breaks on a correct window.
+//! - **A plain popover's hold satisfies any dialog.** So a real modal dialog with no `Modal`
+//!   hold passes while some part holds a plain popover. Narrowing it to the popovers' own
+//!   dialogs needs the snapshot to mark them; their localized names are not hard-coded.
 
 use std::collections::HashSet;
 
