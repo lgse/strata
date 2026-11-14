@@ -20,7 +20,7 @@ use crate::{
     slots::TabKey,
     test_support::{
         PATIENCE, fixture, folder_of, hosted,
-        view::{all, field, hosted_in, idle, press, text},
+        view::{all, browser_holds, drawn, field, hosted_in, idle, press, text, wheel},
     },
 };
 
@@ -170,9 +170,15 @@ fn focused_name(tree: &Value) -> Option<String> {
     Some(text(node, "name"))
 }
 
-/// The entry the keyboard was on in a tab is where it is again when the tab is shown, and the
-/// tab is scrolled where it was.
-fn keeps_its_scroll_and_its_focused_entry(mode: &'static str, name: &str) {
+/// Whether the tree shows the last entry and not the first: the view is scrolled to its end.
+fn at_the_end(host: &Offscreen) -> bool {
+    let drawn = drawn(host);
+    drawn.iter().any(|name| name == "file299.txt") && !drawn.iter().any(|name| name == "file000.txt")
+}
+
+/// A tab shown again is scrolled where it was, which is not where its cursor is, as GTK's
+/// hidden tab keeps its scroll; and its cursor is where it was.
+fn keeps_its_scroll(mode: &'static str, name: &str) {
     hosted_in(MODULE, mode, name, |mut host| {
         let names: Vec<String> = (0..300).map(|n| format!("file{n:03}.txt")).collect();
         let names: Vec<&str> = names.iter().map(String::as_str).collect();
@@ -182,46 +188,62 @@ fn keeps_its_scroll_and_its_focused_entry(mode: &'static str, name: &str) {
         let listed = host.run_until(PATIENCE, |host| named(&host.tree(), "file000.txt"));
         assert!(listed, "the folder is listed");
         press(&mut host, Key::Home, Mods::default());
-        press(&mut host, Key::End, Mods::default());
-        let at_end = host.run_until(PATIENCE, |host| {
-            focused_name(&host.tree()).as_deref() == Some("file299.txt")
-        });
-        assert!(at_end, "End reaches the last entry");
+        wheel(&mut host, -400.0, 40);
+        let scrolled = host.run_until(PATIENCE, at_the_end);
+        assert!(scrolled, "the wheel scrolls to the end: {:?}", drawn(&host).first());
 
         second_tab(&mut host, folder.path());
         let fresh = host.run_until(PATIENCE, |host| named(&host.tree(), "file000.txt"));
         assert!(fresh, "the new tab starts at its first entry");
 
         act(&mut host, |app, tx| show(app, first, tx));
-        let back = host.run_until(PATIENCE, |host| {
-            let tree = host.tree();
-            named(&tree, "file299.txt") && !named(&tree, "file000.txt")
-        });
+        let back = host.run_until(PATIENCE, at_the_end);
         assert!(back, "the tab is scrolled where it was");
-        let focused = host.run_until(PATIENCE, |host| {
-            focused_name(&host.tree()).as_deref() == Some("file299.txt")
-        });
-        assert!(
-            focused,
-            "the keyboard is back on file299.txt, not {:?}",
-            focused_name(&host.tree())
+        assert_eq!(
+            browser_holds(&host).1.as_deref(),
+            Some("file000.txt"),
+            "the cursor stays where it was"
         );
     });
 }
 
 #[test]
-fn a_columns_tab_keeps_its_scroll_and_its_focused_entry() {
-    keeps_its_scroll_and_its_focused_entry(
-        "columns",
-        "a_columns_tab_keeps_its_scroll_and_its_focused_entry",
-    );
+fn a_columns_tab_keeps_its_scroll() {
+    keeps_its_scroll("columns", "a_columns_tab_keeps_its_scroll");
 }
 
 #[test]
-fn a_list_tab_keeps_its_scroll_and_its_focused_entry() {
-    keeps_its_scroll_and_its_focused_entry(
-        "list",
-        "a_list_tab_keeps_its_scroll_and_its_focused_entry",
+fn a_list_tab_keeps_its_scroll() {
+    keeps_its_scroll("list", "a_list_tab_keeps_its_scroll");
+}
+
+/// The keyboard goes back where it was in a tab shown again, as GTK's `select` restores the
+/// focus a tab saved: here, a row of the sidebar.
+#[test]
+fn a_tab_shown_again_gives_the_keyboard_back_where_it_was() {
+    hosted(
+        MODULE,
+        "a_tab_shown_again_gives_the_keyboard_back_where_it_was",
+        |mut host| {
+            let folder = fixture();
+            opened(&mut host, folder.path());
+            let first = shown_tab(host.app());
+            press(&mut host, Key::Left, Mods::default());
+            let left = focused_name(&host.tree());
+            assert!(
+                left.as_deref().is_some_and(|name| !name.ends_with(".txt") && name != "archive"),
+                "Left at the view's start gives the sidebar the keyboard: {left:?}"
+            );
+
+            second_tab(&mut host, folder.path());
+            act(&mut host, |app, tx| show(app, first, tx));
+            let back = host.run_until(PATIENCE, |host| focused_name(&host.tree()) == left);
+            assert!(
+                back,
+                "the keyboard is back on {left:?}, not {:?}",
+                focused_name(&host.tree())
+            );
+        },
     );
 }
 
