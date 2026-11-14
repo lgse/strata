@@ -21,6 +21,12 @@
 //! - **A cursor falls back** to the first restored selected entry when its own entry is gone,
 //!   or none was remembered, and the anchor to the cursor; with no selection either, to the
 //!   browser's own cursor, so the two never disagree ([`fall_back`]).
+//! - **No choice.** What comes back is handed to the browser without committing it, as GTK's
+//!   `restore_selection` sets the browser's selection alone: a cursor a load placed (Alt+Up's
+//!   folder come from) stays the load's, so Columns shown again opens no child for it
+//!   (`follow_selection_on_return`; finding lgse/strata#2437). Where the browser's selection is
+//!   such a cursor and what came back is the cursor alone, the view's pick stays provisional
+//!   too ([`keep_provisional`]), as the browser's does.
 //! - **One memory for the window's single-pane views** ([`Memory`]), as GTK's
 //!   `PaneNavigation` is one history whatever the mode: a folder left in Icons comes back in
 //!   List where Icons left it. A view switched away hears nothing, so while the view shown
@@ -38,7 +44,10 @@ use strata_components::{
 };
 use strata_core::model::Location;
 
-use crate::listing::{Column, Load};
+use crate::{
+    events::Marks,
+    listing::{Column, Load},
+};
 
 /// Where each folder was left, shared by the window's single-pane views: the shell holds it,
 /// and each view's [`super::Pane`] is given it as a change applies.
@@ -151,5 +160,21 @@ pub(super) fn fall_back(
         None => AnchorRule::Move,
     };
     let _ = collection.selection.move_cursor(column, index, anchor);
+    collection.note_selection(column);
+}
+
+/// After a restore landed over the browser's `marks`: where the browser's selection is the
+/// cursor a load placed, the browser keeps it the load's through the restore, which commits
+/// nothing, so a pick of the cursor alone stays provisional in the view as it does there.
+pub(super) fn keep_provisional(column: &Column, collection: &mut CollectionState, marks: &Marks) {
+    let selection = &collection.selection;
+    if !marks.provisional || selection.is_provisional() {
+        return;
+    }
+    let mut position = selection.position(column);
+    position.provisional = true;
+    if !collection.selection.restore(&position).selection {
+        return;
+    }
     collection.note_selection(column);
 }
