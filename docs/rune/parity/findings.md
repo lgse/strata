@@ -1654,3 +1654,18 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** open, set aside, and not copied: on Rune the keyboard goes back to the palette's
   field, with the result still highlighted (`palette::menu`), by the coordinator's ruling.
   The fix belongs on `main`.
+
+### #2470: the Rune search palette's Alt+Return does not follow a remapped key
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2470), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** building [A10](packages/A10.md)'s search palette. GTK's palette reads
+  `open_containing_folder` with `press.is(OPEN_CONTAINING_FOLDER)` in its `handle_key`
+  (`src/ui/search.rs`), through the active keymap, so a user's binding moves it. Rune's
+  palette reads C17's reveal chord, its default `alt+enter` with Super tolerated. The window's
+  commands cannot read it instead: Rune's single-line field takes Return with any modifier
+  once C17's key handler passes it on.
+- **Concerns:** `crates/strata-app/src/palette/` and C17's `SearchPalette::reveal_keys`. No
+  run checks it: the scenarios use the default key.
+- **State:** open, A10's. The fix is a converter from a catalog binding to a `rune::Chord`,
+  for `reveal_keys`, or a C17 hook that hands the host each key before the field's editor.
