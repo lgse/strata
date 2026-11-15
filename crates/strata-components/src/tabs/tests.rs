@@ -4,7 +4,9 @@ use rune::Tx;
 use strata_kit::icons::IconName;
 
 use super::*;
-use crate::contract::dnd::DropHover;
+use crate::contract::dnd::{
+    DropAction, DropActions, DropData, DropHover, DropOffer, Dropped, URI_LIST,
+};
 
 fn tabs(n: u64) -> Vec<Tab<'static>> {
     (1..=n)
@@ -227,4 +229,97 @@ fn a_leave_clears_the_drop_hover_only_where_it_is() {
     );
     st.set_drop_hover(DropSite::Tab(TabId(1)), DropHover::Left);
     assert_eq!(st.drop_hover(), None);
+}
+
+struct MiniHost {
+    state: BrowserTabsState,
+    open: Option<TabOpen>,
+    heard: Vec<TabsIntent>,
+}
+
+fn mini_ctx() -> drops::Ctx<MiniHost> {
+    drops::Ctx {
+        access: |h| &mut h.state,
+        emit: std::rc::Rc::new(|h, intent, _| h.heard.push(intent)),
+        action: Some(std::rc::Rc::new(|_, _, _, _| Some(DropAction::Move))),
+        opens: Some(std::rc::Rc::new(|h, offer| {
+            offer.local.then_some(h.open)?
+        })),
+        guard_none: true,
+        content: &[],
+        spring: Some(HOVER_DELAY),
+        len: 3,
+    }
+}
+
+fn local_offer() -> DropOffer {
+    DropOffer::new(vec![URI_LIST.into()], DropActions::COPY | DropActions::MOVE).local(true)
+}
+
+#[test]
+fn view_folder_drags_transfer_on_tabs_refuse_trash_and_open_at_end_on_strip() {
+    let cx = mini_ctx();
+    let offer = local_offer();
+    let mods = rune::Mods::default();
+    let folder_tab = drops::tab(
+        &cx,
+        drops::TabSpec {
+            id: TabId(2),
+            index: 1,
+            accepts: Accepts::ALL,
+            active: false,
+        },
+    )
+    .expect("folder tab zone");
+    let trash_tab = drops::tab(
+        &cx,
+        drops::TabSpec {
+            id: TabId(3),
+            index: 2,
+            accepts: Accepts::NONE,
+            active: false,
+        },
+    )
+    .expect("trash tab guard zone");
+    let strip = drops::opener(&cx, DropSite::Strip);
+    let mut host = MiniHost {
+        state: BrowserTabsState::default(),
+        open: Some(TabOpen::AtEnd),
+        heard: Vec::new(),
+    };
+
+    assert_eq!(
+        folder_tab.choose(&host, &offer, mods),
+        Some(DropAction::Move)
+    );
+    assert_eq!(trash_tab.choose(&host, &offer, mods), None);
+    assert!(
+        trash_tab.rejects(),
+        "stops AtEnd from falling through to strip"
+    );
+    assert_eq!(strip.choose(&host, &offer, mods), Some(DropAction::Copy));
+
+    let mut tx = Tx::default();
+    let dropped = Dropped::new(offer.clone(), DropData::default(), mods);
+    folder_tab.deliver(&mut host, dropped.clone(), &mut tx);
+    strip.deliver(&mut host, dropped.clone(), &mut tx);
+    assert!(matches!(
+        host.heard.as_slice(),
+        [
+            TabsIntent::DropInto { id: TabId(2), .. },
+            TabsIntent::OpenTabs { at: 3, .. },
+        ]
+    ));
+
+    host.open = Some(TabOpen::AtGap);
+    host.heard.clear();
+    assert_eq!(
+        trash_tab.choose(&host, &offer, mods),
+        Some(DropAction::Copy)
+    );
+    trash_tab.deliver(&mut host, dropped, &mut tx);
+    assert!(matches!(
+        host.heard.as_slice(),
+        [TabsIntent::OpenTabs { at: 3, .. }]
+    ));
 }

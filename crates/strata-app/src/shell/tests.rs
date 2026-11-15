@@ -157,6 +157,7 @@ fn every_slot() -> Vec<Entry<App>> {
         part::<Location>(Place::Location(placed::<Location>)),
         part::<Tabs>(Place::Tabs(Strip {
             build: |app, _, frame| placed::<Tabs>(app, frame),
+            new_tab: None,
             shows: |_| false,
         })),
     ]
@@ -196,6 +197,7 @@ fn change_name(change: &Change) -> &'static str {
 fn a_view_and_a_strip() -> Vec<Entry<App>> {
     let strip = Strip {
         build: |_, close, _| Some(rune::row().key("made-tabs").children(close)),
+        new_tab: None,
         shows: |_| STRIP_SHOWS.get(),
     };
     vec![files(), part::<Tabs>(Place::Tabs(strip))]

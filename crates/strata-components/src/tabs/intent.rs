@@ -27,6 +27,17 @@ pub enum DropSite {
     Strip,
 }
 
+/// How an in-process drag opens new tabs on the strip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TabOpen {
+    /// Places rune-kit's incoming gap under the pointer across the strip and opens at that gap,
+    /// or at the end on New tab: Strata's sidebar location drags (`append = false`).
+    AtGap,
+    /// Opens at the end on New tab and on unused strip space, while leaving every tab header to
+    /// transfer or refuse the drop: Strata's folder-only view drags (`append = true`).
+    AtEnd,
+}
+
 /// Everything the strip does is one of these. The host owns every policy: it selects, closes,
 /// moves and opens tabs in its data, transfers and saves drops, and sets the window title.
 #[derive(Clone, Debug, PartialEq)]

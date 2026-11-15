@@ -385,6 +385,9 @@ pub(crate) struct Strip<S: 'static> {
     /// Builds the strip, with the window's Close in `close` while it shows, as GTK's strip
     /// takes it from the header (`refresh_chrome`). Nothing while it does not show.
     pub(crate) build: fn(&S, Option<El>, &mut Frame<'_, S>) -> Option<El>,
+    /// Builds the header's New tab button, keyed `key`, while the strip is hidden, so a drag
+    /// onto it opens a tab (`NewTabButton`). `None` falls back to a plain command button.
+    pub(crate) new_tab: Option<fn(&S, &'static str) -> El>,
     /// Whether the strip shows. The header then leaves out New tab and the window's Close.
     pub(crate) shows: fn(&S) -> bool,
 }

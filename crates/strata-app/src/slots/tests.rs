@@ -242,6 +242,7 @@ fn a_part_builds_its_element_in_every_slot_but_the_drawer_and_the_strip_which_th
 {
     let strip = Strip {
         build: |_, _, _| None,
+        new_tab: None,
         shows: |_| false,
     };
     let places = [
