@@ -58,14 +58,31 @@ impl App {
         }
     }
 
-    /// A plain click on a file in a column before the last closes the columns after it:
-    /// `PendingActivationKind::CloseDeeper` in `src/ui/browser/columns/rows/click.rs`.
+    /// A plain click on a file previews it when single-click previews are enabled and two
+    /// clicks open files (`PendingActivationKind::Standard { preview: true }`), or else closes
+    /// the columns after it (`PendingActivationKind::CloseDeeper` in
+    /// `src/ui/browser/columns/rows/click.rs`).
     fn clicked(&self, depth: usize, id: EntryId) {
         let file = self
             .columns
             .row(depth, id)
             .is_some_and(|row| !row.is_folder());
-        if file && self.browser.location_at(depth + 1).is_some() {
+        if !file {
+            return;
+        }
+        if !self.columns.one_click_files()
+            && shell::preferences(self).single_click_previews
+            && let Some(position) = self.columns.position(depth, id)
+            && self
+                .browser
+                .entry_at(depth, position)
+                .as_ref()
+                .is_some_and(crate::preview::entry_supports_quick_preview)
+        {
+            self.browser.preview(depth, position);
+            return;
+        }
+        if self.browser.location_at(depth + 1).is_some() {
             self.browser.close_column(depth + 1);
         }
     }
@@ -152,6 +169,8 @@ pub(super) fn heard(app: &mut App, intent: ColumnsIntent, tx: &mut Tx) {
         },
         false => Input::Pointer,
     };
+    app.columns
+        .refresh_mirror_preferences(shell::preferences(app));
     app.columns.publish(&app.browser, Some(input));
     match intent {
         ColumnsIntent::Collection { depth, intent } => app.collection(depth, intent, tx),

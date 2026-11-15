@@ -51,7 +51,12 @@ impl Part for Columns {
             position: |app, (depth, id)| app.columns.position(depth, id),
             neighbour: |app, (depth, id), step| app.columns.neighbour(depth, id, step),
             activate: intents::clicked_open,
-            select_only: |app, at, tx| app.columns.select_only(at, &app.look, tx),
+            select_only: |app, at, tx| {
+                app.columns.select_only(at, &app.look, tx);
+                if app.columns.shows_hits(at.0) {
+                    crate::filter::picked(app);
+                }
+            },
             select_all: |app, depth| app.columns.select_all(depth),
             reveal: |app, at, tx| app.columns.reveal_row(at, tx),
         },
@@ -96,6 +101,8 @@ impl Part for Columns {
     }
 
     fn publish(app: &mut App) {
+        app.columns
+            .refresh_mirror_preferences(shell::preferences(app));
         app.columns.publish(&app.browser, None);
     }
 
@@ -107,6 +114,7 @@ impl Part for Columns {
     /// columns open at, and saved item customizations.
     fn tab_shown(app: &mut App, _: &mut Tx) {
         let saved = shell::preferences(app);
+        app.columns.refresh_mirror_preferences(saved);
         let (sizes, width) = (saved.columns_show_sizes, super::width::saved(saved));
         let worn = shell::worn(app).clone();
         app.columns.show_sizes(sizes);

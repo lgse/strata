@@ -155,7 +155,7 @@ fn the_button_opens_the_popover_on_its_first_row_named_as_gtks() {
                     "button",
                     "Preview panel",
                     "Toggle preview panel while browsing (Space)",
-                    false,
+                    true,
                     true,
                 ),
                 (

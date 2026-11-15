@@ -1572,5 +1572,8 @@
   "Activities": "Hoạt động",
   "Objects": "Đồ vật",
   "Symbols": "Ký hiệu",
-  "Flags": "Cờ"
+  "Flags": "Cờ",
+  "Document position": "Vị trí trong tài liệu",
+  "Line %{line} of %{lines}": "Dòng %{line} trên %{lines}",
+  "Blank": "Trống"
 }

@@ -38,7 +38,7 @@ mod view;
 pub(crate) const VIEW: &str = "list";
 
 pub(crate) struct List {
-    single: Single,
+    pub(crate) single: Single,
     table: ListTableState,
     /// The columns shown, in order: the saved `list_column_order` and `list_hidden_columns`.
     layout: ColumnLayout,

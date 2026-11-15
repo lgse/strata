@@ -396,6 +396,11 @@ impl Selection {
         self.provisional
     }
 
+    /// Whether a marquee band gesture is open (`begin_band` before its release or cancel).
+    pub fn in_band(&self) -> bool {
+        matches!(self.gesture, Gesture::Band(_))
+    }
+
     /// A value that goes up whenever an operation reports a change, unique across the
     /// process. See the [module docs](self#change-notifications).
     pub fn revision(&self) -> u64 {
