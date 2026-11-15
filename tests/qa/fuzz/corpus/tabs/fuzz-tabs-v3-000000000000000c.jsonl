@@ -1,0 +1,5 @@
+{"scenario":"fuzz-tabs-v3-000000000000000c","modes":["columns"],"prefs":{"type_to_search":false}}
+{"key":"ctrl+2","when":{"all":[{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"click":{"entry":"documents"},"count":2,"when":{"all":[{"present":{"entry":"documents"}},{"not":{"view_mode":"Columns"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"ctrl+1","when":{"all":[{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
+{"key":"Down","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"not":{"view_mode":"Icons"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}
