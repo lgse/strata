@@ -16,11 +16,13 @@
 //!   click outside close it, and the keyboard goes back to where it was.
 //! - **"Custom color…"** opens the Custom Folder Color or Custom File Color dialog over it
 //!   ([`custom`]), with C20b's picker in place of GTK's colour chooser.
+//! - **"Choose Emoji…"** opens C20d's emoji picker in a popover over the dialog ([`emoji`]):
+//!   picking an emoji saves `emoji:<glyph>` at once, remembers it in the recent tab, and
+//!   changes the button to "Emoji  <glyph>". Escape closes only the popover; a second Escape
+//!   closes Customize.
 //!
 //! Left out, with what brings each back:
 //!
-//! - **"Choose Emoji…"**, the emoji picker: this package's next pull request (6b-1b in
-//!   `docs/rune/parity/packages/A6.md`), with its words in every catalog.
 //! - **The rows' colours and icons**: drawing them in the views is this package's 6b-2. The
 //!   preview here draws the chosen icon in the chosen colour; GTK puts a folder's icon inside
 //!   the coloured folder, which comes with the views' drawing.
@@ -30,6 +32,7 @@
 
 mod body;
 mod custom;
+mod emoji;
 #[cfg(test)]
 mod tests;
 
@@ -64,6 +67,7 @@ pub(crate) struct Customize {
     open: bool,
     opened: u64,
     custom: custom::Custom,
+    emoji: emoji::Emoji,
 }
 
 impl Part for Customize {
@@ -75,18 +79,23 @@ impl Part for Customize {
             open: false,
             opened: 0,
             custom: custom::Custom::new(),
+            emoji: emoji::Emoji::new(),
         }
     }
 
     fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
-        custom::poll(app, tx)
+        let custom = custom::poll(app, tx);
+        let emoji = emoji::poll(app, tx);
+        custom || emoji
     }
 
     fn keyboard(app: &App) -> Option<Holds> {
         let customize = &app.customize;
-        (customize.open || customize.custom.is_open()).then_some(Holds::Modal {
-            field: customize.custom.field_focused(),
-        })
+        (customize.open || customize.custom.is_open() || customize.emoji.is_open()).then_some(
+            Holds::Modal {
+                field: customize.custom.field_focused() || customize.emoji.field_focused(),
+            },
+        )
     }
 
     const COMMANDS: &'static [Action<App>] = &[Action::new("customize", customize)];
@@ -132,8 +141,11 @@ fn name_of(location: &Location) -> String {
 }
 
 fn open(app: &mut App, path: PathBuf, name: String, folder: bool) {
+    let icon = shell::preferences(app).item_icon(&path).map(str::to_owned);
     let customize = &mut app.customize;
     customize.custom.close();
+    customize.emoji.close();
+    customize.emoji.sync(icon.as_deref());
     customize.opened += 1;
     customize.item = Some(Item {
         path,
@@ -158,6 +170,7 @@ pub(crate) fn customizing(app: &App) -> Option<&std::path::Path> {
 /// Done, Escape, the close button and a click outside.
 fn close(app: &mut App) {
     app.customize.open = false;
+    app.customize.emoji.close();
 }
 
 /// The item's saved colour and icon, as the dialog shows them.
@@ -178,12 +191,18 @@ fn choose_color(app: &mut App, color: Option<FolderColorValue>) {
     shell::saved(app).change(|settings| settings.set_item_colors(&[path], color.as_ref()));
 }
 
-/// Saves the bundled icon `name` for the item.
-fn choose_icon(app: &mut App, name: &'static str) {
+/// Saves `icon` (`strata-*` or `emoji:*`) for the item.
+fn save_icon(app: &mut App, icon: &str) {
     let Some(path) = app.customize.item.as_ref().map(|item| item.path.clone()) else {
         return;
     };
-    shell::saved(app).change(|settings| settings.set_item_icon(&path, Some(name)));
+    shell::saved(app).change(|settings| settings.set_item_icon(&path, Some(icon)));
+}
+
+/// Saves the bundled icon `name` for the item.
+fn choose_icon(app: &mut App, name: &'static str) {
+    save_icon(app, name);
+    app.customize.emoji.sync(None);
 }
 
 /// Clear: the item's colour and icon are forgotten.
@@ -192,6 +211,7 @@ fn clear(app: &mut App) {
         return;
     };
     shell::saved(app).change(|settings| settings.clear_item_customization(&path));
+    app.customize.emoji.sync(None);
 }
 
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
@@ -208,15 +228,18 @@ fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
         color: color.as_ref(),
         icon: icon.as_deref(),
     };
+    let mut over = Vec::new();
+    let children = body::children(app, &shown, &mut over);
     StrataDialog::new(format!("customize-{}", item.generation), title, close)
         .open(customize.open)
         .subtitle(item.name.clone())
-        .children(body::children(app, &shown))
+        .children(children)
         .secondary(tr("Clear"), clear)
         .primary(tr("Done"), close)
         .initial_focus(Focus::Primary)
         .close_label(tr("Close dialog"))
         .build(&app.look, frame.layer);
+    frame.layer.extend(over);
     custom::build(app, item, frame);
     None
 }
