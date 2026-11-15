@@ -1417,10 +1417,14 @@ fn a_file_icon_dims_and_a_folder_or_cut_entry_does_not() {
         );
     }
 
-    let mut cut_marks = crate::collection::element::RowMarks::default();
-    cut_marks.cut = true;
-    let mut copy_marks = crate::collection::element::RowMarks::default();
-    copy_marks.copied = true;
+    let cut_marks = crate::collection::element::RowMarks {
+        cut: true,
+        ..Default::default()
+    };
+    let copy_marks = crate::collection::element::RowMarks {
+        copied: true,
+        ..Default::default()
+    };
     assert_eq!(
         part::mark_icon(cut_marks),
         Some(strata_kit::icons::IconName::Cut)
