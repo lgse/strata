@@ -30,7 +30,8 @@ pub use dnd::{
     choose_action,
 };
 pub use entry::{
-    Entry, EntryId, EntryKind, EntrySource, LinkTarget, ListEntry, ListSource, ThumbKey,
+    Entry, EntryGlyph, EntryId, EntryKind, EntrySource, LinkTarget, ListEntry, ListSource,
+    OwnedGlyph, ThumbKey,
 };
 pub use geometry::{CollectionGeometry, Direction, IndexRanges, Point, Rect, UniformRows};
 pub use matched::{FuzzyMatch, MatchedText, char_ranges, fuzzy, normalize_ranges};

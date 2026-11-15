@@ -7,7 +7,10 @@
 
 use rune::{Color, El, Tx, col, icon, row, text};
 use rune_kit::{Button, ButtonVariant};
-use strata_components::controls::color_picker::Srgba;
+use strata_components::{
+    contract::{Entry, EntryId, EntryKind},
+    thumbnails::entry_glyph,
+};
 use strata_core::{
     i18n::tr,
     model::{FolderColor, FolderColorValue},
@@ -16,7 +19,10 @@ use strata_desktop::settings::ICON_CHOICES;
 use strata_kit::{icons::IconName, look::Look};
 
 use super::{Item, choose_color, choose_icon, custom, emoji};
-use crate::App;
+use crate::{
+    App,
+    slots::{SavedGlyph, color_of},
+};
 
 /// What the body shows: the item and what it wears now.
 pub(super) struct Shown<'a> {
@@ -62,28 +68,20 @@ fn section(look: &Look, heading: &str, content: El) -> El {
         .child(content)
 }
 
-/// A colour of the bar as `rune` draws it.
-pub(super) fn color_of(value: &FolderColorValue) -> Option<Color> {
-    Srgba::parse_hex(value.hex()).map(Srgba::to_color)
-}
-
-/// The item's icon in its colour, or its chosen emoji, with its name under it, as GTK's 56 px
-/// preview.
+/// The item's icon or emoji in its colour — inside the coloured folder when the item is a
+/// folder — with its name under it, as GTK's 56 px preview (`show_customized_icon_image`).
 fn preview(look: &Look, shown: &Shown<'_>) -> El {
     let k = &look.kit;
-    let glyph = emoji::preview(look, shown.icon, PREVIEW).unwrap_or_else(|| {
-        let ink = shown.color.and_then(color_of).unwrap_or(k.c.icon_accent);
-        let fallback = if shown.item.folder {
-            IconName::Folder
-        } else {
-            IconName::File
-        };
-        let art = shown
-            .icon
-            .and_then(|name| look.icon_named(name))
-            .unwrap_or_else(|| look.icon(fallback));
-        icon(art, PREVIEW).color(ink).a11y_hidden()
-    });
+    let kind = if shown.item.folder {
+        EntryKind::Folder
+    } else {
+        EntryKind::File
+    };
+    let saved = shown.icon.and_then(SavedGlyph::parse);
+    let entry = Entry::new(EntryId::new(0), &shown.item.name, kind, "")
+        .maybe_color(shown.color.and_then(color_of))
+        .maybe_glyph(saved.as_ref().map(SavedGlyph::as_entry));
+    let glyph = entry_glyph(look, entry, PREVIEW, k.c.icon_accent);
     col()
         .key("customize-preview")
         .w_full()

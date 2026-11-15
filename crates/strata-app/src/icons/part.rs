@@ -92,7 +92,15 @@ impl Part for Icons {
     });
 
     fn new(setup: &Setup<'_>) -> Self {
-        Self::with_settings(setup.settings, setup.later.clone())
+        Self::with_setup(setup)
+    }
+
+    fn customized(app: &mut App) {
+        single::sync_worn::<Self>(app);
+    }
+
+    fn tab_shown(app: &mut App, _: &mut Tx) {
+        single::sync_worn::<Self>(app);
     }
 
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {

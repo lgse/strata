@@ -104,6 +104,37 @@ impl Rgba8 {
         }
     }
 
+    /// The 8-bit sRGB channels of a [`Color`], inverse to [`Rgba8::color`].
+    pub fn from_color(color: Color) -> Rgba8 {
+        let encode = |c: f32| {
+            let c = c.clamp(0.0, 1.0);
+            let srgb = if c <= 0.003_130_8 {
+                c * 12.92
+            } else {
+                1.055 * c.powf(1.0 / 2.4) - 0.055
+            };
+            (srgb * 255.0).round() as u8
+        };
+        Rgba8 {
+            r: encode(color.r),
+            g: encode(color.g),
+            b: encode(color.b),
+            a: (color.a.clamp(0.0, 1.0) * 255.0).round() as u8,
+        }
+    }
+
+    /// Strata's badge foreground on a coloured fill (`contrasting_foreground` in
+    /// `src/assets.rs`): dark ink (`#172033`) on light fills and light ink (`#f8fafc`) on dark
+    /// ones.
+    pub const fn contrasting_ink(self) -> Rgba8 {
+        let luma = (self.r as u32) * 299 + (self.g as u32) * 587 + (self.b as u32) * 114;
+        if luma > 150_000 {
+            Rgba8::rgb(0x17, 0x20, 0x33)
+        } else {
+            Rgba8::rgb(0xf8, 0xfa, 0xfc)
+        }
+    }
+
     /// The same colour, opaque: what Strata's blends and contrast checks read.
     pub fn opaque(self) -> Rgba8 {
         Rgba8 { a: 255, ..self }

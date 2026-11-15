@@ -113,6 +113,7 @@ fn parts() -> Vec<Entry<App>> {
         listen: |_| None,
         publish: |_| {},
         caught_up: |_| {},
+        customized: |_| {},
         poll,
         switched: |_, _| {},
         tab_hidden: |_, _| {},
