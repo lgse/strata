@@ -18,12 +18,8 @@
 //!
 //! Left out, with what brings each back:
 //!
-//! - **The prompt for an item in the way** (`resolve_replay_collisions` in
-//!   `src/ui/browser/transfer/replay.rs`): the conflict prompt is the clipboard and conflicts
-//!   package's, A12 (`docs/rune/parity/packages/A12.md`). Until it lands, a replay with an
-//!   item in the way stops as the prompt's Cancel does, and its entry stays.
 //! - **The card that shows the check running** (`show_transfer_preparation`): the progress
-//!   card is not on this interface yet.
+//!   card for preparation checks is not on this interface yet.
 //! - **The Trash undo's fly-out** (`prepare_fly_from_trash`): an animation of the trash
 //!   button, which this interface has not.
 
@@ -38,18 +34,22 @@ use strata_desktop::keys::{
 use strata_fs::{
     adapters::probes::{self, Presence},
     app::Browser,
-    services::MoveRecord,
+    services::{MoveRecord, UndoMoveItem},
 };
 
 use crate::{
     App,
     commands::{Action, Call, Keys, Outcome, Stage},
+    conflict_dialog::{self, ConflictActions, ConflictPrompt},
     slots::{Frame, Later, Part, Place, Setup},
 };
 
 mod replay;
 
-use replay::{Replay, Sorted, found};
+use replay::{
+    GroupReplay, PendingReplay, Replay, Sorted, found, replay_conflict_explanation,
+    replay_destination, replay_prompt_visibility,
+};
 
 pub(crate) struct Undo {
     later: Later<App>,
@@ -57,7 +57,7 @@ pub(crate) struct Undo {
     checking: Vec<Replay>,
 }
 
-/// Nothing of undo is drawn: the check's card and the conflict prompt are left out.
+/// Nothing of undo is drawn here: its conflict prompt lives in [`crate::conflict_dialog`].
 fn nothing(_: &App, _: &mut Frame<'_, App>) -> Option<rune::El> {
     None
 }
@@ -233,36 +233,54 @@ fn replay_move(app: &mut App, replay: Replay, records: Vec<MoveRecord>, grouped:
         .collect();
     check(app, replay, locations, move |app, presence| {
         let sorted = Sorted::of(records, &presence);
-        resume_move(&app.browser, replay, sorted, grouped);
+        resume_move(app, replay, sorted, grouped);
     })
 }
 
-/// `resume_replay_move` and `dispatch_replay`, with no prompt for an item in the way.
-fn resume_move(browser: &Rc<Browser>, replay: Replay, sorted: Sorted, grouped: bool) {
+/// `resume_replay_move`: discards empty replays or steps through any colliding records in
+/// [`crate::conflict_dialog`] before dispatching (`src/ui/browser/transfer/replay.rs`).
+fn resume_move(app: &mut App, replay: Replay, sorted: Sorted, grouped: bool) {
     let Sorted {
         accepted,
-        collided,
+        collisions,
         missing,
     } = sorted;
-    if accepted.is_empty() && collided == 0 {
+    if accepted.is_empty() && collisions.is_empty() {
         if grouped && missing > 0 && !replay.redo {
-            browser.discard_group_keep_folder(replay.redo, replay.generation);
+            app.browser
+                .discard_group_keep_folder(replay.redo, replay.generation);
         } else {
-            replay.discard(browser);
+            replay.discard(&app.browser);
         }
         return;
     }
-    // The prompt's Cancel: nothing moves, and the entry stays.
-    if collided > 0 {
-        tracing::debug!(
-            collided,
-            "an item is in the way of the replay, and no prompt asks"
-        );
+    resolve_replay_collisions(
+        app,
+        PendingReplay {
+            replay,
+            collisions,
+            accepted,
+            group: grouped.then_some(GroupReplay {
+                had_missing: missing > 0,
+                skipped: false,
+            }),
+        },
+    );
+}
+
+fn dispatch_replay(
+    browser: &Rc<Browser>,
+    replay: Replay,
+    accepted: Vec<UndoMoveItem>,
+    group: Option<GroupReplay>,
+) {
+    // Every conflict was skipped, so nothing moves: the entry stays, as after Cancel.
+    if accepted.is_empty() {
         return;
     }
     let generation = replay.generation;
-    if grouped {
-        if missing > 0 {
+    if let Some(state) = group {
+        if state.had_missing && !state.skipped {
             browser.undo_group_retaining_folder(generation, accepted);
         } else {
             browser.undo_group(generation, accepted);
@@ -272,6 +290,43 @@ fn resume_move(browser: &Rc<Browser>, replay: Replay, sorted: Sorted, grouped: b
     } else {
         browser.undo_move(generation, accepted);
     }
+}
+
+fn resolve_replay_collisions(app: &mut App, mut pending: PendingReplay) {
+    if pending.collisions.is_empty() {
+        dispatch_replay(
+            &app.browser,
+            pending.replay,
+            pending.accepted,
+            pending.group,
+        );
+        return;
+    }
+    let collision = pending.collisions.remove(0);
+    let redo = pending.replay.redo;
+    let name = replay_destination(&collision.record, redo).display_name();
+    let explanation = replay_conflict_explanation(&collision, redo);
+    let (apply_to_all_visible, skip_visible) =
+        replay_prompt_visibility(&pending.collisions, pending.accepted.len());
+    conflict_dialog::prompt(
+        app,
+        ConflictPrompt {
+            name,
+            explanation,
+            apply_to_all_visible,
+            skip_visible,
+            actions: ConflictActions {
+                replace: collision.kinds.replaceable,
+                ..ConflictActions::default()
+            },
+        },
+        move |app, choice, apply_to_all| {
+            let next = pending
+                .clone()
+                .apply_choice(&collision, choice, apply_to_all);
+            resolve_replay_collisions(app, next);
+        },
+    );
 }
 
 #[cfg(test)]

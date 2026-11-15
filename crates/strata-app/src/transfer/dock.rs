@@ -3,10 +3,7 @@
 //! Hosting C16's [`DockView`] and [`ProgressDialog`] for transfer operations, and reporting
 //! transfer outcomes (`src/ui/browser/progress.rs`, `events/operations.rs`, `transfer_report.rs`).
 
-use std::{
-    collections::{HashMap, HashSet},
-    ffi::OsStr,
-};
+use std::collections::{HashMap, HashSet};
 
 use rune::{El, Tx};
 use strata_components::progress_dock::{
@@ -29,6 +26,7 @@ use strata_kit::icons::IconName;
 use super::words;
 use crate::{
     App, clipboard,
+    conflict_dialog::shown_name,
     error_dialog::{self, Error},
     shell,
     slots::Frame,
@@ -475,19 +473,6 @@ fn cancelled_summary(completed: usize, failed: usize, not_attempted: usize) -> S
         ]))
     )
     .into_owned()
-}
-
-fn shown_name(name: &OsStr) -> String {
-    name.to_string_lossy()
-        .chars()
-        .map(|c| {
-            if c.is_control() {
-                char::REPLACEMENT_CHARACTER
-            } else {
-                c
-            }
-        })
-        .collect()
 }
 
 fn display_name(location: &Location) -> String {

@@ -6,86 +6,75 @@
 scenario = "dismissing-conflict-preserves-both"
 run = "columns-copy-cancel"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "dismissing-conflict-preserves-both"
 run = "columns-copy-escape"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "dismissing-conflict-preserves-both"
 run = "columns-copy-close"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "dismissing-conflict-preserves-both"
 run = "columns-move-cancel"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "keep-both-applies-to-all-mixed-paste"
 run = "columns"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "keep-both-then-undo-remaining"
 run = "columns"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "keep-both-then-undo"
 run = "columns"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "merge-combines-folder-contents"
 run = "columns"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "replace-restores-original-on-undo"
 run = "columns-copy"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "replace-restores-original-on-undo"
 run = "columns-move"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "replace-without-trash-keeps-row"
 run = "list"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "offscreen"
