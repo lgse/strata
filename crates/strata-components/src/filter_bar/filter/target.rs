@@ -5,10 +5,12 @@
 //!
 //! Until the user picks a result after the query last changed, Enter opens the top result,
 //! and while the field has the keyboard that row is outlined. After a pick, while something is
-//! selected, Enter follows Strata per mode ([`super::Shows`]): search results that replace the
-//! listing open their cursor, or the top result with none (`inline_search.rs`,
-//! `current_position().unwrap_or(0)`), where Down lands too; a listing narrowed in place opens
-//! its first selected result in display order (`filter_activation_position`). Deselecting
+//! selected, Enter opens the first selected result in display order, where Down lands too: in
+//! search results that replace the listing, `inline_search/collection.rs`'s `current_position`
+//! finds no focused item widget while the field has the keyboard and falls back to the first
+//! selected result (`unwrap_or(0)` with none, or the unselected cursor in 10xer mode); in a
+//! listing narrowed in place, `filter_activation_position` takes the first selected result and
+//! opens nothing with none ([`super::Shows`]). Deselecting
 //! everything gives the top result back. In 10xer mode nothing is outlined, and before any
 //! results show for the text (the host's debounce, or after a restart) nothing is offered, so
 //! the per-mode rules apply from the start.
@@ -84,23 +86,39 @@ impl Tracker {
         !self.scrolled && self.offers_top(has_rows, has_selection, tenxer)
     }
 
-    /// What Enter opens: the top result while it is offered; else, for search results, the
-    /// cursor or the top result; in place, the first selected result in display order. Before
-    /// any results show for the text (the host's debounce, or after a restart) nothing is
-    /// offered, so the per-mode rule applies at once, as Strata's.
-    pub fn target(&self, r: Results<'_>, tenxer: bool, shows: Shows) -> Option<EntryId> {
+    /// Where Down from the field lands, and what Enter opens in search results: the top result
+    /// while it is offered, else the first selected result in display order
+    /// (`inline_search/collection.rs`, `current_position` with the field focused), else an
+    /// unselected cursor or the top result.
+    pub fn landing(&self, r: Results<'_>, tenxer: bool) -> Option<EntryId> {
         if r.source.is_empty() {
             return None;
         }
         if self.offers_top(true, !r.selection.is_empty(), tenxer) {
             return Some(r.source.id_at(0));
         }
+        first_selected(r).or_else(|| {
+            let at = r.selection.cursor_index(r.source).unwrap_or(0);
+            Some(r.source.id_at(at))
+        })
+    }
+
+    /// What Enter opens: the top result while it is offered; else the first selected result in
+    /// display order, falling back in search results with nothing selected to the cursor or the
+    /// top result. Before any results show for the text (the host's debounce, or after a
+    /// restart) nothing is offered, so the per-mode rule applies at once, as Strata's.
+    pub fn target(&self, r: Results<'_>, tenxer: bool, shows: Shows) -> Option<EntryId> {
         match shows {
-            Shows::Replace => {
-                let at = r.selection.cursor_index(r.source).unwrap_or(0);
-                Some(r.source.id_at(at))
+            Shows::Replace => self.landing(r, tenxer),
+            Shows::InPlace => {
+                if r.source.is_empty() {
+                    return None;
+                }
+                if self.offers_top(true, !r.selection.is_empty(), tenxer) {
+                    return Some(r.source.id_at(0));
+                }
+                first_selected(r)
             }
-            Shows::InPlace => first_selected(r),
         }
     }
 }

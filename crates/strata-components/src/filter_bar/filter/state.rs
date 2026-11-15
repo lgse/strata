@@ -272,12 +272,12 @@ impl FilterState {
     }
 
     /// What Enter in the field opens: the top result until the user picks one after the query
-    /// last changed; after that, per mode, as Strata does. Search results that replace the
-    /// listing ([`Shows::Replace`]) open their cursor, or the top result with none
-    /// (`inline_search.rs`, `current_position`): where Down lands. A listing narrowed in place
-    /// ([`Shows::InPlace`]) opens its first selected result in display order
-    /// (`filter_activation_position`). `None` with an empty query, no results, or (in place,
-    /// after a pick or in 10xer mode) nothing selected.
+    /// last changed; after that, the first selected result in display order, falling back in
+    /// search results ([`Shows::Replace`]) with nothing selected to the cursor or the top
+    /// result (`inline_search/collection.rs`, `current_position` with the field focused): where
+    /// Down lands. A listing narrowed in place ([`Shows::InPlace`]) opens its first selected
+    /// result (`filter_activation_position`) and nothing with none. `None` with an empty query,
+    /// no results, or (in place, after a pick or in 10xer mode) nothing selected.
     pub fn target(&self, r: Results<'_>) -> Option<EntryId> {
         if !self.open || self.edit.text.trim().is_empty() {
             return None;
@@ -285,18 +285,12 @@ impl FilterState {
         self.tracker.target(r, self.tenxer, self.shows)
     }
 
-    /// Where Down from the field lands: the top result while Enter opens it, else the results'
-    /// cursor (Strata's search results, `inline_search.rs`), else the top result. `None` with
-    /// no results.
+    /// Where Down from the field lands: the top result while Enter opens it, else the first
+    /// selected result in display order (Strata's search results, `inline_search/collection.rs`
+    /// with the field focused), else an unselected cursor or the top result. `None` with no
+    /// results.
     pub fn landing(&self, r: Results<'_>) -> Option<EntryId> {
-        if r.source.is_empty() {
-            return None;
-        }
-        let top = self
-            .tracker
-            .offers_top(true, !r.selection.is_empty(), self.tenxer);
-        let cursor = r.selection.cursor_index(r.source).filter(|_| !top);
-        Some(r.source.id_at(cursor.unwrap_or(0)))
+        self.tracker.landing(r, self.tenxer)
     }
 
     /// The result to outline (C1e's `RowMarks::enter_target`): the top result while Enter

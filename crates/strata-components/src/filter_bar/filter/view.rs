@@ -297,7 +297,7 @@ fn key<S: 'static>(bar: &FilterBar<S>, s: &mut S, ev: &KeyEvent, tx: &mut Tx) ->
             if r.source.is_empty() || st.text().trim().is_empty() {
                 return false;
             }
-            // The outlined top result, or the results' cursor after a pick.
+            // The outlined top result, or the first selected result after a pick.
             let Some(id) = st.landing(r) else {
                 return false;
             };
