@@ -327,6 +327,24 @@ in_each_view! {
     "icons" => a_folder_rows_middle_click_opens_in_icons,
 }
 
+fn filter_in_columns(host: &mut Offscreen, query: &str) {
+    let view = shell::view_focus(host.app()).expect("the view's key");
+    host.runtime().update(|_, tx| tx.focus(view, true));
+    idle(host);
+    let ctrl = Mods {
+        ctrl: true,
+        ..Mods::default()
+    };
+    press_key(host, Key::Text("f".to_owned()), ctrl);
+    for ch in query.chars() {
+        host.runtime().key(KeyEvent {
+            key: Key::Text(ch.to_string()),
+            mods: Mods::default(),
+        });
+    }
+    idle(host);
+}
+
 /// In a filtered Columns column (`RowContext::view_entry` in GTK), a middle click on a folder
 /// hit from a subfolder opens that subfolder in a new tab.
 #[test]
@@ -344,25 +362,117 @@ fn a_filtered_columns_folder_middle_click_opens_a_new_tab() {
             let first = (shown_tab(host.app()), &root);
             let drafts = Location::local(drafts_path);
 
-            let view = shell::view_focus(host.app()).expect("the view's key");
-            host.runtime().update(|_, tx| tx.focus(view, true));
-            idle(&mut host);
-            let ctrl = Mods {
-                ctrl: true,
-                ..Mods::default()
-            };
-            press_key(&mut host, Key::Text("f".to_owned()), ctrl);
-            for ch in "drafts".chars() {
-                host.runtime().key(KeyEvent {
-                    key: Key::Text(ch.to_string()),
-                    mods: Mods::default(),
-                });
-            }
-            idle(&mut host);
+            filter_in_columns(&mut host, "drafts");
 
             let hit_row = row_key(shell::id_of(host.app(), &drafts));
             press(&mut host, &hit_row, PointerButton::Middle, Mods::default());
             opened_in_a_tab(&mut host, 2, &drafts, first);
+        },
+    );
+}
+
+/// In Columns with a deeper column open (`open_middle_clicked` -> `MiddleClickAction::RevealParent`
+/// in `src/ui/browser/columns/rows/click.rs`), middle-clicking a file in an ancestor column
+/// activates that column, selects and focuses the file, and closes the deeper column.
+#[test]
+fn a_columns_file_middle_click_activates_its_column_and_closes_deeper_ones() {
+    hosted_over(
+        MODULE,
+        "a_columns_file_middle_click_activates_its_column_and_closes_deeper_ones",
+        with_the_commands,
+        |mut host| {
+            let folder = fixture();
+            opened(&mut host, folder.path());
+            let documents = Location::local(folder.path().join("documents"));
+            let todo = Location::local(folder.path().join("todo.txt"));
+
+            host.runtime().update(|app, tx| {
+                assert!(
+                    app.browser
+                        .select_entries_by_name_at(0, &["documents".into()])
+                );
+                app.browser.enter_focused_directory();
+                shell::settle(app, tx);
+            });
+            let deeper = host.run_until(PATIENCE, |host| {
+                host.app().browser.location_at(1).as_ref() == Some(&documents)
+                    && host.app().columns.listed(1)
+            });
+            assert!(deeper, "documents opens in column 1");
+            idle(&mut host);
+            assert_eq!(host.app().browser.active_depth(), Some(1));
+
+            let file_row = row_key(shell::id_of(host.app(), &todo));
+            press(&mut host, &file_row, PointerButton::Middle, Mods::default());
+
+            assert_eq!(host.app().browser.active_depth(), Some(0));
+            assert_eq!(host.app().browser.location_at(1), None);
+            assert_eq!(browser_holds(&host).0, ["todo.txt"]);
+            assert_eq!(browser_holds(&host).1.as_deref(), Some("todo.txt"));
+            assert_eq!(tabs(host.app()).len(), 1);
+        },
+    );
+}
+
+/// In filtered Columns (`open_middle_clicked` -> `state.reveal_locations`), middle-clicking a
+/// same-folder file hit clears the filter and selects the file in place, and middle-clicking a
+/// subfolder file hit navigates to its parent folder and reveals the file there.
+#[test]
+fn a_filtered_columns_file_middle_click_reveals_in_its_folder() {
+    hosted_over(
+        MODULE,
+        "a_filtered_columns_file_middle_click_reveals_in_its_folder",
+        with_the_commands,
+        |mut host| {
+            let folder = fixture();
+            opened(&mut host, folder.path());
+            let root = Location::local(folder.path());
+            let documents = Location::local(folder.path().join("documents"));
+            let todo = Location::local(folder.path().join("todo.txt"));
+            let notes = Location::local(folder.path().join("documents/notes.txt"));
+
+            host.runtime().update(|app, tx| {
+                assert!(
+                    app.browser
+                        .select_entries_by_name_at(0, &["documents".into()])
+                );
+                shell::settle(app, tx);
+            });
+            idle(&mut host);
+
+            filter_in_columns(&mut host, "todo");
+            assert!(host.app().columns.shows_hits(0));
+            let todo_row = row_key(shell::id_of(host.app(), &todo));
+            press(&mut host, &todo_row, PointerButton::Middle, Mods::default());
+
+            assert!(!host.app().columns.shows_hits(0), "filter hits cleared");
+            assert_eq!(host.app().browser.location_at(0).as_ref(), Some(&root));
+            assert_eq!(browser_holds(&host).0, ["todo.txt"]);
+            assert_eq!(browser_holds(&host).1.as_deref(), Some("todo.txt"));
+            host.runtime()
+                .update(|_, tx| assert_eq!(tx.focused(), Some("columns")));
+            assert_eq!(tabs(host.app()).len(), 1);
+
+            filter_in_columns(&mut host, "notes");
+            assert!(host.app().columns.shows_hits(0));
+            let notes_row = row_key(shell::id_of(host.app(), &notes));
+            press(
+                &mut host,
+                &notes_row,
+                PointerButton::Middle,
+                Mods::default(),
+            );
+
+            let revealed = host.run_until(PATIENCE, |host| {
+                host.app().browser.active_location().as_ref() == Some(&documents)
+                    && host.app().columns.listed(0)
+            });
+            assert!(revealed, "navigates to documents");
+            idle(&mut host);
+            assert!(!host.app().columns.shows_hits(0));
+            assert_eq!(browser_holds(&host).0, ["notes.txt"]);
+            assert_eq!(browser_holds(&host).1.as_deref(), Some("notes.txt"));
+            assert_eq!(tabs(host.app()).len(), 1);
         },
     );
 }

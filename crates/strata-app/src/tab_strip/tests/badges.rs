@@ -193,6 +193,7 @@ fn ctrl_enter_on_a_file_stops_even_when_activate_declines() {
         "ctrl_enter_on_a_file_stops_even_when_activate_declines",
         without_activate_and_watched,
         |mut host| {
+            UNCLAIMED.set(0);
             let empty = tempfile::tempdir().expect("empty folder");
             opened(&mut host, empty.path());
             let view = shell::view_focus(host.app()).expect("the view's key");

@@ -70,17 +70,20 @@ impl App {
         }
     }
 
+    fn entry_at(&self, (depth, id): At) -> Option<strata_core::model::FileEntry> {
+        if self.columns.shows_hits(depth) {
+            filter::targets::at(self, depth, id)
+        } else {
+            let position = self.columns.position(depth, id)?;
+            self.browser.entry_at(depth, position)
+        }
+    }
+
     /// A middle click on a folder row (`open_middle_clicked` in
     /// `src/ui/browser/columns/rows/click.rs`): `open-in-tab`, or `open-in-window` with Ctrl or
     /// Shift.
-    fn open_in_new(&mut self, (depth, id): At, window: bool, tx: &mut Tx) {
-        let entry = if self.columns.shows_hits(depth) {
-            filter::targets::at(self, depth, id)
-        } else {
-            let position = self.columns.position(depth, id);
-            position.and_then(|at| self.browser.entry_at(depth, at))
-        };
-        let Some(entry) = entry else {
+    fn open_in_new(&mut self, at: At, window: bool, tx: &mut Tx) {
+        let Some(entry) = self.entry_at(at) else {
             return;
         };
         let command = if window {
@@ -89,6 +92,26 @@ impl App {
             "open-in-tab"
         };
         commands::run(self, command, On::Place(entry.location), tx);
+    }
+
+    /// A middle click on a file row (`MiddleClickAction::RevealParent` in
+    /// `src/ui/browser/columns/rows/click.rs`): empties its folder's filter and reveals the file
+    /// in its folder, closing deeper columns or navigating to a subfolder hit's parent.
+    fn reveal(&mut self, at: At, tx: &mut Tx) {
+        let Some(entry) = self.entry_at(at) else {
+            return;
+        };
+        let Some(folder) = entry.location.parent() else {
+            return;
+        };
+        if let Some(depth) = self.browser.open_depth(&folder) {
+            filter::clear_for_reveal(self, depth, tx);
+        }
+        shell::publish(self);
+        self.browser.reveal_locations(folder, vec![entry.location]);
+        self.columns
+            .follow_active(self.browser.active_depth(), &self.look, tx);
+        tx.focus(super::VIEW, false);
     }
 
     fn collection(&mut self, depth: usize, intent: Intent, tx: &mut Tx) {
@@ -100,6 +123,7 @@ impl App {
             Intent::Activate { id, how } => self.activate(depth, id, how),
             Intent::Clicked { id } => self.clicked(depth, id),
             Intent::OpenInNew { id, window } => self.open_in_new((depth, id), window, tx),
+            Intent::Reveal { id } => self.reveal((depth, id), tx),
             // A slow second click on the entry.
             Intent::BeginRename { id } => rename::begin_on(self, depth, id, tx),
             Intent::ContextMenu { target, anchor } => {

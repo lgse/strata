@@ -12,10 +12,11 @@
 //!   pane puts what is for its folder into its listing and its collection. A new listing
 //!   takes the keyboard, as the GTK window gives it.
 //! - **Intents out.** [`heard`] takes what the collection asks to the browser: a folder opens
-//!   in place, as GTK's Icons and List views open it (`activate_in_place`), a middle click on
-//!   a folder runs `open-in-tab` or `open-in-window` (`MiddleClick::clicked`), and Left at the
-//!   view's start leaves it for the sidebar. Where the start is, is the component's: the
-//!   first tile in Icons, any row in List (`at_left_edge` in `src/ui/browser_modes/focus.rs`).
+//!   in place, as GTK's Icons and List views open it (`activate_in_place`), a middle click
+//!   (`MiddleClick::clicked`) runs `open-in-tab` or `open-in-window` on a folder and reveals a
+//!   file in its folder, and Left at the view's start leaves it for the sidebar. Where the start
+//!   is, is the component's: the first tile in Icons, any row in List (`at_left_edge` in
+//!   `src/ui/browser_modes/focus.rs`).
 //!   A secondary click or the Menu key opens the context menu through `menus::open`.
 //! - **What the window asks of a view:** [`rows`] for the context menu, [`editing`] for the
 //!   rename editor, [`publish`], and for the QA backend [`listed`] and [`lists`].
@@ -417,6 +418,27 @@ fn open_in_new<V: SinglePane>(app: &mut App, (depth, id): At, window: bool, tx: 
     commands::run(app, command, On::Place(entry.location), tx);
 }
 
+/// A middle click on a file row (`MiddleClick::clicked` in
+/// `src/ui/browser_modes/clicks.rs`): empties the folder's filter and reveals the file in its
+/// folder.
+fn reveal<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) {
+    let Some(position) = pane::<V>(app).position(depth, id) else {
+        return;
+    };
+    let Some(entry) = app.browser.entry_at(depth, position) else {
+        return;
+    };
+    let Some(folder) = entry.location.parent() else {
+        return;
+    };
+    if let Some(open) = app.browser.open_depth(&folder) {
+        filter::clear_for_reveal(app, open, tx);
+    }
+    shell::publish(app);
+    app.browser.reveal_locations(folder, vec![entry.location]);
+    tx.focus(V::KEY, false);
+}
+
 /// What the view's collection asks of its host, taken to `Browser`.
 fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
     // What the input did to the cursor and the selection goes first: the browser acts on
@@ -439,6 +461,7 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
             menus::open(app, request, tx);
         }
         Intent::OpenInNew { id, window } => open_in_new::<V>(app, (depth, id), window, tx),
+        Intent::Reveal { id } => reveal::<V>(app, (depth, id), tx),
         // Left at the view's start: the sidebar takes the keyboard, when there is one. The
         // component decides where its start is, from the view's keys (the first tile in Icons,
         // any row in List); only that Left reaches here.
