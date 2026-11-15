@@ -31,12 +31,17 @@ fn a_lone_slash_over_a_query_enters_and_any_other_edit_types() {
 
 /// The hosted tests: the part's own bookkeeping, driven inside a window.
 mod hosted {
+    use rune::{Key, Mods};
+    use strata_components::collection::selection::Extend;
     use strata_core::model::Location;
 
-    use super::super::{DEBOUNCE, delivered, open, queried, session::Batch};
+    use super::super::{DEBOUNCE, delivered, open, picked, queried, session::Batch};
     use crate::{
         host::offscreen::Offscreen,
-        test_support::{PATIENCE, fixture, view::hosted_in},
+        test_support::{
+            PATIENCE, fixture,
+            view::{hosted_in, press},
+        },
     };
 
     const MODULE: &str = "filter::tests";
@@ -112,6 +117,65 @@ mod hosted {
                 });
 
                 assert_eq!(host.app().filter.found.len(), 1, "the results shown went");
+            },
+        );
+    }
+
+    /// Over a range of results whose cursor is at the end, Ctrl+F refocuses the open field and
+    /// Down lands on the first selected result alone (`filtered-results-group-selection`).
+    #[test]
+    fn ctrl_f_then_down_over_a_range_selects_only_the_first_result() {
+        hosted_in(
+            MODULE,
+            "icons",
+            "hosted::ctrl_f_then_down_over_a_range_selects_only_the_first_result",
+            |mut host| {
+                let folder = fixture();
+                host.app().open(Location::local(folder.path()));
+                let listed = host.run_until(PATIENCE, |host| {
+                    super::super::Where::Icons.listed(host.app(), 0)
+                });
+                assert!(listed, "the fixture was not listed");
+
+                let ctrl = Mods {
+                    ctrl: true,
+                    ..Mods::default()
+                };
+                press(&mut host, Key::Text("f".to_owned()), ctrl);
+                for ch in "txt".chars() {
+                    press(&mut host, Key::Text(ch.to_string()), Mods::default());
+                }
+                let found =
+                    host.run_until(PATIENCE, |host| host.app().filter.pane.source().len() == 4);
+                assert!(found, "expected four .txt matches");
+
+                host.runtime().update(|app, tx| {
+                    let (source, collection) = app.filter.pane.parts_mut();
+                    let _ = collection.selection.select_only(source, 0);
+                    let _ = collection.selection.extend_to(source, 3, Extend::Replace);
+                    collection.note_selection(source);
+                    picked(app);
+                    tx.focus("icons", true);
+                });
+                host.runtime().frame(0.0);
+                {
+                    let pane = &host.app().filter.pane;
+                    let sel = &pane.collection().selection;
+                    assert_eq!(sel.len(), 4);
+                    assert_eq!(sel.cursor_index(pane.source()), Some(3));
+                }
+
+                press(&mut host, Key::Text("f".to_owned()), ctrl);
+                press(&mut host, Key::Down, Mods::default());
+
+                let pane = &host.app().filter.pane;
+                let sel = &pane.collection().selection;
+                assert_eq!(sel.len(), 1, "only one result stays selected");
+                assert!(
+                    sel.is_selected_at(pane.source(), 0),
+                    "the first result is selected"
+                );
+                assert_eq!(sel.cursor_index(pane.source()), Some(0));
             },
         );
     }

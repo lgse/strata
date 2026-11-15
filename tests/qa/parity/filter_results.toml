@@ -221,7 +221,7 @@ run = "list"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A10: dragging the results, at line 14"
+blocker = "A19: dragging the results to the sidebar, at line 14"
 
 [[run]]
 scenario = "filtered-file-click-previews"
@@ -275,9 +275,8 @@ blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
 scenario = "filtered-results-group-selection"
 run = "icons"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: Down from the field after Ctrl+F over a range of results, landing on the first, at line 12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
