@@ -637,7 +637,7 @@
   "Paste; Keep Both is focused on conflicts": "Beillesztés; ütközéseknél a „Mindkettő megőrzése” van fókuszban",
   "Paste; Replace is focused on conflicts": "Beillesztés; ütközéseknél a „Csere” van fókuszban",
   "Permanently delete %{value1}": "%{value1} végleges törlése",
-  "Permanently delete %{value1}?": "Véglegesen törli a következőt: %{value1}?",
+  "Permanently delete %{value1}?": "Véglegesen törli a(z) %{value1}et?",
   "Permanently delete selected items": "Kijelölt elemek végleges törlése",
   "Photos": "Fényképek",
   "Pin / unpin a folder": "Mappa rögzítése / rögzítésének megszüntetése",
