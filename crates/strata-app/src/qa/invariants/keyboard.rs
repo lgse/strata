@@ -7,10 +7,10 @@
 //! have the keyboard, or the next key goes nowhere.
 //!
 //! - Something in the tree has the keyboard.
-//! - A part holds it for a menu exactly while the tree shows a menu, and for a modal layer
-//!   only while it shows a dialog. A dialog the tree shows is held for by a modal layer or by
-//!   a plain popover: the Appearance popover shows as one. A part holds it for an inline edit
-//!   or the location bar only while a text field has the keyboard.
+//! - A part holds it for a menu only while the tree shows a menu, and for a modal layer only
+//!   while it shows a dialog. A menu or a dialog the tree shows is held for by its own hold or
+//!   by a plain popover: the Sort by menu and the Appearance popover show as one. A part holds
+//!   it for an inline edit or the location bar only while a text field has the keyboard.
 //! - A text field with the keyboard is held for by some part.
 //!
 //! A plain popover's hold ([`Holds::Popover`]) needs no surface: the snapshot names no
@@ -81,7 +81,7 @@ impl Surface {
     /// Whether `hold` holds the keyboard for this surface while it shows.
     fn held_by(self, hold: Holds) -> bool {
         match self {
-            Self::Menu => hold == Holds::Menu,
+            Self::Menu => matches!(hold, Holds::Menu | Holds::Popover),
             Self::Dialog => matches!(hold, Holds::Modal { .. } | Holds::Popover),
         }
     }

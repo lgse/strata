@@ -19,7 +19,7 @@ use crate::{
     slots::Frame,
 };
 
-const SURFACE: &str = "sort-menu";
+pub(super) const SURFACE: &str = "sort-menu";
 const ASCENDING: &str = "sort-ascending";
 const DESCENDING: &str = "sort-descending";
 const NATURAL: &str = "sort-natural";
@@ -455,6 +455,7 @@ fn make_default(app: &mut App, tx: &mut Tx) {
     if let Some(prune) = prune {
         folder_views::change_sorts(app, |views| prune.apply(views), tx);
     }
+    tx.focus(SURFACE, false);
 }
 
 /// GTK's `reset` action: the folder's own sort goes, and its column takes the default.
@@ -471,4 +472,5 @@ fn reset(app: &mut App, tx: &mut Tx) {
         folder_views::change_sorts(app, |views| forgotten.apply(views), tx);
     }
     browser.restore_default_sort(depth, browser.preferences().sort_options());
+    tx.focus(SURFACE, false);
 }

@@ -139,6 +139,7 @@ impl Plain {
             .key(self.key)
             .role(role)
             .label(self.label)
+            .focusable(kind == Kind::Menu)
             .focus_return(self.anchor.clone())
             .on_key(
                 move |app: &mut App, event: &KeyEvent, tx: &mut Tx| match kind {
