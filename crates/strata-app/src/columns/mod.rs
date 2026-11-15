@@ -121,7 +121,11 @@ impl Columns {
             held: Vec::new(),
             followed: None,
             moving: Moving::default(),
-            mirror: Mirror::new(settings.columns_mirror_selection, setup.shown.clone()),
+            mirror: Mirror::new(
+                settings.columns_mirror_selection,
+                settings.single_click_previews,
+                setup.shown.clone(),
+            ),
             clicks: ClickModes::new(
                 clicks(settings.columns_file_clicks),
                 clicks(settings.columns_folder_clicks),
@@ -147,6 +151,45 @@ impl Columns {
     /// Whether the selection's folder opens as the child column: the saved choice.
     pub(crate) fn mirrors(&self) -> bool {
         self.mirror.enabled()
+    }
+
+    pub(crate) fn refresh_mirror_preferences(&self, settings: &Preferences) {
+        self.mirror.set_preferences(
+            settings.columns_mirror_selection,
+            settings.single_click_previews,
+        );
+    }
+
+    pub(crate) fn one_click_files(&self) -> bool {
+        self.clicks.files == ClickCount::One
+    }
+
+    pub(crate) fn last_edge_lit(&self) -> bool {
+        self.state.last_edge_lit()
+    }
+
+    pub(crate) fn is_resizing(&self) -> bool {
+        self.state.is_resizing()
+    }
+
+    pub(crate) fn set_width_cap(&mut self, cap: Option<f32>) {
+        self.state.set_width_cap(cap);
+    }
+
+    pub(crate) fn reveal_active(&mut self, look: &Look, tx: &mut Tx) {
+        self.state.reveal_active(look, tx);
+    }
+
+    pub(crate) fn clear_selection(&mut self) {
+        self.state.clear_selection(&self.listings);
+    }
+
+    pub(crate) fn in_band(&self) -> bool {
+        (0..self.state.len()).any(|depth| {
+            self.state
+                .column(depth)
+                .is_some_and(|column| column.collection.selection.in_band())
+        })
     }
 
     /// How many columns both the listings and the view hold.

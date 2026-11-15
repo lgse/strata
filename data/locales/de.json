@@ -1572,5 +1572,8 @@
   "Activities": "Aktivitäten",
   "Objects": "Objekte",
   "Symbols": "Symbole",
-  "Flags": "Flaggen"
+  "Flags": "Flaggen",
+  "Document position": "Dokumentposition",
+  "Line %{line} of %{lines}": "Zeile %{line} von %{lines}",
+  "Blank": "Leer"
 }

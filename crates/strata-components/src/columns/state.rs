@@ -360,6 +360,11 @@ impl ColumnsState {
         last.is_some() && (self.edge_lit == last || self.resize.as_ref().map(|r| r.depth) == last)
     }
 
+    /// Whether a column edge is being dragged right now.
+    pub fn is_resizing(&self) -> bool {
+        self.resize.is_some()
+    }
+
     // Settings.
 
     /// The width new columns open at, in base points: the saved `browser_column_width` (or
@@ -504,6 +509,13 @@ impl ColumnsState {
         let active = self.active.min(len - 1);
         self.set_active_quiet(active);
         self.reveal(look, tx);
+    }
+
+    /// Reveals the active column in the strip: called when the preview drawer beside it opens,
+    /// resumes, or resizes the strip's viewport.
+    pub fn reveal_active(&mut self, look: &Look, tx: &mut Tx) {
+        self.reveal(look, tx);
+        self.reveal_after_layout = true;
     }
 
     /// Ends what belongs to the columns from `len` on: a resize of one, a menu held on one, its
@@ -705,6 +717,16 @@ impl ColumnsState {
                 }
             }
         }
+    }
+
+    /// Clears the selection in every column (the cursors stay) and resets pending click gestures.
+    pub fn clear_selection(&mut self, sources: &dyn ColumnSources) {
+        for c in &mut self.columns {
+            if let Some(ctl) = c.collection.controllers.pointer.as_mut() {
+                ctl.reset();
+            }
+        }
+        self.clear_all(sources);
     }
 
     /// Clears the selection in every column (the cursors stay).

@@ -100,6 +100,10 @@ impl PaneHits {
         &self.collection
     }
 
+    pub(crate) fn in_band(&self) -> bool {
+        self.collection.selection.in_band()
+    }
+
     /// The results' rows, while they show: what the QA backend's invariants hold the tree to.
     #[cfg(feature = "qa")]
     pub(crate) fn hits(&self) -> Option<&Column> {
@@ -288,6 +292,7 @@ pub(crate) fn heard(app: &mut App, intent: Intent, tx: &mut Tx) {
 /// Result `id` alone selected, with the cursor: a menu's row on it asks.
 pub(crate) fn select_only<V: crate::single::SinglePane>(app: &mut App, id: EntryId, tx: &mut Tx) {
     app.filter.pane.land(V::KEY, id, tx);
+    super::picked(app);
 }
 
 /// Scrolls result `id` into view.

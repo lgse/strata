@@ -96,6 +96,17 @@ pub(crate) fn context_entries(
     Some((entry, entries))
 }
 
+/// Whether column `depth` lists a real folder where `New Folder`, `New File`, and `New Folder
+/// with Selection` apply (`can_create_in_pane` in `src/ui/browser/context_menu/item_menu.rs`).
+fn can_create_in_pane(app: &App, depth: usize, id: EntryId) -> bool {
+    if crate::filter::targets::at(app, depth, id).is_some() {
+        return false;
+    }
+    app.browser.location_at(depth).is_some_and(|location| {
+        !crate::clipboard::paths::is_trash(&location) && !location.is_recent_location()
+    })
+}
+
 /// The menu of entry `id` in column `depth` of the shown view, or of the selection it is
 /// part of.
 fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
@@ -103,6 +114,7 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
     let model = self::entry(&EntryTarget {
         entry: &entry,
         entries: &entries,
+        can_create: can_create_in_pane(app, depth, id),
         can_trash: app.browser.can_trash_at(depth),
         can_delete: app.browser.can_delete_at(depth),
         typing: app.menu.typing,
@@ -385,6 +397,8 @@ pub(crate) struct EntryTarget<'a> {
     /// What the menu acts on: the selection when the entry is in it, else the entry alone
     /// (`context_entries` in `src/ui/browser/context_menu.rs`).
     pub(crate) entries: &'a [FileEntry],
+    /// Whether plain creation and grouping apply in the pane (`can_create_in_pane`).
+    pub(crate) can_create: bool,
     /// Whether the pane's folder can be trashed from and deleted from, where GIO says.
     pub(crate) can_trash: Option<bool>,
     pub(crate) can_delete: Option<bool>,
@@ -539,11 +553,20 @@ fn several(target: &EntryTarget<'_>) -> MenuModel {
 
 /// The menu of the entry under the pointer, or of the selection it is part of.
 pub(crate) fn entry(target: &EntryTarget<'_>) -> MenuModel {
-    if target.entries.len() > 1 {
+    let mut model = if target.entries.len() > 1 {
         several(target)
     } else {
         single(target)
+    };
+    if !target.can_create {
+        model.sections.retain(|section| {
+            !section
+                .items
+                .iter()
+                .any(|item| matches!(&*item.action, "new-folder" | "new-file" | "group"))
+        });
     }
+    model
 }
 
 /// What a pane's background menu is built from.

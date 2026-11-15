@@ -229,6 +229,7 @@ fn bar(app: &App) -> FilterBar<App> {
         placeholder: placeholder(items),
     })
     .results(results)
+    .previews(|app: &App| targets::preview_result(app).is_some())
     // The part moves the keyboard itself: a `focus_return` would take it back to the view
     // from a field still in the header of a column that is leaving (after a `/`).
     .tab_to_results(false)
@@ -336,8 +337,21 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
                 open.place.land(app, open.depth, id, tx);
             }
         }
-        // The preview is A15's, and the field's own menu C21's.
+        FilterIntent::Preview => preview_from_field(app, tx),
+        // The field's own menu is C21's.
         _ => {}
+    }
+}
+
+fn preview_from_field(app: &mut App, tx: &mut Tx) {
+    let Some((depth, entry)) = targets::preview_result(app) else {
+        return;
+    };
+    if entry.is_directory() {
+        app.browser.navigate(entry.location);
+        shell::settle(app, tx);
+    } else {
+        crate::preview::toggle_entry(app, Some(entry), Some(depth), tx);
     }
 }
 
@@ -656,6 +670,7 @@ pub(crate) fn marks(app: &App, depth: usize, id: EntryId) -> RowMarks {
 /// The user picked among the results.
 pub(crate) fn picked(app: &mut App) {
     app.filter.state.pick();
+    crate::preview::follow_filter_pick(app);
 }
 
 /// Opens result `id` of column `depth`: a folder is navigated to, a file opened
@@ -695,17 +710,20 @@ pub(crate) fn hit_intent(
             true
         }
         // One click opens a folder among the results whatever the click settings, as GTK's
-        // "filtered folders keep one-click open" (`filtered_click_kind`); a file's preview is
-        // A15's. A click closes no column. A slow second click renames as on any row, the
-        // rename finding the result through [`targets`].
+        // "filtered folders keep one-click open" (`filtered_click_kind`); a file previews when
+        // single-click previews are enabled and two clicks open files (`RecursivePreview`).
+        // A click closes no column. A slow second click renames as on any row, the rename
+        // finding the result through [`targets`].
         Intent::Clicked { id } => {
-            if app
-                .filter
-                .found
-                .get(id)
-                .is_some_and(FileEntry::is_directory)
-            {
-                open_hit(app, depth, *id);
+            if let Some(entry) = app.filter.found.get(id).cloned() {
+                if entry.is_directory() {
+                    open_hit(app, depth, *id);
+                } else if shell::preferences(app).single_click_previews
+                    && !crate::preview::one_click_files_in_shown_view(app)
+                    && crate::preview::entry_supports_quick_preview(&entry)
+                {
+                    app.browser.request_preview(entry);
+                }
             }
             true
         }
@@ -970,7 +988,8 @@ impl Part for Filter {
             .keys(&[Keys::at(
                 Stage::FilterAndLocationCommands,
                 &[FILTER.in_map(Map::Default)],
-            )]),
+            )
+            .when(|_, at| !at.within("preview"))]),
         Action::new("filter-dismiss", dismiss)
             .command(ESCAPE)
             .keys(&[Keys::at(Stage::FilterAndLocationCommands, &[ESCAPE_ANY]).when(on_results)]),

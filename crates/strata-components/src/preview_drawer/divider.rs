@@ -216,7 +216,7 @@ pub(super) fn overlays<S: 'static>(
                 } else {
                     Transition::none()
                 })
-                .child(caption("preview-minimum-outline-caption").a11y_hidden()),
+                .child(caption("preview-minimum-outline-caption")),
         );
     }
     out

@@ -4,7 +4,7 @@
 //! AT-SPI's, which the GTK harness reports (`src/qa/targets/naming.rs`).
 
 /// Rune's name for a role, as `Runtime::accessibility_json` spells it, and the AT-SPI name.
-pub(super) const ROLES: [(&str, &str); 44] = [
+pub(super) const ROLES: [(&str, &str); 47] = [
     ("alert", "alert"),
     ("alert-dialog", "alert"),
     ("button", "button"),
@@ -14,6 +14,7 @@ pub(super) const ROLES: [(&str, &str); 44] = [
     ("combo-box", "combo box"),
     ("default-button", "button"),
     ("dialog", "dialog"),
+    ("document", "text"),
     ("grid", "table"),
     ("grid-cell", "table cell"),
     ("group", GROUP),
@@ -35,6 +36,7 @@ pub(super) const ROLES: [(&str, &str); 44] = [
     ("password-input", "password text"),
     ("progress-indicator", "progress bar"),
     ("radio-button", "radio button"),
+    ("region", GROUP),
     ("row", "table row"),
     ("row-header", "row header"),
     ("scroll-view", "scroll pane"),
@@ -48,6 +50,7 @@ pub(super) const ROLES: [(&str, &str); 44] = [
     ("tab-list", "page tab list"),
     ("table", "table"),
     ("text-input", "text"),
+    ("tooltip", "label"),
     ("window", "frame"),
 ];
 

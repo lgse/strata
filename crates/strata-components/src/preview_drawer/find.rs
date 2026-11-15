@@ -73,6 +73,7 @@ pub(super) fn bar<S: 'static>(
             .on_press(move |s: &mut S| sh.with_view(s, |v| v.find_step(forward)))
             .build(k)
             .key(key)
+            .on_key(super::return_as_space::<S>)
     };
     let close_sh = shared.clone();
     let close = IconButton::new(look.icon(IconName::Close))
@@ -81,7 +82,8 @@ pub(super) fn bar<S: 'static>(
         .label(labels.find_close.clone())
         .on_press_tx(move |s: &mut S, tx: &mut Tx| close(&close_sh, s, tx))
         .build(k)
-        .key("preview-find-close");
+        .key("preview-find-close")
+        .on_key(super::return_as_space::<S>);
 
     let mut bar = row()
         .key("preview-find-bar")

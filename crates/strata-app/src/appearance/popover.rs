@@ -366,7 +366,7 @@ fn preview_row(app: &App) -> El {
             icon: IconName::Eye,
             name: &labels.preview,
             shown_keys: (!shown.is_empty()).then_some(shown),
-            checked: false,
+            checked: crate::preview::panel_pressed(app),
             sensitive: true,
             press: |app, tx| {
                 commands::run(app, "preview-panel", On::Focus, tx);
