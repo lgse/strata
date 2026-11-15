@@ -13,7 +13,7 @@
 use std::{rc::Rc, time::Duration};
 
 use strata_components::contract::EntryId;
-use strata_qa::{Chord, Keymap, Modifier, Rect};
+use strata_qa::{Chord, ClipboardContent, Keymap, Modifier, Rect};
 
 use super::tree::Snapshot;
 use crate::App;
@@ -59,4 +59,16 @@ pub(super) trait Host {
     async fn button(&self, number: u8, pressed: bool) -> Result<(), String>;
     /// Presses the element as an assistive client's click would. False when it cannot.
     fn activate(&self, target: &Activated) -> bool;
+
+    /// Owns the system clipboard from a second connection (`clipboard_set`). `None` when the
+    /// host has no system clipboard (the offscreen host).
+    async fn set_clipboard(&self, _content: &ClipboardContent) -> Option<Result<(), String>> {
+        None
+    }
+
+    /// Reads `mime` (or plain text) from a second connection (`clipboard`). `None` when the
+    /// host has no system clipboard.
+    async fn read_clipboard(&self, _mime: Option<&str>) -> Option<Result<Option<String>, String>> {
+        None
+    }
 }
