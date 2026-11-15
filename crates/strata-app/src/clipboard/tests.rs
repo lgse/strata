@@ -220,3 +220,89 @@ fn copy_path_and_copy_name_write_text_and_clear_file_marks() {
         },
     );
 }
+
+fn type_filter(host: &mut Offscreen, query: &str) {
+    send_key(
+        host,
+        KeyEvent {
+            key: Key::Text("f".to_owned()),
+            mods: ctrl(),
+        },
+    );
+    for ch in query.chars() {
+        send_key(
+            host,
+            KeyEvent {
+                key: Key::Text(ch.to_string()),
+                mods: Mods::default(),
+            },
+        );
+    }
+}
+
+#[test]
+fn copy_path_key_stops_on_filter_results_and_empty_results_never_copy_hidden_selection() {
+    hosted(
+        MODULE,
+        "copy_path_key_stops_on_filter_results_and_empty_results_never_copy_hidden_selection",
+        |mut host| {
+            let (_folder, _, _) = open_two_files(&mut host);
+            host.app().browser().select(0, 0);
+            while host.turn() {}
+            let beta_id = entry_id(host.app(), "beta.txt");
+
+            type_filter(&mut host, "zzz");
+            let empty_results = |h: &Offscreen| {
+                crate::filter::status(h.app()).as_deref() == Some("No matching files")
+            };
+            assert!(host.run_until(PATIENCE, empty_results));
+            host.runtime().update(|_, tx| {
+                tx.focus("columns-0", true);
+            });
+            while host.turn() {}
+
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Text("y".to_owned()),
+                    mods: Mods::default(),
+                },
+            );
+            while host.turn() {}
+            assert_eq!(fallback_text(host.app()), None);
+
+            host.runtime().update(|app, tx| {
+                assert_eq!(run(app, "copy-path", On::Focus, tx), Outcome::Declined);
+            });
+            assert_eq!(fallback_text(host.app()), None);
+
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            type_filter(&mut host, "beta");
+            let one_hit = |h: &Offscreen| crate::filter::targets::at(h.app(), 0, beta_id).is_some();
+            assert!(host.run_until(PATIENCE, one_hit));
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Down,
+                    mods: Mods::default(),
+                },
+            );
+            while host.turn() {}
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Text("y".to_owned()),
+                    mods: Mods::default(),
+                },
+            );
+            while host.turn() {}
+            assert_eq!(fallback_text(host.app()), None);
+        },
+    );
+}

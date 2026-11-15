@@ -7,9 +7,10 @@ use std::cell::Cell;
 
 use rune::{Key, KeyEvent, Mods};
 use serde_json::Value;
+use strata_components::dialog::Tone;
 use strata_kit::icons::IconName;
 
-use super::{Error, Offer, show};
+use super::{Error, Offer, show, shown_details};
 use crate::{
     App,
     host::offscreen::Offscreen,
@@ -96,6 +97,69 @@ fn the_offered_action_runs_once_on_return_and_never_on_escape_or_close() {
             click(&mut host, "error-secondary");
             closed(&mut host, "Close");
             assert_eq!(RAN.get(), 1, "Close runs nothing");
+        },
+    );
+}
+
+fn dialog_description(node: &Value) -> Option<String> {
+    if node["role"] == "dialog" {
+        return node["description"].as_str().map(str::to_owned);
+    }
+    node["children"]
+        .as_array()
+        .and_then(|children| children.iter().find_map(dialog_description))
+}
+
+#[test]
+fn information_and_partial_failure_variants_expose_expected_subtitles_and_tones() {
+    hosted(
+        MODULE,
+        "information_and_partial_failure_variants_expose_expected_subtitles_and_tones",
+        |mut host| {
+            while host.turn() {}
+
+            host.runtime().update(|app, _| {
+                show(
+                    app,
+                    Error::information("2 items renamed", "These names were already taken", "• a"),
+                );
+            });
+            assert!(host.run_until(PATIENCE, |h| is_open(&h.tree())));
+            assert_eq!(
+                shown_details(host.app()),
+                Some((
+                    IconName::Info,
+                    Tone::Accent,
+                    "2 items renamed",
+                    Some("These names were already taken"),
+                    "• a",
+                ))
+            );
+            assert_eq!(
+                dialog_description(&host.tree()).as_deref(),
+                Some("These names were already taken")
+            );
+            press(&mut host, Key::Escape);
+            closed(&mut host, "info Escape");
+
+            host.runtime().update(|app, _| {
+                show(app, Error::partial_failure("1 item kept"));
+            });
+            assert!(host.run_until(PATIENCE, |h| is_open(&h.tree())));
+            assert_eq!(
+                shown_details(host.app()),
+                Some((
+                    IconName::Close,
+                    Tone::Danger,
+                    "Completed with errors",
+                    Some("Some items could not be processed"),
+                    "1 item kept",
+                ))
+            );
+            assert_eq!(
+                dialog_description(&host.tree()).as_deref(),
+                Some("Some items could not be processed")
+            );
         },
     );
 }

@@ -14,7 +14,7 @@ use strata_components::progress_dock::{
     Transfer as TransferCounts, reveal_after,
 };
 use strata_core::{
-    i18n::{capitalize_first, count, list, tr},
+    i18n::{capitalize_first, count, list, quoted, tr},
     model::Location,
 };
 use strata_fs::{
@@ -522,6 +522,23 @@ fn skipped_line(item: &SkippedItem) -> String {
     special_line(&display_name(&item.location), item.kind)
 }
 
+fn kept_changed_line(name: &str, folder: &str, in_trash: bool) -> String {
+    if in_trash {
+        rust_i18n::t!(
+            "“%{name}” changed during the restore and was left in the Trash",
+            name = name
+        )
+        .into_owned()
+    } else {
+        rust_i18n::t!(
+            "“%{name}” changed during the move and was left in “%{folder}”",
+            name = name,
+            folder = folder
+        )
+        .into_owned()
+    }
+}
+
 fn kept_still_open(name: &str, folder: &str, holder: &Option<Holder>) -> String {
     match holder {
         Some(Holder::Program(program)) => rust_i18n::t!(
@@ -546,26 +563,51 @@ fn kept_still_open(name: &str, folder: &str, holder: &Option<Holder>) -> String 
     }
 }
 
+fn kept_failure_line(name: &str, folder: &str, cause: &KeptCause) -> Option<String> {
+    match cause {
+        KeptCause::Undeletable(error) => Some(
+            rust_i18n::t!(
+                "Could not delete “%{name}”: %{error}",
+                name = name,
+                error = io_error_detail(&std::io::Error::from_raw_os_error(*error))
+            )
+            .into_owned(),
+        ),
+        KeptCause::Skipped(kind) => Some(special_line(name, *kind)),
+        KeptCause::OriginalNotRemoved(error) => Some(
+            rust_i18n::t!(
+                "“%{name}” was replaced, but its original could not be removed from “%{kept}”: %{error}",
+                name = name,
+                kept = folder,
+                error = error
+            )
+            .into_owned(),
+        ),
+        KeptCause::NameNotRestored { saved_as, error } => Some(
+            rust_i18n::t!(
+                "“%{new_name}” could not be renamed back to “%{name}”: %{error}",
+                new_name = display_name(saved_as),
+                name = name,
+                error = error
+            )
+            .into_owned(),
+        ),
+        _ => None,
+    }
+}
+
 fn kept_line(item: &KeptItem, in_trash: bool) -> String {
     let name = display_name(&item.location);
-    let folder = || {
-        item.location
-            .parent()
-            .map(|parent| display_name(&parent))
-            .unwrap_or_default()
-    };
+    let folder = item
+        .location
+        .parent()
+        .map(|parent| display_name(&parent))
+        .unwrap_or_default();
+    if let Some(line) = kept_failure_line(&name, &folder, &item.cause) {
+        return line;
+    }
     match &item.cause {
-        KeptCause::Changed if in_trash => rust_i18n::t!(
-            "“%{name}” changed during the restore and was left in the Trash",
-            name = name
-        )
-        .into_owned(),
-        KeptCause::Changed => rust_i18n::t!(
-            "“%{name}” changed during the move and was left in “%{folder}”",
-            name = name,
-            folder = folder()
-        )
-        .into_owned(),
+        KeptCause::Changed => kept_changed_line(&name, &folder, in_trash),
         KeptCause::ReplacementChanged => rust_i18n::t!(
             "“%{name}” was left in the Trash, as what replaced it may have changed since",
             name = name
@@ -574,31 +616,11 @@ fn kept_line(item: &KeptItem, in_trash: bool) -> String {
         KeptCause::CopyGone => rust_i18n::t!(
             "“%{name}” was left in “%{folder}”, as its copy was no longer where the move put it",
             name = name,
-            folder = folder()
+            folder = folder
         )
         .into_owned(),
-        KeptCause::StillOpen(holder) => kept_still_open(&name, &folder(), holder),
-        KeptCause::Undeletable(error) => rust_i18n::t!(
-            "Could not delete “%{name}”: %{error}",
-            name = name,
-            error = io_error_detail(&std::io::Error::from_raw_os_error(*error))
-        )
-        .into_owned(),
-        KeptCause::Skipped(kind) => special_line(&name, *kind),
-        KeptCause::OriginalNotRemoved(error) => rust_i18n::t!(
-            "“%{name}” was replaced, but its original could not be removed from “%{kept}”: %{error}",
-            name = name,
-            kept = folder(),
-            error = error
-        )
-        .into_owned(),
-        KeptCause::NameNotRestored { saved_as, error } => rust_i18n::t!(
-            "“%{new_name}” could not be renamed back to “%{name}”: %{error}",
-            new_name = display_name(saved_as),
-            name = name,
-            error = error
-        )
-        .into_owned(),
+        KeptCause::StillOpen(holder) => kept_still_open(&name, &folder, holder),
+        _ => String::new(),
     }
 }
 
@@ -612,132 +634,165 @@ fn special_line(name: &str, kind: SpecialKind) -> String {
     .into_owned()
 }
 
-fn bullets_from<T>(items: &[T], format_item: impl Fn(&T) -> String) -> String {
-    let mut lines: Vec<String> = items
-        .iter()
-        .take(LISTED_ITEMS)
-        .map(|item| format!("• {}", format_item(item)))
-        .collect();
-    if items.len() > LISTED_ITEMS {
-        lines.push(count("and_more", items.len() - LISTED_ITEMS));
-    }
-    lines.join("\n")
+struct Lines {
+    listed: Vec<String>,
+    count: usize,
+    note: Option<String>,
 }
 
-fn renamed_sections(renamed: &[RenamedItem]) -> Vec<(String, Vec<String>, usize)> {
-    const ORDER: [RenameCause; 4] = [
-        RenameCause::Alias,
-        RenameCause::Taken,
-        RenameCause::Invalid,
-        RenameCause::TooLong,
-    ];
-    ORDER
+impl Lines {
+    fn new() -> Self {
+        Self {
+            listed: Vec::new(),
+            count: 0,
+            note: None,
+        }
+    }
+
+    fn of<T>(items: impl IntoIterator<Item = T>, line: impl Fn(T) -> String) -> Self {
+        let mut lines = Self::new();
+        for item in items {
+            lines.push(|| line(item));
+        }
+        lines
+    }
+
+    fn push(&mut self, line: impl FnOnce() -> String) {
+        if self.count < LISTED_ITEMS {
+            self.listed.push(line());
+        }
+        self.count += 1;
+    }
+}
+
+fn bullets(lines: &Lines) -> String {
+    let mut text = lines
+        .listed
+        .iter()
+        .map(|line| format!("• {line}"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if lines.count > LISTED_ITEMS {
+        text.push_str("\n\n");
+        text.push_str(&count("more_items", lines.count - LISTED_ITEMS));
+    }
+    if let Some(note) = &lines.note {
+        text.push_str("\n\n");
+        text.push_str(note);
+    }
+    text
+}
+
+fn renamed_sections(renamed: &[RenamedItem]) -> Vec<(String, Lines)> {
+    let mut sections = Vec::<(RenameCause, Lines)>::new();
+    for item in renamed {
+        let index = match sections.iter().position(|(cause, _)| *cause == item.cause) {
+            Some(index) => index,
+            None => {
+                sections.push((item.cause, Lines::new()));
+                sections.len() - 1
+            }
+        };
+        sections[index].1.push(|| renamed_line(item));
+    }
+    sections
         .into_iter()
-        .filter_map(|cause| {
-            let matching: Vec<&RenamedItem> =
-                renamed.iter().filter(|item| item.cause == cause).collect();
-            (!matching.is_empty()).then(|| {
-                let heading = rename_heading(cause, matching.len() == 1);
-                let listed = matching
-                    .iter()
-                    .take(LISTED_ITEMS)
-                    .map(|item| renamed_line(item))
-                    .collect();
-                (heading, listed, matching.len())
-            })
-        })
+        .map(|(cause, lines)| (rename_heading(cause, lines.count == 1), lines))
         .collect()
 }
 
-fn format_renamed_bullets(listed: &[String], total: usize) -> String {
-    let mut lines: Vec<String> = listed.iter().map(|line| format!("• {line}")).collect();
-    if total > LISTED_ITEMS {
-        lines.push(count("and_more", total - LISTED_ITEMS));
-    }
-    lines.join("\n")
+fn sections(sections: Vec<(String, Lines)>) -> String {
+    sections
+        .into_iter()
+        .map(|(heading, lines)| format!("{heading}\n\n{}", bullets(&lines)))
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
-fn left_sections(report: &TransferReport) -> Vec<String> {
-    let mut out = Vec::new();
+fn kept_undo_note(report: &TransferReport) -> Option<String> {
+    if report.kept_out_of_undo.is_empty() {
+        return None;
+    }
+    let left_out = Lines::of(&report.kept_out_of_undo, |item| quoted(&display_name(item)));
+    let intro = tr(if report.kept_out_of_undo.len() == 1 {
+        "Undo can\u{2019}t move this item back, as part of it stayed in its original folder."
+    } else {
+        "Undo can\u{2019}t move these items back, as part of each stayed in its original folder."
+    });
+    Some(format!("{intro}\n\n{}", bullets(&left_out)))
+}
+
+fn left_sections(report: &TransferReport) -> Vec<(String, Lines)> {
+    let mut left = Vec::new();
     let (links, special): (Vec<_>, Vec<_>) = report
         .skipped
         .iter()
         .partition(|item| item.kind == SpecialKind::Symlink);
-    if !special.is_empty() {
-        let heading = tr(if special.len() == 1 {
-            "This special file can\u{2019}t be copied and was left out"
-        } else {
-            "These special files can\u{2019}t be copied and were left out"
-        });
-        out.push(format!(
-            "{heading}\n\n{}",
-            bullets_from(&special, |s| skipped_line(s))
-        ));
+    for (skipped, one, several) in [
+        (
+            special,
+            "This special file can\u{2019}t be copied and was left out",
+            "These special files can\u{2019}t be copied and were left out",
+        ),
+        (
+            links,
+            "This symbolic link can\u{2019}t be stored at the destination and was left out",
+            "These symbolic links can\u{2019}t be stored at the destination and were left out",
+        ),
+    ] {
+        if !skipped.is_empty() {
+            let heading = tr(if skipped.len() == 1 { one } else { several });
+            left.push((heading, Lines::of(skipped, skipped_line)));
+        }
     }
-    if !links.is_empty() {
-        let heading = tr(if links.len() == 1 {
-            "This symbolic link can\u{2019}t be stored at the destination and was left out"
-        } else {
-            "These symbolic links can\u{2019}t be stored at the destination and were left out"
-        });
-        out.push(format!(
-            "{heading}\n\n{}",
-            bullets_from(&links, |s| skipped_line(s))
-        ));
+    for (kept, heading, in_trash) in [
+        (&report.kept, "items_kept", false),
+        (&report.kept_in_trash, "items_kept_in_trash", true),
+    ] {
+        if !kept.is_empty() {
+            let mut lines = Lines::of(kept, |item| kept_line(item, in_trash));
+            if !in_trash {
+                lines.note = kept_undo_note(report);
+            }
+            left.push((count(heading, lines.count), lines));
+        }
     }
-    if !report.kept.is_empty() {
-        let heading = count("items_kept", report.kept.len());
-        out.push(format!(
-            "{heading}\n\n{}",
-            bullets_from(&report.kept, |k| kept_line(k, false))
-        ));
-    }
-    if !report.kept_in_trash.is_empty() {
-        let heading = count("items_kept_in_trash", report.kept_in_trash.len());
-        out.push(format!(
-            "{heading}\n\n{}",
-            bullets_from(&report.kept_in_trash, |k| kept_line(k, true))
-        ));
-    }
-    out
+    left
 }
 
 fn outcome_detail(outcome: String, report: &TransferReport) -> String {
-    let mut sections: Vec<String> = renamed_sections(&report.renamed)
-        .into_iter()
-        .map(|(heading, listed, total)| {
-            format!("{heading}\n\n{}", format_renamed_bullets(&listed, total))
-        })
-        .collect();
-    sections.extend(left_sections(report));
-    if sections.is_empty() {
-        outcome
-    } else {
-        format!("{outcome}\n\n{}", sections.join("\n\n"))
+    let mut reported = renamed_sections(&report.renamed);
+    reported.extend(left_sections(report));
+    if reported.is_empty() {
+        return outcome;
     }
+    format!("{outcome}\n\n{}", sections(reported))
 }
 
-fn present_report(app: &mut App, report: &TransferReport, tx: &mut Tx) -> bool {
+pub(super) fn present_report(app: &mut App, report: &TransferReport, tx: &mut Tx) -> bool {
     let mut renamed = renamed_sections(&report.renamed);
     let left = left_sections(report);
     if !left.is_empty() {
-        let mut all: Vec<String> = renamed
-            .into_iter()
-            .map(|(h, l, total)| format!("{h}\n\n{}", format_renamed_bullets(&l, total)))
-            .collect();
-        all.extend(left);
+        renamed.extend(left);
+        error_dialog::show(app, Error::partial_failure(sections(renamed)));
+        return true;
+    }
+    let message = count("items_renamed", report.renamed.len());
+    if renamed.len() > 1 {
         error_dialog::show(
             app,
-            Error::new(tr("Completed with errors"), all.join("\n\n")),
+            Error::information(
+                message,
+                tr("Names changed for different reasons"),
+                sections(renamed),
+            ),
         );
         return true;
     }
-    if renamed.is_empty() {
+    let Some((heading, lines)) = renamed.pop() else {
         return false;
-    }
-    if renamed.len() == 1
-        && let Some((heading, listed, 1)) = renamed.pop()
-        && let [line] = listed.as_slice()
+    };
+    if let [line] = lines.listed.as_slice()
         && line.chars().count() <= NOTICE_CHARS
     {
         let notice = Notice::new(line.clone())
@@ -747,11 +802,6 @@ fn present_report(app: &mut App, report: &TransferReport, tx: &mut Tx) -> bool {
         app.transfer.ops.dock.notice(notice, tx);
         return true;
     }
-    let sections: Vec<String> = renamed_sections(&report.renamed)
-        .into_iter()
-        .map(|(h, l, total)| format!("{h}\n\n{}", format_renamed_bullets(&l, total)))
-        .collect();
-    let title = count("items_renamed", report.renamed.len());
-    error_dialog::show(app, Error::new(title, sections.join("\n\n")));
+    error_dialog::show(app, Error::information(message, heading, bullets(&lines)));
     true
 }

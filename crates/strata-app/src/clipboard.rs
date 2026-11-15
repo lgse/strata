@@ -93,7 +93,7 @@ impl Part for Clipboard {
                 Stage::ItemNavigation,
                 &[COPY_PATH.ignoring(Modifiers::empty())],
             )
-            .when(|_, at| !at.text())]),
+            .when(|app, at| !at.text() && filter::targets::selected(app).is_none())]),
         Action::new("copy-paths", copy_path).command(COPY_PATH),
         Action::new("copy-name", copy_name),
         Action::new("copy-names", copy_name),
@@ -383,18 +383,20 @@ fn copy_path_allowed_where_focused(app: &App, call: &Call<'_>, tx: &Tx) -> bool 
 }
 
 fn copy_path_entries(app: &App) -> Vec<FileEntry> {
-    if let Some(selected) = filter::targets::selected(app).filter(|entries| !entries.is_empty()) {
-        return selected;
+    if let Some(selected) = filter::targets::selected(app) {
+        if !selected.is_empty() {
+            return selected;
+        }
+        return filter::targets::under_cursor(app)
+            .map(|(_, entry)| entry)
+            .into_iter()
+            .collect();
     }
     let selected = app.browser.selected_entries();
     if !selected.is_empty() {
         return selected;
     }
-    filter::targets::under_cursor(app)
-        .map(|(_, entry)| entry)
-        .or_else(|| app.browser.focused_entry())
-        .into_iter()
-        .collect()
+    app.browser.focused_entry().into_iter().collect()
 }
 
 fn copy_path(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {

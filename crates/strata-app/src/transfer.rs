@@ -6,8 +6,8 @@
 //! items (`src/ui/browser/transfer.rs`, `view_edit.rs`, `events/reveal.rs`).
 //!
 //! Destination conflict dialogs (`Replace`, `Keep Both`, `Merge`, `Skip`, `Apply to All`) land
-//! in A12's conflict-dialog slice; in this slice non-colliding transfers and same-folder copies
-//! run end-to-end.
+//! in A12's conflict-dialog slice; until then, any batch where an item collides stops safely
+//! like Cancel, while non-colliding transfers and same-folder numbered copies run end-to-end.
 
 use gio::prelude::*;
 use rune::Tx;
@@ -16,7 +16,7 @@ use strata_core::{
     model::{FileEntry, Location},
 };
 use strata_desktop::keys::{
-    Modifiers,
+    Map, Modifiers,
     bindings::{DUPLICATE, PASTE},
 };
 use strata_fs::{
@@ -101,11 +101,12 @@ impl Part for Transfer {
         .when(|_, at| !at.text())]),
         Action::new("duplicate", duplicate)
             .command(DUPLICATE)
-            .keys(&[Keys::at(
-                Stage::FileCommands,
-                &[DUPLICATE.ignoring(Modifiers::empty())],
-            )
-            .when(|_, at| !at.text())]),
+            .keys(&[
+                Keys::at(Stage::DirectCommands, &[DUPLICATE.in_map(Map::Tenxer)])
+                    .when(|_, at| !at.text()),
+                Keys::at(Stage::FileCommands, &[DUPLICATE.in_map(Map::Default)])
+                    .when(|app, at| !at.text() && filter::targets::selected(app).is_none()),
+            ]),
     ];
 }
 
@@ -321,14 +322,18 @@ fn paste(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     let Some(destination) = resolve_paste_location(app, &call.on) else {
         return Outcome::Ran;
     };
+    let later = app.transfer.later.clone();
     clipboard::read_files(
         app,
         move |app, decoded, tx| {
             let Some((sources, foreign_cut)) = decoded else {
                 return;
             };
-            let move_sources = foreign_cut || clipboard::is_cut_match(app, &sources);
-            begin_transfer(app, destination, sources, move_sources);
+            later.then(move |app, _| {
+                let move_sources = foreign_cut || clipboard::is_cut_match(app, &sources);
+                begin_transfer(app, destination, sources, move_sources);
+                false
+            });
             shell::settle(app, tx);
         },
         tx,
@@ -336,14 +341,36 @@ fn paste(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
+fn focus_duplicate_entries(app: &App) -> Vec<FileEntry> {
+    let tenxer = shell::preferences(app).tenxer_mode;
+    if let Some(results) = filter::targets::selected(app) {
+        if !results.is_empty() || !tenxer {
+            return results;
+        }
+        return filter::targets::under_cursor(app)
+            .map(|(_, entry)| entry)
+            .into_iter()
+            .collect();
+    }
+    if !tenxer {
+        return app.browser.transfer_entries();
+    }
+    let depth = if shows_columns(app) {
+        Some(app.columns.targeted())
+    } else {
+        app.browser.active_depth()
+    };
+    depth
+        .map(|d| app.browser.command_entries(d))
+        .unwrap_or_default()
+}
+
 fn duplicate_entries(app: &App, on: &On) -> Vec<FileEntry> {
     match *on {
         On::Row((depth, id)) => menus::context_entries(app, depth, id)
             .map(|(_, entries)| entries)
             .unwrap_or_default(),
-        On::Focus => {
-            filter::targets::selected(app).unwrap_or_else(|| app.browser.transfer_entries())
-        }
+        On::Focus => focus_duplicate_entries(app),
         On::Column(_) | On::Place(_) => Vec::new(),
     }
 }
@@ -458,16 +485,20 @@ fn finish_preparing(
             return;
         }
     };
-    let mut accepted = Vec::with_capacity(targets.len());
-    for (source, target_name, collision, _fixes_inside) in targets {
-        if collision.is_none() {
-            accepted.push(PasteItem {
-                source,
-                conflict: TransferConflict::FailIfExists,
-                target_name,
-            });
-        }
+    if targets
+        .iter()
+        .any(|(_, _, collision, _)| collision.is_some())
+    {
+        return;
     }
+    let accepted: Vec<PasteItem> = targets
+        .into_iter()
+        .map(|(source, target_name, _, _)| PasteItem {
+            source,
+            conflict: TransferConflict::FailIfExists,
+            target_name,
+        })
+        .collect();
     if accepted.is_empty() {
         return;
     }
