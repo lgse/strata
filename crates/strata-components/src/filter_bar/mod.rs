@@ -285,12 +285,14 @@
 //! - **Losing the keyboard is noticed a frame late**, in `tick` (U-C6-3).
 //! - **The host reports picks** ([`filter::FilterState::pick`]): the bar can't see the results'
 //!   selection change or focus enter them.
-//! - **Enter after a pick follows Strata per mode**: while something is selected, both modes
-//!   open the first selected result in display order (`inline_search/collection.rs`'s
-//!   `current_position` with the field focused, `filter_activation_position` in place); with
-//!   nothing selected, search results fall back to the cursor or the top result while in place
-//!   nothing opens. Strata keeps the two rules in two code paths; here one
-//!   [`filter::FilterState::target`] picks by [`filter::Shows`].
+//! - **Enter after a pick follows Strata per mode**: while something is selected, single-pane
+//!   search results and in-place filters open the first selected result in display order
+//!   (`inline_search/collection.rs`'s `current_position` with the field focused,
+//!   `filter_activation_position` in place), and [`filter::FilterState::set_pick_last`] opens
+//!   the last selected result (`columns/append/keys.rs`); with nothing selected, single-pane
+//!   search results fall back to the cursor or the top result while in place and `pick_last`
+//!   open nothing. Strata keeps the rules in separate code paths; here one
+//!   [`filter::FilterState::target`] picks by [`filter::Shows`] and `pick_last`.
 //! - **Our own candidate list**, not rune-kit's `PopupList`, whose rows can't draw matched
 //!   ranges (U-C6-4), as C6's.
 //!

@@ -403,6 +403,9 @@ fn ask(app: &mut App, editing: Editing, typed: String) {
             (app.browser.place_entry(entry, path, new_item), placed)
         }
     };
+    if request.is_some() {
+        crate::filter::follow_renamed(app, &editing.entry.location, renamed.as_ref());
+    }
     app.rename.asked = Some(Asked {
         request,
         editing,
@@ -525,6 +528,7 @@ fn completed(app: &mut App, asked: &Asked, tx: &mut Tx) {
 /// Tab opened on its neighbour closes (`fail_pending_rename_from_browser` in
 /// `src/ui/browser/inline_edit/pending.rs`).
 fn failed(app: &mut App, asked: &Asked, message: String, tx: &mut Tx) {
+    crate::filter::forget_renamed(app, &asked.editing.entry.location, asked.renamed.as_ref());
     if asked.advanced {
         cancel(app, tx);
         let location = &asked.editing.entry.location;
@@ -548,7 +552,13 @@ fn answered(app: &mut App, answer: Answer, tx: &mut Tx) {
             }
         }
         Answer::Abandoned(request) => {
-            asked_for(app, Some(request));
+            if let Some(asked) = asked_for(app, Some(request)) {
+                crate::filter::forget_renamed(
+                    app,
+                    &asked.editing.entry.location,
+                    asked.renamed.as_ref(),
+                );
+            }
         }
         // GTK reports every failed rename, its undo and redo among them, whoever asked.
         Answer::Failed { request, message } => match asked_for(app, request) {

@@ -179,4 +179,62 @@ mod hosted {
             },
         );
     }
+
+    /// In Columns (`src/ui/browser/columns/append/keys.rs`), Down from the refocused filter
+    /// field over a range whose cursor is at row 0 lands on the last selected result alone.
+    #[test]
+    fn ctrl_f_then_down_in_columns_selects_only_the_last_result() {
+        hosted_in(
+            MODULE,
+            "columns",
+            "hosted::ctrl_f_then_down_in_columns_selects_only_the_last_result",
+            |mut host| {
+                let _folder = opened(&mut host);
+                let ctrl = Mods {
+                    ctrl: true,
+                    ..Mods::default()
+                };
+                let shift = Mods {
+                    shift: true,
+                    ..Mods::default()
+                };
+                press(&mut host, Key::Text("f".to_owned()), ctrl);
+                for ch in "txt".chars() {
+                    press(&mut host, Key::Text(ch.to_string()), Mods::default());
+                }
+                let found = host.run_until(PATIENCE, |host| {
+                    host.app()
+                        .columns
+                        .shown_with_selection(0)
+                        .is_some_and(|(source, _)| source.len() == 4)
+                });
+                assert!(found, "expected four .txt matches");
+
+                press(&mut host, Key::Down, Mods::default());
+                press(&mut host, Key::End, Mods::default());
+                press(&mut host, Key::Home, shift);
+                {
+                    let (source, sel) = host
+                        .app()
+                        .columns
+                        .shown_with_selection(0)
+                        .expect("shown results");
+                    assert_eq!(sel.len(), 4);
+                    assert_eq!(sel.cursor_index(source), Some(0));
+                }
+
+                press(&mut host, Key::Text("f".to_owned()), ctrl);
+                press(&mut host, Key::Down, Mods::default());
+
+                let (source, sel) = host
+                    .app()
+                    .columns
+                    .shown_with_selection(0)
+                    .expect("shown results");
+                assert_eq!(sel.len(), 1, "only one result stays selected");
+                assert!(sel.is_selected_at(source, 3), "the last result is selected");
+                assert_eq!(sel.cursor_index(source), Some(3));
+            },
+        );
+    }
 }

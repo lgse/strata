@@ -202,6 +202,11 @@ fn tab_in_a_rename_on_a_result_only_commits() {
             let renamed = format!("{first}x");
             let committed = host.run_until(PATIENCE, |_| found_under(folder.path(), &renamed));
             assert!(committed, "{first} was not renamed");
+            let after = wait(&mut host, "the renamed result in the column", |seen| {
+                seen.panes[0].names().contains(&renamed.as_str())
+            });
+            assert_eq!(after.focused.as_deref(), Some(renamed.as_str()));
+            assert_eq!(after.panes[0].selected(), [renamed.as_str()]);
             idle(&mut host);
             assert!(
                 !fields(&host).iter().any(|(name, _)| name == "Rename"),

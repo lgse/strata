@@ -21,7 +21,7 @@
 use rune::Tx;
 use strata_components::collection::selection::Position;
 
-use super::{OpenIn, Refocus, place::Where, route};
+use super::{HitsUpdate, OpenIn, Refocus, place::Where, route};
 use crate::{App, listing::Column};
 
 /// The view shown changed: the filter follows it into the folder it shows, or closes.
@@ -47,12 +47,14 @@ pub(super) fn follow(app: &mut App, tx: &mut Tx) {
         return;
     }
     app.filter.serial += 1;
-    app.filter.open_in = Some(OpenIn { place, ..open });
+    app.filter.state.set_pick_last(place == Where::Columns);
+    let next = OpenIn { place, ..open };
+    app.filter.open_in = Some(next.clone());
     app.columns
-        .hold_header((place == Where::Columns).then_some(open.depth));
+        .hold_header((place == Where::Columns).then_some(next.depth));
     if let Some((hits, position)) = carried {
-        place.show_hits(app, open.depth, hits, false, tx);
-        restore(app, place, open.depth, &position);
+        next.show_hits(app, HitsUpdate::plain(hits, false), tx);
+        restore(app, place, next.depth, &position);
     }
     refocus(app, place, field, tx);
 }
