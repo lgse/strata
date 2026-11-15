@@ -379,6 +379,13 @@ impl Selection {
         self.members.contains(source, id)
     }
 
+    /// Whether `id` is held in the selection's base, range overlay, or run flips, without
+    /// consulting an [`EntrySource`]: safe to read before [`Selection::sync`] after a listing
+    /// edit, matching [`Selection::relocate`]'s precondition.
+    pub fn holds(&self, id: EntryId) -> bool {
+        self.members.holds(id)
+    }
+
     /// How many entries are selected. While a listing loads, this counts selected ids that
     /// haven't arrived yet.
     pub fn len(&self) -> usize {

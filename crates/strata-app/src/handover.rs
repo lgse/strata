@@ -222,7 +222,7 @@ impl Moving {
     ) -> Vec<(EntryId, EntryId)> {
         let arrived = self.arriving(column);
         for (from, to) in &arrived {
-            if !collection.selection.contains(column, *to) {
+            if !collection.selection.holds(*to) {
                 let _ = collection.selection.relocate(*from, *to);
             }
         }

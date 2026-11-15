@@ -928,3 +928,31 @@ fn reload_without(sel: &mut Selection, s: &mut ListSource, raw: u64) {
     s.replace(full);
     sel.sync(s, SyncRule::default());
 }
+
+#[test]
+fn holds_checks_base_live_overlay_and_flips_without_consulting_source() {
+    let mut s = listing(3);
+    let mut sel = Selection::new();
+    sel.select_all(&s);
+    assert!(sel.holds(id(0)));
+    assert!(sel.holds(id(1)));
+    assert!(!sel.holds(id(99)));
+
+    // Mutating the source before `sync` changes its length and indices; `holds` reads only the
+    // copied ids and never touches the unsynced source.
+    s.replace(vec![entry(0), entry(99), entry(2), entry(3)]);
+    assert!(sel.holds(id(1)));
+    assert!(!sel.holds(id(99)));
+
+    // An entry in `base` that `toggle_in_run` flipped off is unselected (`!contains`), yet still
+    // held in `base`/`flips` as `relocate` checks.
+    let s2 = listing(3);
+    let mut sel2 = Selection::new();
+    sel2.select_only(&s2, 2);
+    sel2.select_only(&s2, 0);
+    sel2.toggle(&s2, 2);
+    sel2.extend_to(&s2, 1, Extend::Add);
+    sel2.toggle_in_run(&s2, 2);
+    assert!(!sel2.contains(&s2, id(2)));
+    assert!(sel2.holds(id(2)));
+}

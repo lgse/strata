@@ -346,7 +346,7 @@ impl Reader<'_> {
         let BrowserEvent::ItemRelocated { from, to, .. } = event else {
             return false;
         };
-        if from.parent() == to.parent() {
+        if from.parent().zip(to.parent()).is_some_and(|(a, b)| a == b) {
             self.changes.push(Change::Moved {
                 from: self.ids.of(from),
                 to: self.ids.of(to),
