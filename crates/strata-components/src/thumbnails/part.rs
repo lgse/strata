@@ -247,7 +247,11 @@ pub fn folder_badge(
                 )
         }
     };
-    el().w(points).h(points).a11y_hidden().child(base).child(mark)
+    el().w(points)
+        .h(points)
+        .a11y_hidden()
+        .child(base)
+        .child(mark)
 }
 
 /// `entry`'s icon or custom decoration at `points` square, keyed [`GLYPH`] and hidden from
@@ -259,12 +263,7 @@ pub fn folder_badge(
 ///   [`Entry::color`] (else `default_color`).
 ///
 /// Used by: [`icon_slot`], C1e's default icon, C3's tiles, hosts (Customize preview).
-pub fn entry_glyph(
-    look: &Look,
-    entry: Entry<'_>,
-    points: f32,
-    default_color: rune::Color,
-) -> El {
+pub fn entry_glyph(look: &Look, entry: Entry<'_>, points: f32, default_color: rune::Color) -> El {
     if let Some(badge) = entry.glyph
         && wears_folder_badge(look, entry)
     {

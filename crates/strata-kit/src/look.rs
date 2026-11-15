@@ -227,7 +227,9 @@ impl Look {
     /// Readable badge ink over `fill`, matching Strata's `contrasting_foreground`
     /// (`src/assets.rs`).
     pub fn ink_on(&self, fill: Color) -> Color {
-        crate::theme::Rgba8::from_color(fill).contrasting_ink().color()
+        crate::theme::Rgba8::from_color(fill)
+            .contrasting_ink()
+            .color()
     }
 }
 

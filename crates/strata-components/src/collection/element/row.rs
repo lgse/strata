@@ -760,13 +760,10 @@ fn default_icon(rcx: &RowCx<'_>) -> El {
             .key(ICON)
             .color(look.kit.c.icon_base)
             .a11y_hidden(),
-        None => crate::thumbnails::entry_glyph(
-            look,
-            rcx.entry,
-            look.icon_size.md,
-            look.kit.c.icon_base,
-        )
-        .key(ICON),
+        None => {
+            crate::thumbnails::entry_glyph(look, rcx.entry, look.icon_size.md, look.kit.c.icon_base)
+                .key(ICON)
+        }
     }
 }
 

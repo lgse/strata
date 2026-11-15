@@ -426,10 +426,7 @@ fn emoji_picker_translates_chrome_and_categories_while_keeping_english_search() 
     );
 }
 
-fn entry_worn(
-    source: &dyn EntrySource,
-    id: EntryId,
-) -> (Option<Color>, Option<OwnedGlyph>, bool) {
+fn entry_worn(source: &dyn EntrySource, id: EntryId) -> (Option<Color>, Option<OwnedGlyph>, bool) {
     let index = source.index_of(id).expect("the row is listed");
     let entry = source.entry(index);
     (
