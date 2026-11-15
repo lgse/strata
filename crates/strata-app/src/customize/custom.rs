@@ -64,6 +64,7 @@ fn state_mut(app: &mut App) -> &mut ColorPickerState {
 
 /// "Custom color…": the dialog opens on `initial`, the item's colour.
 pub(super) fn open(app: &mut App, initial: Option<&str>) {
+    app.customize.emoji.close();
     let value = initial.and_then(Srgba::parse_hex).unwrap_or(START);
     let custom = &mut app.customize.custom;
     custom.picker.set_value(value);
