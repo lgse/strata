@@ -4809,6 +4809,7 @@ name = "strata-app"
 version = "0.0.1"
 dependencies = [
  "gio",
+ "gio-unix",
  "glib",
  "image",
  "rune",
