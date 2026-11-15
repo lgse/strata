@@ -93,4 +93,37 @@ fn the_qa_mode_drives_a_real_window_through_the_compositor() {
         &app,
         &json!({ "wait": { "field": { "text": "pasted.txt" } } }),
     );
+
+    passes(&app, &json!({ "key": "Escape" }));
+    passes(&app, &json!({ "key": "ctrl+c" }));
+    passes(
+        &app,
+        &json!({
+            "clipboard": format!("copy\nfile://{}/notes.txt", folder.display()),
+            "mime": "x-special/gnome-copied-files",
+        }),
+    );
+
+    passes(
+        &app,
+        &json!({
+            "clipboard_set": {
+                "offers": [{
+                    "mime": "x-special/gnome-copied-files",
+                    "text": format!("cut\nfile://{}/beta/inside.txt", folder.display()),
+                }],
+            },
+        }),
+    );
+    passes(
+        &app,
+        &json!({
+            "expect": {
+                "present": { "role": "status bar", "name": "Files on clipboard" },
+            },
+        }),
+    );
+    passes(&app, &json!({ "key": "ctrl+v" }));
+    passes(&app, &json!({ "wait": { "entry": "inside.txt" } }));
+    assert!(!folder.join("beta").join("inside.txt").exists());
 }
