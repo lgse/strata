@@ -719,6 +719,16 @@ impl ColumnsState {
         }
     }
 
+    /// Clears the selection in every column (the cursors stay) and resets pending click gestures.
+    pub fn clear_selection(&mut self, sources: &dyn ColumnSources) {
+        for c in &mut self.columns {
+            if let Some(ctl) = c.collection.controllers.pointer.as_mut() {
+                ctl.reset();
+            }
+        }
+        self.clear_all(sources);
+    }
+
     /// Clears the selection in every column (the cursors stay).
     pub(super) fn clear_all(&mut self, sources: &dyn ColumnSources) {
         for (depth, c) in self.columns.iter_mut().enumerate() {

@@ -180,6 +180,10 @@ impl Columns {
         self.state.reveal_active(look, tx);
     }
 
+    pub(crate) fn clear_selection(&mut self) {
+        self.state.clear_selection(&self.listings);
+    }
+
     pub(crate) fn in_band(&self) -> bool {
         (0..self.state.len()).any(|depth| {
             self.state

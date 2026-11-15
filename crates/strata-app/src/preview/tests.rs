@@ -309,3 +309,36 @@ fn delete_and_rename_wait_while_preview_has_focus() {
         },
     );
 }
+
+#[test]
+fn clicking_empty_reserved_slot_beside_columns_clears_selection() {
+    hosted(
+        MODULE,
+        "clicking_empty_reserved_slot_beside_columns_clears_selection",
+        |mut host| {
+            let folder = listed(&mut host);
+            disable_auto_preview(&mut host);
+            let todo = Location::local(folder.path().join("todo.txt"));
+            select(&mut host, &todo);
+            assert_eq!(host.app().browser().selected_entries().len(), 1);
+
+            let slot = host
+                .runtime()
+                .elements()
+                .into_iter()
+                .find(|el| el.key.as_deref() == Some("preview-slot"))
+                .expect("the reserved preview slot");
+            let x = slot.rect[0] + slot.rect[2] - 20.0;
+            let y = slot.rect[1] + slot.rect[3] / 2.0;
+            host.runtime().pointer_down(x, y);
+            host.turn();
+            host.runtime().pointer_up(x, y);
+            while host.turn() {}
+
+            assert!(
+                host.app().browser().selected_entries().is_empty(),
+                "plain click in empty reserved slot clears selection"
+            );
+        },
+    );
+}

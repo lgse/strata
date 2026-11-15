@@ -203,6 +203,10 @@ fn on_intent(app: &mut App, intent: DrawerIntent, tx: &mut Tx) {
             shell::saved(app).change(|settings| settings.preview_text_wrap = wrap);
         }
         DrawerIntent::Suspend(suspended) => on_suspend(app, suspended, tx),
+        DrawerIntent::EmptySlotPressed => {
+            app.columns.clear_selection();
+            tx.focus(crate::columns::VIEW, false);
+        }
         _ => {}
     }
 }

@@ -108,6 +108,8 @@ pub enum DrawerIntent {
     /// The narrow-window rule hid (`true`) or showed again (`false`) the open preview's
     /// content: pause media and defer loading, or resume.
     Suspend(bool),
+    /// A plain primary press landed in the empty reserved slot beside the columns.
+    EmptySlotPressed,
 }
 
 /// The words the drawer shows and assistive technology reads. Strata passes translated text
@@ -433,16 +435,20 @@ impl<'a, S: 'static> PreviewDrawer<'a, S> {
             slot = slot.a11y_hidden();
             if slot_width > 0.0 {
                 // The empty reserved slot keeps the divider's line, so the edge beside the
-                // columns looks the same with or without a preview.
-                slot = slot.child(
-                    el().key("preview-empty-line")
-                        .w(rules.line)
-                        .h_full()
-                        .pin(Some(0.0), Some(0.0), None, Some(0.0))
-                        .fill(look.kit.c.border_base)
-                        .a11y_hidden()
-                        .inert(),
-                );
+                // columns looks the same with or without a preview, and a plain click there
+                // clears the columns' selection like blank space beside the strip.
+                let empty = shared.clone();
+                slot = slot
+                    .on_press_tx(move |s: &mut S, tx: &mut Tx| empty_slot_press(&empty, s, tx))
+                    .child(
+                        el().key("preview-empty-line")
+                            .w(rules.line)
+                            .h_full()
+                            .pin(Some(0.0), Some(0.0), None, Some(0.0))
+                            .fill(look.kit.c.border_base)
+                            .a11y_hidden()
+                            .inert(),
+                    );
             }
         }
         if st.is_open() && has_body {
@@ -661,6 +667,13 @@ fn stub(key: String, to: &str) -> El {
         .a11y_hidden()
         .transition(Transition::none())
         .focus_return(to)
+}
+
+fn empty_slot_press<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {
+    let m = tx.mods();
+    if !(m.ctrl || m.shift || m.cmd) {
+        shared.emit(s, DrawerIntent::EmptySlotPressed, tx);
+    }
 }
 
 /// Mounted while the drawer is open with something to show, keyed by whether it fits (and by
