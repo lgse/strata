@@ -12,7 +12,7 @@ use std::cell::RefCell;
 
 use rune::{KeyEvent, PhysicalKeyCode, Tx};
 
-use super::{Situation, Stage};
+use super::{Outcome, Situation, Stage};
 
 /// Where Rune let the registry hear a press.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,6 +35,9 @@ pub(super) enum Span {
     BeforeView,
     /// [`Stage::ItemNavigation`] and what follows it.
     AfterView,
+    /// [`Stage::AfterYield`] and what follows it, after an early stage left the press to the
+    /// view (`Propagation::Proceed` in GTK's `handle_key`, followed by `after_yield`).
+    AfterLeft,
     Whole,
 }
 
@@ -43,13 +46,25 @@ impl Span {
         match self {
             Self::BeforeView => stage < Stage::ItemNavigation,
             Self::AfterView => stage >= Stage::ItemNavigation,
+            Self::AfterLeft => stage >= Stage::AfterYield,
             Self::Whole => true,
         }
     }
 }
 
+/// What a collection's hook did with the press it just asked the early stages for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Early {
+    /// No early stage took or left it; the stages from [`Stage::ItemNavigation`] on remain.
+    Declined,
+    /// An early stage left it to the view ([`Outcome::Left`]); only [`Stage::AfterYield`] and
+    /// [`Stage::Unclaimed`] remain.
+    Left,
+}
+
 /// What a press heard at `heard` is offered, so that it is walked once wherever it lands.
-/// `asked_early` says a collection's hook has asked the early stages for this very press.
+/// `early` says a collection's hook has asked the early stages for this very press, and what
+/// they answered.
 ///
 /// - A collection with the hook is given the key: the hook asks the stages ahead of the
 ///   view's own keys, every time, and the root element the rest once the view has left the
@@ -65,13 +80,16 @@ impl Span {
 ///
 /// A focused element Rune skips for element keys (a text field, an element that can no longer
 /// take focus) whose part does not say it holds the keyboard is asked nowhere.
-pub(super) fn span(at: &Situation, heard: Heard, asked_early: bool) -> Option<Span> {
+pub(super) fn span(at: &Situation, heard: Heard, early: Option<Early>) -> Option<Span> {
     let free = at.holds().is_none();
     match heard {
         Heard::BeforeView => free.then_some(Span::BeforeView),
         Heard::Element if !free => None,
-        Heard::Element if asked_early => Some(Span::AfterView),
-        Heard::Element => Some(Span::Whole),
+        Heard::Element => Some(match early {
+            Some(Early::Declined) => Span::AfterView,
+            Some(Early::Left) => Span::AfterLeft,
+            None => Span::Whole,
+        }),
         Heard::Window => (!free || at.nowhere()).then_some(Span::Whole),
     }
 }
@@ -105,16 +123,25 @@ impl Stamp {
 
 /// The press a collection's hook last asked the early stages for.
 #[derive(Default)]
-pub(super) struct Asked(RefCell<Option<Stamp>>);
+pub(super) struct Asked(RefCell<Option<(Stamp, Early)>>);
 
 impl Asked {
-    pub(super) fn early_for(&self, press: &Stamp) -> bool {
-        self.0.borrow().as_ref() == Some(press)
+    pub(super) fn early_for(&self, press: &Stamp) -> Option<Early> {
+        self.0
+            .borrow()
+            .as_ref()
+            .filter(|(stamp, _)| stamp == press)
+            .map(|(_, early)| *early)
     }
 
     /// Notes what `span` asks of `press`: the early stages, or the rest, after which the
     /// press is done with.
-    pub(super) fn note(&self, press: Stamp, span: Span) {
-        *self.0.borrow_mut() = (span == Span::BeforeView).then_some(press);
+    pub(super) fn note(&self, press: Stamp, span: Span, outcome: Outcome) {
+        let early = match (span, outcome) {
+            (Span::BeforeView, Outcome::Declined) => Some((press, Early::Declined)),
+            (Span::BeforeView, Outcome::Left) => Some((press, Early::Left)),
+            _ => None,
+        };
+        *self.0.borrow_mut() = early;
     }
 }

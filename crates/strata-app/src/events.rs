@@ -173,6 +173,17 @@ pub(crate) fn replay(browser: &Browser, ids: &Ids) -> Read {
     }
 }
 
+/// What the browser holds of column `depth`'s cursor, selection and Shift anchor now.
+pub(crate) fn marks(browser: &Browser, depth: usize, ids: &Ids) -> Marks {
+    Reader {
+        browser,
+        ids,
+        copied: 0,
+        changes: Vec::new(),
+    }
+    .marks(depth)
+}
+
 /// Reads out of the browser what one event changed.
 struct Reader<'a> {
     browser: &'a Browser,

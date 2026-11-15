@@ -1,15 +1,27 @@
 // SPDX-License-Identifier: MIT
 
 //! An item's saved customization: its colour (`folder_colors`) and its icon (`custom_icons`),
-//! each keyed by the item's native path. Both interfaces read and write them here; the GTK
-//! manager's getters and setters (`src/ui/preferences/file_settings.rs`) call these and keep
-//! what is GTK's around them, saving and redrawing the icons.
+//! each keyed by the item's native path, and how file operations carry, drop or bring back those
+//! keys. Both interfaces read and write them here; the GTK manager's methods
+//! (`src/ui/preferences/file_settings.rs` and `src/ui/preferences/item_customizations.rs`) call
+//! these and keep what is GTK's around them, saving and redrawing the icons.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
-use strata_core::model::FolderColorValue;
+use strata_core::model::{FolderColorValue, rebase_path};
 
-use super::Preferences;
+use crate::services::ItemIdentity;
+
+use super::{Preferences, trashed::TrashedValues};
+
+/// Saved colours and icons kept in memory while a trashed item can still come back.
+pub struct TrashedCustomizations {
+    folder_colors: Vec<(String, String)>,
+    custom_icons: Vec<(String, String)>,
+}
 
 /// The bundled icons an item may wear, each by its catalog name, with its label in the
 /// catalogs (`CUSTOMIZATION_CHOICES` in `src/assets.rs`, which a GTK test holds to this list).
@@ -110,6 +122,155 @@ impl Preferences {
     pub fn is_item_customized(&self, path: &Path) -> bool {
         self.item_color(path).is_some() || self.item_icon(path).is_some()
     }
+
+    /// Carries the customization of the item at `from`, and of everything under it, to `to`, or
+    /// drops them when `to` is `None` because the item left local storage. Stale keys at and
+    /// under a non-merged destination are dropped first; a merged destination keeps its own key.
+    pub fn relocate_item_customizations(
+        &mut self,
+        from: &Path,
+        to: Option<&Path>,
+        merged_into_existing: bool,
+    ) -> bool {
+        let from = key_path(from);
+        let Some(to) = to.map(key_path) else {
+            let colors = take_within(&mut self.folder_colors, &from);
+            let icons = take_within(&mut self.custom_icons, &from);
+            return !colors.is_empty() || !icons.is_empty();
+        };
+        if from == to {
+            return false;
+        }
+        let mut changed = false;
+        for map in item_maps(self) {
+            changed |= relocate(map, &from, &to, merged_into_existing);
+        }
+        changed
+    }
+
+    /// Drops the customizations at and under `root`. A `trash_identity` keeps them in `trashed`
+    /// for [`Self::restore_item_customizations`] until the session ends.
+    pub fn forget_item_customizations(
+        &mut self,
+        root: &Path,
+        trash_identity: Option<ItemIdentity>,
+        trashed: &mut TrashedValues<TrashedCustomizations>,
+    ) -> bool {
+        let root = key_path(root);
+        if let Some(identity) = trash_identity {
+            trashed.forget_identity(identity);
+        }
+        let folder_colors = take_within(&mut self.folder_colors, &root);
+        let custom_icons = take_within(&mut self.custom_icons, &root);
+        let keys = folder_colors.len() + custom_icons.len();
+        if let Some(identity) = trash_identity.filter(|_| keys > 0) {
+            trashed.keep(
+                root,
+                identity,
+                TrashedCustomizations {
+                    folder_colors,
+                    custom_icons,
+                },
+                keys,
+            );
+        }
+        keys > 0
+    }
+
+    /// Re-applies what [`Self::forget_item_customizations`] kept for the very item now back at
+    /// `root`; another item restored there gets nothing.
+    pub fn restore_item_customizations(
+        &mut self,
+        root: &Path,
+        identity: ItemIdentity,
+        trashed: &mut TrashedValues<TrashedCustomizations>,
+    ) -> bool {
+        let root = key_path(root);
+        let Some(item) = trashed.take_restored(&root, identity) else {
+            return false;
+        };
+        self.folder_colors.extend(item.folder_colors);
+        self.custom_icons.extend(item.custom_icons);
+        true
+    }
+}
+
+fn item_maps(preferences: &mut Preferences) -> [&mut HashMap<String, String>; 2] {
+    [
+        &mut preferences.folder_colors,
+        &mut preferences.custom_icons,
+    ]
+}
+
+/// Stored keys are lossy UTF-8; compare paths in the same form.
+pub fn key_path(path: &Path) -> PathBuf {
+    PathBuf::from(path.to_string_lossy().as_ref())
+}
+
+fn take_within(map: &mut HashMap<String, String>, root: &Path) -> Vec<(String, String)> {
+    if map.is_empty() {
+        return Vec::new();
+    }
+    let keys = map
+        .keys()
+        .filter(|key| Path::new(key).starts_with(root))
+        .cloned()
+        .collect::<Vec<_>>();
+    keys.into_iter()
+        .filter_map(|key| map.remove_entry(&key))
+        .collect()
+}
+
+fn collect_relocated(
+    map: &HashMap<String, String>,
+    from: &Path,
+    to: &Path,
+    merged: bool,
+) -> (Vec<String>, Vec<String>) {
+    let mut moving = Vec::new();
+    let mut stale = Vec::new();
+    for key in map.keys() {
+        let path = Path::new(key);
+        if path.starts_with(from) {
+            moving.push(key.clone());
+        } else if !merged && path.starts_with(to) {
+            stale.push(key.clone());
+        }
+    }
+    (moving, stale)
+}
+
+/// Moves nothing, and drops nothing, when no key is within `from`, so a repeated relocation is a
+/// no-op.
+fn relocate(map: &mut HashMap<String, String>, from: &Path, to: &Path, merged: bool) -> bool {
+    if map.is_empty() {
+        return false;
+    }
+    let (moving, stale) = collect_relocated(map, from, to, merged);
+    if moving.is_empty() {
+        return false;
+    }
+    for key in stale {
+        map.remove(&key);
+    }
+    for key in moving {
+        let Some(value) = map.remove(&key) else {
+            continue;
+        };
+        let keep = !merged || Path::new(&key) != from;
+        if let Some(rebased) = keep.then(|| rebased_key(&key, from, to)).flatten() {
+            map.insert(rebased, value);
+        }
+    }
+    true
+}
+
+fn rebased_key(key: &str, from: &Path, to: &Path) -> Option<String> {
+    Some(
+        rebase_path(Path::new(key), from, to)?
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 #[cfg(test)]

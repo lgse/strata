@@ -28,8 +28,10 @@
 //! - **A view switch keeps it** in the folder shown, with its query, its results and their
 //!   selection, and the keyboard where it was, field or results (GTK's `ActivePaneFilter` in
 //!   `set_view_mode`, `restore_view_switch_focus`).
-//! - **It closes** with Escape, from its field or its results, and when its column shows
-//!   another folder or goes; a new item in its column empties it first ([`clear_for_new_item`]).
+//! - **It closes** with Escape, from its field or its results, when its column shows
+//!   another folder or goes, and in Columns when focus leaves the filtered column for another
+//!   column or chrome ([`blur`], GTK's `close_filter_after_blur`); a new item in its column
+//!   empties it first ([`clear_for_new_item`]).
 //!   The keyboard goes back to the view, on the entry the listing had. "Group by file type"
 //!   closes it in List and leaves the keyboard where it is ([`close_for_regroup`]).
 //! - **A result's path** shows under its name while the filter searches the subfolders: in
@@ -57,8 +59,8 @@ use strata_core::{
     model::{FileEntry, Location},
 };
 use strata_desktop::keys::{
-    Keys as KeyLabels, Map,
-    bindings::{ESCAPE, ESCAPE_ANY, FILTER},
+    KeyPress, Keys as KeyLabels, Map, SHORTCUT_MODIFIERS,
+    bindings::{COPY, CUT, ESCAPE, ESCAPE_ANY, FILTER, MOVE_TO_TRASH, PASTE, REDO, UNDO},
     label_in_map,
 };
 use strata_fs::services::{SEARCH_RESULT_LIMIT, SearchItem, SearchLimits};
@@ -71,6 +73,7 @@ use crate::{
     slots::{Ids, Later, Listener, Part, Place, Setup},
 };
 
+mod blur;
 mod descent;
 mod hits;
 pub(crate) mod pane;
@@ -153,6 +156,8 @@ pub(crate) struct Filter {
     refocus: Refocus,
     /// The field had the keyboard when the tab was hidden.
     back_to_field: bool,
+    /// Focus has entered the filtered column since it opened in Columns (`blur`).
+    seen_in_column: bool,
     /// Counts the columns the filter opened in, for the bar's key.
     serial: u64,
     /// Counts the edits waiting for the debounce and the stops: a wait that ends after a later
@@ -271,8 +276,11 @@ fn prepare_open(app: &mut App, opening: OpenIn, tx: &mut Tx) -> bool {
     let already_open = app.filter.open_in.as_ref() == Some(&opening) && app.filter.state.is_open();
     if app.filter.open_in.as_ref() != Some(&opening) {
         app.filter.serial += 1;
+        app.filter.seen_in_column = false;
     }
     if opening.place == Where::Columns {
+        app.columns
+            .activate_for_filter(opening.depth, &app.look, tx);
         app.columns.hold_header(Some(opening.depth));
     }
     app.filter.open_in = Some(opening);
@@ -597,6 +605,7 @@ pub(crate) fn forget_renamed(app: &mut App, from: &Location, to: Option<&Locatio
 fn closed(app: &mut App) {
     stop(app);
     app.filter.refocus = Refocus::No;
+    app.filter.seen_in_column = false;
     app.filter.open_in = None;
     app.filter.typed.clear();
     app.filter.pane.drop_hits();
@@ -883,6 +892,21 @@ fn on_results(app: &App, at: &Situation) -> bool {
     at.in_view() && open.place.shows_hits(app, open.depth) && !app.filter.state.text().is_empty()
 }
 
+/// `search_result_keys` in `src/ui/window/keyboard.rs`: while search results hold focus,
+/// directory commands (`Ctrl+.`, `Ctrl+Shift+N`, `Alt+Up`, `Backspace`, type-to-search) do not
+/// act on the hidden directory selection; Undo/Redo, Trash/Delete, and clipboard shortcuts pass
+/// through, and the view's own result keys and `after_yield` (`F5`) still run.
+fn search_rows_own_key(press: &KeyPress) -> bool {
+    !press.is_any(&[COPY, CUT, PASTE, UNDO, REDO])
+        && !press.is(MOVE_TO_TRASH
+            .in_map(Map::Default)
+            .ignoring(SHORTCUT_MODIFIERS))
+}
+
+fn leave_result_key(_: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+    Outcome::Left
+}
+
 /// A key typed in the listing (`type_to_search_query`): `/` opens the filter empty, a
 /// character opens it on that character.
 fn typed(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
@@ -921,6 +945,7 @@ impl Part for Filter {
             descent: None,
             refocus: Refocus::No,
             back_to_field: false,
+            seen_in_column: false,
             serial: 0,
             edits: 0,
             debounce: Rc::default(),
@@ -947,11 +972,12 @@ impl Part for Filter {
     }
 
     fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
+        let blurred = blur::follow(app, tx);
         let refocused = refocus(app, tx);
         let polled = app.filter.state.tick();
         let changed = polled.changed;
         route(app, polled, tx);
-        changed | refocused
+        blurred | changed | refocused
     }
 
     // `filter_and_location_commands` and `text_input` in
@@ -967,6 +993,11 @@ impl Part for Filter {
         Action::new("filter-dismiss", dismiss)
             .command(ESCAPE)
             .keys(&[Keys::at(Stage::FilterAndLocationCommands, &[ESCAPE_ANY]).when(on_results)]),
+        Action::new("filter-result-keys", leave_result_key).keys(&[Keys {
+            stage: Stage::SearchResultKeys,
+            reads: Reads::Press(search_rows_own_key),
+            when: on_results,
+        }]),
         Action::new("type-to-search", typed).keys(&[Keys {
             stage: Stage::TextInput,
             reads: Reads::Press(typing::reads),

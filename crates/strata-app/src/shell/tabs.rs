@@ -45,6 +45,8 @@ use crate::{
     slots::{Queued, Registry, Setup, ShownView, Source, TabKey, Update},
 };
 
+pub(crate) mod session;
+
 /// How many updates of a hidden tab's browser events are held before they are dropped for a
 /// rebuild.
 pub(crate) const HELD_EVENTS: usize = 512;
@@ -69,6 +71,8 @@ pub(crate) struct Here {
     focus: Option<String>,
     /// The location the tab was opened at, until its browser has it (GTK's `checking`).
     awaited: Option<Location>,
+    /// The browser's active location last seen by [`session::observe_locations`].
+    observed: Option<Location>,
 }
 
 impl Here {
@@ -81,6 +85,7 @@ impl Here {
             grouped: false,
             focus: None,
             awaited: None,
+            observed: None,
         }
     }
 }
@@ -183,6 +188,10 @@ pub(crate) struct Tabs {
     order: Vec<TabKey>,
     parked: Vec<(TabKey, Parked)>,
     issued: u64,
+    /// Whether this window persists its tabs to `tabs.toml`: a plain launch only.
+    persist: bool,
+    /// True while [`session::restore_session`] builds the saved tabs so none saves midway.
+    restoring: bool,
 }
 
 impl Tabs {
@@ -193,6 +202,8 @@ impl Tabs {
             order: vec![key],
             parked: Vec::new(),
             issued: 1,
+            persist: false,
+            restoring: false,
         };
         (key, tabs)
     }
@@ -268,18 +279,20 @@ pub(crate) fn located(app: &App, key: TabKey) -> Option<Location> {
     browser.active_location().or_else(awaited)
 }
 
+pub(super) fn set_awaited(app: &mut App, key: TabKey, awaited: Option<Location>) {
+    if key == app.window.here.key {
+        app.window.here.awaited = awaited;
+        return;
+    }
+    if let Some(parked) = app.window.tabs.parked_mut(key) {
+        parked.here.awaited = awaited;
+    }
+}
+
 /// A tab whose browser has a location waits on nothing from then on, as GTK's `relabel`
 /// drops `checking` once the tab's folder opens.
 pub(crate) fn forget_arrived(app: &mut App) {
-    let arrived = |browser: &Browser| browser.active_location().is_some();
-    if arrived(&app.browser) {
-        app.window.here.awaited = None;
-    }
-    for (_, parked) in &mut app.window.tabs.parked {
-        if arrived(&parked.browser) {
-            parked.here.awaited = None;
-        }
-    }
+    session::observe_locations(app);
 }
 
 /// Whether tab `key`'s browser has a file operation running: it is not closed, nor is the
@@ -358,6 +371,7 @@ pub(crate) fn open(app: &mut App, location: Option<Location>, at: usize, tx: &mu
             app.retitle(tx);
         }
         settle(app, tx);
+        session::persist_session(app);
     }
     key
 }
@@ -393,6 +407,7 @@ pub(crate) fn show(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
     }
     give_back_the_keyboard(app, tx);
     settle(app, tx);
+    session::persist_session(app);
     true
 }
 
@@ -468,6 +483,7 @@ pub(crate) fn close(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
     }
     app.window.tabs.order.remove(at);
     drop(app.window.tabs.take(key));
+    session::persist_session(app);
     true
 }
 
@@ -481,6 +497,9 @@ pub(crate) fn move_to(app: &mut App, key: TabKey, to: usize) -> bool {
     order.remove(at);
     let to = to.min(order.len());
     order.insert(to, key);
+    if at != to {
+        session::persist_session(app);
+    }
     true
 }
 
