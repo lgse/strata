@@ -15,7 +15,7 @@ use strata_components::{
 use strata_kit::look::Look;
 
 use super::Columns;
-use crate::listing::Column;
+use crate::{filter::HitsUpdate, listing::Column};
 
 impl Columns {
     /// The column a filter opens in: the one the pointer or the keys last targeted, GTK's
@@ -81,18 +81,40 @@ impl Columns {
         self.listings.describe_hits(paths, details);
     }
 
-    /// Shows `hits` in the place of column `depth`'s rows, with nothing selected when `clear`
-    /// (a changed query over results that replace the listing).
-    pub(crate) fn show_hits(&mut self, depth: usize, hits: Column, clear: bool, tx: &mut Tx) {
+    /// Shows `update.hits` in the place of column `depth`'s rows, with nothing selected when
+    /// `update.clear` (a changed query over results that replace the listing) and a renamed
+    /// result relocated before syncing.
+    pub(crate) fn show_hits(&mut self, depth: usize, update: HitsUpdate, tx: &mut Tx) {
         if depth >= self.open() {
             return;
         }
-        self.listings.show_hits(depth, hits);
-        if clear && let Some(state) = self.state.column_mut(depth) {
+        let revealed = self.relocate_hit(depth, &update);
+        self.listings.show_hits(depth, update.hits);
+        if update.clear
+            && let Some(state) = self.state.column_mut(depth)
+        {
             let _ = state.collection.selection.clear();
         }
         self.sync(depth, tx);
         self.note(depth);
+        if let Some(index) = revealed.and_then(|id| self.listings.shown(depth)?.index_of(id)) {
+            self.reveal_index(depth, index, tx);
+        }
+    }
+
+    fn relocate_hit(&mut self, depth: usize, update: &HitsUpdate) -> Option<EntryId> {
+        let old = self
+            .listings
+            .shown(depth)
+            .filter(|_| self.listings.hits_at(depth))?;
+        let (from, to) = update.relocation(old)?;
+        let moved = self
+            .state
+            .column_mut(depth)?
+            .collection
+            .selection
+            .relocate(from, to);
+        (moved.selection || moved.cursor).then_some(to)
     }
 
     /// Gives the column the results showed in its rows back, with the selection `restore`

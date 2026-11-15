@@ -12,9 +12,11 @@
 //!   pane puts what is for its folder into its listing and its collection. A new listing
 //!   takes the keyboard, as the GTK window gives it.
 //! - **Intents out.** [`heard`] takes what the collection asks to the browser: a folder opens
-//!   in place, as GTK's Icons and List views open it (`activate_in_place`), and Left at the
-//!   view's start leaves it for the sidebar. Where the start is, is the component's: the
-//!   first tile in Icons, any row in List (`at_left_edge` in `src/ui/browser_modes/focus.rs`).
+//!   in place, as GTK's Icons and List views open it (`activate_in_place`), a middle click
+//!   (`MiddleClick::clicked`) runs `open-in-tab` or `open-in-window` on a folder and reveals a
+//!   file in its folder, and Left at the view's start leaves it for the sidebar. Where the start
+//!   is, is the component's: the first tile in Icons, any row in List (`at_left_edge` in
+//!   `src/ui/browser_modes/focus.rs`).
 //!   A secondary click or the Menu key opens the context menu through `menus::open`.
 //! - **What the window asks of a view:** [`rows`] for the context menu, [`editing`] for the
 //!   rename editor, [`publish`], and for the QA backend [`listed`] and [`lists`].
@@ -43,7 +45,8 @@ use strata_core::i18n::tr;
 
 use self::first_visit::FirstVisit;
 use crate::{
-    App, commands,
+    App,
+    commands::{self, On},
     events::{self, Change},
     filter,
     listing::{Column, Words},
@@ -237,6 +240,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
             .description(row.index, &single.words)?;
         Some(description.to_owned())
     }))
+    .marks(crate::clipboard::marks)
     .empty(shown_status::<V>)
     .on_press(|app: &mut App, _, _| interrupted::<V>(app))
     // C3 replaces this with its own, which asks the Icons view's `IconsGrid::on_wheel` first.
@@ -275,7 +279,7 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
             .modes(single.clicks)
             .missing_anchor_stays(true),
     )
-    .marks(filter::pane::marks)
+    .marks(|app: &App, id| crate::clipboard::with_marks(app, id, filter::pane::marks(app, id)))
     .empty(filter::pane::status)
     .on_intent(filter::pane::heard)
     .on_cursor(|app: &mut App, _, _| filter::picked(app))
@@ -406,6 +410,44 @@ fn open_in_place<V: SinglePane>(app: &App, depth: usize, id: EntryId, how: Activ
     }
 }
 
+/// A middle click on a folder row (`MiddleClick::clicked` in
+/// `src/ui/browser_modes/clicks.rs`): `open-in-tab`, or `open-in-window` with Ctrl or Shift.
+fn open_in_new<V: SinglePane>(app: &mut App, (depth, id): At, window: bool, tx: &mut Tx) {
+    let Some(position) = pane::<V>(app).position(depth, id) else {
+        return;
+    };
+    let Some(entry) = app.browser.entry_at(depth, position) else {
+        return;
+    };
+    let command = if window {
+        "open-in-window"
+    } else {
+        "open-in-tab"
+    };
+    commands::run(app, command, On::Place(entry.location), tx);
+}
+
+/// A middle click on a file row (`MiddleClick::clicked` in
+/// `src/ui/browser_modes/clicks.rs`): empties the folder's filter and reveals the file in its
+/// folder.
+fn reveal<V: SinglePane>(app: &mut App, (depth, id): At, tx: &mut Tx) {
+    let Some(position) = pane::<V>(app).position(depth, id) else {
+        return;
+    };
+    let Some(entry) = app.browser.entry_at(depth, position) else {
+        return;
+    };
+    let Some(folder) = entry.location.parent() else {
+        return;
+    };
+    if let Some(open) = app.browser.open_depth(&folder) {
+        filter::clear_for_reveal(app, open, tx);
+    }
+    shell::publish(app);
+    app.browser.reveal_locations(folder, vec![entry.location]);
+    tx.focus(V::KEY, false);
+}
+
 /// What the view's collection asks of its host, taken to `Browser`.
 fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
     // What the input did to the cursor and the selection goes first: the browser acts on
@@ -428,13 +470,15 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
             };
             menus::open(app, request, tx);
         }
+        Intent::OpenInNew { id, window } => open_in_new::<V>(app, (depth, id), window, tx),
+        Intent::Reveal { id } => reveal::<V>(app, (depth, id), tx),
         // Left at the view's start: the sidebar takes the keyboard, when there is one. The
         // component decides where its start is, from the view's keys (the first tile in Icons,
         // any row in List); only that Left reaches here.
         Intent::Edge(Direction::Left) => {
             shell::leave_view_at_start(app, tx);
         }
-        // Drags, new tabs and the pane header an edge moves to are other packages' parts.
+        // Drags and the pane header an edge moves to are other packages' parts.
         _ => {}
     }
     shell::settle(app, tx);

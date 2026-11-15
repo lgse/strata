@@ -54,10 +54,11 @@
 //!
 //! - **The Enter target** (Strata's `Tracker`): until the user picks a result after the query
 //!   last changed, Enter opens the top result. After a pick, while something is selected, it
-//!   follows Strata per mode (owner's ruling): search results that replace the listing open
-//!   their cursor, or the top result with none (`inline_search.rs`, `current_position`), where
-//!   Down lands; a listing narrowed in place opens its first selected result in display order
-//!   (`filter_activation_position`). Deselecting everything gives the top result back. A query
+//!   opens the first selected result in display order (`inline_search/collection.rs`'s
+//!   `current_position` with the field focused, where Down lands too, and
+//!   `filter_activation_position` in place); with nothing selected, search results fall back to
+//!   an unselected cursor or the top result, while in place nothing opens. Deselecting
+//!   everything gives the top result back. A query
 //!   edit (one typed back
 //!   included) drops the pick; with search results that replace the listing it drops their
 //!   selection too ([`filter::FilterState::shown`] returns true), while a listing narrowed in
@@ -69,8 +70,8 @@
 //! - **Keeping the top result in view**: after each set of results, while the field has the
 //!   keyboard and the user hasn't scrolled them since the query changed.
 //! - **Keys in the field.** Enter opens the target (a held Enter once). Down lands on the top
-//!   result while Enter opens it, else on the results' cursor (Strata's search results,
-//!   `inline_search.rs`; [`filter::FilterState::landing`]), as
+//!   result while Enter opens it, else on the first selected result (or an unselected cursor or
+//!   the top result, Strata's `inline_search/collection.rs`; [`filter::FilterState::landing`]), as
 //!   [`filter::FilterIntent::FocusResults`], picks it, then moves the keyboard to the results:
 //!   to the bar's `focus_return` element with `Tx::focus`, else by a Tab sent from the field
 //!   (probe P1).
@@ -181,7 +182,7 @@
 //! | Escape on a focused result closes the filter… with the directory's own selection | script `escape-on-result` |
 //! | Escape on a focused row also closes a filter that narrows rows in place | script `escape-in-place` |
 //! | Press Ctrl+F while a large… folder is loading… | **partial**: script `listing-change-keeps-field` (a listing change stands in for a load ending) |
-//! | Down from the field focuses a result…; Up from the first result returns to the field | scripts `down-focuses-results`, `down-lands-on-cursor`, `down-and-up`; unit `down_lands_on_the_cursor_after_a_pick_and_on_the_top_result_before` |
+//! | Down from the field focuses a result…; Up from the first result returns to the field | scripts `down-focuses-results`, `down-lands-on-cursor`, `down-and-up`; unit `down_lands_on_the_first_selected_after_a_pick_and_on_the_top_result_before` |
 //! | In the filter field or its results, Space toggles quick preview…; Shift+Space types a space | scripts `space-previews`, `shift-space-types` (in the field; in the results it is Strata's key map); test `down_and_space_while_composing_stay_with_the_composition` |
 //! | When another program deletes the listing's cursor entry…, a focused filter field or result keeps focus | test `a_deleted_cursor_entry_leaves_the_field_and_the_prompt_focused` (the field) |
 //! | In Columns…, Ctrl+F returns focus to that column's open filter field with its query | **partial**: `FilterState::open` on an open bar refocuses it (unit `tick_reports_the_field_gaining_and_losing_the_keyboard`); the column is C2's |
@@ -196,7 +197,7 @@
 //! | In search results the outline comes with no selection; the in-place filter keeps the listing's selection | goldens `c18-filter-target`, `c18-filter-in-place`; unit `a_query_edit_drops_the_pick_and_a_same_query_update_keeps_it` |
 //! | Moving focus from the field to a result or elsewhere removes the outline | scripts `outline-leaves-with-focus` (a click), `tab-out-removes-outline` (no pick); unit `enter_opens_the_top_result_outlined_while_the_field_has_the_keyboard` |
 //! | In Icons and List, Enter in the field with no pick opens the outlined top result | script `enter-opens-top`; test `a_held_enter_opens_once`; unit, as above |
-//! | A pick, such as Ctrl+click…, removes the outline; Enter then opens the pick | scripts `pick-then-enter`, `enter-opens-cursor` (search results: the cursor), `enter-in-place-opens-first-selected` (in place: the first selected); units `after_a_pick_enter_opens_the_pick`, `after_a_pick_enter_in_search_results_opens_the_cursor`, `after_a_pick_enter_in_place_opens_the_first_selected_result` |
+//! | A pick, such as Ctrl+click…, removes the outline; Enter then opens the pick | scripts `pick-then-enter`, `enter-opens-cursor`, `enter-in-place-opens-first-selected`; units `after_a_pick_enter_opens_the_pick`, `after_a_pick_enter_in_search_results_opens_the_first_selected_result`, `after_a_pick_enter_in_place_opens_the_first_selected_result` |
 //! | A pick is an arrow key, Down from the field, a click, a Ctrl+click, focus moving into the results… | scripts `pick-then-enter`, `down-and-up` (the host calls `pick` from C1e's `on_selection`) |
 //! | Deselecting every result after a pick returns the outline and Enter to the top result | script `deselect-returns-top`; unit `deselecting_every_result_after_a_pick_returns_the_top_result` |
 //! | In search results, editing the query text drops the pick and the results' selection | script `edit-drops-pick`; unit `a_query_edit_drops_the_pick_and_a_same_query_update_keeps_it` |
@@ -284,10 +285,14 @@
 //! - **Losing the keyboard is noticed a frame late**, in `tick` (U-C6-3).
 //! - **The host reports picks** ([`filter::FilterState::pick`]): the bar can't see the results'
 //!   selection change or focus enter them.
-//! - **Enter after a pick follows Strata per mode** (owner's ruling): the cursor in search
-//!   results (`inline_search.rs`), the first selected result in place
-//!   (`filter_activation_position`). Strata keeps the two rules in two code paths; here one
-//!   [`filter::FilterState::target`] picks by [`filter::Shows`].
+//! - **Enter after a pick follows Strata per mode**: while something is selected, single-pane
+//!   search results and in-place filters open the first selected result in display order
+//!   (`inline_search/collection.rs`'s `current_position` with the field focused,
+//!   `filter_activation_position` in place), and [`filter::FilterState::set_pick_last`] opens
+//!   the last selected result (`columns/append/keys.rs`); with nothing selected, single-pane
+//!   search results fall back to the cursor or the top result while in place and `pick_last`
+//!   open nothing. Strata keeps the rules in separate code paths; here one
+//!   [`filter::FilterState::target`] picks by [`filter::Shows`] and `pick_last`.
 //! - **Our own candidate list**, not rune-kit's `PopupList`, whose rows can't draw matched
 //!   ranges (U-C6-4), as C6's.
 //!

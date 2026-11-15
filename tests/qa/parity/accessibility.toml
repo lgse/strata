@@ -64,15 +64,14 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A10: Ctrl+K's search palette (line 9); then A6: the F1 reference, Connect to server and the Compress dialog"
+blocker = "A6: the Connect to server dialog (line 21) and the Compress dialog (line 28)"
 
 [[run]]
 scenario = "fields-and-sliders-named"
 run = "icons"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A10: Ctrl+K's search palette (line 9); then A6: the F1 reference"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "focus-order-reaches-files"
@@ -99,9 +98,8 @@ host = "offscreen"
 scenario = "icon-only-buttons-named"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "icon-only-buttons-named"

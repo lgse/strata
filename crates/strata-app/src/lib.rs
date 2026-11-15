@@ -69,6 +69,7 @@ mod open_failed;
 mod pane_header;
 mod popover;
 // A6 Menus, dialogs and keymap
+mod customize;
 mod footer;
 mod run;
 mod shortcuts;
@@ -88,6 +89,8 @@ mod palette;
 mod sort;
 // A11 10xer mode
 // A12 Clipboard and conflicts
+mod clipboard;
+mod transfer;
 // A13 Archives and providers
 // A14 Open with, terminal and custom actions
 // A15 Preview drawer, text and documents
@@ -124,6 +127,7 @@ slots::parts! {
     run: run::Run,
     footer: footer::Footer,
     shortcuts: shortcuts::Shortcuts,
+    customize: customize::Customize,
     // A7 Entry management and undo
     undo: undo::Undo,
     new_item: new_item::NewItem,
@@ -138,6 +142,9 @@ slots::parts! {
     sort: sort::Sort,
     // A11 10xer mode
     // A12 Clipboard and conflicts
+    clipboard: clipboard::Clipboard,
+    transfer: transfer::Transfer,
+    transfer_dialog: transfer::TransferDialog,
     // A13 Archives and providers
     // A14 Open with, terminal and custom actions
     // A15 Preview drawer, text and documents

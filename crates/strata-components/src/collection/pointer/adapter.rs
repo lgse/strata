@@ -123,6 +123,7 @@ fn effect(outcome: Outcome) -> Effect {
         },
         Outcome::Clicked { id } => Intent::Clicked { id },
         Outcome::OpenInNew { id, window } => Intent::OpenInNew { id, window },
+        Outcome::Reveal { id } => Intent::Reveal { id },
         Outcome::BeginDrag { ids, at } => Intent::BeginDrag { ids, window: at },
         Outcome::BeginRename { id } => Intent::BeginRename { id },
         Outcome::ContextMenu { target, at } => Intent::ContextMenu {

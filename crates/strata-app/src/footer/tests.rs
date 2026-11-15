@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! The footer's count on the window the crate registers, read as the window draws it.
+//! The footer's count and clipboard badge on the window the crate registers, read as the
+//! window draws them.
 
 use rune::{Key, KeyEvent, Mods, Tx};
 use strata_core::model::Location;
@@ -105,6 +106,170 @@ fn a_reload_while_the_sizes_are_out_asks_for_them_again() {
                 host.run_until(PATIENCE, counts_every_size),
                 "the count has every selected file's size after the reload: {:?}",
                 drawn(&host)
+            );
+        },
+    );
+}
+
+fn ctrl() -> Mods {
+    Mods {
+        ctrl: true,
+        ..Mods::default()
+    }
+}
+
+fn clipboard_badge(host: &Offscreen) -> Option<(String, String)> {
+    let tree = host.tree();
+    let badge = all(&tree, &|node| node["key"] == "footer-clipboard");
+    badge
+        .first()
+        .map(|node| (text(node, "name"), text(node, "description")))
+}
+
+fn footer_present(host: &Offscreen) -> bool {
+    let tree = host.tree();
+    !all(&tree, &|node| node["key"] == "footer").is_empty()
+}
+
+fn run_cmd(host: &mut Offscreen, id: &'static str, on: crate::commands::On) {
+    host.runtime().update(move |app, tx| {
+        let _ = crate::commands::run(app, id, on, tx);
+    });
+    while host.turn() {}
+}
+
+fn set_paste_keys(host: &mut Offscreen, keys: &[&str]) {
+    let values: Vec<String> = keys.iter().map(|s| (*s).to_owned()).collect();
+    host.runtime().update(move |app, _| {
+        shell::saved(app).change(|s| {
+            s.keymap.default.insert("paste".to_owned(), values.into());
+        });
+    });
+    while host.turn() {}
+}
+
+#[test]
+fn clipboard_badge_follows_copy_cut_paste_and_text_copy() {
+    hosted(
+        MODULE,
+        "clipboard_badge_follows_copy_cut_paste_and_text_copy",
+        |mut host| {
+            let folder = folder_of(&["note.txt"]);
+            let dest = folder.path().join("dest");
+            std::fs::create_dir(&dest).expect("dest folder");
+            host.app().open(Location::local(folder.path()));
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app().browser().column_entry_counts(0).is_some()
+            }));
+            while host.turn() {}
+
+            let note_id =
+                shell::id_of(host.app(), &Location::local(folder.path().join("note.txt")));
+            assert_eq!(clipboard_badge(&host), None);
+
+            run_cmd(&mut host, "copy", crate::commands::On::Row((0, note_id)));
+            assert_eq!(
+                clipboard_badge(&host),
+                Some((
+                    "Files on clipboard".to_owned(),
+                    "Press Ctrl+V to paste into a supported directory.".to_owned(),
+                ))
+            );
+
+            run_cmd(
+                &mut host,
+                "paste",
+                crate::commands::On::Place(Location::local(&dest)),
+            );
+            assert!(host.run_until(PATIENCE, |_| dest.join("note.txt").exists()));
+            while host.turn() {}
+            assert!(
+                clipboard_badge(&host).is_some(),
+                "pasting a copy keeps the clipboard badge"
+            );
+            std::fs::remove_file(dest.join("note.txt")).expect("cleanup copy");
+
+            run_cmd(
+                &mut host,
+                "copy-path",
+                crate::commands::On::Row((0, note_id)),
+            );
+            assert_eq!(
+                clipboard_badge(&host),
+                None,
+                "copying text clears the files badge"
+            );
+
+            run_cmd(&mut host, "cut", crate::commands::On::Row((0, note_id)));
+            assert!(clipboard_badge(&host).is_some());
+
+            run_cmd(
+                &mut host,
+                "paste",
+                crate::commands::On::Place(Location::local(&dest)),
+            );
+            assert!(host.run_until(PATIENCE, |_| dest.join("note.txt").exists()));
+            while host.turn() {}
+            assert_eq!(
+                clipboard_badge(&host),
+                None,
+                "consuming a cut withdraws the clipboard badge"
+            );
+        },
+    );
+}
+
+#[test]
+fn clipboard_badge_keeps_footer_visible_without_hints_and_follows_paste_keymap() {
+    hosted(
+        MODULE,
+        "clipboard_badge_keeps_footer_visible_without_hints_and_follows_paste_keymap",
+        |mut host| {
+            let folder = folder_of(&["alpha.txt"]);
+            let alpha = Location::local(folder.path().join("alpha.txt"));
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.show_keybinding_hints = false);
+            });
+            while host.turn() {}
+            assert!(!footer_present(&host));
+
+            let seed = alpha.clone();
+            host.runtime()
+                .update(move |app, _| crate::clipboard::write_test_files(app, &[seed]));
+            while host.turn() {}
+            assert!(
+                footer_present(&host) && clipboard_badge(&host).is_some(),
+                "clipboard badge alone reveals the footer when hints and count are absent"
+            );
+
+            run_cmd(&mut host, "copy-path", crate::commands::On::Place(alpha));
+            assert!(
+                !footer_present(&host),
+                "clearing file clipboard hides the footer again"
+            );
+
+            host.app().open(Location::local(folder.path()));
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app().browser().column_entry_counts(0).is_some()
+            }));
+            while host.turn() {}
+            host.app().browser().select(0, 0);
+            while host.turn() {}
+            press(&mut host, Key::Command('c'), ctrl());
+
+            set_paste_keys(&mut host, &["<Control><Shift>v"]);
+            assert_eq!(
+                clipboard_badge(&host),
+                Some((
+                    "Files on clipboard".to_owned(),
+                    "Press Ctrl+Shift+V to paste into a supported directory.".to_owned(),
+                ))
+            );
+
+            set_paste_keys(&mut host, &[]);
+            assert_eq!(
+                clipboard_badge(&host),
+                Some(("Files on clipboard".to_owned(), String::new()))
             );
         },
     );
