@@ -103,8 +103,11 @@ impl Part for Transfer {
         Action::new("duplicate", duplicate)
             .command(DUPLICATE)
             .keys(&[
-                Keys::at(Stage::DirectCommands, &[DUPLICATE.in_map(Map::Tenxer)])
-                    .when(|_, at| !at.text() && !at.within("preview")),
+                Keys::at(Stage::DirectCommands, &[DUPLICATE.in_map(Map::Tenxer)]).when(
+                    |app, at| {
+                        shell::preferences(app).tenxer_mode && !at.text() && !at.within("preview")
+                    },
+                ),
                 Keys::at(Stage::FileCommands, &[DUPLICATE.in_map(Map::Default)]).when(|app, at| {
                     !at.text() && !at.within("preview") && filter::targets::selected(app).is_none()
                 }),

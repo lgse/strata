@@ -243,6 +243,9 @@ fn duplicate_stops_on_filter_results_in_default_map_and_runs_in_tenxer_direct_st
             while host.turn() {}
 
             ctrl_key(&mut host, 'd');
+            assert!(host.app().transfer.preparing.is_empty());
+            assert!(host.app().browser().last_started_operation().is_none());
+            assert!(!host.app().browser().has_foreground_operation());
             assert!(!temp.path().join("alpha (1).txt").exists());
             assert!(!temp.path().join("beta (1).txt").exists());
 
