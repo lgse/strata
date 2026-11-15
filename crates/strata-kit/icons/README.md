@@ -10,7 +10,7 @@ icons here.
 | `lucide/` | 110 Lucide interface and generic file-type icons, Strata's `strata-*.svg` | `data/icons/scalable/actions/` in [lgse/strata](https://github.com/lgse/strata) at `35ee677ab0a633d5d49055464f2946fcf4995ae7`, byte for byte. Strata took them from [Lucide](https://github.com/lucide-icons/lucide) 1.35.0. |
 | `catppuccin/` | 354 Catppuccin file-type icons for code, language and config files, `strata-ctp-*.svg` | `data/icons/catppuccin/` in lgse/strata at the same revision, byte for byte. Strata copied them from [catppuccin/vscode-icons](https://github.com/catppuccin/vscode-icons) `b6915da9f6889b683a110aa747de96c2820a537d` (v1.26.0), `icons/css-variables/`. |
 | `lucide-extra/` | 11 Lucide icons Strata doesn't ship, renamed `strata-kit-<lucide name>.svg` | `https://raw.githubusercontent.com/lucide-icons/lucide/1.35.0/icons/<name>.svg` (tag `1.35.0`), byte for byte apart from the name. SHA-256 below. |
-| `own/` | `strata-kit-chevron-left` and `-up`: Strata's Lucide chevron-right and -down turned half a turn | This repository |
+| `own/` | `strata-kit-chevron-left` and `-up` (Strata's Lucide chevron-right and -down turned half a turn), and `strata-kit-folder-filled` (Strata's Lucide folder filled at 92 % for badged folders) | This repository |
 
 ### `lucide-extra/` files
 

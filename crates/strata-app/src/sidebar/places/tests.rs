@@ -3,11 +3,13 @@
 use std::path::{Path, PathBuf};
 
 use glib::UserDirectory;
-use strata_components::sidebar::ItemId;
-use strata_core::model::Location;
+use strata_components::sidebar::{ItemId, RowIcon};
+use strata_core::model::{FolderColor, FolderColorValue, Location};
 use strata_desktop::settings::Preferences;
+use strata_kit::icons::IconName;
 
 use super::{Environment, Navigation, listed, resolve_place_order};
+use crate::slots::color_of;
 
 fn order(ids: &[&str]) -> Vec<String> {
     ids.iter().map(|id| (*id).to_owned()).collect()
@@ -184,4 +186,48 @@ fn pins_leave_out_the_standard_folders_and_take_drops_only_when_local() {
         listed.pins[0].description.as_deref(),
         Some(Location::local("/srv/work").display_path().as_str())
     );
+}
+
+#[test]
+fn places_and_local_pins_resolve_saved_tints_and_glyphs_while_uri_rows_stay_plain() {
+    let mut settings = Preferences::default();
+    let red = FolderColorValue::Preset(FolderColor::Red);
+    let custom = FolderColorValue::Custom("#34d399".to_owned());
+    settings.set_item_colors(&[PathBuf::from("/home/user")], Some(&red));
+    settings.set_item_icon(Path::new("/home/user"), Some("strata-terminal"));
+    settings.set_item_icon(Path::new("/home/user/Documents"), Some("emoji:📚"));
+    settings.set_item_colors(&[PathBuf::from("/srv/work")], Some(&custom));
+    settings.set_item_icon(Path::new("/srv/work"), Some("emoji:🚀"));
+    settings
+        .custom_icons
+        .insert("trash:///".to_owned(), "strata-key".to_owned());
+
+    let pins = [
+        (Location::local("/srv/work"), "Work".to_owned()),
+        (Location::uri("sftp://host/share"), "Share".to_owned()),
+    ];
+    let listed = listed(&settings, &pins, &environment(true));
+
+    let home = listed.places.iter().find(|p| p.id == "home").unwrap();
+    assert_eq!(home.tint, color_of(&red));
+    assert_eq!(home.icon, RowIcon::Catalog("strata-terminal".to_owned()));
+
+    let docs = listed.places.iter().find(|p| p.id == "documents").unwrap();
+    assert_eq!(docs.tint, None);
+    assert_eq!(docs.icon, RowIcon::Emoji("📚".to_owned()));
+
+    for (id, expected) in [
+        ("trash", IconName::Trash),
+        ("network", IconName::Network),
+        ("recent", IconName::Recent),
+    ] {
+        let row = listed.places.iter().find(|p| p.id == id).unwrap();
+        assert_eq!(row.tint, None, "{id}");
+        assert_eq!(row.icon, RowIcon::Name(expected), "{id}");
+    }
+
+    assert_eq!(listed.pins[0].tint, color_of(&custom));
+    assert_eq!(listed.pins[0].icon, RowIcon::Emoji("🚀".to_owned()));
+    assert_eq!(listed.pins[1].tint, None);
+    assert_eq!(listed.pins[1].icon, RowIcon::Name(IconName::Folder));
 }

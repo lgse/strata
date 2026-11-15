@@ -12,8 +12,8 @@ use strata_kit::look::Look;
 use strata_kit::slots::tabs as slot;
 
 use super::data::{LABEL_CHARS, TabId, TabsData, elide_end};
-use super::drops::{self, Access, ActionFn, Ctx, Emit, OpensFn};
-use super::intent::{DropSite, TabsIntent, Via};
+use super::drops::{self, Access, ActionFn, Ctx, Emit, OpensFn, TabSpec};
+use super::intent::{DropSite, TabOpen, TabsIntent, Via};
 use super::new_tab::{self, TabsLabels};
 use super::probe::Probe;
 use super::{BrowserTabsState, scroll_key, wheel};
@@ -41,6 +41,7 @@ pub struct BrowserTabs<'a, S: 'static> {
     dnd: Dnd<S>,
     action: Option<ActionFn<S>>,
     opens: Option<OpensFn<S>>,
+    guard_none: bool,
     content: &'static [&'static str],
     spring: Option<f64>,
     tear: bool,
@@ -68,6 +69,7 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
             dnd: Dnd::rune(),
             action: None,
             opens: None,
+            guard_none: false,
             content: &[],
             spring: Some(super::HOVER_DELAY),
             tear: false,
@@ -95,13 +97,21 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         self
     }
 
-    /// Which drags open tabs rather than drop into one: Strata's own folder-only drags from its
-    /// views and sidebar rows, never folders from another app. Such a drag neither tints nor
-    /// selects a tab; it places a gap where it would open, and its drop is
-    /// [`TabsIntent::OpenTabs`]. The host decides from the offer (its serial, its own drag's
-    /// payload). Without it, no drag opens tabs.
+    /// Which drags open tabs across the strip (`TabOpen::AtGap`): convenience wrapper for
+    /// [`BrowserTabs::tab_open`].
     pub fn opens_tabs(mut self, f: impl Fn(&S, &DropOffer) -> bool + 'static) -> Self {
+        self.opens = Some(Rc::new(move |s, offer| {
+            f(s, offer).then_some(TabOpen::AtGap)
+        }));
+        self.guard_none = false;
+        self
+    }
+
+    /// How an in-process drag opens tabs on the strip ([`TabOpen::AtGap`] for sidebar locations,
+    /// [`TabOpen::AtEnd`] for folder-only view drags), or `None` when it transfers or is refused.
+    pub fn tab_open(mut self, f: impl Fn(&S, &DropOffer) -> Option<TabOpen> + 'static) -> Self {
         self.opens = Some(Rc::new(f));
+        self.guard_none = true;
         self
     }
 
@@ -171,6 +181,7 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
             emit: self.emit.clone(),
             action: self.action.clone(),
             opens: self.opens.clone(),
+            guard_none: self.guard_none,
             content: self.content,
             spring: self.spring,
             len: data.tabs.len(),
@@ -206,7 +217,15 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
                     active: active.then_some(tab.id),
                     probe: self.state.probe.clone(),
                     scroll: scroll.clone(),
-                    zone: drops::tab(&zones, tab.id, i, tab.accepts, active),
+                    zone: drops::tab(
+                        &zones,
+                        TabSpec {
+                            id: tab.id,
+                            index: i,
+                            accepts: tab.accepts,
+                            active,
+                        },
+                    ),
                     key: super::tab_key(&key, tab.id),
                     dnd: self.dnd.clone(),
                 };
@@ -233,10 +252,20 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
             .drag_state(&self.state.drag, self.drag)
             .tear_out(self.tear.then(TearOutSpec::default));
         let (strip, trailing) = if self.new_tab {
+            let new_key = super::new_tab_key(&key);
             let width = cx
-                .layout_size(&super::new_tab_key(&key))
+                .layout_size(&new_key)
                 .map_or(look.frame.control, |z| z[0]);
-            let button = new_tab::button(&zones, self.state, &self.dnd, &self.labels, look);
+            let button = new_tab::button(
+                &zones,
+                self.state,
+                new_tab::ButtonSpec {
+                    dnd: &self.dnd,
+                    labels: &self.labels,
+                    key: new_key,
+                },
+                look,
+            );
             let strip = strip.trailing_action(button).trailing_width(width);
             (strip, width + slot::tab_gap(look))
         } else {

@@ -27,7 +27,7 @@
 //!   Their rows are no listing's: the view's rows hooks ask the filter first for an entry of
 //!   theirs, and the rename editor opens and follows its row in the results.
 
-use std::borrow::Cow;
+use std::{borrow::Cow, rc::Rc};
 
 use rune::{El, Tx, WheelEvent, col};
 use strata_components::{
@@ -53,7 +53,7 @@ use crate::{
     menus::{self, Request},
     pane::{Applied, Pane},
     pane_header, rename, shell,
-    slots::{At, Editing, Listener, Rows, Setup},
+    slots::{At, Editing, Listener, Rows, Setup, Worn},
     surface::{self, Surface},
 };
 
@@ -116,6 +116,7 @@ pub(crate) struct Made {
     /// Where on the cursor's entry the Menu key opens its menu (`item_menu_target` in
     /// `src/ui/browser_modes/context_menu.rs`): the centre in List, the right edge elsewhere.
     pub(crate) menu_at: AnchorEdge,
+    pub(crate) worn: Rc<Worn>,
 }
 
 impl Single {
@@ -126,11 +127,12 @@ impl Single {
             keys,
             described,
             menu_at,
+            worn,
         } = made;
         let mut collection = controlled();
         commands::view_keys(&mut collection, menu_at);
         Self {
-            pane: Pane::new(key, collection),
+            pane: Pane::new(key, collection).with_worn(worn),
             clicks: ClickModes::new(clicks(file), clicks(folder)),
             keys,
             words: Words::translated(),
@@ -140,6 +142,11 @@ impl Single {
             first_visit: FirstVisit::default(),
         }
     }
+}
+
+pub(crate) fn sync_worn<V: SinglePane>(app: &mut App) {
+    let worn = shell::worn(app).clone();
+    V::single_mut(app).pane.set_worn(&worn);
 }
 
 /// A view that shows one pane: its key, and where its [`Single`] is in the [`App`].

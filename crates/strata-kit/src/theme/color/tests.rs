@@ -97,3 +97,21 @@ fn contrast_is_wcag() {
     assert!((contrast(Rgba8::BLACK, Rgba8::WHITE) - 21.0).abs() < 1e-9);
     assert!((contrast(Rgba8::WHITE, Rgba8::WHITE) - 1.0).abs() < 1e-9);
 }
+
+#[test]
+fn contrasting_ink_matches_strata_badge_threshold() {
+    let dark = Rgba8::rgb(0x17, 0x20, 0x33);
+    let light = Rgba8::rgb(0xf8, 0xfa, 0xfc);
+    for (fill, want) in [
+        ("#e64553", light),
+        ("#1e66f5", light),
+        ("#df8e1d", dark),
+        ("#f9e2af", dark),
+        ("#969696", light),
+        ("#979696", dark),
+    ] {
+        let parsed = Rgba8::parse(fill).expect("parses");
+        assert_eq!(Rgba8::from_color(parsed.color()), parsed, "{fill}");
+        assert_eq!(parsed.contrasting_ink(), want, "{fill}");
+    }
+}

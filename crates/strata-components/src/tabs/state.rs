@@ -312,12 +312,17 @@ impl BrowserTabsState {
             .or(self.left_landing.map(|l| l.slot))
     }
 
-    /// The drag dropped or was refused: nothing springs, nothing is hovered, the gap closes.
-    pub(super) fn drag_ended(&mut self) {
+    /// The drag dropped, was cancelled, or was refused: nothing springs, nothing is hovered, and
+    /// the incoming gap closes.
+    pub fn end_drag(&mut self) {
         self.spring = None;
         self.drop = None;
         self.incoming_from = None;
         self.left_landing = None;
         self.drag.set_incoming(None);
+    }
+
+    pub(super) fn drag_ended(&mut self) {
+        self.end_drag();
     }
 }

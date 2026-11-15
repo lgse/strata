@@ -11,9 +11,10 @@
 //!   Done focused when it opens. The body: a preview of the item's icon in its colour with its
 //!   name, the COLOR bar ([`body`]: the theme's colour, GTK's seven presets and a custom
 //!   colour) and the ICON choices, GTK's sixteen bundled icons. Each choice is saved at once,
-//!   with `shell::saved(app).change(…)` through `strata_desktop::settings`, as GTK's dialog
-//!   saves through the manager; Clear forgets both. Done, Escape, the close button and a
-//!   click outside close it, and the keyboard goes back to where it was.
+//!   with `shell::change_customization(app, …)` through `strata_desktop::settings`, so the
+//!   rows, the sidebar and the preview follow it at once; Clear forgets both. Done, Escape,
+//!   the close button and a click outside close it, and the keyboard goes back to where it
+//!   was.
 //! - **"Custom color…"** opens the Custom Folder Color or Custom File Color dialog over it
 //!   ([`custom`]), with C20b's picker in place of GTK's colour chooser.
 //! - **"Choose Emoji…"** opens C20d's emoji picker in a popover over the dialog ([`emoji`]):
@@ -23,9 +24,6 @@
 //!
 //! Left out, with what brings each back:
 //!
-//! - **The rows' colours and icons**: drawing them in the views is this package's 6b-2. The
-//!   preview here draws the chosen icon in the chosen colour; GTK puts a folder's icon inside
-//!   the coloured folder, which comes with the views' drawing.
 //! - **The header's palette icon**, which C15 takes only as an `IconName`, a set without it.
 //! - **Clear's insensitive state** while nothing is saved: C15's secondary button is always
 //!   enabled. Pressing it then forgets nothing.
@@ -188,7 +186,9 @@ fn choose_color(app: &mut App, color: Option<FolderColorValue>) {
     let Some(path) = app.customize.item.as_ref().map(|item| item.path.clone()) else {
         return;
     };
-    shell::saved(app).change(|settings| settings.set_item_colors(&[path], color.as_ref()));
+    shell::change_customization(app, |settings| {
+        settings.set_item_colors(&[path], color.as_ref())
+    });
 }
 
 /// Saves `icon` (`strata-*` or `emoji:*`) for the item.
@@ -196,7 +196,7 @@ fn save_icon(app: &mut App, icon: &str) {
     let Some(path) = app.customize.item.as_ref().map(|item| item.path.clone()) else {
         return;
     };
-    shell::saved(app).change(|settings| settings.set_item_icon(&path, Some(icon)));
+    shell::change_customization(app, |settings| settings.set_item_icon(&path, Some(icon)));
 }
 
 /// Saves the bundled icon `name` for the item.
@@ -210,7 +210,7 @@ fn clear(app: &mut App) {
     let Some(path) = app.customize.item.as_ref().map(|item| item.path.clone()) else {
         return;
     };
-    shell::saved(app).change(|settings| settings.clear_item_customization(&path));
+    shell::change_customization(app, |settings| settings.clear_item_customization(&path));
     app.customize.emoji.sync(None);
 }
 
