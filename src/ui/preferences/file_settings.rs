@@ -15,13 +15,7 @@ impl PreferenceManager {
     }
 
     pub fn folder_color(&self, path: &Path) -> Option<FolderColorValue> {
-        let preferences = self.preferences.borrow();
-        if preferences.folder_colors.is_empty() {
-            return None;
-        }
-        let key = path.to_string_lossy();
-        let color_name = preferences.folder_colors.get(key.as_ref())?;
-        FolderColorValue::parse(color_name)
+        self.preferences.borrow().item_color(path)
     }
 
     pub fn set_folder_color(&self, path: &Path, color: Option<FolderColorValue>) {
@@ -32,59 +26,25 @@ impl PreferenceManager {
         if paths.is_empty() {
             return;
         }
-        {
-            let mut preferences = self.preferences.borrow_mut();
-            for path in paths {
-                let key = path.to_string_lossy().into_owned();
-                if let Some(color) = &color {
-                    preferences
-                        .folder_colors
-                        .insert(key, color.to_preference_string());
-                } else {
-                    preferences.folder_colors.remove(&key);
-                }
-            }
-        }
+        self.preferences
+            .borrow_mut()
+            .set_item_colors(paths, color.as_ref());
         self.save_preferences();
         super::super::thumbnail::refresh_customized_icons(paths);
     }
 
     pub fn custom_icon(&self, path: &Path) -> Option<String> {
-        let preferences = self.preferences.borrow();
-        if preferences.custom_icons.is_empty() {
-            return None;
-        }
-        let key = path.to_string_lossy();
-        preferences
-            .custom_icons
-            .get(key.as_ref())
-            .filter(|name| crate::assets::icons::is_customization_choice(name))
-            .cloned()
+        self.preferences.borrow().item_icon(path).map(str::to_owned)
     }
 
     pub fn set_custom_icon(&self, path: &Path, icon_name: Option<&str>) {
-        {
-            let mut preferences = self.preferences.borrow_mut();
-            let key = path.to_string_lossy().into_owned();
-            if let Some(name) =
-                icon_name.filter(|name| crate::assets::icons::is_customization_choice(name))
-            {
-                preferences.custom_icons.insert(key, name.to_owned());
-            } else {
-                preferences.custom_icons.remove(&key);
-            }
-        }
+        self.preferences.borrow_mut().set_item_icon(path, icon_name);
         self.save_preferences();
         super::super::thumbnail::refresh_customized_icons(&[path.to_path_buf()]);
     }
 
     pub fn clear_item_customization(&self, path: &Path) {
-        {
-            let mut preferences = self.preferences.borrow_mut();
-            let key = path.to_string_lossy();
-            preferences.folder_colors.remove(key.as_ref());
-            preferences.custom_icons.remove(key.as_ref());
-        }
+        self.preferences.borrow_mut().clear_item_customization(path);
         self.save_preferences();
         super::super::thumbnail::refresh_customized_icons(&[path.to_path_buf()]);
     }
