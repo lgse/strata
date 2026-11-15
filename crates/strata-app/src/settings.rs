@@ -62,10 +62,15 @@ impl Saved {
     }
 
     /// Changes the saved settings and queues a save of what changed, off the interface
-    /// thread. A file that could not be read at start-up is the user's to repair, and
-    /// nothing is saved over it.
+    /// thread. Turning `restore_tabs` off also removes `tabs.toml` (`set_restore_tabs` in
+    /// `src/ui/preferences/file_settings.rs`). A file that could not be read at start-up is
+    /// the user's to repair, and nothing is saved over it.
     pub(crate) fn change(&mut self, change: impl FnOnce(&mut Preferences)) {
+        let was_restore_tabs = self.preferences.restore_tabs;
         change(&mut self.preferences);
+        if was_restore_tabs && !self.preferences.restore_tabs {
+            strata_desktop::tabs_session::remove();
+        }
         let Commit { save, problem, .. } = self.saving.commit(&self.preferences);
         // The GTK window shows "Settings can't be saved"; this interface has no notice yet.
         if let Some(SaveProblem::Snapshot { path, error }) = problem {

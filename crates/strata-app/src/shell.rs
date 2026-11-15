@@ -38,8 +38,8 @@ use strata_platform::csd::{self, Csd};
 
 use crate::{
     App, Built, PARTS, buttons,
-    commands::{self, Live, On},
-    events, folder_views,
+    commands::{self, Holds, Live, On},
+    events, folder_views, launch,
     location::{self, labels::with_keys},
     pane,
     settings::Saved,
@@ -278,6 +278,16 @@ impl App {
 
     pub(crate) fn open(&self, location: Location) {
         self.browser.navigate(location);
+    }
+
+    /// Starts the window from `initial`: an explicit directory opens in one tab and leaves
+    /// `tabs.toml` alone; a plain launch restores its saved session or opens the default folder,
+    /// and persists its tabs (`tabs::session`).
+    pub(crate) fn start(&mut self, initial: launch::Initial) {
+        match initial {
+            launch::Initial::Explicit(location) => self.open(location),
+            launch::Initial::Plain(restored) => tabs::session::queue_plain_start(self, restored),
+        }
     }
 
     /// Names the window for the shown tab's location, or the one it waits on. False when it
@@ -1019,6 +1029,7 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
             _ => changed |= (queued.update)(app, tx),
         }
     }
+    tabs::session::observe_locations(app);
     let parts = app.window.here.parts;
     for part in parts.active() {
         (part.caught_up)(app);
@@ -1030,6 +1041,13 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
 /// part's commands and its hold on the keyboard from.
 pub(crate) fn parts(app: &App) -> Registry<'static, App> {
     app.window.here.parts
+}
+
+/// Whether any active part holds a modal layer (`TabWindow::blocked`).
+pub(crate) fn modal_open(app: &App) -> bool {
+    parts(app)
+        .active()
+        .any(|part| matches!((part.keyboard)(app), Some(Holds::Modal { .. })))
 }
 
 /// The settings file to log a saved keymap's unusable entries against, for the process's
