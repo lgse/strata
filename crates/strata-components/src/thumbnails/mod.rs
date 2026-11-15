@@ -231,6 +231,7 @@ mod store;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use part::mark_icon;
 pub use part::{
     GLYPH, IconSlot, THUMB, entry_glyph, folder_badge, icon_opacity, icon_slot, picture,
 };

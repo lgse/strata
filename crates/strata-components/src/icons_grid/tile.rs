@@ -115,13 +115,20 @@ pub(super) fn name_look(rcx: &RowCx<'_>) -> (Option<Color>, Color, Option<Color>
     }
 }
 
-/// The entry's catalog icon or custom decoration, else the Folder or File icon, in the
-/// frame's icon colour.
+/// The clipboard mark icon, else the entry's catalog icon or custom decoration, else the Folder
+/// or File icon, in the frame's icon colour.
 fn placeholder(rcx: &RowCx<'_>, points: f32) -> El {
     let look = rcx.look;
+    let default_color = tokens::frame_icon(look);
+    let glyph = match crate::thumbnails::mark_icon(rcx.state.marks) {
+        Some(mark) => rune::icon(look.icon(mark), points)
+            .key(crate::thumbnails::GLYPH)
+            .color(default_color)
+            .a11y_hidden(),
+        None => entry_glyph(look, rcx.entry, points, default_color),
+    };
     // A file's icon draws fainter than a folder's, as Strata's tiles draw it
     // (`FILE_ICON_OPACITY` in `src/ui/browser_modes/icons_card.rs`).
-    let glyph = entry_glyph(look, rcx.entry, points, tokens::frame_icon(look));
     match icon_opacity(rcx, true) {
         opacity if opacity < 1.0 => glyph.opacity(opacity),
         _ => glyph,
@@ -140,15 +147,22 @@ pub(super) fn icon_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S>
     let key = b.key();
     Slot::new(
         move |s: &S, rcx: &RowCx<'_>| {
+            let mark = crate::thumbnails::mark_icon(rcx.state.marks);
             let thumb = rcx.entry.thumbnail.filter(|_| rcx.entry.glyph.is_none());
-            match (thumb, (version_shared.parts)(s).thumbs) {
-                (Some(k), Some((store, _))) => key ^ store.version(k).rotate_left(29),
-                _ => key,
+            let mut h = std::hash::DefaultHasher::new();
+            key.hash(&mut h);
+            mark.hash(&mut h);
+            if mark.is_none()
+                && let (Some(k), Some((store, _))) = (thumb, (version_shared.parts)(s).thumbs)
+            {
+                store.version(k).hash(&mut h);
             }
+            h.finish()
         },
         move |s: &S, rcx: &RowCx<'_>| {
             let m = &b.m;
             let look = rcx.look;
+            let marked = crate::thumbnails::mark_icon(rcx.state.marks).is_some();
             let glyph = placeholder(rcx, m.slot);
             let (fill, ring, hover) = frame_look(rcx);
             let mut frame = row()
@@ -160,7 +174,7 @@ pub(super) fn icon_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S>
                 .a11y_hidden();
             let thumb = rcx.entry.thumbnail.filter(|_| rcx.entry.glyph.is_none());
             frame = match (thumb, (build_shared.parts)(s).thumbs) {
-                (Some(key), Some((store, _))) if store.enabled() => {
+                (Some(key), Some((store, _))) if store.enabled() && !marked => {
                     let thumb = store.thumb(key);
                     frame.child(glyph.live_opacity(thumb.icon_alpha())).child(
                         el().key(THUMB)

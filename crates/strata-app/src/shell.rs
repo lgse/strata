@@ -52,13 +52,6 @@ use crate::{
 mod held;
 pub(crate) mod tabs;
 
-#[cfg_attr(
-    not(any(test, feature = "qa")),
-    expect(
-        unused_imports,
-        reason = "the tab strip's number badges, A4's next pull request, read it"
-    )
-)]
 pub(crate) use held::{held_modifiers, modifiers};
 use tabs::{Here, Tabs};
 

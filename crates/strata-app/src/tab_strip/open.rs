@@ -3,8 +3,8 @@
 //! `open-in-tab`: a folder opened in a new tab at the end, shown, as GTK's window action
 //! `open-tab-at` runs `open_in_new_tab` (`src/ui/window/composition/tabs.rs`).
 //!
-//! - **On a place** (a sidebar row's menu or middle click, a crumb's middle click): its
-//!   location.
+//! - **On a place** (a sidebar row's menu or middle click, a crumb's middle click, a view's
+//!   folder row on middle click): its location.
 //! - **On a row** (the entry menu's Open In → New Tab): each folder the menu acts on, the
 //!   selection when the row is in it, a tab for each, the last shown (`open_entries_in_action`
 //!   in `src/ui/browser/context_menu/item_menu.rs`). A file among them opens nothing.
@@ -58,7 +58,11 @@ fn open_focused(app: &mut App, tx: &mut Tx) -> Outcome {
             app.browser.open_location(file.location);
             Outcome::Ran
         }
-        Some(Focused::Entry(_)) => commands::run(app, "activate", On::Focus, tx),
+        // GTK's `open_focused_in_new` always stops the key once an entry is focused.
+        Some(Focused::Entry(_)) => {
+            commands::run(app, "activate", On::Focus, tx);
+            Outcome::Ran
+        }
     }
 }
 

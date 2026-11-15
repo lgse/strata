@@ -118,10 +118,12 @@ fn entry_menu(app: &App, depth: usize, id: EntryId) -> Option<Opening> {
 /// Menu key with no selected cursor.
 fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
     // The name the pane has: `src/ui/browser/columns/append.rs`.
-    let name = app.browser.location_at(depth)?.display_name();
+    let location = app.browser.location_at(depth)?;
+    let name = location.display_name();
     let counts = app.browser.column_entry_counts(depth);
     let model = folder(&FolderTarget {
         has_entries: counts.is_some_and(|counts| counts.total > 0),
+        can_paste: crate::clipboard::may_paste(app, &location),
         hidden_shown: app.browser.preferences().show_hidden,
         typing: app.menu.typing,
     });
@@ -548,12 +550,13 @@ pub(crate) fn entry(target: &EntryTarget<'_>) -> MenuModel {
 pub(crate) struct FolderTarget {
     /// The folder lists something: Select All has entries to select.
     pub(crate) has_entries: bool,
+    pub(crate) can_paste: bool,
     pub(crate) hidden_shown: bool,
     pub(crate) typing: bool,
 }
 
-/// A pane's background menu: `FolderMenuOptions`. Paste is there and insensitive: this
-/// interface has no clipboard yet, and the GTK menu greys it while the clipboard is empty.
+/// A pane's background menu: `FolderMenuOptions`. Paste follows whether the clipboard offers
+/// files and the folder accepts pasted items.
 pub(crate) fn folder(target: &FolderTarget) -> MenuModel {
     let typing = target.typing;
     let hidden = if target.hidden_shown {
@@ -565,7 +568,7 @@ pub(crate) fn folder(target: &FolderTarget) -> MenuModel {
         .section(Section::new([
             NEW_FOLDER.item(typing),
             NEW_FILE.item(typing),
-            PASTE.item(typing).enabled(false),
+            PASTE.item(typing).enabled(target.can_paste),
         ]))
         .section(section(&[(OPEN_WITH, true), (TERMINAL, true)], typing))
         .section(Section::new([

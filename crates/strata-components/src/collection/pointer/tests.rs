@@ -942,7 +942,9 @@ fn a_middle_click_on_a_file_selects_it_and_opens_nothing() {
     r.select(&[1]);
     r.middle(6, PLAIN);
     assert_eq!(r.selected(), [6]);
-    assert!(r.take().is_empty());
+    assert_eq!(r.take(), [Outcome::Reveal { id: id(6) }]);
+    r.wait(0.1).middle(6, PLAIN);
+    assert!(r.take().is_empty(), "only the first click of a run reveals");
 }
 
 #[test]

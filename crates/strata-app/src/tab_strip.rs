@@ -12,8 +12,13 @@
 //!   else the folder's name, and "Home" with none. A tab opened at a location is named after it
 //!   until its folder opens (`await_location`).
 //! - **Opening a folder in a new tab** (`open-in-tab`, `open.rs`): a place (a sidebar row, a
-//!   crumb), the folders a menu's row acts on, or Ctrl+Enter on the cursor's folder. The tab
-//!   opens at the end and is shown, as GTK's `open_in_new_tab` adds it.
+//!   crumb, a view's folder row on middle click), the folders a menu's row acts on, or
+//!   Ctrl+Enter on the cursor's folder. The tab opens at the end and is shown, as GTK's
+//!   `open_in_new_tab` adds it.
+//! - **The number badges** ([`badges_shown`]): 1 to 9 and then 0 on the first ten tabs while
+//!   [`TAB_NUMBERS`]'s modifiers are held alone, read from [`shell::held_modifiers`] so a
+//!   modal layer does not hide them, and cleared when a key is released or the window loses
+//!   focus.
 //! - **Showing another tab ends an open rename as Enter does,** as GTK's field commits when
 //!   the keyboard leaves it (driven on 2026-11-14). A Columns mirror waiting to open a child
 //!   column opens it when the tab is shown again, where GTK's hidden tab opens it at once:
@@ -25,8 +30,8 @@
 //! - **Keys** are read at the GTK window's first stage ([`Stage::TabStrip`](crate::commands::Stage)),
 //!   from anywhere but a modal layer: `keys.rs`.
 //!
-//! Not yet: the number badges, drops on the strip and the spring (the tabs take no drop), and
-//! tab sessions. A4's package file has the plan.
+//! Not yet: drops on the strip and the spring (the tabs take no drop), and tab sessions. A4's
+//! package file has the plan.
 
 use std::path::Path;
 
@@ -36,7 +41,10 @@ use strata_components::tabs::{
     TabsLabels,
 };
 use strata_core::{i18n::tr, model::Location};
-use strata_desktop::keys::{Keys, bindings::TAB_NEW};
+use strata_desktop::keys::{
+    Keys, Modifiers,
+    bindings::{TAB_NEW, TAB_NUMBERS},
+};
 use strata_kit::icons::IconName;
 
 use crate::{
@@ -120,6 +128,7 @@ fn build(app: &App, close: Option<El>, frame: &mut Frame<'_, App>) -> Option<El>
         |app: &mut App| &mut app.tab_strip.state,
         |app| &mut app.tab_strip.state.drag,
     )
+    .badges(badges_shown(app))
     .spring_delay(None)
     .labels(labels)
     .on_intent(|app: &mut App, intent, tx: &mut Tx| {
@@ -127,6 +136,19 @@ fn build(app: &App, close: Option<El>, frame: &mut Frame<'_, App>) -> Option<El>
     });
     let band = strip.build_layered(&app.look, frame.cx, frame.layer);
     Some(band.children(close))
+}
+
+/// Whether the tab numbers' modifiers (`TAB_NUMBERS.modifiers()`) are held alone: GTK's
+/// `handle_key` and `install_keys` in `src/ui/window/composition/tabs.rs`, read before
+/// `blocked()` so a modal layer does not hide them.
+fn badges_shown(app: &App) -> bool {
+    let mods = shell::held_modifiers(app);
+    let mut held = Modifiers::empty();
+    held.set(Modifiers::SHIFT_MASK, mods.shift);
+    held.set(Modifiers::CONTROL_MASK, mods.ctrl || mods.cmd);
+    held.set(Modifiers::ALT_MASK, mods.alt);
+    held.set(Modifiers::SUPER_MASK, mods.logo);
+    held == TAB_NUMBERS.modifiers()
 }
 
 /// Each tab, in the strip's order, named as GTK names it. No tab takes a drop yet.

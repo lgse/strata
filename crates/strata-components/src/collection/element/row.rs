@@ -25,8 +25,10 @@ use crate::contract::{DropHover, DropZone, ElementKey, Entry, EntryId, Point, Re
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct RowMarks {
-    /// Cut to the clipboard: drawn faded (`collection.cut.opacity`).
+    /// Cut to the clipboard: drawn faded (`collection.cut.opacity`), with the cut icon.
     pub cut: bool,
+    /// Copied to the clipboard: its icon is the copy mark at full opacity.
+    pub copied: bool,
     /// Part of a drag in progress: drawn faded (`collection.drag.opacity`).
     pub dragging: bool,
     /// What Enter in the filter field opens: outlined in the accent.
@@ -749,16 +751,23 @@ pub(super) fn header_body(style: &GroupStyle, h: f32, label: El) -> El {
     el
 }
 
-/// The entry's catalog icon or custom decoration, else the Folder or File icon, at the row
-/// icon size.
+/// The clipboard mark icon, else the entry's catalog icon or custom decoration, else the Folder
+/// or File icon, at the row icon size.
 fn default_icon(rcx: &RowCx<'_>) -> El {
-    crate::thumbnails::entry_glyph(
-        rcx.look,
-        rcx.entry,
-        rcx.look.icon_size.md,
-        rcx.look.kit.c.icon_base,
-    )
-    .key(ICON)
+    let look = rcx.look;
+    match crate::thumbnails::mark_icon(rcx.state.marks) {
+        Some(mark) => rune::icon(look.icon(mark), look.icon_size.md)
+            .key(ICON)
+            .color(look.kit.c.icon_base)
+            .a11y_hidden(),
+        None => crate::thumbnails::entry_glyph(
+            look,
+            rcx.entry,
+            look.icon_size.md,
+            look.kit.c.icon_base,
+        )
+        .key(ICON),
+    }
 }
 
 /// The entry's name, cut short with an ellipsis.

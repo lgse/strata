@@ -103,8 +103,12 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
                 let mut h = std::hash::DefaultHasher::new();
                 step.hash(&mut h);
                 points.to_bits().hash(&mut h);
+                let mark = mark_icon(rcx.state.marks);
+                mark.hash(&mut h);
                 icon_opacity(rcx, dim_files).to_bits().hash(&mut h);
-                if let Some(key) = shown_thumbnail(rcx.entry) {
+                if mark.is_none()
+                    && let Some(key) = shown_thumbnail(rcx.entry)
+                {
                     store(s).version(key).hash(&mut h);
                 }
                 h.finish()
@@ -113,7 +117,7 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
                 let glyph = placeholder(rcx, points, icon_opacity(rcx, dim_files));
                 let st = store(s);
                 match shown_thumbnail(rcx.entry) {
-                    Some(key) if st.enabled() => {
+                    Some(key) if st.enabled() && mark_icon(rcx.state.marks).is_none() => {
                         picture(&st.thumb(key), glyph, points, points).key(ICON)
                     }
                     _ => row()
@@ -129,30 +133,46 @@ impl<S: 'static> From<IconSlot<S>> for Slot<S> {
     }
 }
 
+/// The clipboard mark icon a cut or copied row draws in place of its thumbnail or entry icon, as
+/// GTK's `ThumbnailSlot` draws `SCISSORS` and `COPY` (`src/ui/thumbnail/slot.rs`).
+pub(crate) fn mark_icon(marks: crate::collection::element::RowMarks) -> Option<IconName> {
+    if marks.cut {
+        Some(IconName::Cut)
+    } else if marks.copied {
+        Some(IconName::Copy)
+    } else {
+        None
+    }
+}
+
 /// The opacity of an entry's placeholder icon: a file's at `collection.file_icon.opacity`
-/// where the view dims files, else full. A folder's never dims, nor a cut entry's: GTK's
-/// marked icon draws at full opacity (`update_state_opacity` in `src/ui/thumbnail/slot.rs`),
-/// and C1e fades the cut row as a whole. GTK keeps a copied entry's icon at full opacity too;
-/// `RowMarks` has no copy mark yet, and the one that lands must join `cut` here. GTK draws a
-/// hidden entry's icon at 0.65 over all of this, folders included; C1e's row has no hidden
-/// flag yet.
+/// where the view dims files, else full. A folder's never dims, nor a cut or copied entry's:
+/// GTK's marked icon draws at full opacity (`update_state_opacity` in `src/ui/thumbnail/slot.rs`),
+/// and C1e fades a cut row as a whole. GTK draws a hidden entry's icon at 0.65 over all of this,
+/// folders included; C1e's row has no hidden flag yet.
 ///
 /// Used by: [`icon_slot`], C3's tiles.
 pub fn icon_opacity(rcx: &RowCx<'_>, dim_files: bool) -> f32 {
-    file_icon_opacity(rcx.look, rcx.entry.kind, rcx.state.marks.cut, dim_files)
+    let marked = mark_icon(rcx.state.marks).is_some();
+    file_icon_opacity(rcx.look, rcx.entry.kind, marked, dim_files)
 }
 
-/// [`icon_opacity`]'s rule, for an entry of `kind`, `cut` or not.
-pub(crate) fn file_icon_opacity(look: &Look, kind: EntryKind, cut: bool, dim_files: bool) -> f32 {
-    match dim_files && dims(kind, cut) {
+/// [`icon_opacity`]'s rule, for an entry of `kind`, `marked` (cut or copied) or not.
+pub(crate) fn file_icon_opacity(
+    look: &Look,
+    kind: EntryKind,
+    marked: bool,
+    dim_files: bool,
+) -> f32 {
+    match dim_files && dims(kind, marked) {
         true => strata_kit::slots::collection::file_icon_opacity(look),
         false => 1.0,
     }
 }
 
-/// Whether an entry of `kind` draws a dimmed icon where its view dims files: a file not cut.
-fn dims(kind: EntryKind, cut: bool) -> bool {
-    !kind.is_folder_like() && !cut
+/// Whether an entry of `kind` draws a dimmed icon where its view dims files: an unmarked file.
+fn dims(kind: EntryKind, marked: bool) -> bool {
+    !kind.is_folder_like() && !marked
 }
 
 /// The thumbnail key an entry draws when thumbnails are on: none while a custom glyph is set.
@@ -289,9 +309,17 @@ pub fn entry_glyph(
         .a11y_hidden()
 }
 
-/// The entry's icon or custom glyph, as C1e's default icon draws it, at `opacity`.
+/// The clipboard mark icon, else the entry's icon or custom glyph, as C1e's default icon draws it,
+/// at `opacity`.
 fn placeholder(rcx: &RowCx<'_>, points: f32, opacity: f32) -> El {
-    let glyph = entry_glyph(rcx.look, rcx.entry, points, rcx.look.kit.c.icon_base);
+    let look = rcx.look;
+    let glyph = match mark_icon(rcx.state.marks) {
+        Some(mark) => icon(look.icon(mark), points)
+            .key(GLYPH)
+            .color(look.kit.c.icon_base)
+            .a11y_hidden(),
+        None => entry_glyph(look, rcx.entry, points, look.kit.c.icon_base),
+    };
     match opacity < 1.0 {
         true => glyph.opacity(opacity),
         false => glyph,

@@ -80,7 +80,7 @@ impl Where {
         }
     }
 
-    fn depth_shown(self, app: &App, depth: usize) -> bool {
+    pub(super) fn depth_shown(self, app: &App, depth: usize) -> bool {
         self.pane(app)
             .is_some_and(|pane| pane.depth() == Some(depth))
     }
@@ -130,31 +130,6 @@ impl Where {
             _ => self
                 .listing(app, depth)
                 .is_some_and(|column| *column.load() == Load::Listed),
-        }
-    }
-
-    /// Shows `hits` in the place of column `depth`'s rows, nothing selected when `clear`.
-    pub(crate) fn show_hits(
-        self,
-        app: &mut App,
-        depth: usize,
-        hits: Column,
-        clear: bool,
-        tx: &mut Tx,
-    ) {
-        match self {
-            Self::Columns => {
-                let paths = super::hits::paths(&app.filter.found);
-                let details = app.filter.pane.recursive;
-                app.columns.describe_hits(paths, details);
-                app.columns.show_hits(depth, hits, clear, tx);
-            }
-            _ if self.depth_shown(app, depth) => {
-                let mut hits = hits;
-                hits.set_worn(shell::worn(app));
-                app.filter.pane.show(self, hits, clear, tx);
-            }
-            _ => {}
         }
     }
 

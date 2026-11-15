@@ -868,6 +868,11 @@ impl Op {
         &self.title
     }
 
+    /// Whether the operation's `reveal_after` delay has elapsed so it is shown.
+    pub fn revealed(&self) -> bool {
+        self.revealed
+    }
+
     /// Running: neither cancelling nor finished.
     pub fn running(&self) -> bool {
         self.phase == Phase::Running

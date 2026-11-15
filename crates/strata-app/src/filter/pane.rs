@@ -27,7 +27,7 @@ use strata_components::{
     icons_grid::IconsGridState,
 };
 
-use super::place::Where;
+use super::{hits::HitsUpdate, place::Where};
 use crate::{App, handover, listing::Column, menus, shell, slots::Worn};
 
 /// GTK's `SEARCH_RESULTS_LABEL`: the results' collection's name.
@@ -39,7 +39,7 @@ pub(crate) struct PaneHits {
     collection: CollectionState,
     /// The Icons results' grid.
     pub(crate) grid: IconsGridState,
-    /// Moves each time results take the listing's place, so two sets never share a version.
+    /// Moves each time results are shown or dropped, so two sets never share a version.
     swaps: u64,
     /// Whether the results come from the subfolders too: each then shows its path.
     pub(crate) recursive: bool,
@@ -125,20 +125,22 @@ impl PaneHits {
         }
     }
 
-    /// Shows `hits` in the listing's place in the view keyed `scope`, nothing selected when
-    /// `clear`. The first set starts the collection afresh, with the view's controllers.
-    pub(crate) fn show(&mut self, place: Where, hits: Column, clear: bool, tx: &mut Tx) {
+    /// Shows `update.hits` in the listing's place in the view keyed `scope`, nothing selected
+    /// when `update.clear`. The first set starts the collection afresh, with the view's
+    /// controllers; later updates relocate a renamed result before syncing.
+    pub(crate) fn show(&mut self, place: Where, update: HitsUpdate, tx: &mut Tx) {
         let scope = place.view_key();
         let first = self.hits.is_none();
-        let hits = self.hits.insert(hits);
+        let revealed = (!first).then(|| self.relocate_before(&update)).flatten();
+        self.swaps = self.swaps.wrapping_add(1);
+        let hits = self.hits.insert(update.hits);
         if first {
-            self.swaps += 1;
             self.collection = crate::single::results_state(place == Where::List);
             let _ = self
                 .collection
                 .enter(scope, &*hits, None, Listing::Complete, tx);
         } else {
-            if clear {
+            if update.clear {
                 let _ = self.collection.selection.clear();
             }
             let _ = self
@@ -146,12 +148,21 @@ impl PaneHits {
                 .sync(scope, &*hits, handover::sync_rule(hits), tx);
         }
         self.collection.note_selection(&*hits);
+        if let Some(index) = revealed.and_then(|id| hits.index_of(id)) {
+            self.collection.reveal(scope, hits, index, tx);
+        }
+    }
+
+    fn relocate_before(&mut self, update: &HitsUpdate) -> Option<EntryId> {
+        let (from, to) = update.relocation(self.hits.as_ref()?)?;
+        let moved = self.collection.selection.relocate(from, to);
+        (moved.selection || moved.cursor).then_some(to)
     }
 
     /// Gives the listing its place back.
     pub(crate) fn drop_hits(&mut self) {
         if self.hits.take().is_some() {
-            self.swaps += 1;
+            self.swaps = self.swaps.wrapping_add(1);
         }
     }
 
@@ -159,7 +170,7 @@ impl PaneHits {
     pub(crate) fn take(&mut self) -> Option<(Column, Position)> {
         let position = self.collection.selection.position(self.hits.as_ref()?);
         let hits = self.hits.take()?;
-        self.swaps += 1;
+        self.swaps = self.swaps.wrapping_add(1);
         Some((hits, position))
     }
 
