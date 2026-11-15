@@ -182,37 +182,33 @@ fn password_fields(look: &Look, form: &Form) -> El {
     let generation = form.generation;
     let password = secret_field(
         look,
+        &form.password,
         SecretSpec {
             key: password_key(generation),
             label: tr("Password"),
             revealed: form.password_revealed,
-        },
-        &form.password,
-        (
-            |app| &mut app.compress.form.as_mut().expect("compress form").password,
-            |app| {
+            on_edit: |app| &mut app.compress.form.as_mut().expect("compress form").password,
+            on_toggle: |app| {
                 if let Some(form) = &mut app.compress.form {
                     form.password_revealed = !form.password_revealed;
                 }
             },
-        ),
+        },
     );
     let confirm = secret_field(
         look,
+        &form.confirm,
         SecretSpec {
             key: confirm_key(generation),
             label: tr("Confirm password"),
             revealed: form.confirm_revealed,
-        },
-        &form.confirm,
-        (
-            |app| &mut app.compress.form.as_mut().expect("compress form").confirm,
-            |app| {
+            on_edit: |app| &mut app.compress.form.as_mut().expect("compress form").confirm,
+            on_toggle: |app| {
                 if let Some(form) = &mut app.compress.form {
                     form.confirm_revealed = !form.confirm_revealed;
                 }
             },
-        ),
+        },
     );
     col()
         .w_full()
@@ -225,14 +221,11 @@ struct SecretSpec {
     key: String,
     label: String,
     revealed: bool,
+    on_edit: fn(&mut App) -> &mut TextEdit,
+    on_toggle: fn(&mut App),
 }
 
-fn secret_field(
-    look: &Look,
-    spec: SecretSpec,
-    edit: &TextEdit,
-    (on_edit, on_toggle): (fn(&mut App) -> &mut TextEdit, fn(&mut App)),
-) -> El {
+fn secret_field(look: &Look, edit: &TextEdit, spec: SecretSpec) -> El {
     let kit = &look.kit;
     let ink = kit.c.text_base;
     let input = text_input(edit, kit.ty.ui)
@@ -246,7 +239,7 @@ fn secret_field(
         .shrink()
         .min_w(0.0)
         .revealed(spec.revealed)
-        .on_edit(on_edit)
+        .on_edit(spec.on_edit)
         .on_secondary_press(|_: &mut App, _, _| {});
     let peek_icon = if spec.revealed {
         IconName::EyeOff
@@ -262,7 +255,7 @@ fn secret_field(
         .variant(IconButtonVariant::GhostMuted)
         .control_size(ControlSize::Small)
         .label(peek_label)
-        .on_press(on_toggle)
+        .on_press(spec.on_toggle)
         .build(kit)
         .focusable(false)
         .key(format!("{}-reveal", spec.key));
