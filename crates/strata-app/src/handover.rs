@@ -216,23 +216,31 @@ impl Moving {
     /// it holds by the new one: a range keeps its anchor and its members through a rename.
     /// Returns the pairs that arrived, for what else the view holds by id.
     pub(crate) fn arrived(
-        &self,
+        &mut self,
         column: &Column,
         collection: &mut CollectionState,
     ) -> Vec<(EntryId, EntryId)> {
         let arrived = self.arriving(column);
         for (from, to) in &arrived {
-            let _ = collection.selection.relocate(*from, *to);
+            if !collection.selection.holds(*to) {
+                let _ = collection.selection.relocate(*from, *to);
+            }
         }
         arrived
     }
 
-    /// The pairs whose entry `column` now shows under its new id, and no longer under its old.
-    pub(crate) fn arriving(&self, column: &Column) -> Vec<(EntryId, EntryId)> {
-        let here = |(from, to): &(EntryId, EntryId)| {
-            column.position_of(*to).is_some() && column.position_of(*from).is_none()
-        };
-        self.0.iter().copied().filter(here).collect()
+    /// Takes the pairs whose entry `column` now shows under its new id, and no longer under
+    /// its old, so each arrival is applied at most once.
+    pub(crate) fn arriving(&mut self, column: &Column) -> Vec<(EntryId, EntryId)> {
+        let mut arrived = Vec::new();
+        self.0.retain(|(from, to)| {
+            let here = column.position_of(*to).is_some() && column.position_of(*from).is_none();
+            if here {
+                arrived.push((*from, *to));
+            }
+            !here
+        });
+        arrived
     }
 
     /// Drops the pairs whose old id `listed` no longer finds: they have nothing left to move.
@@ -240,3 +248,6 @@ impl Moving {
         self.0.retain(|(from, _)| listed(*from));
     }
 }
+
+#[cfg(test)]
+mod tests;

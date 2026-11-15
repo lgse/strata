@@ -90,6 +90,7 @@ mod sort;
 // A11 10xer mode
 // A12 Clipboard and conflicts
 mod clipboard;
+mod conflict_dialog;
 mod transfer;
 // A13 Archives and providers
 // A14 Open with, terminal and custom actions
@@ -145,6 +146,7 @@ slots::parts! {
     clipboard: clipboard::Clipboard,
     transfer: transfer::Transfer,
     transfer_dialog: transfer::TransferDialog,
+    conflict_dialog: conflict_dialog::ConflictDialog,
     // A13 Archives and providers
     // A14 Open with, terminal and custom actions
     // A15 Preview drawer, text and documents

@@ -334,6 +334,14 @@ impl Members {
         added
     }
 
+    /// Whether `id` is held in the base, the overlay's copied ids, or the run flips, without
+    /// consulting an [`EntrySource`].
+    pub(super) fn holds(&self, id: EntryId) -> bool {
+        self.base.contains(&id)
+            || self.overlay.as_ref().is_some_and(|ov| ov.holds(id))
+            || self.flips.contains(&id)
+    }
+
     /// Renames `from` to `to` wherever the selection holds it: in the base, in the overlay's
     /// copied ids and in the flips. An open gesture goes on over the renamed id. Returns
     /// whether `from` was selected.
@@ -341,12 +349,7 @@ impl Members {
     /// `to` is a new id, so the selection doesn't hold it yet (debug builds check). If it
     /// does, the two merge and the count follows.
     pub(super) fn relocate(&mut self, from: EntryId, to: EntryId) -> bool {
-        let holds = |m: &Self, id: EntryId| {
-            m.base.contains(&id)
-                || m.overlay.as_ref().is_some_and(|ov| ov.holds(id))
-                || m.flips.contains(&id)
-        };
-        let already = holds(self, to);
+        let already = self.holds(to);
         debug_assert!(
             !already,
             "relocate onto {to:?}, which the selection already holds"
