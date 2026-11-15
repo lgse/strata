@@ -154,6 +154,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **With CI off on `strata-next`** (the owner's instruction of 2026-11-12), a sighting now
   comes from `./scripts/quality.sh test`. The rule is unchanged: record it here, rerun the
   test once alone with `./scripts/test-headless.py <name>`, and do not chase it.
+- **Sighting on [#2483](https://github.com/lgse/strata/pull/2483):** a ninth,
+  `ui::browser::progress::tests::minimization::deletion::fast_delete_animates_only_its_own_success_without_showing_progress`
+  (`src/ui/browser/progress/tests/minimization.rs:182`, `progress transition timed out`,
+  sibling of the first above), failed once in `./scripts/quality.sh test` (shard 0, lane 3,
+  109 of 110 passed; all other 11 lanes passed) at `3eca49ef1`, and passed alone under
+  `./scripts/test-headless.py` (7.49 s). That pull request's GTK-side change only delegates
+  the five item-customization getters/setters in `src/ui/preferences/file_settings.rs` and
+  the two emoji/choice helpers in `src/assets.rs` to `strata_desktop::settings`, which
+  `minimization::deletion` never calls.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
