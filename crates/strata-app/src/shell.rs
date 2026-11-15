@@ -776,12 +776,24 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
         Some(location) => header.center(location),
         None => header,
     };
-    // While the strip shows it holds New tab.
+    // While the strip shows it holds New tab; otherwise the strip may build it as a drop target.
+    let strip_new_tab = app
+        .window
+        .here
+        .parts
+        .strip()
+        .and_then(|strip| strip.new_tab);
     let in_strip = strip_shows(app).then_some(NEW_TAB);
     let trailing = TRAILING
         .iter()
         .filter(|button| Some(button.key) != in_strip);
-    let header = trailing.fold(header, |header, button| header.action(action(button)));
+    let header = trailing.fold(header, |header, button| {
+        let built = (button.key == NEW_TAB)
+            .then(|| strip_new_tab.map(|new_tab| new_tab(app, "header-new-tab")))
+            .flatten()
+            .unwrap_or_else(|| action(button));
+        header.action(built)
+    });
     header
         .window_buttons(
             window_buttons(app),
