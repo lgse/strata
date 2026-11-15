@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: MIT
 
-//! New Folder and New File: the browser creates the item under a free name, and the rename
-//! editor opens on it to name it (`src/ui/browser/inline_edit/new_entry.rs`).
+//! New Folder, New File, and New Folder with Selection: the browser creates the item under a
+//! free name, moves any grouped selection into it, and opens the rename editor on it
+//! (`src/ui/browser/inline_edit/new_entry.rs`).
 //!
 //! - **Asking.** Ctrl+Shift+N at the dispatcher's `file_commands` stage, in the column the
-//!   keyboard is in (`create_new_folder` in `src/ui/browser/view_edit.rs`), and the menus'
-//!   New Folder and New File rows, in the column the menu was opened on. Nothing is created
-//!   in the Trash or in Recent.
+//!   keyboard is in (`create_new_folder` in `src/ui/browser/view_edit.rs`), Ctrl+Alt+N outside
+//!   the preview drawer (`create_new_folder_for_selection`, falling back to a plain New Folder
+//!   when nothing is selected), and the menus' New Folder, New File, and New Folder with
+//!   Selection rows, in the column the menu was opened on. Nothing is created in the Trash or
+//!   in Recent, and New Folder with Selection declines while search results show.
 //! - **Waiting.** The browser says where it created the item (`BrowserEvent::EntryCreated`).
-//!   Once the item is listed it is selected, and on a later poll the editor opens on it with
-//!   `Naming::NewItem` ([`crate::rename::begin_new_item`]), as GTK's `created_entry_tick`
+//!   Once the item is listed it is selected, any grouped selection moves into it through
+//!   [`crate::transfer::move_into_group_folder`], and on a later poll (once any grouped
+//!   sources have left the folder's listing) the editor opens on it with `Naming::NewItem` or
+//!   `Naming::Single` ([`crate::rename::begin_new_item`]), as GTK's `created_entry_tick`
 //!   does a frame apart. The wait ends after 5 s, or when its folder leaves its column, a
 //!   new listing replaces the columns or an operation fails.
 //! - **Escape** before the editor opens gives up the naming, and the item keeps its free
@@ -17,12 +22,6 @@
 //!
 //! Left out, with what brings each back:
 //!
-//! - **New Folder with Selection** (Ctrl+Alt+N): the folder takes the selection in by a move,
-//!   which is a transfer, and `new-folder-with-selection-groups/columns` waits on finding
-//!   lgse/strata#2162 and an owner ruling. The key is not bound yet, so GTK's fallback to a
-//!   plain New Folder when nothing is selected (`file_commands`) is missing too.
-//! - **Clearing the column's filter** before the item is made (`clear_filter`): the filter
-//!   bar is A10's.
 //! - **F2 on the created item itself while it waits** (`begin_rename`): GTK takes the naming
 //!   over and opens the editor with `Naming::NewItem`; here the naming is given up and a plain
 //!   rename opens. F2 or the menu's Rename on any other entry gives the naming up, as on GTK.
@@ -34,26 +33,27 @@
 //! - **Scrolling the item into view** before the editor opens: the editor shows its row
 //!   when it begins.
 //!
-//! The column of Ctrl+Shift+N is the browser's active one. GTK takes the focused column
-//! first, so a resting pointer cannot redirect it (`new_folder_destination_depth`); here the
-//! active column is the one the view's keyboard and selection are in, never the pointer's,
+//! The column of Ctrl+Shift+N and Ctrl+Alt+N is the browser's active one. GTK takes the focused
+//! column first, so a resting pointer cannot redirect it (`new_folder_destination_depth`); here
+//! the active column is the one the view's keyboard and selection are in, never the pointer's,
 //! so the two are the same.
 
 use std::time::{Duration, Instant};
 
 use rune::Tx;
-use strata_core::model::Location;
+use strata_core::model::{FileEntry, Location};
 use strata_desktop::keys::{
     Modifiers,
-    bindings::{ESCAPE, ESCAPE_ANY, NEW_FOLDER},
+    bindings::{ESCAPE, ESCAPE_ANY, NEW_FOLDER, NEW_FOLDER_WITH_SELECTION},
 };
 use strata_fs::{app::BrowserEvent, services::Naming};
 
 use crate::{
     App,
     commands::{Action, Call, Keys, On, Outcome, Stage},
-    rename, shell,
+    filter, menus, rename, shell,
     slots::{Frame, Listener, Part, Place, Setup},
+    transfer,
 };
 
 /// How long a created item has to be listed and take the editor (`CreatedEntryWatch`).
@@ -62,11 +62,20 @@ const PATIENCE: Duration = Duration::from_secs(5);
 /// How soon a poll looks again while an item waits for its row.
 const AGAIN: Duration = Duration::from_millis(16);
 
+/// What a new item is created as and what moves into it (`NewEntry` in `new_entry.rs`).
+struct NewEntry {
+    parent: Location,
+    directory: bool,
+    move_sources: Vec<Location>,
+}
+
 /// A new item asked for and not yet named (`PendingEntryRename`).
 struct Pending {
     depth: usize,
     parent: Location,
     naming: Naming,
+    move_sources: Vec<Location>,
+    group_sources: Vec<Location>,
     /// Where the browser created it, and when the wait for its row ends.
     created: Option<(Location, Instant)>,
     selected: bool,
@@ -113,7 +122,9 @@ impl Part for NewItem {
                 heard.then(move |app: &mut App, _: &mut Tx| {
                     match what {
                         Heard::Created(location) => created(app, location),
-                        Heard::Ended => app.new_item.pending = None,
+                        Heard::Ended => {
+                            cancel(app);
+                        }
                     }
                     false
                 });
@@ -134,6 +145,13 @@ impl Part for NewItem {
                 &[NEW_FOLDER.ignoring(Modifiers::empty())],
             )]),
         Action::new("new-file", new_file),
+        Action::new("group", group)
+            .command(NEW_FOLDER_WITH_SELECTION)
+            .keys(&[Keys::at(
+                Stage::FileCommands,
+                &[NEW_FOLDER_WITH_SELECTION.ignoring(Modifiers::empty())],
+            )
+            .when(|_, at| !at.within("preview"))]),
         // `inline_editing`: Escape gives up a naming that waits (`cancel_new_entry`).
         Action::new("new-item-cancel", cancelled)
             .command(ESCAPE)
@@ -148,6 +166,26 @@ fn new_folder(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
 
 fn new_file(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
     begin(app, &call.on, false, tx)
+}
+
+fn group(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
+    match call.on {
+        On::Row((depth, id)) => {
+            if filter::targets::at(app, depth, id).is_none()
+                && let Some((_, entries)) = menus::context_entries(app, depth, id)
+            {
+                begin_group(app, depth, &entries, tx);
+            }
+            Outcome::Ran
+        }
+        On::Focus => {
+            if !create_for_selection(app, tx) {
+                begin(app, &On::Focus, true, tx);
+            }
+            Outcome::Ran
+        }
+        On::Column(_) | On::Place(_) => Outcome::Ran,
+    }
 }
 
 fn cancelled(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
@@ -202,18 +240,82 @@ fn begin(app: &mut App, on: &On, directory: bool, tx: &mut Tx) -> Outcome {
     else {
         return Outcome::Ran;
     };
+    start_pending(
+        app,
+        depth,
+        NewEntry {
+            parent,
+            directory,
+            move_sources: Vec::new(),
+        },
+        tx,
+    );
+    Outcome::Ran
+}
+
+/// `create_new_folder_for_selection` in `src/ui/browser/file_commands.rs`: groups the
+/// active column's committed selection when one exists, else returns false so `Ctrl+Alt+N`
+/// falls back to a plain New Folder.
+fn create_for_selection(app: &mut App, tx: &mut Tx) -> bool {
+    if filter::targets::selected(app).is_some() {
+        return false;
+    }
+    let Some(depth) = column(app, &On::Focus) else {
+        return false;
+    };
+    shell::publish(app);
+    let entries = app.browser.filled_entries(depth);
+    !entries.is_empty() && begin_group(app, depth, &entries, tx)
+}
+
+/// `new_folder_with_selection` in `src/ui/browser/inline_edit/new_entry.rs`.
+fn begin_group(app: &mut App, depth: usize, entries: &[FileEntry], tx: &mut Tx) -> bool {
+    let Some(parent) = app.browser.location_at(depth).filter(may_create_in) else {
+        return false;
+    };
+    let search_shown = filter::targets::selected_with_depth(app).is_some_and(|(_, d)| d == depth);
+    if search_shown || entries.is_empty() {
+        return false;
+    }
+    let move_sources = entries.iter().map(|entry| entry.location.clone()).collect();
+    start_pending(
+        app,
+        depth,
+        NewEntry {
+            parent,
+            directory: true,
+            move_sources,
+        },
+        tx,
+    );
+    true
+}
+
+fn start_pending(app: &mut App, depth: usize, entry: NewEntry, tx: &mut Tx) {
+    let NewEntry {
+        parent,
+        directory,
+        move_sources,
+    } = entry;
     if !may_create_in(&parent) {
-        return Outcome::Ran;
+        return;
     }
     cancel(app);
     rename::cancel(app, tx);
     // GTK empties the column's filter first, so the new row is not hidden
     // (`begin_new_entry_inner` in `src/ui/browser/inline_edit/new_entry.rs`).
-    crate::filter::clear_for_new_item(app, depth, tx);
+    filter::clear_for_new_item(app, depth, tx);
+    let naming = if move_sources.is_empty() {
+        Naming::NewItem
+    } else {
+        Naming::Single
+    };
     app.new_item.pending = Some(Pending {
         depth,
         parent: parent.clone(),
-        naming: Naming::NewItem,
+        naming,
+        move_sources,
+        group_sources: Vec::new(),
         created: None,
         selected: false,
     });
@@ -222,7 +324,6 @@ fn begin(app: &mut App, on: &On, directory: bool, tx: &mut Tx) -> Outcome {
     } else {
         app.browser.create_new_file(parent);
     }
-    Outcome::Ran
 }
 
 /// `rename_created_entry`: the browser made the item, in the folder a naming waits in.
@@ -272,6 +373,55 @@ fn select(app: &mut App, depth: usize, position: usize, tx: &mut Tx) {
     app.new_item.pending = pending;
 }
 
+/// `move_selection_into_created`: moves grouped entries into the newly listed folder.
+fn move_into_created(app: &mut App, depth: usize, location: &Location) {
+    let is_dir = listed_at(app, depth, location)
+        .and_then(|pos| app.browser.entry_at(depth, pos))
+        .is_some_and(|entry| entry.is_directory());
+    let Some(pending) = app.new_item.pending.as_mut() else {
+        return;
+    };
+    let sources = if is_dir {
+        std::mem::take(&mut pending.move_sources)
+    } else {
+        pending.move_sources.clear();
+        Vec::new()
+    };
+    if sources.is_empty() {
+        return;
+    }
+    pending.group_sources = sources.clone();
+    app.browser.expect_group_folder(location.clone());
+    transfer::move_into_group_folder(app, location.clone(), sources);
+}
+
+fn group_sources_left(app: &App, depth: usize, group_sources: &[Location]) -> bool {
+    let Some(snapshot) = app
+        .browser
+        .column_snapshot(depth)
+        .filter(|snapshot| !snapshot.loading)
+    else {
+        return false;
+    };
+    group_sources.iter().all(|source| {
+        app.browser
+            .with_entries(depth, 0..snapshot.count, |entries| {
+                !entries.iter().any(|entry| entry.location == *source)
+            })
+            .unwrap_or(true)
+    })
+}
+
+fn ready_to_name(app: &App, depth: usize, location: &Location) -> bool {
+    let Some(pending) = &app.new_item.pending else {
+        return false;
+    };
+    pending.group_sources.is_empty()
+        || (!transfer::is_preparing_to(app, location)
+            && !app.browser.has_foreground_operation()
+            && group_sources_left(app, depth, &pending.group_sources))
+}
+
 /// One poll of a naming that waits (`created_entry_tick`). True when the view has to run.
 fn tick(app: &mut App, tx: &mut Tx) -> bool {
     let Some(pending) = &app.new_item.pending else {
@@ -291,10 +441,14 @@ fn tick(app: &mut App, tx: &mut Tx) -> bool {
     };
     if !selected {
         select(app, depth, position, tx);
+        move_into_created(app, depth, &location);
         if let Some(pending) = &mut app.new_item.pending {
             pending.selected = true;
         }
         return true;
+    }
+    if !ready_to_name(app, depth, &location) {
+        return false;
     }
     let Some(entry) = app.browser.entry_at(depth, position) else {
         return false;

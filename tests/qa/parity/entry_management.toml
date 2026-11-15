@@ -73,23 +73,21 @@ run = "columns"
 package = "A7"
 status = "pending"
 reason = "scope"
-blocker = "A12: New Folder with Selection, whose move into the new folder is a transfer, at its name field on line 20; for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
+blocker = "finding lgse/strata#2162 and owner.md, H1 item 11: GTK's oracle run flakes on the opened folder's column focus (slice.toml [[flaky]])"
 
 [[run]]
 scenario = "new-folder-with-selection-groups"
 run = "icons"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A12: New Folder with Selection, whose move into the new folder is a transfer, at its name field on line 20; for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-folder-with-selection-groups"
 run = "list"
 package = "A7"
-status = "pending"
-reason = "scope"
-blocker = "A12: New Folder with Selection, whose move into the new folder is a transfer, at its name field on line 20; for `columns` finding lgse/strata#2162 and owner.md, H1 item 11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "new-items-from-entry-menu"
