@@ -804,12 +804,7 @@ pub(super) fn strip_key<S: 'static>(
 /// A press on the blank space after the last column clears the selection in every column.
 pub(super) fn blank_press<S: 'static>(sh: &Rc<Shared<S>>, s: &mut S) {
     let p = (sh.parts_mut)(s);
-    for c in &mut p.state.columns {
-        if let Some(ctl) = c.collection.controllers.pointer.as_mut() {
-            ctl.reset();
-        }
-    }
-    p.state.clear_all(p.sources);
+    p.state.clear_selection(p.sources);
 }
 
 /// An accepted drag over a column's zones or the strip's blank space (`Some`), or gone from

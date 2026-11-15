@@ -30,7 +30,7 @@ mod view;
 pub(crate) const VIEW: &str = "icons";
 
 pub(crate) struct Icons {
-    single: Single,
+    pub(crate) single: Single,
     grid: IconsGridState,
     /// The tile size in points, from 32 to 256 (`size.rs`).
     size: f32,

@@ -215,14 +215,17 @@ fn an_autofit_beside_a_railed_sidebar_stops_where_the_full_sidebar_would_leave_r
                 held_back > 0.0,
                 "the railed sidebar holds back its full width"
             );
-            let view = host
+            let split = host
                 .runtime()
                 .elements()
                 .into_iter()
-                .find(|element| element.key.as_deref() == Some(crate::columns::VIEW))
-                .expect("the Columns view")
+                .find(|element| {
+                    element.key.as_deref() == Some(strata_components::preview_drawer::SPLIT_KEY)
+                })
+                .expect("the preview split")
                 .visible;
-            let area = view[2] - held_back;
+            let line = strata_components::preview_drawer::DrawerRules::STRATA.line;
+            let area = split[2] - line - held_back;
 
             let [x, y, w, h] = root_column(&host, &root);
             let edge = (x + w - 3.0, y + h / 2.0);
@@ -239,7 +242,7 @@ fn an_autofit_beside_a_railed_sidebar_stops_where_the_full_sidebar_would_leave_r
             let width = saved_column_width().expect("a width");
             #[expect(clippy::cast_possible_truncation, reason = "whole points")]
             let gtk_area = area.round() as i64;
-            assert_eq!(width, gtk_area, "the view is {} wide", view[2]);
+            assert_eq!(width, gtk_area, "the split is {} wide", split[2]);
         },
     );
 }

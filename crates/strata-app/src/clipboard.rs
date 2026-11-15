@@ -87,12 +87,12 @@ impl Part for Clipboard {
             Stage::FileCommands,
             &[COPY.ignoring(Modifiers::empty())],
         )
-        .when(|_, at| !at.text())]),
+        .when(|_, at| !at.text() && !at.within("preview"))]),
         Action::new("cut", cut).command(CUT).keys(&[Keys::at(
             Stage::FileCommands,
             &[CUT.ignoring(Modifiers::empty())],
         )
-        .when(|_, at| !at.text())]),
+        .when(|_, at| !at.text() && !at.within("preview"))]),
         Action::new("copy-path", copy_path)
             .command(COPY_PATH)
             .keys(&[Keys::at(
