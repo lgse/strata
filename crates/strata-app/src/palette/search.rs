@@ -29,14 +29,9 @@ use crate::{
     shell,
 };
 
-/// Where the palette searches: Home (`global_search_roots`, without the mounted drives yet).
-pub(super) fn roots() -> Vec<PathBuf> {
-    vec![crate::launch::home_directory()]
-}
-
-/// Ctrl+K's mode over the roots, in the catalogs' words.
-pub(super) fn mode() -> PaletteMode {
-    let locations: Vec<String> = roots()
+/// Ctrl+K's mode over `roots` ([`super::roots`]), in the catalogs' words.
+pub(super) fn mode(roots: &[PathBuf]) -> PaletteMode {
+    let locations: Vec<String> = roots
         .iter()
         .map(|root| root.display().to_string())
         .collect();
@@ -101,7 +96,7 @@ pub(super) fn hints() -> Vec<Hint> {
 fn input(app: &App) -> Input {
     Input {
         scope: Scope::Trees {
-            roots: roots(),
+            roots: app.palette.roots.clone(),
             exclusions: shell::preferences(app).search_exclusions.clone(),
         },
         show_hidden: app.browser.preferences().show_hidden,
