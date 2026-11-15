@@ -240,6 +240,7 @@ fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
         depth,
         folder,
     };
+    let already_open = app.filter.open_in.as_ref() == Some(&opening) && app.filter.state.is_open();
     if app.filter.open_in.as_ref() != Some(&opening) {
         app.filter.serial += 1;
     }
@@ -254,6 +255,9 @@ fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
         }
         None => app.filter.state.open(),
     };
+    if already_open {
+        tx.focus(bar(app).field_key(), false);
+    }
     app.filter.typed = app.filter.state.text().to_owned();
     route(app, polled, tx);
     true

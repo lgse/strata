@@ -256,11 +256,11 @@ fn a_restart_makes_the_same_query_new() {
     assert!(!st.tracker.picked);
 }
 
-// Down lands on the results' cursor after a pick, as Strata's search results do
-// (`inline_search.rs`), not on the first selected result; on the top result while it is
-// offered.
+// Down lands on the first selected result after a pick, as Strata's search results do while
+// the field has focus (`inline_search/collection.rs`, `current_position`), not on a later
+// cursor; and on the top result while it is offered.
 #[test]
-fn down_lands_on_the_cursor_after_a_pick_and_on_the_top_result_before() {
+fn down_lands_on_the_first_selected_after_a_pick_and_on_the_top_result_before() {
     let src = source(&["a", "b", "c", "d"]);
     let mut sel = Selection::new();
     let mut st = FilterState::new();
@@ -273,24 +273,25 @@ fn down_lands_on_the_cursor_after_a_pick_and_on_the_top_result_before() {
         "no pick: the top result"
     );
     st.pick();
+    assert_eq!(sel.cursor(), Some(id(4)));
     assert_eq!(
         st.landing(r(&src, &sel)),
-        Some(id(4)),
-        "the cursor, not the first selected"
+        Some(id(2)),
+        "the first selected, not the later cursor"
     );
     assert_eq!(
         st.target(r(&src, &sel)),
-        Some(id(4)),
+        Some(id(2)),
         "search results' Enter opens where Down lands"
     );
 }
 
-// Owner's ruling on round 1, item 1: Enter after a pick follows Strata per mode. Search
-// results that replace the listing open their cursor (`inline_search.rs`, `current_position`),
-// as Down lands there; a listing narrowed in place opens its first selected result in display
-// order (`filter_activation_position`).
+// Enter after a pick follows Strata per mode: while the field has focus, search results that
+// replace the listing have no focused item widget (`inline_search/collection.rs`,
+// `current_position`), so both search results and a listing narrowed in place
+// (`filter_activation_position`) open the first selected result in display order.
 #[test]
-fn after_a_pick_enter_in_search_results_opens_the_cursor() {
+fn after_a_pick_enter_in_search_results_opens_the_first_selected_result() {
     let src = source(&["a", "b", "c", "d"]);
     let mut sel = Selection::new();
     let mut st = FilterState::new();
@@ -301,8 +302,8 @@ fn after_a_pick_enter_in_search_results_opens_the_cursor() {
     assert_eq!(sel.cursor(), Some(id(4)));
     assert_eq!(
         st.target(r(&src, &sel)),
-        Some(id(4)),
-        "the cursor, not the first selected"
+        Some(id(2)),
+        "the first selected, not the later cursor"
     );
     assert_eq!(
         st.target(r(&src, &sel)),
@@ -354,7 +355,8 @@ fn tenxer_search_results_open_the_cursor_or_the_top_result() {
 
 // Review round 2: before any results show for the text (inside the host's debounce, or after
 // `restart`), nothing is offered as the top result, so Enter follows Strata's per-mode rule at
-// once: search results open their cursor, or the top result; in place, the first selected.
+// once: the first selected result while something is selected, falling back in search results
+// with nothing selected to the cursor or the top result.
 #[test]
 fn before_any_results_show_enter_follows_the_mode_rule() {
     let src = source(&["a", "b", "c"]);
@@ -391,6 +393,6 @@ fn before_any_results_show_enter_follows_the_mode_rule() {
     assert_eq!(
         st.target(r(&src, &sel)),
         Some(id(2)),
-        "the cursor, with no query shown"
+        "the first selected, with no query shown"
     );
 }
