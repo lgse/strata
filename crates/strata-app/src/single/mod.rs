@@ -12,7 +12,8 @@
 //!   pane puts what is for its folder into its listing and its collection. A new listing
 //!   takes the keyboard, as the GTK window gives it.
 //! - **Intents out.** [`heard`] takes what the collection asks to the browser: a folder opens
-//!   in place, as GTK's Icons and List views open it (`activate_in_place`), and Left at the
+//!   in place, as GTK's Icons and List views open it (`activate_in_place`), a middle click on
+//!   a folder runs `open-in-tab` or `open-in-window` (`MiddleClick::clicked`), and Left at the
 //!   view's start leaves it for the sidebar. Where the start is, is the component's: the
 //!   first tile in Icons, any row in List (`at_left_edge` in `src/ui/browser_modes/focus.rs`).
 //!   A secondary click or the Menu key opens the context menu through `menus::open`.
@@ -43,7 +44,8 @@ use strata_core::i18n::tr;
 
 use self::first_visit::FirstVisit;
 use crate::{
-    App, commands,
+    App,
+    commands::{self, On},
     events::{self, Change},
     filter,
     listing::{Column, Words},
@@ -398,6 +400,23 @@ fn open_in_place<V: SinglePane>(app: &App, depth: usize, id: EntryId, how: Activ
     }
 }
 
+/// A middle click on a folder row (`MiddleClick::clicked` in
+/// `src/ui/browser_modes/clicks.rs`): `open-in-tab`, or `open-in-window` with Ctrl or Shift.
+fn open_in_new<V: SinglePane>(app: &mut App, (depth, id): At, window: bool, tx: &mut Tx) {
+    let Some(position) = pane::<V>(app).position(depth, id) else {
+        return;
+    };
+    let Some(entry) = app.browser.entry_at(depth, position) else {
+        return;
+    };
+    let command = if window {
+        "open-in-window"
+    } else {
+        "open-in-tab"
+    };
+    commands::run(app, command, On::Place(entry.location), tx);
+}
+
 /// What the view's collection asks of its host, taken to `Browser`.
 fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
     // What the input did to the cursor and the selection goes first: the browser acts on
@@ -419,13 +438,14 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
             };
             menus::open(app, request, tx);
         }
+        Intent::OpenInNew { id, window } => open_in_new::<V>(app, (depth, id), window, tx),
         // Left at the view's start: the sidebar takes the keyboard, when there is one. The
         // component decides where its start is, from the view's keys (the first tile in Icons,
         // any row in List); only that Left reaches here.
         Intent::Edge(Direction::Left) => {
             shell::leave_view_at_start(app, tx);
         }
-        // Drags, new tabs and the pane header an edge moves to are other packages' parts.
+        // Drags and the pane header an edge moves to are other packages' parts.
         _ => {}
     }
     shell::settle(app, tx);

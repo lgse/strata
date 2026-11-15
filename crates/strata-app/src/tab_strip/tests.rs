@@ -30,11 +30,12 @@ use crate::{
     },
 };
 
+mod badges;
 mod held;
 
 const MODULE: &str = "tab_strip::tests";
 
-fn ctrl() -> Mods {
+pub(super) fn ctrl() -> Mods {
     Mods {
         ctrl: true,
         ..Mods::default()
@@ -42,7 +43,7 @@ fn ctrl() -> Mods {
 }
 
 /// The window opened at `folder`, listed.
-fn opened(host: &mut Offscreen, folder: &Path) {
+pub(super) fn opened(host: &mut Offscreen, folder: &Path) {
     host.app().open(Location::local(folder));
     let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
     assert!(host.run_until(PATIENCE, listed), "the folder's listing");
@@ -68,7 +69,7 @@ fn located(host: &mut Offscreen, count: usize) -> Vec<Option<Location>> {
     order.iter().map(at).collect()
 }
 
-fn act<T>(host: &mut Offscreen, act: impl FnOnce(&mut App, &mut Tx) -> T) -> T {
+pub(super) fn act<T>(host: &mut Offscreen, act: impl FnOnce(&mut App, &mut Tx) -> T) -> T {
     let mut said = None;
     host.runtime().update(|app, tx| said = Some(act(app, tx)));
     idle(host);
@@ -77,7 +78,7 @@ fn act<T>(host: &mut Offscreen, act: impl FnOnce(&mut App, &mut Tx) -> T) -> T {
 
 /// The window at `folder`, and a second tab opened at it with the header's New tab, shown.
 /// Returns the first tab.
-fn two_tabs_at(host: &mut Offscreen, folder: &Path) -> TabKey {
+pub(super) fn two_tabs_at(host: &mut Offscreen, folder: &Path) -> TabKey {
     let at = Location::local(folder);
     host.app().open(at.clone());
     let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
@@ -243,13 +244,13 @@ fn ctrl_enter_opens_the_cursors_folder_in_a_new_tab() {
 }
 
 /// The name of the dialog shown, if one is.
-fn dialog(host: &Offscreen) -> Option<String> {
+pub(super) fn dialog(host: &Offscreen) -> Option<String> {
     let tree = host.tree();
     let dialogs = all(&tree, &|node| node["role"] == "dialog");
     dialogs.first().map(|dialog| text(dialog, "name"))
 }
 
-const OPERATIONS_ACTIVE: &str = "File operations are still active";
+pub(super) const OPERATIONS_ACTIVE: &str = "File operations are still active";
 
 /// GTK's `close` refuses a tab whose browser has a file operation running, and its notice
 /// says so: the tab stays.

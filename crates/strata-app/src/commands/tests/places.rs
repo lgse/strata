@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-//! What runs a command on a place, a location that is no row of the view: the sidebar's
-//! menu rows and its middle click, and a crumb's middle click, each on the location it was
-//! asked on (`On::Place`). `open-in-tab` is the tab strip's own, so each opens a tab there;
-//! the others are a made-up part's, which records what it ran.
+//! What runs a command on a place, a location that is no row of the view, or on a folder row's
+//! middle click: the sidebar's menu rows and its middle click, a crumb's middle click, and a
+//! folder row's middle click in every view, each on its location (`On::Place`). `open-in-tab`
+//! is the tab strip's own, so each opens a tab there; the others are a made-up part's, which
+//! records what it ran.
 
-use std::{cell::RefCell, path::Path};
+use std::{cell::RefCell, path::Path, time::Duration};
 
-use rune::{Mods, PhysicalInput, PointerButton, Tx};
+use rune::{Key, KeyEvent, Mods, PointerButton, Tx};
+use strata_components::collection::element::row_key;
 use strata_core::model::Location;
 
 use super::super::{Action, Call, On, Outcome};
@@ -15,11 +17,14 @@ use super::routing::part;
 use crate::{
     App,
     host::offscreen::Offscreen,
-    shell::tabs::{shown_tab, tab_browser, tabs},
+    shell::{
+        self,
+        tabs::{shown_tab, tab_browser, tabs},
+    },
     slots::{Entry, TabKey},
     test_support::{
         PATIENCE, fixture, hosted_over,
-        view::{all, idle, text},
+        view::{all, browser_holds, hosted_over_in, idle, press as press_key, text},
     },
 };
 
@@ -82,8 +87,7 @@ fn middle(host: &mut Offscreen, key: &str) -> (f32, f32) {
 
 fn press(host: &mut Offscreen, key: &str, button: PointerButton, mods: Mods) {
     let (x, y) = middle(host, key);
-    host.runtime()
-        .physical_input(PhysicalInput::Modifiers(mods));
+    host.modifiers(mods);
     host.turn();
     let runtime = host.runtime();
     runtime.pointer_move(x, y);
@@ -101,8 +105,7 @@ fn press(host: &mut Offscreen, key: &str, button: PointerButton, mods: Mods) {
     }
     // A press is heard at its release, with the modifiers held then.
     host.turn();
-    host.runtime()
-        .physical_input(PhysicalInput::Modifiers(Mods::default()));
+    host.modifiers(Mods::default());
     idle(host);
 }
 
@@ -252,6 +255,117 @@ fn a_crumbs_middle_click_runs_open_in_tab_or_with_a_modifier_in_window() {
 
             press(&mut host, &crumb, PointerButton::Middle, Mods::default());
             opened_in_a_tab(&mut host, 2, &root, first);
+        },
+    );
+}
+
+/// Two rapid middle clicks on `key` with `mods` held: only the first click of the run counts.
+fn double_middle_press(host: &mut Offscreen, key: &str, mods: Mods) {
+    let (x, y) = middle(host, key);
+    host.modifiers(mods);
+    host.turn();
+    host.runtime().pointer_move(x, y);
+    for _ in 0..2 {
+        host.runtime().button_down(x, y, PointerButton::Middle);
+        host.turn();
+        host.runtime().button_up(x, y, PointerButton::Middle);
+        host.turn();
+    }
+    host.modifiers(Mods::default());
+    idle(host);
+}
+
+/// A folder row's middle click opens a tab, or a window with Ctrl or Shift, once per click run;
+/// a file row's middle click selects the file and opens nothing.
+fn middle_click_in_view(mode: &'static str, name: &'static str) {
+    hosted_over_in((MODULE, name), mode, with_the_commands, |mut host| {
+        let folder = fixture();
+        opened(&mut host, folder.path());
+        let root = Location::local(folder.path());
+        let first = (shown_tab(host.app()), &root);
+        let documents = Location::local(folder.path().join("documents"));
+        let todo = Location::local(folder.path().join("todo.txt"));
+        let folder_row = row_key(shell::id_of(host.app(), &documents));
+        let file_row = row_key(shell::id_of(host.app(), &todo));
+        let ctrl = Mods {
+            ctrl: true,
+            ..Mods::default()
+        };
+        let shift = Mods {
+            shift: true,
+            ..Mods::default()
+        };
+
+        double_middle_press(&mut host, &folder_row, ctrl);
+        assert_eq!(ran_so_far(), [("open-in-window", documents.clone())]);
+        host.run_until(Duration::from_millis(600), |_| false);
+        press(&mut host, &folder_row, PointerButton::Middle, shift);
+        assert_eq!(
+            ran_so_far(),
+            [
+                ("open-in-window", documents.clone()),
+                ("open-in-window", documents.clone()),
+            ]
+        );
+        assert_eq!(tabs(host.app()).len(), 1, "no tab for a new window");
+
+        press(&mut host, &file_row, PointerButton::Middle, Mods::default());
+        assert_eq!(browser_holds(&host).0, ["todo.txt"]);
+        assert_eq!(tabs(host.app()).len(), 1, "a file opens no tab");
+
+        press(
+            &mut host,
+            &folder_row,
+            PointerButton::Middle,
+            Mods::default(),
+        );
+        opened_in_a_tab(&mut host, 2, &documents, first);
+    });
+}
+
+in_each_view! {
+    middle_click_in_view:
+    "columns" => a_folder_rows_middle_click_opens_in_columns,
+    "list" => a_folder_rows_middle_click_opens_in_list,
+    "icons" => a_folder_rows_middle_click_opens_in_icons,
+}
+
+/// In a filtered Columns column (`RowContext::view_entry` in GTK), a middle click on a folder
+/// hit from a subfolder opens that subfolder in a new tab.
+#[test]
+fn a_filtered_columns_folder_middle_click_opens_a_new_tab() {
+    hosted_over(
+        MODULE,
+        "a_filtered_columns_folder_middle_click_opens_a_new_tab",
+        with_the_commands,
+        |mut host| {
+            let folder = fixture();
+            let drafts_path = folder.path().join("documents/drafts");
+            std::fs::create_dir(&drafts_path).expect("subfolder");
+            opened(&mut host, folder.path());
+            let root = Location::local(folder.path());
+            let first = (shown_tab(host.app()), &root);
+            let drafts = Location::local(drafts_path);
+
+            let view = shell::view_focus(host.app()).expect("the view's key");
+            host.runtime().update(|_, tx| tx.focus(view, true));
+            idle(&mut host);
+            let ctrl = Mods {
+                ctrl: true,
+                ..Mods::default()
+            };
+            press_key(&mut host, Key::Text("f".to_owned()), ctrl);
+            for ch in "drafts".chars() {
+                host.runtime().key(KeyEvent {
+                    key: Key::Text(ch.to_string()),
+                    mods: Mods::default(),
+                });
+            }
+            idle(&mut host);
+
+            let hit_row = row_key(shell::id_of(host.app(), &drafts));
+            press(&mut host, &hit_row, PointerButton::Middle, Mods::default());
+            opened_in_a_tab(&mut host, 2, &drafts, first);
         },
     );
 }

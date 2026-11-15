@@ -11,7 +11,9 @@ use strata_components::{
 
 use super::Input;
 use crate::{
-    App, filter,
+    App,
+    commands::{self, On},
+    filter,
     menus::{self, Request},
     rename, shell,
     slots::At,
@@ -68,6 +70,27 @@ impl App {
         }
     }
 
+    /// A middle click on a folder row (`open_middle_clicked` in
+    /// `src/ui/browser/columns/rows/click.rs`): `open-in-tab`, or `open-in-window` with Ctrl or
+    /// Shift.
+    fn open_in_new(&mut self, (depth, id): At, window: bool, tx: &mut Tx) {
+        let entry = if self.columns.shows_hits(depth) {
+            filter::targets::at(self, depth, id)
+        } else {
+            let position = self.columns.position(depth, id);
+            position.and_then(|at| self.browser.entry_at(depth, at))
+        };
+        let Some(entry) = entry else {
+            return;
+        };
+        let command = if window {
+            "open-in-window"
+        } else {
+            "open-in-tab"
+        };
+        commands::run(self, command, On::Place(entry.location), tx);
+    }
+
     fn collection(&mut self, depth: usize, intent: Intent, tx: &mut Tx) {
         // A filter's results open as GTK's hits do, and are renamed nowhere yet.
         if self.columns.shows_hits(depth) && filter::hit_intent(self, depth, &intent, tx) {
@@ -76,6 +99,7 @@ impl App {
         match intent {
             Intent::Activate { id, how } => self.activate(depth, id, how),
             Intent::Clicked { id } => self.clicked(depth, id),
+            Intent::OpenInNew { id, window } => self.open_in_new((depth, id), window, tx),
             // A slow second click on the entry.
             Intent::BeginRename { id } => rename::begin_on(self, depth, id, tx),
             Intent::ContextMenu { target, anchor } => {
@@ -86,9 +110,9 @@ impl App {
                 };
                 menus::open(self, menu, tx);
             }
-            // Drags and new tabs are interface the slice leaves out. Up and
-            // Down at a column's edge have nowhere to go without a header to focus: the view
-            // has selected the cursor's entry alone again, as the browser does there.
+            // Drags are interface the slice leaves out. Up and Down at a
+            // column's edge have nowhere to go without a header to focus: the view has
+            // selected the cursor's entry alone again, as the browser does there.
             _ => {}
         }
     }
