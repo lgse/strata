@@ -227,3 +227,97 @@ fn return_on_a_drawer_button_fires_its_intent() {
         "Return on Close fires DrawerIntent::Closed"
     );
 }
+
+struct FindHost {
+    drawer: DrawerState,
+    doc: crate::document_view::DocumentState,
+    look: Look,
+}
+
+fn find_host_view(host: &FindHost, cx: &mut rune::Cx<FindHost>) -> El {
+    let body = crate::document_view::DocumentView::new(|h: &FindHost| &h.doc, |h| &mut h.doc)
+        .build(host, &host.look, cx);
+    PreviewDrawer::new(&host.drawer, |h: &mut FindHost| &mut h.drawer)
+        .hosted(&host.doc, |h: &mut FindHost| &mut h.doc)
+        .content(body)
+        .build(el().key("files").focusable(true), &host.look, cx)
+}
+
+fn find_host_poll(host: &mut FindHost, clock: f64, tx: &mut rune::Tx) -> bool {
+    host.doc.tick(clock) | host.doc.flush(tx)
+}
+
+fn assert_find_close_keeps_selection(by_button: bool) {
+    use std::sync::Arc;
+
+    use rune::{Key, KeyEvent, Mods, clipboard};
+
+    use crate::document_view::{Document, DocumentState, Unit, UnitKind};
+
+    let mut drawer = DrawerState::new();
+    drawer.open_at_once();
+    let doc = DocumentState::new(Arc::new(Document::new(vec![
+        Unit::new(UnitKind::Paragraph, "First needle here."),
+        Unit::new(UnitKind::Paragraph, "Second NEEDLE here."),
+    ])))
+    .key("preview-document");
+    let state = FindHost {
+        drawer,
+        doc,
+        look: Look::fallback(false),
+    };
+    let mut rt = Runtime::new(state, find_host_view, (900.0, 500.0), Env::default());
+    rt.poll = Some(find_host_poll);
+    let clip = clipboard::memory();
+    rt.use_clipboard(&clip);
+    rt.frame(0.0);
+    rt.settle_all();
+
+    rt.update(|h, _| {
+        h.drawer.start_find("needle");
+        h.doc.find("needle");
+        h.doc.find_step(true);
+    });
+    rt.frame(1.0 / 60.0);
+    rt.settle_all();
+    assert_eq!(rt.selected_text().as_deref(), Some("NEEDLE"));
+
+    if by_button {
+        let rect = rt
+            .elements()
+            .into_iter()
+            .find(|e| e.path.ends_with("/preview-find-close"))
+            .expect("close button")
+            .rect;
+        let (x, y) = (rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0);
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+    } else {
+        rt.key(KeyEvent {
+            key: Key::Escape,
+            mods: Mods::default(),
+        });
+    }
+    rt.frame(1.0 / 60.0);
+    rt.settle_all();
+    assert_eq!(rt.selected_text().as_deref(), Some("NEEDLE"));
+
+    let copy = KeyEvent {
+        key: Key::Command('c'),
+        mods: Mods {
+            cmd: true,
+            ctrl: true,
+            ..Mods::default()
+        },
+    };
+    rt.key(copy);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(clip.text().as_deref().map(String::as_str), Some("NEEDLE"));
+}
+
+#[test]
+fn closing_find_keeps_the_matched_selection_for_copy() {
+    assert_find_close_keeps_selection(false);
+    assert_find_close_keeps_selection(true);
+}

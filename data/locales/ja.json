@@ -1575,5 +1575,17 @@
   "Flags": "旗",
   "Document position": "ドキュメント内の位置",
   "Line %{line} of %{lines}": "%{lines} 行中 %{line} 行目",
-  "Blank": "空白"
+  "Blank": "空白",
+  "Document": "ドキュメント",
+  "Sheets": "シート",
+  "Table": "表",
+  "Row": "行",
+  "Resize %{column}": "%{column} のサイズを変更",
+  "Sort key %{index}": "並べ替えキー %{index}",
+  "ascending": "昇順",
+  "descending": "降順",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "表のプレビューがテキスト、列、または値の上限に達しました。すべてのデータを表示するにはファイルを開いてください。",
+  "Loading sheet…": "シートを読み込み中…",
+  "Try again": "再試行",
+  "This sheet is empty": "このシートは空です"
 }

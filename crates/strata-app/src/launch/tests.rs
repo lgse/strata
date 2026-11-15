@@ -2,7 +2,7 @@
 
 use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
-use super::{Command, is_browser_worker, parse};
+use super::{Command, is_browser_worker, is_preview_helper, parse};
 
 fn arguments(list: &[&str]) -> Vec<OsString> {
     list.iter().map(OsString::from).collect()
@@ -46,5 +46,13 @@ fn only_a_first_argument_makes_a_thumbnail_worker() {
         (&["strata-rune"], false),
     ] {
         assert_eq!(is_browser_worker(&arguments(list)), worker, "{list:?}");
+    }
+    for (list, helper) in [
+        (&["strata-rune", "--preview-helper"][..], true),
+        (&["strata-rune", "--", "--preview-helper"], false),
+        (&["strata-rune", "/srv/files", "--preview-helper"], false),
+        (&["strata-rune"], false),
+    ] {
+        assert_eq!(is_preview_helper(&arguments(list)), helper, "{list:?}");
     }
 }

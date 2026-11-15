@@ -1575,5 +1575,17 @@
   "Flags": "Cờ",
   "Document position": "Vị trí trong tài liệu",
   "Line %{line} of %{lines}": "Dòng %{line} trên %{lines}",
-  "Blank": "Trống"
+  "Blank": "Trống",
+  "Document": "Tài liệu",
+  "Sheets": "Trang tính",
+  "Table": "Bảng",
+  "Row": "Hàng",
+  "Resize %{column}": "Thay đổi kích thước %{column}",
+  "Sort key %{index}": "Khóa sắp xếp %{index}",
+  "ascending": "tăng dần",
+  "descending": "giảm dần",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "Xem trước bảng đã đạt giới hạn văn bản, cột hoặc giá trị; hãy mở tệp để xem toàn bộ dữ liệu.",
+  "Loading sheet…": "Đang tải trang tính…",
+  "Try again": "Thử lại",
+  "This sheet is empty": "Trang tính này trống"
 }

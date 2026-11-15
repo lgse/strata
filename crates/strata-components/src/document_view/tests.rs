@@ -509,11 +509,11 @@ fn copy_code_copies_the_block_then_turns_back_after_two_seconds() {
     let label = |rt: &Runtime<Host>| {
         rt.elements()
             .into_iter()
-            .find(|e| is(&e.path, "doc-u0/copy"))
+            .find(|e| is(&e.path, "doc-u0/doc-u0-copy"))
             .and_then(|e| e.label)
     };
     assert_eq!(label(&rt).as_deref(), Some("Copy code"));
-    let b = rect(&rt, "doc-u0/copy");
+    let b = rect(&rt, "doc-u0/doc-u0-copy");
     let (x, y) = (b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
     rt.pointer_move(x, y);
     rt.pointer_down(x, y);
@@ -619,11 +619,11 @@ fn a_block_in_parts_draws_plain_with_copy_code_on_its_first_part_only() {
     let copies: Vec<String> = rt
         .elements()
         .into_iter()
-        .filter(|e| e.path.ends_with("/copy"))
+        .filter(|e| e.path.ends_with("-copy"))
         .map(|e| e.path)
         .collect();
     assert_eq!(copies.len(), 1, "{copies:?}");
-    assert!(is(&copies[0], "doc-u0/copy"));
+    assert!(is(&copies[0], "doc-u0/doc-u0-copy"));
 }
 
 #[test]
@@ -689,10 +689,10 @@ fn copy_code_turns_back_on_a_window_at_rest() {
     let label = |rt: &Runtime<Host>| {
         rt.elements()
             .into_iter()
-            .find(|e| is(&e.path, "doc-u0/copy"))
+            .find(|e| is(&e.path, "doc-u0/doc-u0-copy"))
             .and_then(|e| e.label)
     };
-    let b = rect(&rt, "doc-u0/copy");
+    let b = rect(&rt, "doc-u0/doc-u0-copy");
     let (x, y) = (b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
     rt.pointer_move(x, y);
     rt.pointer_down(x, y);
@@ -857,7 +857,7 @@ fn copy_source_copies_a_display_equation_source() {
     let mut rt = runtime_with(d, None);
     let clip = clipboard::memory();
     rt.use_clipboard(&clip);
-    let b = rect(&rt, "doc-u0/copy");
+    let b = rect(&rt, "doc-u0/doc-u0-copy");
     click(&mut rt, (b[0] + b[2] / 2.0, b[1] + b[3] / 2.0));
     settle(&mut rt);
     assert_eq!(
@@ -1051,10 +1051,10 @@ fn a_second_copy_press_keeps_the_check_two_seconds_from_itself() {
     let label = |rt: &Runtime<Host>| {
         rt.elements()
             .into_iter()
-            .find(|e| is(&e.path, "doc-u0/copy"))
+            .find(|e| is(&e.path, "doc-u0/doc-u0-copy"))
             .and_then(|e| e.label)
     };
-    let b = rect(&rt, "doc-u0/copy");
+    let b = rect(&rt, "doc-u0/doc-u0-copy");
     let at = (b[0] + b[2] / 2.0, b[1] + b[3] / 2.0);
     click(&mut rt, at);
     shell(&mut rt);
@@ -1099,4 +1099,50 @@ fn the_double_click_time_is_the_hosts() {
             )
         });
     }
+}
+
+#[test]
+fn return_presses_copy_code_and_media_carries_descriptions_and_failure_text() {
+    let mut d = doc(vec![
+        Unit::new(
+            UnitKind::Code {
+                list_depth: None,
+                language: None,
+            },
+            "echo hi",
+        ),
+        Unit::new(
+            UnitKind::Media {
+                list_depth: None,
+                media: Media::Diagram {
+                    source: "flowchart LR\nA --> B".into(),
+                },
+            },
+            "",
+        ),
+        Unit::new(
+            UnitKind::Media {
+                list_depth: None,
+                media: Media::Image,
+            },
+            "Missing fixture",
+        ),
+    ]);
+    d.set_media(1, MediaState::Ready(image(32)));
+    d.set_media_failed(2, "Image: Missing fixture\nImage is missing");
+    let mut rt = runtime_with(d, None);
+    let clip = clipboard::memory();
+    rt.use_clipboard(&clip);
+    rt.update(|_, tx| tx.focus("doc-u0-copy", true));
+    settle(&mut rt);
+    rt.key(KeyEvent {
+        key: Key::Enter,
+        mods: Mods::default(),
+    });
+    rt.frame(1.0 / 60.0);
+    settle(&mut rt);
+    assert_eq!(clip.text().as_deref().map(String::as_str), Some("echo hi"));
+    let tree = rt.accessibility_json().to_string();
+    assert!(tree.contains("Mermaid diagram"), "{tree}");
+    assert!(tree.contains("Image: Missing fixture"), "{tree}");
 }

@@ -1575,5 +1575,17 @@
   "Flags": "Banderas",
   "Document position": "Posición en el documento",
   "Line %{line} of %{lines}": "Línea %{line} de %{lines}",
-  "Blank": "En blanco"
+  "Blank": "En blanco",
+  "Document": "Documento",
+  "Sheets": "Hojas",
+  "Table": "Tabla",
+  "Row": "Fila",
+  "Resize %{column}": "Redimensionar %{column}",
+  "Sort key %{index}": "Clave de ordenación %{index}",
+  "ascending": "ascendente",
+  "descending": "descendente",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "La vista previa de la tabla alcanzó el límite de texto, columnas o valores; abra el archivo para ver todos los datos.",
+  "Loading sheet…": "Cargando hoja…",
+  "Try again": "Intentar de nuevo",
+  "This sheet is empty": "Esta hoja está vacía"
 }

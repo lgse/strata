@@ -1575,5 +1575,17 @@
   "Flags": "Zászlók",
   "Document position": "Pozíció a dokumentumban",
   "Line %{line} of %{lines}": "%{line} / %{lines}. sor",
-  "Blank": "Üres"
+  "Blank": "Üres",
+  "Document": "Dokumentum",
+  "Sheets": "Munkalapok",
+  "Table": "Táblázat",
+  "Row": "Sor",
+  "Resize %{column}": "%{column} átméretezése",
+  "Sort key %{index}": "%{index}. rendezési kulcs",
+  "ascending": "növekvő",
+  "descending": "csökkenő",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "A táblázat előnézete elérte a szöveg-, oszlop- vagy értékkorlátot; az összes adat megtekintéséhez nyissa meg a fájlt.",
+  "Loading sheet…": "Munkalap betöltése…",
+  "Try again": "Próbálja újra",
+  "This sheet is empty": "Ez a munkalap üres"
 }

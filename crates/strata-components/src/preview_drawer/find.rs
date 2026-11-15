@@ -34,7 +34,7 @@ pub(super) fn bar<S: 'static>(
         .placeholder(labels.find_field.clone())
         .width(None)
         .on_edit(move |s: &mut S| &mut access(s).find.query)
-        .on_change(move |s: &mut S, _tx: &mut Tx| {
+        .on_change(move |s: &mut S, tx: &mut Tx| {
             let query = &mut (on_change.access)(s).find.query;
             if query.text.chars().count() > FIND_MAX_CHARS {
                 let cut: String = query.text.chars().take(FIND_MAX_CHARS).collect();
@@ -42,6 +42,7 @@ pub(super) fn bar<S: 'static>(
             }
             let q = query.text.clone();
             on_change.with_view(s, |v| v.find(&q));
+            tx.wake_after(std::time::Duration::ZERO);
         })
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             // The field would blur on Escape; it closes find instead, as Escape anywhere in
@@ -54,6 +55,7 @@ pub(super) fn bar<S: 'static>(
             if ev.key == Key::Enter && !ev.mods.cmd && !ev.mods.ctrl && !ev.mods.alt {
                 let forward = !ev.mods.shift;
                 on_key.with_view(s, |v| v.find_step(forward));
+                tx.wake_after(std::time::Duration::ZERO);
                 return true;
             }
             false
@@ -70,9 +72,13 @@ pub(super) fn bar<S: 'static>(
             .control_size(ControlSize::Small)
             .label(label.to_owned())
             .disabled(status.total == 0)
-            .on_press(move |s: &mut S| sh.with_view(s, |v| v.find_step(forward)))
+            .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                sh.with_view(s, |v| v.find_step(forward));
+                tx.wake_after(std::time::Duration::ZERO);
+            })
             .build(k)
             .key(key)
+            .keeps_text_selection()
             .on_key(super::return_as_space::<S>)
     };
     let close_sh = shared.clone();
@@ -83,6 +89,7 @@ pub(super) fn bar<S: 'static>(
         .on_press_tx(move |s: &mut S, tx: &mut Tx| close(&close_sh, s, tx))
         .build(k)
         .key("preview-find-close")
+        .keeps_text_selection()
         .on_key(super::return_as_space::<S>);
 
     let mut bar = row()
@@ -124,21 +131,43 @@ pub(super) fn bar<S: 'static>(
 }
 
 /// Closes the find bar: the view keeps its selected match, and keys go back to the document.
-pub(super) fn close<S: 'static>(shared: &Shared<S>, s: &mut S, _tx: &mut Tx) {
+pub(super) fn close<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {
+    // Returning keyboard focus to `BODY_KEY` clears Rune's text selection during commit, so
+    // re-apply the match's selection inside `BODY_KEY` right after the commit.
+    let kept = tx
+        .text_selection()
+        .and_then(|sel| {
+            sel.texts()
+                .iter()
+                .find(|t| t.is_selected() && t.path().split('/').any(|seg| seg == super::BODY_KEY))
+        })
+        .and_then(|t| {
+            let keyed = t
+                .path()
+                .split('/')
+                .filter(|seg| !seg.starts_with('#'))
+                .collect::<Vec<_>>()
+                .join("/");
+            (!keyed.is_empty()).then(|| (keyed, t.range()))
+        });
     let st = (shared.access)(s);
     st.find.open = false;
     st.find.query.focused = false;
     st.focus_content();
     shared.with_view(s, |v| v.find_end());
+    if let Some((selector, range)) = kept {
+        tx.select_text(selector, range);
+    }
 }
 
 /// Opens the find bar, and runs the query it kept on the view, as Strata's find refreshes
 /// on reopening.
-pub(super) fn open<S: 'static>(shared: &Shared<S>, s: &mut S) {
+pub(super) fn open<S: 'static>(shared: &Shared<S>, s: &mut S, tx: &mut Tx) {
     let st = (shared.access)(s);
     st.open_find();
     let query = st.find.query.text.clone();
     if !query.is_empty() {
         shared.with_view(s, |v| v.find(&query));
+        tx.wake_after(std::time::Duration::ZERO);
     }
 }

@@ -558,11 +558,26 @@ const WHERE: &[Action<App>] = &[
 ];
 
 fn a_view_and_guards() -> Vec<Entry<App>> {
+    struct SelectableView;
     struct Guards;
-    vec![view(), part::<Guards>("guards", WHERE, |_| None)]
+    fn selectable_view(_: &App, _: &mut Frame<'_, App>) -> Option<El> {
+        Some(
+            el().key("made-view")
+                .w(40.0)
+                .h(20.0)
+                .focusable(true)
+                .child(rune::text("alpha beta").key("made-copy").selectable(true)),
+        )
+    }
+    let view = Entry {
+        place: Place::View(idle_view("made-view", selectable_view, |_| true)),
+        ..part::<SelectableView>("made-view", &[], |_| None)
+    };
+    vec![view, part::<Guards>("guards", WHERE, |_| None)]
 }
 
-/// GTK's guards ask where the keyboard is (`item_view_has_focus`, `sidebar.contains`).
+/// GTK's guards ask where the keyboard is (`item_view_has_focus`, `sidebar.contains`),
+/// including when a pointer text selection inside a part blurs keyboard focus.
 #[test]
 fn a_guard_can_ask_whether_the_view_or_a_parts_element_has_the_keyboard() {
     hosted_over(
@@ -584,6 +599,17 @@ fn a_guard_can_ask_whether_the_view_or_a_parts_element_has_the_keyboard() {
                     "the view has the keyboard",
                     "a made-up part has the keyboard"
                 ]
+            );
+
+            act(&mut host, |_, tx| {
+                tx.blur();
+                tx.select_text("made-view/made-copy", 0..5);
+            });
+            press(&mut host, Logical::Function(9), Mods::default());
+            assert_eq!(
+                noted(),
+                ["a made-up part has the keyboard"],
+                "selected text inside a part counts as within it while nothing has focus"
             );
         },
     );
