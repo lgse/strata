@@ -210,6 +210,22 @@ fn the_holds_follow_what_opens_and_a_hidden_view_does_nothing() {
                     json!({ "wait": { "not": { "dialog": true } } }),
                 ),
                 (
+                    json!({ "click": { "header": "Choose sort field" } }),
+                    json!({ "wait": { "menu_items": [] } }),
+                ),
+                (
+                    json!({ "click": { "name": "Size", "role": "radio menu item" } }),
+                    json!({ "wait": { "present": { "name": "Reset to default sort", "role": "menu item" } } }),
+                ),
+                (
+                    json!({ "click": { "name": "Reset to default sort", "role": "menu item" } }),
+                    json!({ "wait": { "not": { "present": { "name": "Reset to default sort", "role": "menu item" } } } }),
+                ),
+                (
+                    json!({ "key": "Escape" }),
+                    json!({ "wait": { "menu_items": null } }),
+                ),
+                (
                     json!({ "key": "ctrl+2" }),
                     json!({ "wait": { "view_mode": "Icons" } }),
                 ),
@@ -296,6 +312,42 @@ fn a_hidden_tab_holds_what_its_browser_queues() {
             }
             passes(backend, kept, &json!({ "sleep": 100 }));
             assert_eq!(failed(backend, kept), json!([]));
+        },
+    );
+}
+
+/// Closing a filter opened over the load cursor in Columns keeps the browser's provisional
+/// cursor without committing it (finding lgse/strata#2420), and switching away from Columns
+/// while results show leaves the hidden Columns view with no pending handover.
+#[test]
+fn a_filter_in_columns_keeps_the_load_cursor_and_a_hidden_view_clean() {
+    shown_in(
+        "columns",
+        "a_filter_in_columns_keeps_the_load_cursor_and_a_hidden_view_clean",
+        |backend, kept| {
+            assert!(backend.browser().selection_is_load_cursor());
+            for (step, then) in [
+                (
+                    json!({ "key": "ctrl+f" }),
+                    json!({ "wait": { "field": {} } }),
+                ),
+                (json!({ "type": "no" }), json!({ "sleep": 500 })),
+                (
+                    json!({ "key": "ctrl+2" }),
+                    json!({ "wait": { "view_mode": "Icons" } }),
+                ),
+                (
+                    json!({ "key": "ctrl+1" }),
+                    json!({ "wait": { "view_mode": "Columns" } }),
+                ),
+                (json!({ "key": "Escape" }), json!({ "sleep": 300 })),
+            ] {
+                passes(backend, kept, &step);
+                passes(backend, kept, &then);
+                assert_eq!(failed(backend, kept), json!([]), "after {step}");
+            }
+            assert!(backend.browser().selection_is_load_cursor());
+            assert_eq!(backend.browser().location_at(1), None);
         },
     );
 }

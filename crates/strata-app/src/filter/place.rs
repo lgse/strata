@@ -136,7 +136,7 @@ impl Where {
     /// Gives the rows back, with the selection `restore` they had in Columns.
     pub(crate) fn drop_hits(self, app: &mut App, restore: Option<&Position>, tx: &mut Tx) {
         match self {
-            Self::Columns => app.columns.drop_hits(restore, tx),
+            Self::Columns => app.columns.drop_hits(restore, &app.browser, tx),
             _ => app.filter.pane.drop_hits(),
         }
     }

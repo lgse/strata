@@ -198,3 +198,36 @@ fn a_columns_menu_sorts_its_own_column() {
         );
     });
 }
+
+/// Activating Make default or Reset to default sort hides that row while leaving the menu open
+/// with focus on its surface (`sort-menu`), so Down lands on the first row and Up on the last.
+#[test]
+fn hiding_make_default_or_reset_keeps_the_menu_open_and_focused() {
+    let name = "hiding_make_default_or_reset_keeps_the_menu_open_and_focused";
+    hosted_in(MODULE, "icons", name, |mut host| {
+        let _folder = listed(&mut host);
+        opened(&mut host, "icons-sort");
+
+        click(&mut host, SIZE);
+        assert!(host.run_until(PATIENCE, |host| drawn(host, "sort-reset")));
+        click(&mut host, "sort-reset");
+        assert!(host.run_until(PATIENCE, |host| !drawn(host, "sort-reset")));
+        assert!(drawn(&host, NAME), "the menu stays open after Reset");
+        assert_eq!(focused(&mut host).as_deref(), Some("sort-menu"));
+
+        press(&mut host, Key::Down, Mods::default());
+        assert_eq!(focused(&mut host).as_deref(), Some(NAME));
+
+        click(&mut host, SIZE);
+        assert!(host.run_until(PATIENCE, |host| drawn(host, "sort-make-default")));
+        press(&mut host, Key::End, Mods::default());
+        press(&mut host, Key::Up, Mods::default());
+        assert_eq!(focused(&mut host).as_deref(), Some("sort-make-default"));
+        press(&mut host, Key::Enter, Mods::default());
+        assert!(host.run_until(PATIENCE, |host| !drawn(host, "sort-make-default")));
+        assert_eq!(focused(&mut host).as_deref(), Some("sort-menu"));
+
+        press(&mut host, Key::Up, Mods::default());
+        assert_eq!(focused(&mut host).as_deref(), Some(FOLDERS_FIRST));
+    });
+}

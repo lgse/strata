@@ -1,0 +1,13 @@
+# Search, filter and sort sequences parked against their findings (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Each line is a finding's sequence shrunk GTK against Rune, named for the smoke seed that met
+# it. Version 1 was A10's draft, never merged (where seeds 0x01, 0x05, 0x06, 0x0b, 0x0c, 0x0e
+# and 0x13 met lgse/strata#2494 on pane-header popovers).
+#
+# v2, 0x06: in Icons and List, Down from the filter field into "Search results" onto notes.txt
+# populates app.panes[0] on Rune (Mark::EntryContainer on PaneHits for F3's tree-view invariant)
+# while GTK leaves app.panes[0] empty (inline_search carries no EntryContainer mark). Shrunk
+# from 54 steps to 6 and confirmed three times out of three.
+v2-0000000000000006 divergence lgse/strata#2499

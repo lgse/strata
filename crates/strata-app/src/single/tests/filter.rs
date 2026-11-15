@@ -409,3 +409,49 @@ fn escape_from_the_rows_gives_the_table_the_keyboard() {
         "filter::escape_from_the_rows_gives_the_table_the_keyboard",
     );
 }
+
+/// While search results hold focus, directory commands (`Ctrl+.`, `Backspace`, `Alt+Up`) stand
+/// back, whereas `Delete` moves the focused result to Trash (`search_result_keys` in
+/// `src/ui/window/keyboard.rs`).
+#[test]
+fn directory_commands_stand_back_on_results_while_trash_runs() {
+    hosted_in(
+        MODULE,
+        LIST.mode,
+        "filter::directory_commands_stand_back_on_results_while_trash_runs",
+        |mut host| {
+            let folder = fixture();
+            let sub = folder.path().join("pictures");
+            open(&mut host, LIST.shape, &sub);
+            press(&mut host, Key::Text("f".to_owned()), ctrl());
+            type_text(&mut host, "photo");
+            wait(&mut host, LIST.shape, "photo.txt result", |seen| {
+                seen.names() == ["photo.txt"]
+            });
+            press(&mut host, Key::Down, Mods::default());
+            wait(&mut host, LIST.shape, "photo.txt focused", |seen| {
+                seen.keyboard && seen.focused.as_deref() == Some("photo.txt")
+            });
+
+            let hidden_before = host.app().browser().preferences().show_hidden;
+            press(&mut host, Key::Text(".".to_owned()), ctrl());
+            press(&mut host, Key::Backspace, Mods::default());
+            press(
+                &mut host,
+                Key::Up,
+                Mods {
+                    alt: true,
+                    ..Mods::default()
+                },
+            );
+            assert_eq!(
+                host.app().browser().preferences().show_hidden,
+                hidden_before
+            );
+            assert_eq!(
+                host.app().browser().active_location(),
+                Some(strata_core::model::Location::local(&sub))
+            );
+        },
+    );
+}

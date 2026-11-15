@@ -12,12 +12,26 @@ use strata_components::{
     collection::selection::{Position, Selection},
     contract::{EntryId, EntrySource},
 };
+use strata_fs::app::Browser;
 use strata_kit::look::Look;
 
 use super::Columns;
 use crate::{filter::HitsUpdate, listing::Column};
 
 impl Columns {
+    /// The column that holds the keyboard cursor in the strip.
+    pub(crate) fn active(&self) -> usize {
+        self.state.active()
+    }
+
+    /// Makes column `depth` the strip's active column when the filter opens in its header, as
+    /// GTK's `focus.connect_enter` on the column shell does (`columns/append/surface.rs`).
+    pub(crate) fn activate_for_filter(&mut self, depth: usize, look: &Look, tx: &mut Tx) {
+        if depth < self.open() && depth != self.state.active() {
+            self.state.set_active(depth, look, tx);
+        }
+    }
+
     /// The column a filter opens in: the one the pointer or the keys last targeted, GTK's
     /// `destination_depth`.
     pub(crate) fn targeted(&self) -> usize {
@@ -118,8 +132,10 @@ impl Columns {
     }
 
     /// Gives the column the results showed in its rows back, with the selection `restore`
-    /// it had before the filter, when there is one.
-    pub(crate) fn drop_hits(&mut self, restore: Option<&Position>, tx: &mut Tx) {
+    /// it had before the filter, when there is one, and resynced to what `browser` holds now
+    /// as GTK's `resync_column_selection` does (`src/ui/browser/columns/append/query.rs`;
+    /// finding lgse/strata#2420).
+    pub(crate) fn drop_hits(&mut self, restore: Option<&Position>, browser: &Browser, tx: &mut Tx) {
         let Some(depth) = self.listings.drop_hits() else {
             return;
         };
@@ -128,6 +144,9 @@ impl Columns {
             let _ = state.collection.selection.restore(position);
         }
         self.note(depth);
+        let marks = crate::events::marks(browser, depth, &self.ids);
+        self.adopt(depth, &marks);
+        self.caught_up();
     }
 
     /// The results column `depth` shows, taken out with their selection, for the view a switch
@@ -142,6 +161,10 @@ impl Columns {
         });
         let (_, hits) = self.listings.take_hits()?;
         self.hold_header(None);
+        let now = self.held_now(depth);
+        if let Some(held) = self.held.get_mut(depth) {
+            *held = now;
+        }
         Some((hits, position.unwrap_or_default()))
     }
 
