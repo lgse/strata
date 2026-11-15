@@ -9,6 +9,7 @@ use serde_json::json;
 use strata_qa::Remembered;
 
 use super::{launched, passes, staged};
+use crate::{shell, test_support::hosted};
 
 const NONE: Mods = Mods {
     shift: false,
@@ -52,6 +53,24 @@ fn the_shell_holds_the_modifiers_each_step_holds_and_lets_go() {
                 heard.push(backend.held_modifiers());
             }
             assert_eq!(heard, [CTRL, CTRL_SHIFT, CTRL_SHIFT, CTRL, NONE, NONE]);
+        },
+    );
+}
+
+#[test]
+fn losing_window_focus_clears_held_modifiers() {
+    hosted(
+        "qa::tests::modifiers",
+        "losing_window_focus_clears_held_modifiers",
+        |mut host| {
+            host.turn();
+            host.modifiers(CTRL_SHIFT);
+            assert_eq!(shell::held_modifiers(host.app()), CTRL_SHIFT);
+
+            host.runtime().window_focus(false);
+            host.turn();
+
+            assert_eq!(shell::held_modifiers(host.app()), NONE);
         },
     );
 }

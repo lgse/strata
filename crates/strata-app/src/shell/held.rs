@@ -15,9 +15,10 @@
 //! The offscreen host cannot register the hook: a `Runtime` it builds itself keeps
 //! `on_mods` crate-private (Rune packet entry 107,
 //! `docs/rune/upstream/rune/107-runtime-on-modifiers.md`). It calls [`modifiers`] itself
-//! wherever it feeds Rune the held modifiers (`Offscreen::modifiers`). It does so as it feeds
-//! them, ahead of the key events queued beside them, so a key handler may see the modifiers
-//! held after the key; a part reads them while it builds, where both hosts agree.
+//! wherever it feeds Rune the held modifiers (`Offscreen::modifiers`), and the root's
+//! `on_window_focus` clears them when the window blurs. `Offscreen::modifiers` updates them as
+//! it feeds them, ahead of the key events queued beside them, so a key handler may see the
+//! modifiers held after the key; a part reads them while it builds, where both hosts agree.
 
 use rune::{Mods, Tx};
 

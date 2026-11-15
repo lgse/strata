@@ -50,6 +50,13 @@ use crate::{
 mod held;
 pub(crate) mod tabs;
 
+#[cfg_attr(
+    not(any(test, feature = "qa")),
+    expect(
+        unused_imports,
+        reason = "the tab strip's number badges, A4's next pull request, read it"
+    )
+)]
 pub(crate) use held::{held_modifiers, modifiers};
 use tabs::{Here, Tabs};
 
@@ -909,6 +916,9 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         .on_key(commands::from_element)
         .on_window_focus(|app: &mut App, focused, tx: &mut Tx| {
             app.window.active = focused;
+            if !focused && app.window.held != rune::Mods::default() {
+                modifiers(app, rune::Mods::default(), tx);
+            }
             location::window_focused(app, focused, tx);
         })
 }
