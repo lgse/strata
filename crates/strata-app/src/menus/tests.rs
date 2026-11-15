@@ -63,6 +63,7 @@ fn of(entry: &FileEntry, entries: &[FileEntry], typing: bool) -> EntryTarget<'st
     EntryTarget {
         entry: Box::leak(Box::new(entry.clone())),
         entries: Box::leak(entries.to_vec().into_boxed_slice()),
+        can_create: true,
         can_trash: None,
         can_delete: None,
         typing,
@@ -228,6 +229,16 @@ fn a_folder_that_cannot_trash_or_delete_loses_those_rows() {
 
     assert_eq!(sections(&menu).len(), 7);
     assert!(!labels(&menu).contains(&"Move to Trash"));
+
+    let search_hit = EntryTarget {
+        can_create: false,
+        ..one(&todo, true)
+    };
+    let hit_menu = entry(&search_hit);
+    let hit_labels = labels(&hit_menu);
+    assert!(!hit_labels.contains(&"New Folder"));
+    assert!(!hit_labels.contains(&"New File"));
+    assert!(!hit_labels.contains(&"New Folder with Selection"));
 }
 
 /// The hints `entry-menu-named-actions` reads as each row's description.
@@ -370,6 +381,7 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "new-folder",
                     "new-file",
                     "open",
+                    "preview",
                     "run",
                     "open-in-tab",
                     "cut",
