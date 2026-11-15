@@ -15,6 +15,7 @@ pub(super) const fn index(name: IconName) -> usize {
     match name {
         // Entries.
         IconName::Folder => i::STRATA_FOLDER,
+        IconName::FolderFilled => i::STRATA_KIT_FOLDER_FILLED,
         IconName::FolderOpen => i::STRATA_FOLDER_OPEN,
         // Strata draws a file of no known type as its document icon.
         IconName::File => i::STRATA_FILE_TEXT,

@@ -11,7 +11,7 @@ use strata_core::model::Location;
 
 use super::{
     Change, Selection, changed, complete_cut_transfer, fallback_text, has_files, is_cut_match,
-    marks, may_paste, paths,
+    marks, may_paste, offer_serial, paths, settled_since,
 };
 use crate::{
     App,
@@ -347,6 +347,8 @@ fn offered_clipboard_reads_update_file_availability_and_ignore_stale_revisions()
                 "stale external file read must not override a newer text clipboard"
             );
 
+            let before = offer_serial(host.app());
+            assert!(!settled_since(host.app(), before));
             host.runtime().update(|app, tx| {
                 changed(
                     app,
@@ -358,10 +360,16 @@ fn offered_clipboard_reads_update_file_availability_and_ignore_stale_revisions()
                 );
             });
             let live_rev = host.app().clipboard.read_revision;
+            host.runtime().state.clipboard.pending_read = Some(live_rev);
+            assert!(
+                !settled_since(host.app(), before),
+                "an in-flight file offer read keeps settled_since false until resolved"
+            );
             host.runtime()
                 .state
                 .clipboard
                 .apply_offered_read(live_rev, true);
+            assert!(settled_since(host.app(), before));
             assert!(has_files(host.app()));
 
             host.runtime().update(|app, tx| {

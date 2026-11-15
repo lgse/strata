@@ -22,7 +22,7 @@ run = "columns-file"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows onto a tab, at `drag` from an entry on line 12: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "ctrl-drop-on-tab-copies"
@@ -30,7 +30,7 @@ run = "columns-folder"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows onto a tab, at `drag` from an entry on line 12: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "drop-on-tab-moves-files"
@@ -38,7 +38,7 @@ run = "columns-file"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows onto a tab, at `drag` from an entry on line 13: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "drop-on-tab-moves-files"
@@ -46,7 +46,7 @@ run = "icons-file"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows onto a tab, at `drag` from an entry on line 13: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "drop-on-tab-moves-files"
@@ -54,7 +54,7 @@ run = "list-file"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows onto a tab, at `drag` from an entry on line 13: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "drop-on-tab-moves-files"
@@ -62,7 +62,7 @@ run = "columns-folder"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows onto a tab, at `drag` from an entry on line 13: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "drop-on-tab-moves-files"
@@ -70,7 +70,7 @@ run = "icons-folder"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows onto a tab, at `drag` from an entry on line 13: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "drop-on-tab-moves-files"
@@ -78,7 +78,7 @@ run = "list-folder"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows onto a tab, at `drag` from an entry on line 13: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
@@ -86,7 +86,7 @@ run = "columns-file"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows held over a tab, at `drag` from an entry on line 14: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
@@ -94,7 +94,7 @@ run = "icons-file"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows held over a tab, at `drag` from an entry on line 14: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
@@ -102,7 +102,7 @@ run = "list-file"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows held over a tab, at `drag` from an entry on line 14: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
@@ -110,7 +110,7 @@ run = "columns-folder"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows held over a tab, at `drag` from an entry on line 14: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
@@ -118,7 +118,7 @@ run = "icons-folder"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows held over a tab, at `drag` from an entry on line 14: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "hovered-tab-takes-drop"
@@ -126,7 +126,7 @@ run = "list-folder"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a file drag from the view's rows held over a tab, at `drag` from an entry on line 14: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "reopen-closed-tabs"
@@ -141,7 +141,7 @@ run = "columns"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a drag from a sidebar row onto New tab and the tab strip, at `drag` from Pinned documents on line 5: C8's `PlacesSidebar` reorder gesture stays inside the sidebar and starts no cross-widget drag onto the header or tab strip; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "tab-drag-reorders-numbers"
@@ -180,7 +180,7 @@ run = "columns"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a folder drag from the view's rows onto New tab and the tab strip, at `drag` from documents on line 3: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "view-folders-open-new-tabs"
@@ -188,7 +188,7 @@ run = "icons"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a folder drag from the view's rows onto New tab and the tab strip, at `drag` from documents on line 3: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"
 
 [[run]]
 scenario = "view-folders-open-new-tabs"
@@ -196,4 +196,4 @@ run = "list"
 package = "A4"
 status = "pending"
 reason = "scope"
-blocker = "A4"
+blocker = "A19: a folder drag from the view's rows onto New tab and the tab strip, at `drag` from documents on line 3: strata-app has no drag binder, and `Dnd::rune`'s `drag_out` starts nothing on Linux; with H4's session host if A19 needs it"

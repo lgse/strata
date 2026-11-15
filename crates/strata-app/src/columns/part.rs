@@ -81,12 +81,12 @@ impl Part for Columns {
     });
 
     fn new(setup: &Setup<'_>) -> Self {
-        Self::with_settings(
-            setup.settings,
-            setup.ids.clone(),
-            setup.later.clone(),
-            setup.shown.clone(),
-        )
+        Self::with_setup(setup)
+    }
+
+    fn customized(app: &mut App) {
+        let worn = shell::worn(app).clone();
+        app.columns.set_worn(&worn);
     }
 
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {
@@ -110,14 +110,16 @@ impl Part for Columns {
         app.columns.caught_up();
     }
 
-    /// What another tab changed while this one was hidden: the sizes shown and the width new
-    /// columns open at.
+    /// What another tab changed while this one was hidden: the sizes shown, the width new
+    /// columns open at, and saved item customizations.
     fn tab_shown(app: &mut App, _: &mut Tx) {
         let saved = shell::preferences(app);
         app.columns.refresh_mirror_preferences(saved);
         let (sizes, width) = (saved.columns_show_sizes, super::width::saved(saved));
+        let worn = shell::worn(app).clone();
         app.columns.show_sizes(sizes);
         app.columns.state.set_default_width(width);
+        app.columns.set_worn(&worn);
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {

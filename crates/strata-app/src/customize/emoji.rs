@@ -15,7 +15,7 @@
 
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
-use rune::{El, TextStyle, Tx, text};
+use rune::{El, Tx};
 use strata_components::controls::icon_picker::{
     Choice, DEFAULT_VERSION, IconPicker, IconPickerState, PickerCategory, PickerSource,
     PickerWords, drawn_text, remember,
@@ -30,8 +30,6 @@ const PICKER: &str = "customize-emoji";
 
 /// Keeps the emoji grid's cell ids (`row-<id>`) clear of `slots::Ids` in the browser views.
 const ID_BASE: u64 = 1 << 48;
-
-const PREVIEW_FONT: f32 = 48.0;
 
 pub(super) struct Emoji {
     picker: IconPickerState,
@@ -146,18 +144,6 @@ pub(super) fn button(app: &App, saved_icon: Option<&str>, over: &mut Vec<El>) ->
     };
     let description = tr("Choose any emoji for this item");
     picker().button(app, &app.look, &label, Some(&description), over)
-}
-
-/// The item's saved emoji drawn for the dialog's 56 px preview, through [`drawn_text`].
-pub(super) fn preview(look: &Look, saved_icon: Option<&str>, height: f32) -> Option<El> {
-    let emoji = saved_icon.and_then(custom_emoji)?;
-    let choice = Choice::emoji(emoji.to_owned());
-    Some(
-        text(drawn_text(&choice).into_owned())
-            .font(TextStyle::new(PREVIEW_FONT, 400.0).lh(height))
-            .color(look.kit.c.text_base)
-            .a11y_hidden(),
-    )
 }
 
 /// Matches a saved emoji to the source's spelling, tolerating a variation-selector difference.

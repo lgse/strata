@@ -237,6 +237,11 @@ fn held_modifiers_reach_the_view_and_what_only_gtk_runs_says_so() {
                 unsupported.error.as_deref(),
                 Some("clipboard_set is not supported on this target")
             );
+            let read_unsupported = run(&backend, &kept, &json!({ "clipboard": "text" }));
+            assert_eq!(
+                read_unsupported.error.as_deref(),
+                Some("clipboard is not supported on this target")
+            );
             let pixel = json!({ "expect": { "pixel": { "target": { "entry": "todo.txt" }, "rgb": [0, 0, 0] } } });
             assert_eq!(
                 run(&backend, &kept, &pixel).error.as_deref(),

@@ -31,6 +31,7 @@ use crate::{
 };
 
 mod badges;
+mod drops;
 mod held;
 
 const MODULE: &str = "tab_strip::tests";
@@ -51,7 +52,7 @@ pub(super) fn opened(host: &mut Offscreen, folder: &Path) {
 }
 
 /// The tabs' locations, in the strip's order, once each has opened.
-fn located(host: &mut Offscreen, count: usize) -> Vec<Option<Location>> {
+pub(super) fn located(host: &mut Offscreen, count: usize) -> Vec<Option<Location>> {
     let all_there = |host: &Offscreen| {
         let order = tabs(host.app());
         order.len() == count

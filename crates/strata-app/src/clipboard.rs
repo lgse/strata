@@ -48,6 +48,8 @@ pub(crate) struct Clipboard {
     owned: Option<CopyId>,
     has_files: bool,
     read_revision: u64,
+    offer_serial: u64,
+    pending_read: Option<u64>,
     fallback: Fallback,
     copied: Vec<Location>,
     cut: Vec<Location>,
@@ -70,6 +72,8 @@ impl Part for Clipboard {
             owned: None,
             has_files: false,
             read_revision: 0,
+            offer_serial: 0,
+            pending_read: None,
             fallback: Fallback::Empty,
             copied: Vec::new(),
             cut: Vec::new(),
@@ -118,6 +122,7 @@ impl Clipboard {
     }
 
     fn bump_revision(&mut self) -> u64 {
+        self.pending_read = None;
         self.read_revision = self.read_revision.wrapping_add(1);
         self.read_revision
     }
@@ -132,6 +137,7 @@ impl Clipboard {
     fn apply_offered_read(&mut self, revision: u64, has_files: bool) {
         if self.read_revision == revision {
             self.has_files = has_files;
+            self.pending_read = None;
         }
     }
 
@@ -210,23 +216,33 @@ pub(crate) fn changed(app: &mut App, change: &Change, _: &mut Tx) {
             mimes,
         } => {
             let revision = app.clipboard.forget_owned();
+            app.clipboard.offer_serial = app.clipboard.offer_serial.wrapping_add(1);
             if Files::offered(mimes) {
-                let _ = app.clipboard.handle.read_files(
-                    Selection::Clipboard,
-                    Limits::default(),
-                    move |app, result, _| {
-                        let any = result
-                            .ok()
-                            .is_some_and(|files| !paths::locations_from_files(&files).is_empty());
-                        app.clipboard.apply_offered_read(revision, any);
-                    },
-                );
+                app.clipboard.pending_read = Some(revision);
+                if app
+                    .clipboard
+                    .handle
+                    .read_files(
+                        Selection::Clipboard,
+                        Limits::default(),
+                        move |app, result, _| {
+                            let any = result.ok().is_some_and(|files| {
+                                !paths::locations_from_files(&files).is_empty()
+                            });
+                            app.clipboard.apply_offered_read(revision, any);
+                        },
+                    )
+                    .is_err()
+                {
+                    app.clipboard.pending_read = None;
+                }
             }
         }
         Change::Emptied {
             selection: Selection::Clipboard,
         } => {
             app.clipboard.forget_owned();
+            app.clipboard.offer_serial = app.clipboard.offer_serial.wrapping_add(1);
         }
         Change::Lost {
             selection: Selection::Clipboard,
@@ -237,6 +253,16 @@ pub(crate) fn changed(app: &mut App, change: &Change, _: &mut Tx) {
         }
         _ => {}
     }
+}
+
+#[cfg(any(test, feature = "qa"))]
+pub(crate) fn offer_serial(app: &App) -> u64 {
+    app.clipboard.offer_serial
+}
+
+#[cfg(any(test, feature = "qa"))]
+pub(crate) fn settled_since(app: &App, before: u64) -> bool {
+    app.clipboard.offer_serial > before && app.clipboard.pending_read.is_none()
 }
 
 /// Whether the clipboard currently holds file URIs.

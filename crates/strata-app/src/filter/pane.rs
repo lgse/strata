@@ -14,6 +14,8 @@
 //!   collection takes the view's key, so the view's keyboard, focus and commands are theirs
 //!   while they show.
 
+use std::rc::Rc;
+
 use rune::{El, Tx};
 use strata_components::{
     collection::{
@@ -26,7 +28,7 @@ use strata_components::{
 };
 
 use super::{hits::HitsUpdate, place::Where};
-use crate::{App, handover, listing::Column, menus, shell};
+use crate::{App, handover, listing::Column, menus, shell, slots::Worn};
 
 /// GTK's `SEARCH_RESULTS_LABEL`: the results' collection's name.
 pub(crate) const SEARCH_RESULTS: &str = "Search results";
@@ -119,6 +121,12 @@ impl PaneHits {
     pub(crate) fn version(&self) -> u64 {
         let version = self.hits.as_ref().map_or(0, Column::version);
         self.swaps.wrapping_shl(40) ^ version
+    }
+
+    pub(crate) fn set_worn(&mut self, worn: &Rc<Worn>) {
+        if let Some(hits) = &mut self.hits {
+            hits.set_worn(worn);
+        }
     }
 
     /// Shows `update.hits` in the listing's place in the view keyed `scope`, nothing selected

@@ -7,8 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Duration;
 
-use rune::{El, Tx, el, icon, memo, row, text};
-use strata_kit::icons::IconName;
+use rune::{El, Tx, el, memo, row, text};
 use strata_kit::look::Look;
 use strata_kit::slots::collection as tokens;
 
@@ -535,7 +534,14 @@ fn build_item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, index: usiz
         .peek_anchor
         .then(|| color_key(tokens::peek_fill(look)));
     let version = (
-        (entry.name, entry.kind, entry.icon, entry.thumbnail),
+        (
+            entry.name,
+            entry.kind,
+            entry.icon,
+            entry.thumbnail,
+            entry.glyph,
+            entry.color.map(color_key),
+        ),
         state,
         frame.look_key,
         frame.config_key,
@@ -745,26 +751,20 @@ pub(super) fn header_body(style: &GroupStyle, h: f32, label: El) -> El {
     el
 }
 
-/// The clipboard mark icon, else the entry's catalog icon, else the Folder or File icon, at the
-/// row icon size.
+/// The clipboard mark icon, else the entry's catalog icon or custom decoration, else the Folder
+/// or File icon, at the row icon size.
 fn default_icon(rcx: &RowCx<'_>) -> El {
     let look = rcx.look;
-    let glyph = match crate::thumbnails::mark_icon(rcx.state.marks) {
-        Some(mark) => look.icon(mark),
+    match crate::thumbnails::mark_icon(rcx.state.marks) {
+        Some(mark) => rune::icon(look.icon(mark), look.icon_size.md)
+            .key(ICON)
+            .color(look.kit.c.icon_base)
+            .a11y_hidden(),
         None => {
-            let fallback = if rcx.entry.kind.is_folder_like() {
-                IconName::Folder
-            } else {
-                IconName::File
-            };
-            look.icon_named(rcx.entry.icon)
-                .unwrap_or_else(|| look.icon(fallback))
+            crate::thumbnails::entry_glyph(look, rcx.entry, look.icon_size.md, look.kit.c.icon_base)
+                .key(ICON)
         }
-    };
-    icon(glyph, look.icon_size.md)
-        .key(ICON)
-        .color(look.kit.c.icon_base)
-        .a11y_hidden()
+    }
 }
 
 /// The entry's name, cut short with an ellipsis.

@@ -17,6 +17,7 @@
 //! through in the desktop's runtime directory. The session bus it expects is the runner's
 //! private one, or none.
 
+mod clipboard;
 mod devices;
 mod guard;
 mod link;
@@ -37,7 +38,7 @@ use std::{
 
 use strata_components::contract::EntryId;
 use strata_core::logging::criticals;
-use strata_qa::{Chord, Keymap, Modifier};
+use strata_qa::{Chord, ClipboardContent, Keymap, Modifier};
 
 use self::{
     devices::{Devices, UsKey, modifier_key},
@@ -172,6 +173,9 @@ pub(super) struct Session {
     /// The modifiers a `hold` or a `key_down` step pressed and has not released.
     held: RefCell<Vec<Modifier>>,
     seen: RefCell<Option<(u64, Rc<Snapshot>)>>,
+    /// The private Wayland client owning the clipboard from `clipboard_set`, kept alive until
+    /// replaced or closed by `clipboard`.
+    clipboard: RefCell<Option<clipboard::ClipboardOwner>>,
 }
 
 impl Session {
@@ -193,7 +197,27 @@ impl Session {
             log,
             held: RefCell::default(),
             seen: RefCell::default(),
+            clipboard: RefCell::default(),
         })
+    }
+
+    /// Waits up to [`DISPATCH_LIMIT`] for `App::clipboard` to hear the selection change after
+    /// `before` and finish any asynchronous file-offer read (`has_files` / `may_paste`).
+    fn wait_clipboard_settled(&self, before: u64) {
+        let deadline = Instant::now() + DISPATCH_LIMIT;
+        while Instant::now() < deadline {
+            match self
+                .link
+                .ask(move |app| crate::clipboard::settled_since(app, before))
+            {
+                Ok(true) => return,
+                Ok(false) => std::thread::sleep(DISPATCH_POLL),
+                Err(error) => {
+                    eprintln!("strata-rune: the session host: clipboard_set: {error}");
+                    return;
+                }
+            }
+        }
     }
 
     /// Waits until Rune has dispatched input from after the last event the devices sent, for
@@ -466,5 +490,26 @@ impl Host for Session {
             .and_then(|()| self.devices.button(1, false));
         self.dispatched(&format!("the click on {}", target.key));
         clicked.is_ok()
+    }
+
+    async fn set_clipboard(&self, content: &ClipboardContent) -> Option<Result<(), String>> {
+        let before = match self.with_app(crate::clipboard::offer_serial) {
+            Ok(serial) => serial,
+            Err(error) => return Some(Err(error)),
+        };
+        let owner = match clipboard::ClipboardOwner::spawn(content) {
+            Ok(owner) => owner,
+            Err(error) => return Some(Err(error)),
+        };
+        *self.clipboard.borrow_mut() = Some(owner);
+        self.wait_clipboard_settled(before);
+        self.settle().await;
+        Some(Ok(()))
+    }
+
+    async fn read_clipboard(&self, mime: Option<&str>) -> Option<Result<Option<String>, String>> {
+        let result = clipboard::read(mime);
+        self.clipboard.borrow_mut().take();
+        Some(result)
     }
 }

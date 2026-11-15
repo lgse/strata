@@ -223,6 +223,14 @@ impl Look {
             ink: self.kit.c.text_inverse,
         }
     }
+
+    /// Readable badge ink over `fill`, matching Strata's `contrasting_foreground`
+    /// (`src/assets.rs`).
+    pub fn ink_on(&self, fill: Color) -> Color {
+        crate::theme::Rgba8::from_color(fill)
+            .contrasting_ink()
+            .color()
+    }
 }
 
 /// A caption's fill and the colour of its text: [`Look::resize_caption`].

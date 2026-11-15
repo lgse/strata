@@ -15,7 +15,7 @@ use strata_fs::{
 
 use super::{
     Entry, Frame, Ids, Inbox, Listener, Place, Registry, Setup, ShownView, Sidebar, Slot, Strip,
-    registry::Fault,
+    Worn, registry::Fault,
 };
 use crate::{
     commands::{Action, Call, Outcome},
@@ -79,6 +79,7 @@ fn part<P: Made>(place: Place<Log>) -> Entry<Log> {
         listen: listen::<P>,
         publish: |_| {},
         caught_up: |_| {},
+        customized: |_| {},
         poll: |_, _, _| false,
         switched: |_, _| {},
         tab_hidden: |_, _| {},
@@ -241,6 +242,7 @@ fn a_part_builds_its_element_in_every_slot_but_the_drawer_and_the_strip_which_th
 {
     let strip = Strip {
         build: |_, _, _| None,
+        new_tab: None,
         shows: |_| false,
     };
     let places = [
@@ -312,10 +314,12 @@ fn observed(entries: &'static [Entry<Log>]) -> (Rc<Browser>, Inbox<Log>) {
 /// [`observed`] over `registry`, with what says which view hears.
 fn observed_with(registry: Registry<'static, Log>) -> (Rc<Browser>, Inbox<Log>, ShownView) {
     let (settings, ids, inbox) = (Preferences::default(), Ids::default(), Inbox::new());
+    let worn = Worn::empty();
     let shown = registry.shown_now();
     let setup = Setup {
         settings: &settings,
         ids: &ids,
+        worn: &worn,
         // The made-up parts are over a log, and the handle is the window's.
         later: &Inbox::new().later(),
         shown: &shown,

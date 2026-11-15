@@ -45,6 +45,7 @@ struct PreparingKey {
     destination: Location,
     sources: Vec<Location>,
     move_sources: bool,
+    reveal: bool,
 }
 
 pub(crate) struct Transfer {
@@ -425,12 +426,64 @@ type TargetTuple = (
     bool,
 );
 
+/// A tab-scoped [`Later`] handle for posting async drop classification completions back to the
+/// shown tab's transfer state.
+pub(crate) fn later(app: &App) -> Later<App> {
+    app.transfer.later.clone()
+}
+
+struct TransferRequest {
+    destination: Location,
+    sources: Vec<Location>,
+    move_sources: bool,
+    reveal: bool,
+}
+
+/// Starts a file drop transfer on the shown tab (`start_drop_transfer` in
+/// `src/ui/browser/transfer/drop.rs`), revealing placed items only when
+/// `open_folder_after_drop` is enabled.
+pub(crate) fn start_drop_transfer(
+    app: &mut App,
+    destination: Location,
+    sources: Vec<Location>,
+    move_sources: bool,
+) {
+    let reveal = shell::preferences(app).open_folder_after_drop;
+    begin_transfer_request(
+        app,
+        TransferRequest {
+            destination,
+            sources,
+            move_sources,
+            reveal,
+        },
+    );
+}
+
 fn begin_transfer(
     app: &mut App,
     destination: Location,
     sources: Vec<Location>,
     move_sources: bool,
 ) {
+    begin_transfer_request(
+        app,
+        TransferRequest {
+            destination,
+            sources,
+            move_sources,
+            reveal: true,
+        },
+    );
+}
+
+fn begin_transfer_request(app: &mut App, req: TransferRequest) {
+    let TransferRequest {
+        destination,
+        sources,
+        move_sources,
+        reveal,
+    } = req;
     if transfer_refused(&destination, &sources, move_sources) {
         return;
     }
@@ -445,6 +498,7 @@ fn begin_transfer(
         destination: destination.clone(),
         sources: sources.clone(),
         move_sources,
+        reveal,
     };
     if app.transfer.preparing.contains(&key) {
         return;
@@ -504,7 +558,11 @@ fn finish_preparing(
         return;
     }
     shell::publish(app);
-    app.browser
-        .transfer(key.destination.clone(), accepted, key.move_sources, true);
+    app.browser.transfer(
+        key.destination.clone(),
+        accepted,
+        key.move_sources,
+        key.reveal,
+    );
     shell::settle(app, tx);
 }

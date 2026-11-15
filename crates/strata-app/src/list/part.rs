@@ -102,19 +102,25 @@ impl Part for List {
     });
 
     fn new(setup: &Setup<'_>) -> Self {
-        Self::with_settings(setup.settings, setup.later.clone())
+        Self::with_setup(setup)
     }
 
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {
         single::listen::<Self>(setup)
     }
 
-    /// The columns another tab reordered, hid or resized while this one was hidden.
+    fn customized(app: &mut App) {
+        single::sync_worn::<Self>(app);
+    }
+
+    /// The columns another tab reordered, hid or resized while this one was hidden, and saved
+    /// item customizations.
     fn tab_shown(app: &mut App, _: &mut Tx) {
         let saved = shell::preferences(app);
         let (layout, widths) = (super::columns::layout(saved), super::columns::widths(saved));
         app.list.layout = layout;
         app.list.widths = widths;
+        single::sync_worn::<Self>(app);
     }
 
     fn publish(app: &mut App) {

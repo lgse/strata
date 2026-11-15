@@ -15,10 +15,9 @@ use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::Preferences;
 
 use crate::{
-    App,
     fills::{Details, Fills},
     single::{Made, Single},
-    slots::Later,
+    slots::Setup,
     thumbnails::Viewer,
 };
 
@@ -61,7 +60,8 @@ fn keys(typing: bool) -> KeySettings {
 }
 
 impl Icons {
-    fn with_settings(settings: &Preferences, later: Later<App>) -> Self {
+    fn with_setup(setup: &Setup<'_>) -> Self {
+        let settings: &Preferences = setup.settings;
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
         let clicks = (settings.icons_file_clicks, settings.icons_folder_clicks);
@@ -72,14 +72,22 @@ impl Icons {
                 keys: keys(typing),
                 described: tr("Icons view"),
                 menu_at: AnchorEdge::Right,
+                worn: setup.worn.clone(),
             }),
             grid: IconsGridState::new(),
             size: size::tile_size(settings.icons_thumbnail_size),
             sized_for: None,
             sized_at: 0,
             resolved: size::tile_size(settings.icons_thumbnail_size),
-            thumbs: Viewer::new(later, part::locate),
+            thumbs: Viewer::new(setup.later.clone(), part::locate),
             fills: Fills::new(Details::All),
         }
+    }
+}
+
+#[cfg(test)]
+impl Icons {
+    pub(crate) fn source(&self) -> &dyn strata_components::contract::EntrySource {
+        self.single.pane.source()
     }
 }
