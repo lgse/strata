@@ -35,9 +35,11 @@
 //! - **A result's path** shows under its name while the filter searches the subfolders: in
 //!   Columns its whole path, as C2's detail line, in Icons and List the path under
 //!   the folder ([`pane`]).
+//! - **A renamed result** keeps the cursor and the selection under its new name
+//!   ([`renamed`], GTK's `RenamedResult`).
 //!
 //! Not yet: a folder that is not local, which GTK narrows in place, the results' thumbnails,
-//! a renamed result keeping the cursor, and the field's own menu.
+//! and the field's own menu.
 //! `docs/rune/parity/packages/A10.md` keeps the list.
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
@@ -73,13 +75,16 @@ mod descent;
 mod hits;
 pub(crate) mod pane;
 mod place;
+mod renamed;
 pub(crate) mod session;
 mod switch;
 pub(crate) mod targets;
 mod typing;
 
+pub(crate) use hits::HitsUpdate;
 use pane::PaneHits;
 use place::Where;
+use renamed::RenamedResult;
 use session::{Batch, Input, Scope, Session};
 
 #[cfg(test)]
@@ -110,12 +115,32 @@ struct OpenIn {
     folder: Location,
 }
 
+impl OpenIn {
+    /// Shows `update` in the place of column `self.depth`'s rows.
+    pub(super) fn show_hits(&self, app: &mut App, update: HitsUpdate, tx: &mut Tx) {
+        match self.place {
+            Where::Columns => {
+                let paths = hits::paths(&app.filter.found);
+                let details = app.filter.pane.recursive;
+                app.columns.describe_hits(paths, details);
+                app.columns.show_hits(self.depth, update, tx);
+            }
+            place if place.depth_shown(app, self.depth) => {
+                app.filter.pane.show(place, update, tx);
+            }
+            _ => {}
+        }
+    }
+}
+
 pub(crate) struct Filter {
     state: FilterState,
     open_in: Option<OpenIn>,
     session: Session,
     /// Each result's entry, by its id: what a command acts on ([`targets`]).
     found: HashMap<EntryId, FileEntry>,
+    /// A rename of a shown result that the next batch follows to its new path.
+    renamed: RenamedResult,
     /// The results in a pane of Icons or List.
     pub(crate) pane: PaneHits,
     /// The field's text after its last edit: what tells a `/` typed into it.
@@ -209,45 +234,57 @@ fn route(app: &mut App, polled: Polled, tx: &mut Tx) {
     bar(app).route(app, polled, tx);
 }
 
-/// Opens the filter in the pane or the targeted column, empty or on `query`: Ctrl+F, the
-/// toggle, a key typed in the listing. False where there is no column to open it in.
-fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
-    let Some(place) = Where::shown(app) else {
-        return false;
-    };
-    let Some(depth) = place.targeted(app) else {
-        return false;
-    };
-    let Some(folder) = app.browser.location_at(depth) else {
-        return false;
-    };
+/// Where `open` targets the filter now, when a filterable view and folder are shown.
+fn opening_in(app: &App) -> Option<OpenIn> {
+    let place = Where::shown(app)?;
+    let depth = place.targeted(app)?;
+    let folder = app.browser.location_at(depth)?;
+    Some(OpenIn {
+        place,
+        depth,
+        folder,
+    })
+}
+
+/// Closes the filter in any other column or view, configures [`FilterState`] for `opening`,
+/// and returns whether it was already open there.
+fn prepare_open(app: &mut App, opening: OpenIn, tx: &mut Tx) -> bool {
     let elsewhere = app
         .filter
         .open_in
         .as_ref()
-        .is_some_and(|open| open.depth != depth || open.place != place);
+        .is_some_and(|open| open.depth != opening.depth || open.place != opening.place);
     if elsewhere {
         let polled = app.filter.state.close();
         route(app, polled, tx);
     }
-    let shows = match folder.native_path() {
+    let shows = match opening.folder.native_path() {
         Some(_) => Shows::Replace,
         None => Shows::InPlace,
     };
     app.filter.state.set_shows(shows);
-    let opening = OpenIn {
-        place,
-        depth,
-        folder,
-    };
+    app.filter
+        .state
+        .set_pick_last(opening.place == Where::Columns);
     let already_open = app.filter.open_in.as_ref() == Some(&opening) && app.filter.state.is_open();
     if app.filter.open_in.as_ref() != Some(&opening) {
         app.filter.serial += 1;
     }
-    app.filter.open_in = Some(opening);
-    if place == Where::Columns {
-        app.columns.hold_header(Some(depth));
+    if opening.place == Where::Columns {
+        app.columns.hold_header(Some(opening.depth));
     }
+    app.filter.open_in = Some(opening);
+    already_open
+}
+
+/// Opens the filter in the pane or the targeted column, empty or on `query`: Ctrl+F, the
+/// toggle, a key typed in the listing. False where there is no column to open it in.
+fn open(app: &mut App, query: Option<&str>, tx: &mut Tx) -> bool {
+    let Some(opening) = opening_in(app) else {
+        return false;
+    };
+    let (place, depth) = (opening.place, opening.depth);
+    let already_open = prepare_open(app, opening, tx);
     let polled = match query {
         Some(query) => {
             let before = place.listing_position(app, depth);
@@ -342,9 +379,9 @@ fn searching(app: &mut App, tx: &mut Tx) {
     if open.place.shows_hits(app, open.depth) || open.folder.native_path().is_none() {
         return;
     }
-    let mut hits = Column::new(open.folder, true, None);
+    let mut hits = Column::new(open.folder.clone(), true, None);
     hits.set_load(Load::Listed);
-    open.place.show_hits(app, open.depth, hits, true, tx);
+    open.show_hits(app, HitsUpdate::plain(hits, true), tx);
 }
 
 /// Asks for `text`'s results after GTK's debounce, dropping an earlier edit's wait.
@@ -410,6 +447,39 @@ pub(crate) fn limits(preferences: &strata_desktop::settings::Preferences) -> Sea
     }
 }
 
+/// Builds the results `Column`, updates `found`, and settles any pending rename for `batch`.
+fn hits_for_batch(
+    filter: &mut Filter,
+    folder: Location,
+    items: &[SearchItem],
+    batch: &Batch,
+) -> HitsUpdate {
+    let rows: Vec<Row> = items
+        .iter()
+        .map(|item| Row::of(&hits::entry_of(item), &filter.ids))
+        .collect();
+    filter.found = items
+        .iter()
+        .map(|item| {
+            let entry = hits::entry_of(item);
+            (filter.ids.of(&entry.location), entry)
+        })
+        .collect();
+    let mut hits = Column::new(folder, true, None);
+    hits.apply(Edit::Replace(rows));
+    hits.set_load(Load::Listed);
+    let clear = filter.state.shown(&batch.query);
+    let settled = filter.renamed.settle(items, !batch.indexing);
+    let relocated = settled
+        .filter(|_| !clear)
+        .map(|renamed| renamed.ids(&filter.ids));
+    HitsUpdate {
+        hits,
+        clear,
+        relocated,
+    }
+}
+
 /// A batch of results came: they show in the open column, the first time with nothing
 /// selected, and a `/` waiting for them goes on.
 fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
@@ -421,22 +491,8 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
         return false;
     }
     let items = eligible(app, &batch);
-    let rows: Vec<Row> = items
-        .iter()
-        .map(|item| Row::of(&hits::entry_of(item), &app.filter.ids))
-        .collect();
-    app.filter.found = items
-        .iter()
-        .map(|item| {
-            let entry = hits::entry_of(item);
-            (app.filter.ids.of(&entry.location), entry)
-        })
-        .collect();
-    let mut hits = Column::new(open.folder.clone(), true, None);
-    hits.apply(Edit::Replace(rows));
-    hits.set_load(Load::Listed);
-    let clear = app.filter.state.shown(&batch.query);
-    open.place.show_hits(app, open.depth, hits, clear, tx);
+    let update = hits_for_batch(&mut app.filter, open.folder.clone(), &items, &batch);
+    open.show_hits(app, update, tx);
     if let Some(index) = take_reveal(app) {
         open.place.reveal_index(app, open.depth, index, tx);
     }
@@ -485,7 +541,42 @@ fn stop(app: &mut App) {
     app.filter.edits += 1;
     app.filter.session.cancel();
     app.filter.found.clear();
+    app.filter.renamed.clear();
     app.filter.descent = None;
+}
+
+/// Tells the filter's results to follow a rename of `from` to `to` (`None` when moved to
+/// another folder), while results currently show `from` (`follow_renamed_result` in
+/// `src/ui/browser/inline_edit.rs`).
+pub(crate) fn follow_renamed(app: &mut App, from: &Location, to: Option<&Location>) {
+    let Some(open) = app.filter.open_in.as_ref() else {
+        return;
+    };
+    if !open.place.shows_hits(app, open.depth) {
+        return;
+    }
+    let from_id = app.filter.ids.of(from);
+    if !app.filter.found.contains_key(&from_id) {
+        return;
+    }
+    let Some(from_path) = from.native_path() else {
+        return;
+    };
+    let to_path = to.and_then(Location::native_path);
+    if to.is_some() && to_path.is_none() {
+        return;
+    }
+    app.filter.renamed.expect(from_path, to_path);
+}
+
+/// Forgets the pending rename of `from` to `to` after it was abandoned or refused, leaving a
+/// newer rename's record (`forget_renamed_result` in `src/ui/browser/inline_edit.rs`).
+pub(crate) fn forget_renamed(app: &mut App, from: &Location, to: Option<&Location>) {
+    let Some(from_path) = from.native_path() else {
+        return;
+    };
+    let to_path = to.and_then(Location::native_path);
+    app.filter.renamed.clear_if(from_path, to_path);
 }
 
 fn closed(app: &mut App) {
@@ -805,6 +896,7 @@ impl Part for Filter {
             open_in: None,
             session: Session::default(),
             found: HashMap::new(),
+            renamed: RenamedResult::default(),
             pane: PaneHits::new(),
             typed: String::new(),
             descent: None,

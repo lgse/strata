@@ -282,49 +282,43 @@ host = "offscreen"
 scenario = "renamed-filter-result-keeps-focus"
 run = "columns-inline"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `focus_renamed_column_result`, at line 41"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
 run = "icons-inline"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `RenamedResult`, at line 41"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
 run = "list-inline"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `RenamedResult`, at line 41"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
 run = "columns-tab"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `focus_renamed_column_result`, at line 41"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
 run = "icons-tab"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `RenamedResult`, at line 41"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"
 run = "list-tab"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A10: a renamed result keeping the cursor and the selection, GTK's `RenamedResult`, at line 41"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "renamed-filter-result-keeps-focus"

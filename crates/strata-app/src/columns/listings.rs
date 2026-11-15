@@ -31,8 +31,7 @@ pub(super) struct Listings {
     hit_paths: HashMap<EntryId, String>,
     /// The results come from the subfolders too: each shows its path under its name.
     hit_details: bool,
-    /// Moves each time results take a column's place or give it back, so the column's
-    /// version changes with what it shows.
+    /// Moves each time results are shown or dropped, so two sets never share a version.
     swaps: u64,
 }
 
@@ -63,9 +62,7 @@ impl Listings {
 
     /// Shows `hits` in the place of column `depth`'s rows, or replaces the results shown there.
     pub(super) fn show_hits(&mut self, depth: usize, hits: Column) {
-        if !self.hits_at(depth) {
-            self.swaps += 1;
-        }
+        self.swaps = self.swaps.wrapping_add(1);
         self.hits = Some((depth, hits));
     }
 
@@ -77,7 +74,7 @@ impl Listings {
     /// Takes the results out, and the column they showed in, when there were any.
     pub(super) fn take_hits(&mut self) -> Option<(usize, Column)> {
         let taken = self.hits.take()?;
-        self.swaps += 1;
+        self.swaps = self.swaps.wrapping_add(1);
         self.hit_paths.clear();
         Some(taken)
     }
