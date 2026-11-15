@@ -4,8 +4,11 @@
 //! scenario file it comes from under `tests/qa/scenarios/`, and expects what that file
 //! waits for. After every step the browser must hold what the view shows.
 
-use super::{Seen, assert_browser_agrees, fixture, folder_name, hosted, open, press, wait};
-use crate::host::offscreen::Offscreen;
+use super::{
+    MODULE, Seen, assert_browser_agrees, fixture, folder_name, hosted, open, press, save_settings,
+    wait,
+};
+use crate::{host::offscreen::Offscreen, test_support::hosted_after};
 
 /// What a scenario waits for after a key. `None` is not checked.
 #[derive(Clone, Copy, Default)]
@@ -294,10 +297,17 @@ fn run(host: &mut Offscreen, sequences: &[(&str, &[Step])]) {
     }
 }
 
+/// The G2 harness's `single_click_previews = false` (`tests/fixtures/harness.json`).
+fn harness_previews_off() {
+    save_settings("mode = \"theme\"\ntheme = \"azure-glow\"\nsingle_click_previews = false\n");
+}
+
 #[test]
 fn keys_move_as_the_g2_scenarios_expect_and_the_browser_holds_the_result() {
-    hosted(
+    hosted_after(
+        MODULE,
         "keys::keys_move_as_the_g2_scenarios_expect_and_the_browser_holds_the_result",
+        harness_previews_off,
         |mut host| run(&mut host, SEQUENCES),
     );
 }

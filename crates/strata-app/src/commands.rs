@@ -439,7 +439,8 @@ fn hear(app: &mut App, event: &KeyEvent, heard: Heard, tx: &mut Tx) -> bool {
     let at = Situation::of(app, tx);
     let stamp = Stamp::of(event, &at, tx);
     let asked = &shell::live_keys(app).asked;
-    let Some(span) = span(&at, heard, asked.early_for(&stamp)) else {
+    let early = asked.early_for(&stamp);
+    let Some(span) = span(&at, heard, early) else {
         return false;
     };
     asked.note(stamp, span);

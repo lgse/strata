@@ -41,7 +41,8 @@ pub(super) fn header<S: 'static>(
                     sh.emit(s, DrawerIntent::ShowView(view.other()), tx)
                 })
                 .build(k)
-                .key("preview-view-switch"),
+                .key("preview-view-switch")
+                .on_key(super::return_as_space::<S>),
         );
     }
     if caps.searchable {
@@ -57,7 +58,8 @@ pub(super) fn header<S: 'static>(
                     }
                 })
                 .build(k)
-                .key("preview-find"),
+                .key("preview-find")
+                .on_key(super::return_as_space::<S>),
         );
     }
     if let Some(busy) = &caps.busy {
@@ -79,7 +81,8 @@ pub(super) fn header<S: 'static>(
             button(IconName::Open, &labels.open)
                 .on_press_tx(move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::Open, tx))
                 .build(k)
-                .key("preview-open"),
+                .key("preview-open")
+                .on_key(super::return_as_space::<S>),
         );
     }
     if let Some(on) = caps.wrap {
@@ -88,7 +91,12 @@ pub(super) fn header<S: 'static>(
             // On, it keeps the pressed fill, as the open Find button does.
             .state(if on { State::Pressed } else { State::Rest })
             .on_press_tx(move |s: &mut S, tx: &mut Tx| sh.emit(s, DrawerIntent::SetWrap(!on), tx));
-        controls.push(wrap.build(k).key("preview-wrap").checked(on));
+        controls.push(
+            wrap.build(k)
+                .key("preview-wrap")
+                .checked(on)
+                .on_key(super::return_as_space::<S>),
+        );
     }
     let sh = shared.clone();
     controls.push(
@@ -98,7 +106,8 @@ pub(super) fn header<S: 'static>(
                 sh.emit(s, DrawerIntent::Closed, tx);
             })
             .build(k)
-            .key("preview-close"),
+            .key("preview-close")
+            .on_key(super::return_as_space::<S>),
     );
 
     let info = parts.header;

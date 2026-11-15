@@ -18,10 +18,6 @@ use crate::{App, shell};
 pub(crate) enum Holds {
     /// A text field none of the others is. Every stage runs, and each command's guard asks
     /// [`Situation::text`], as GTK's stages ask `text_has_focus()`.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no part has such a text field yet")
-    )]
     Field,
     /// The filter's field, which three of GTK's stages treat as no text field
     /// ([`Situation::filter`]).

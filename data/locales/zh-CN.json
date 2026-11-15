@@ -1572,5 +1572,8 @@
   "Activities": "活动",
   "Objects": "物品",
   "Symbols": "符号",
-  "Flags": "旗帜"
+  "Flags": "旗帜",
+  "Document position": "文档位置",
+  "Line %{line} of %{lines}": "第 %{line} 行，共 %{lines} 行",
+  "Blank": "空行"
 }

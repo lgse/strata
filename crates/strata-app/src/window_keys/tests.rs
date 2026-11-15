@@ -48,13 +48,24 @@ fn selected(host: &Offscreen) -> Vec<String> {
         .collect()
 }
 
-/// Finding lgse/strata#2411, driven on GTK: an Escape with the keyboard on a header button
-/// clears the active column's selection, and the keyboard stays on the button.
+/// The QA harness's `single_click_previews = false` (`tests/fixtures/harness.json`), under
+/// which lgse/strata#2411 was driven so resting on `todo.txt` opens no preview first.
+fn without_auto_preview() {
+    let file = strata_core::storage::config_directory().join("settings.toml");
+    std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+    let saved = "mode = \"theme\"\ntheme = \"azure-glow\"\nsingle_click_previews = false\n";
+    std::fs::write(file, saved).expect("settings");
+}
+
+/// Finding lgse/strata#2411, driven on GTK: with no preview open, an Escape with the keyboard
+/// on a header button clears the active column's selection, and the keyboard stays on the
+/// button.
 #[test]
 fn escape_outside_the_files_clears_the_selection() {
-    hosted(
+    crate::test_support::hosted_after(
         MODULE,
         "escape_outside_the_files_clears_the_selection",
+        without_auto_preview,
         |mut host| {
             let _folder = listed(&mut host);
             focus(&mut host, |app| {
