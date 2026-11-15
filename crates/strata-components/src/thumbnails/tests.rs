@@ -1409,9 +1409,27 @@ fn a_file_icon_dims_and_a_folder_or_cut_entry_does_not() {
             1.0,
         ),
     ];
-    for (name, kind, cut, dim, expected) in cases {
-        assert_eq!(file_icon_opacity(&look, kind, cut, dim), expected, "{name}");
+    for (name, kind, marked, dim, expected) in cases {
+        assert_eq!(
+            file_icon_opacity(&look, kind, marked, dim),
+            expected,
+            "{name}"
+        );
     }
+
+    let mut cut_marks = crate::collection::element::RowMarks::default();
+    cut_marks.cut = true;
+    let mut copy_marks = crate::collection::element::RowMarks::default();
+    copy_marks.copied = true;
+    assert_eq!(
+        part::mark_icon(cut_marks),
+        Some(strata_kit::icons::IconName::Cut)
+    );
+    assert_eq!(
+        part::mark_icon(copy_marks),
+        Some(strata_kit::icons::IconName::Copy)
+    );
+    assert_eq!(part::mark_icon(Default::default()), None);
 
     let mut faint = look.clone();
     faint.slots.collection.file_icon_opacity = Some(0.5);

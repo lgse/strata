@@ -229,6 +229,7 @@ pub(crate) fn collection<V: SinglePane>(app: &App) -> Collection<App> {
             .description(row.index, &single.words)?;
         Some(description.to_owned())
     }))
+    .marks(crate::clipboard::marks)
     .empty(shown_status::<V>)
     .on_press(|app: &mut App, _, _| interrupted::<V>(app))
     // C3 replaces this with its own, which asks the Icons view's `IconsGrid::on_wheel` first.
@@ -267,7 +268,7 @@ pub(crate) fn results<V: SinglePane>(app: &App) -> Collection<App> {
             .modes(single.clicks)
             .missing_anchor_stays(true),
     )
-    .marks(filter::pane::marks)
+    .marks(|app: &App, id| crate::clipboard::with_marks(app, id, filter::pane::marks(app, id)))
     .empty(filter::pane::status)
     .on_intent(filter::pane::heard)
     .on_cursor(|app: &mut App, _, _| filter::picked(app))

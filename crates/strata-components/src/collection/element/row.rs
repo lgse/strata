@@ -26,8 +26,10 @@ use crate::contract::{DropHover, DropZone, ElementKey, Entry, EntryId, Point, Re
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct RowMarks {
-    /// Cut to the clipboard: drawn faded (`collection.cut.opacity`).
+    /// Cut to the clipboard: drawn faded (`collection.cut.opacity`), with the cut icon.
     pub cut: bool,
+    /// Copied to the clipboard: its icon is the copy mark at full opacity.
+    pub copied: bool,
     /// Part of a drag in progress: drawn faded (`collection.drag.opacity`).
     pub dragging: bool,
     /// What Enter in the filter field opens: outlined in the accent.
@@ -743,17 +745,22 @@ pub(super) fn header_body(style: &GroupStyle, h: f32, label: El) -> El {
     el
 }
 
-/// The entry's catalog icon, else the Folder or File icon, at the row icon size.
+/// The clipboard mark icon, else the entry's catalog icon, else the Folder or File icon, at the
+/// row icon size.
 fn default_icon(rcx: &RowCx<'_>) -> El {
     let look = rcx.look;
-    let fallback = if rcx.entry.kind.is_folder_like() {
-        IconName::Folder
-    } else {
-        IconName::File
+    let glyph = match crate::thumbnails::mark_icon(rcx.state.marks) {
+        Some(mark) => look.icon(mark),
+        None => {
+            let fallback = if rcx.entry.kind.is_folder_like() {
+                IconName::Folder
+            } else {
+                IconName::File
+            };
+            look.icon_named(rcx.entry.icon)
+                .unwrap_or_else(|| look.icon(fallback))
+        }
     };
-    let glyph = look
-        .icon_named(rcx.entry.icon)
-        .unwrap_or_else(|| look.icon(fallback));
     icon(glyph, look.icon_size.md)
         .key(ICON)
         .color(look.kit.c.icon_base)

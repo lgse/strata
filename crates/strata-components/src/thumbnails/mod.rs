@@ -231,6 +231,7 @@ mod store;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use part::mark_icon;
 pub use part::{GLYPH, IconSlot, THUMB, icon_opacity, icon_slot, picture};
 pub use queue::{Direction, Request, Tier, ViewerId, Viewport};
 pub use step::Step;

@@ -104,7 +104,9 @@ pub(crate) fn view(app: &App) -> ColumnsView<App> {
     .header_actions(|app: &App, cx| pane_header::actions::column(app, &cx))
     // The filter's field, in a band under the header of the column it is open in.
     .header_band(|app: &App, cx| filter::column_band(app, cx.depth))
-    // The filter's Enter target among its results.
-    .marks(filter::marks)
+    // The filter's Enter target among its results, plus copied and cut marks.
+    .marks(|app: &App, depth, id| {
+        crate::clipboard::with_marks(app, id, filter::marks(app, depth, id))
+    })
     .on_intent(intents::heard)
 }

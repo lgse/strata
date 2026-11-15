@@ -71,6 +71,9 @@ pub(crate) fn run_with(
 ) -> Result<(), String> {
     rune::set_app_id(APPLICATION_ID);
     let frame = Policy::Auto.frame();
+    let clip =
+        strata_platform::clipboard::Clipboard::<App>::new().on_change(crate::clipboard::changed);
+    let clip_for_init = clip.clone();
     let app = rune::App::new(AppSpec {
         poll: Some(poll),
         on_key: Some(commands::on_key),
@@ -80,11 +83,18 @@ pub(crate) fn run_with(
     })
     // The last write of the per-folder views, before the writer is flushed below. A quit runs
     // no `on_close`, so both ask for it; it is written once.
-    .on_close(|app: &mut App, _: &mut Tx| folder_views::flush_at_exit(app))
-    .on_quit(|app: &mut App, _: &mut Tx| folder_views::flush_at_exit(app))
+    .on_close(|app: &mut App, _: &mut Tx| {
+        crate::clipboard::shutdown();
+        folder_views::flush_at_exit(app);
+    })
+    .on_quit(|app: &mut App, _: &mut Tx| {
+        crate::clipboard::shutdown();
+        folder_views::flush_at_exit(app);
+    })
     .on_modifiers(shell::modifiers)
     .init(move || {
-        let app = App::new(&ui, Csd::new(frame, Backend::from_env()), settings);
+        let mut app = App::new(&ui, Csd::new(frame, Backend::from_env()), settings);
+        crate::clipboard::bind(&mut app, clip_for_init);
         app.open(location);
         app
     })
@@ -101,7 +111,10 @@ pub(crate) fn run_with(
     GLIB.with(|cell| cell.set(glib))
         .map_err(|_| "the GLib loop is already running on this thread".to_owned())?;
     let ran = app
-        .on_window(move |window: &WindowHandle| csd::attach(window, &handle, shell::csd_of))
+        .on_window(move |window: &WindowHandle| {
+            crate::clipboard::attach(&clip, window, &handle);
+            csd::attach(window, &handle, shell::csd_of);
+        })
         .try_run();
     // A setting changed just before the window closed is still on its way to the file.
     strata_core::storage::writer::flush_at_exit();
