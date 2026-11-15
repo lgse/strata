@@ -361,6 +361,7 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "run",
                     "open-in-tab",
                     "rename",
+                    "customize",
                     "trash",
                     "delete",
                     "select-all",
