@@ -146,6 +146,12 @@ impl Part for Sidebar {
         }))
     }
 
+    fn customized(app: &mut App) {
+        if app.sidebar.started {
+            relist(app);
+        }
+    }
+
     /// The tab is shown: what another tab changed while it was hidden (the width step, the
     /// sections, the places shown and their order) is followed, as GTK binds each tab's
     /// sidebar to the settings. The pins come from the bookmarks store, which this tab's
@@ -309,6 +315,17 @@ impl Sidebar {
         }
         self.current = current;
         true
+    }
+}
+
+#[cfg(test)]
+impl Sidebar {
+    pub(crate) fn places(&self) -> &[strata_components::sidebar::Place] {
+        &self.listed.places
+    }
+
+    pub(crate) fn first_place_location(&self) -> Location {
+        self.listed.rows[0].location.clone()
     }
 }
 

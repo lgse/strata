@@ -111,6 +111,7 @@ fn part<P: Made>(place: Place<App>) -> Entry<App> {
         listen: listen::<P>,
         publish: |_| note(format!("{} publishes", P::NAME)),
         caught_up: |_| note(format!("{} has caught up", P::NAME)),
+        customized: |_| {},
         poll: |app, _, _| {
             note(format!("{} polls", P::NAME));
             if ASKING.take() {

@@ -14,6 +14,8 @@ use strata_core::{i18n::tr, model::Location};
 use strata_desktop::settings::Preferences;
 use strata_kit::icons::IconName;
 
+use crate::slots::path_customization;
+
 /// Every built-in place, in the order a sidebar with no saved order shows them.
 pub(super) const STANDARD_PLACE_IDS: &[&str] = &[
     "home",
@@ -154,6 +156,7 @@ pub(super) fn listed(
         let pin = Pin::new(index.to_string(), name.as_str())
             .accepts_drops(location.native_path().is_some())
             .description(location.display_path());
+        let pin = decorate_pin(pin, settings, location.native_path());
         listed.rows.push(Row {
             item: pin.item(),
             location: location.clone(),
@@ -175,6 +178,7 @@ fn place(
             let location = Location::local(&environment.home);
             let place =
                 Place::folder(id, tr("Home"), IconName::Home).description(location.display_path());
+            let place = decorate_place(place, settings, &environment.home);
             (place, location, Navigation::Validate)
         }),
         "trash" => settings.sidebar_show_trash.then(|| {
@@ -244,9 +248,31 @@ fn standard_place(
         .then(|| (environment.special)(directory))
         .flatten()
         .filter(|path| shows_standard_place(id, path, &environment.home))?;
-    let location = Location::local(path);
+    let location = Location::local(&path);
     let place = Place::folder(id, tr(name), icon).description(location.display_path());
+    let place = decorate_place(place, settings, &path);
     Some((place, location, Navigation::Direct))
+}
+
+fn decorate_place(place: Place, settings: &Preferences, path: &Path) -> Place {
+    let (color, glyph) = path_customization(settings, path);
+    let place = place.tint(color);
+    match glyph {
+        Some(glyph) => place.icon(glyph.to_row_icon()),
+        None => place,
+    }
+}
+
+fn decorate_pin(pin: Pin, settings: &Preferences, path: Option<&Path>) -> Pin {
+    let Some(path) = path else {
+        return pin;
+    };
+    let (color, glyph) = path_customization(settings, path);
+    let pin = pin.tint(color);
+    match glyph {
+        Some(glyph) => pin.icon(glyph.to_row_icon()),
+        None => pin,
+    }
 }
 
 /// `should_show_standard_place`: a Desktop that is the home folder is not listed twice.

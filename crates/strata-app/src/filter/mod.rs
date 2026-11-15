@@ -342,7 +342,7 @@ fn searching(app: &mut App, tx: &mut Tx) {
     if open.place.shows_hits(app, open.depth) || open.folder.native_path().is_none() {
         return;
     }
-    let mut hits = Column::new(open.folder, true, None);
+    let mut hits = Column::new(open.folder, true, None).with_worn(shell::worn(app).clone());
     hits.set_load(Load::Listed);
     open.place.show_hits(app, open.depth, hits, true, tx);
 }
@@ -432,7 +432,7 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
             (app.filter.ids.of(&entry.location), entry)
         })
         .collect();
-    let mut hits = Column::new(open.folder.clone(), true, None);
+    let mut hits = Column::new(open.folder.clone(), true, None).with_worn(shell::worn(app).clone());
     hits.apply(Edit::Replace(rows));
     hits.set_load(Load::Listed);
     let clear = app.filter.state.shown(&batch.query);
@@ -862,6 +862,11 @@ impl Part for Filter {
         }]),
     ];
 
+    fn customized(app: &mut App) {
+        let worn = shell::worn(app).clone();
+        app.filter.pane.set_worn(&worn);
+    }
+
     fn switched(app: &mut App, tx: &mut Tx) {
         switch::follow(app, tx);
     }
@@ -871,6 +876,8 @@ impl Part for Filter {
     }
 
     fn tab_shown(app: &mut App, _: &mut Tx) {
+        let worn = shell::worn(app).clone();
+        app.filter.pane.set_worn(&worn);
         switch::tab_shown(app);
     }
 

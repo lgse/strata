@@ -24,7 +24,7 @@ use crate::{
     App,
     fills::{Details, Fills},
     single::{Made, Single},
-    slots::Later,
+    slots::Setup,
 };
 
 mod columns;
@@ -73,7 +73,8 @@ fn keys(typing: bool) -> KeySettings {
 }
 
 impl List {
-    fn with_settings(settings: &Preferences, later: Later<App>) -> Self {
+    fn with_setup(setup: &Setup<'_>) -> Self {
+        let settings: &Preferences = setup.settings;
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
         // `explorer_file_clicks` and `explorer_folder_clicks`: the List view's.
@@ -85,6 +86,7 @@ impl List {
                 keys: keys(typing),
                 described: tr("List view"),
                 menu_at: AnchorEdge::Center,
+                worn: setup.worn.clone(),
             }),
             table: ListTableState::new(),
             layout: columns::layout(settings),
@@ -94,7 +96,7 @@ impl List {
             fills: Fills::new(Details::Folders),
             relative_dates: DateFormat::parse(&settings.date_format) == DateFormat::Relative,
             dates: dates::Dates::default(),
-            thumbs: thumbs::Thumbs::new(later),
+            thumbs: thumbs::Thumbs::new(setup.later.clone()),
         }
     }
 }
@@ -107,6 +109,13 @@ impl List {
 pub(crate) fn customize_columns(app: &mut App, tx: &mut Tx) {
     tx.focus(VIEW, true);
     app.list.table.open_columns_menu(MenuAt::Headings(None));
+}
+
+#[cfg(test)]
+impl List {
+    pub(crate) fn source(&self) -> &dyn strata_components::contract::EntrySource {
+        self.single.pane.source()
+    }
 }
 
 #[cfg(test)]

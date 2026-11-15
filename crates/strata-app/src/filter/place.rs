@@ -150,6 +150,8 @@ impl Where {
                 app.columns.show_hits(depth, hits, clear, tx);
             }
             _ if self.depth_shown(app, depth) => {
+                let mut hits = hits;
+                hits.set_worn(shell::worn(app));
                 app.filter.pane.show(self, hits, clear, tx);
             }
             _ => {}

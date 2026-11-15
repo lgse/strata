@@ -29,7 +29,7 @@
 //! - **One pane for the window.** The collection is keyed by a fixed `scope`; a window with
 //!   tabs will need one pane, and one key, for each tab.
 
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 
 use strata_components::{
     collection::{
@@ -45,6 +45,7 @@ use crate::{
     events::{Added, Change, Marks, Moved},
     handover::{self, Held, Moving, Shown},
     listing::{Column, Edit, Load},
+    slots::Worn,
 };
 
 mod restore;
@@ -90,6 +91,8 @@ pub(crate) struct Pane {
     scope: &'static str,
     /// A listing for each of the browser's columns, root first.
     columns: Vec<Column>,
+    /// The window's saved item colours and icons, indexed by [`EntryId`].
+    worn: Rc<Worn>,
     /// The browser's column shown: its active one, once it has one.
     shown: Option<usize>,
     /// Moves with every folder shown, so two folders of one length never share a version.
@@ -138,6 +141,7 @@ impl Pane {
         Self {
             scope,
             columns: Vec::new(),
+            worn: Worn::empty(),
             shown: None,
             generation: 0,
             held: Held::of(&collection),
@@ -146,6 +150,18 @@ impl Pane {
             grouped: false,
             restore: Restore::default(),
             restored: None,
+        }
+    }
+
+    pub(crate) fn with_worn(mut self, worn: Rc<Worn>) -> Self {
+        self.worn = worn;
+        self
+    }
+
+    pub(crate) fn set_worn(&mut self, worn: &Rc<Worn>) {
+        self.worn = worn.clone();
+        for column in &mut self.columns {
+            column.set_worn(worn);
         }
     }
 
@@ -387,7 +403,7 @@ impl Pane {
         if self.columns.len() != depth {
             return;
         }
-        let mut column = Column::new(location, show_hidden, None);
+        let mut column = Column::new(location, show_hidden, None).with_worn(self.worn.clone());
         column.set_grouping(grouping);
         self.columns.push(column);
         // Opening a folder in place makes the new root active, and history the column it

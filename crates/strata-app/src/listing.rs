@@ -10,7 +10,7 @@
 //! browser's column holds hidden entries too, which the views leave out
 //! (`entry_matches` in `src/ui/browser/entry.rs`).
 
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use strata_components::contract::{Entry, EntryId, EntryKind, EntrySource, LinkTarget, ThumbKey};
 use strata_core::{
@@ -19,7 +19,7 @@ use strata_core::{
 };
 use strata_fs::app::compare_type_groups;
 
-use crate::slots::Ids;
+use crate::slots::{Ids, Worn};
 
 mod type_group;
 
@@ -284,6 +284,8 @@ pub(crate) struct Column {
     /// The browser's preferences for this folder when it groups its rows by file type
     /// (`Browser::shows_type_groups`), and nothing when it does not.
     grouping: Option<ViewPreferences>,
+    /// The window's saved item colours and icons, indexed by [`EntryId`].
+    worn: Rc<Worn>,
 }
 
 impl Column {
@@ -302,7 +304,17 @@ impl Column {
             busy: false,
             from,
             grouping: None,
+            worn: Worn::empty(),
         }
+    }
+
+    pub(crate) fn with_worn(mut self, worn: Rc<Worn>) -> Self {
+        self.worn = worn;
+        self
+    }
+
+    pub(crate) fn set_worn(&mut self, worn: &Rc<Worn>) {
+        self.worn = worn.clone();
     }
 
     /// The same column under its folder's new location.
@@ -515,7 +527,7 @@ impl Column {
 
     /// Moves with every change to what the column shows.
     pub(crate) fn version(&self) -> u64 {
-        self.version
+        self.version ^ self.worn.version().wrapping_shl(24)
     }
 
     /// The folder is being read, or a sort or a refresh runs over its listing.
@@ -563,9 +575,14 @@ impl EntrySource for Column {
 
     fn entry(&self, index: usize) -> Entry<'_> {
         let row = &self.rows[self.shown[index]];
+        let (color, glyph) = self.worn.get(row.id).unwrap_or((None, None));
+        let has_glyph = glyph.is_some();
         // No icon name: the view falls back to its folder and file icons.
-        let entry = Entry::new(row.id, &row.name, row.kind, "");
-        match row.thumbnail {
+        let entry = Entry::new(row.id, &row.name, row.kind, "")
+            .maybe_color(color)
+            .maybe_glyph(glyph);
+        // A custom icon or emoji stands in place of a file's thumbnail (`shows_icon_instead`).
+        match row.thumbnail.filter(|_| !has_glyph) {
             Some(key) => entry.thumbnail(key),
             None => entry,
         }

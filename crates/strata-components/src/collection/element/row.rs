@@ -7,8 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Duration;
 
-use rune::{El, Tx, el, icon, memo, row, text};
-use strata_kit::icons::IconName;
+use rune::{El, Tx, el, memo, row, text};
 use strata_kit::look::Look;
 use strata_kit::slots::collection as tokens;
 
@@ -533,7 +532,14 @@ fn build_item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, index: usiz
         .peek_anchor
         .then(|| color_key(tokens::peek_fill(look)));
     let version = (
-        (entry.name, entry.kind, entry.icon, entry.thumbnail),
+        (
+            entry.name,
+            entry.kind,
+            entry.icon,
+            entry.thumbnail,
+            entry.glyph,
+            entry.color.map(color_key),
+        ),
         state,
         frame.look_key,
         frame.config_key,
@@ -743,21 +749,16 @@ pub(super) fn header_body(style: &GroupStyle, h: f32, label: El) -> El {
     el
 }
 
-/// The entry's catalog icon, else the Folder or File icon, at the row icon size.
+/// The entry's catalog icon or custom decoration, else the Folder or File icon, at the row
+/// icon size.
 fn default_icon(rcx: &RowCx<'_>) -> El {
-    let look = rcx.look;
-    let fallback = if rcx.entry.kind.is_folder_like() {
-        IconName::Folder
-    } else {
-        IconName::File
-    };
-    let glyph = look
-        .icon_named(rcx.entry.icon)
-        .unwrap_or_else(|| look.icon(fallback));
-    icon(glyph, look.icon_size.md)
-        .key(ICON)
-        .color(look.kit.c.icon_base)
-        .a11y_hidden()
+    crate::thumbnails::entry_glyph(
+        rcx.look,
+        rcx.entry,
+        rcx.look.icon_size.md,
+        rcx.look.kit.c.icon_base,
+    )
+    .key(ICON)
 }
 
 /// The entry's name, cut short with an ellipsis.

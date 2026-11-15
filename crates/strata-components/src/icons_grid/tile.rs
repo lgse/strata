@@ -15,15 +15,14 @@
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-use rune::{Align, Color, El, SurfaceFit, col, el, icon, row, text};
-use strata_kit::icons::IconName;
+use rune::{Align, Color, El, SurfaceFit, col, el, row, text};
 use strata_kit::slots::icons as tokens;
 
 use super::Shared;
 use super::caption::Cut;
 use super::metrics::TileMetrics;
 use crate::collection::element::{ContentSlot, ICON, LABEL, RowCx, Slot};
-use crate::thumbnails::{GLYPH, Step, THUMB, icon_opacity};
+use crate::thumbnails::{Step, THUMB, entry_glyph, icon_opacity};
 
 /// The key of a tile's details line, under its cell (`row-{id}/details`).
 pub const DETAILS: &str = "details";
@@ -116,22 +115,13 @@ pub(super) fn name_look(rcx: &RowCx<'_>) -> (Option<Color>, Color, Option<Color>
     }
 }
 
-/// The entry's catalog icon, else the Folder or File icon, in the frame's icon colour.
+/// The entry's catalog icon or custom decoration, else the Folder or File icon, in the
+/// frame's icon colour.
 fn placeholder(rcx: &RowCx<'_>, points: f32) -> El {
     let look = rcx.look;
-    let fallback = if rcx.entry.kind.is_folder_like() {
-        IconName::Folder
-    } else {
-        IconName::File
-    };
-    let glyph = look
-        .icon_named(rcx.entry.icon)
-        .unwrap_or_else(|| look.icon(fallback));
     // A file's icon draws fainter than a folder's, as Strata's tiles draw it
     // (`FILE_ICON_OPACITY` in `src/ui/browser_modes/icons_card.rs`).
-    let glyph = icon(glyph, points)
-        .key(GLYPH)
-        .color(tokens::frame_icon(look));
+    let glyph = entry_glyph(look, rcx.entry, points, tokens::frame_icon(look));
     match icon_opacity(rcx, true) {
         opacity if opacity < 1.0 => glyph.opacity(opacity),
         _ => glyph,
@@ -139,20 +129,22 @@ fn placeholder(rcx: &RowCx<'_>, points: f32) -> El {
 }
 
 /// The icon slot: the frame (keyed [`ICON`], so C23's flights fly it, selection and all), with
-/// the entry's placeholder icon centred in it and, when the entry has a thumbnail key and
-/// thumbnails show, its image over the slot. As C25's `picture` draws them: the image is fitted
-/// (letterboxed) in the slot, and the icon fades out through the handle's opacity while an image
-/// is held, so a thumbnail landing, changing size or going needs no build.
+/// the entry's placeholder icon centred in it and, when the entry has a thumbnail key, wears no
+/// custom glyph, and thumbnails show, its image over the slot. As C25's `picture` draws them:
+/// the image is fitted (letterboxed) in the slot, and the icon fades out through the handle's
+/// opacity while an image is held, so a thumbnail landing, changing size or going needs no build.
 ///
 /// Versioned by the store's handles for the key and the step, never the key's state.
 pub(super) fn icon_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S> {
     let (version_shared, build_shared) = (shared.clone(), shared.clone());
     let key = b.key();
     Slot::new(
-        move |s: &S, rcx: &RowCx<'_>| match (rcx.entry.thumbnail, (version_shared.parts)(s).thumbs)
-        {
-            (Some(k), Some((store, _))) => key ^ store.version(k).rotate_left(29),
-            _ => key,
+        move |s: &S, rcx: &RowCx<'_>| {
+            let thumb = rcx.entry.thumbnail.filter(|_| rcx.entry.glyph.is_none());
+            match (thumb, (version_shared.parts)(s).thumbs) {
+                (Some(k), Some((store, _))) => key ^ store.version(k).rotate_left(29),
+                _ => key,
+            }
         },
         move |s: &S, rcx: &RowCx<'_>| {
             let m = &b.m;
@@ -166,7 +158,8 @@ pub(super) fn icon_slot<S: 'static>(shared: &Rc<Shared<S>>, b: Built) -> Slot<S>
                 .center()
                 .radius(tokens::frame_radius(look))
                 .a11y_hidden();
-            frame = match (rcx.entry.thumbnail, (build_shared.parts)(s).thumbs) {
+            let thumb = rcx.entry.thumbnail.filter(|_| rcx.entry.glyph.is_none());
+            frame = match (thumb, (build_shared.parts)(s).thumbs) {
                 (Some(key), Some((store, _))) if store.enabled() => {
                     let thumb = store.thumb(key);
                     frame.child(glyph.live_opacity(thumb.icon_alpha())).child(

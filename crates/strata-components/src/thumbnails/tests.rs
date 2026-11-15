@@ -1421,3 +1421,24 @@ fn a_file_icon_dims_and_a_folder_or_cut_entry_does_not() {
         "the token"
     );
 }
+
+#[test]
+fn custom_glyph_hides_thumbnail_while_colour_alone_keeps_it() {
+    use crate::contract::{Entry, EntryGlyph, EntryId, EntryKind, ThumbKey};
+    use part::shown_thumbnail;
+
+    let accent = strata_kit::look::Look::fallback(false).kit.c.icon_accent;
+    let thumb = ThumbKey::new(42);
+    let base = Entry::new(EntryId::new(1), "cover.png", EntryKind::File, "").thumbnail(thumb);
+    assert_eq!(shown_thumbnail(base), Some(thumb));
+    assert_eq!(
+        shown_thumbnail(base.color(accent)),
+        Some(thumb),
+        "a custom colour alone still shows the file's thumbnail"
+    );
+    assert_eq!(
+        shown_thumbnail(base.glyph(EntryGlyph::Icon("strata-star"))),
+        None
+    );
+    assert_eq!(shown_thumbnail(base.glyph(EntryGlyph::Emoji("🚀"))), None);
+}

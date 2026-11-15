@@ -330,6 +330,7 @@ pub(crate) fn open(app: &mut App, location: Option<Location>, at: usize, tx: &mu
     let setup = Setup {
         settings: &saved,
         ids: &app.window.ids,
+        worn: &app.window.worn,
         later: &later,
         shown: &here.shown,
     };
