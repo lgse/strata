@@ -1552,5 +1552,8 @@
   "Unsorted": "並べ替えなし",
   "Sort: %{field} %{direction}": "並べ替え: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · 大文字と小文字を区別"
+  "%{field} · case-sensitive": "%{field} · 大文字と小文字を区別",
+  "Document position": "ドキュメント内の位置",
+  "Line %{line} of %{lines}": "%{lines} 行中 %{line} 行目",
+  "Blank": "空白"
 }

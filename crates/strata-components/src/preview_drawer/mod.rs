@@ -563,8 +563,21 @@ fn pane<S: 'static>(
         )
 }
 
+pub(super) fn return_as_space<S: 'static>(_: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if ev.key != rune::Key::Enter || ev.mods != rune::Mods::default() {
+        return false;
+    }
+    if !tx.key_repeat() {
+        tx.send_key(KeyEvent {
+            key: rune::Key::Text(" ".to_owned()),
+            mods: rune::Mods::default(),
+        });
+    }
+    true
+}
+
 /// Keys that reach the drawer from a focused element inside it: Escape closes find, and the
-/// find keys open it while the view is searchable. Others pass on.
+/// find keys open find while the view is searchable. Others pass on.
 fn drawer_key<S: 'static>(
     shared: &Shared<S>,
     s: &mut S,

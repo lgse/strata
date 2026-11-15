@@ -59,6 +59,23 @@ pub(crate) fn under_cursor(app: &App) -> Option<(usize, FileEntry)> {
     Some((depth, entry.clone()))
 }
 
+/// The selected search result to preview (the cursor's when selected, else the first selected
+/// result) and its column (`selected_search_result` in `src/ui/browser/view_selection.rs`).
+pub(crate) fn preview_result(app: &App) -> Option<(usize, FileEntry)> {
+    let depth = showing(app)?;
+    let (source, selection) = shown(app, depth)?;
+    let id = selection
+        .cursor()
+        .filter(|id| selection.contains(source, *id))
+        .or_else(|| {
+            (0..source.len())
+                .find(|index| selection.is_selected_at(source, *index))
+                .map(|index| source.id_at(index))
+        })?;
+    let entry = app.filter.found.get(&id)?.clone();
+    Some((depth, entry))
+}
+
 /// Result `id`'s entry, when column `depth` shows results.
 pub(crate) fn at(app: &App, depth: usize, id: EntryId) -> Option<FileEntry> {
     (showing(app)? == depth)

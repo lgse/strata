@@ -1552,5 +1552,8 @@
   "Unsorted": "Unsorted",
   "Sort: %{field} %{direction}": "Sort: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · case-sensitive"
+  "%{field} · case-sensitive": "%{field} · case-sensitive",
+  "Document position": "Document position",
+  "Line %{line} of %{lines}": "Line %{line} of %{lines}",
+  "Blank": "Blank"
 }

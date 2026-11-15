@@ -1552,5 +1552,8 @@
   "Unsorted": "Senza ordinamento",
   "Sort: %{field} %{direction}": "Ordina: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · distingue maiuscole"
+  "%{field} · case-sensitive": "%{field} · distingue maiuscole",
+  "Document position": "Posizione nel documento",
+  "Line %{line} of %{lines}": "Riga %{line} di %{lines}",
+  "Blank": "Vuota"
 }

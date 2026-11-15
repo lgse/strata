@@ -177,3 +177,53 @@ fn in_columns_a_wider_standard_column_raises_the_manual_floor() {
     let s = solve(&R, &fit, 701.0, Some(300.0));
     assert_eq!((s.width, s.min), (340.0, 340.0));
 }
+
+#[test]
+fn return_on_a_drawer_button_fires_its_intent() {
+    use rune::{Key, KeyEvent};
+
+    struct Host {
+        drawer: DrawerState,
+        closed: bool,
+    }
+
+    fn view(host: &Host, cx: &mut rune::Cx<Host>) -> El {
+        let look = Look::fallback(false);
+        PreviewDrawer::new(&host.drawer, |h: &mut Host| &mut h.drawer)
+            .placeholder("Ready")
+            .on_intent(|h, intent, _| {
+                if intent == DrawerIntent::Closed {
+                    h.closed = true;
+                }
+            })
+            .build(el().key("files").focusable(true), &look, cx)
+    }
+
+    let mut drawer = DrawerState::new();
+    drawer.open_at_once();
+    let mut rt = Runtime::new(
+        Host {
+            drawer,
+            closed: false,
+        },
+        view,
+        (800.0, 400.0),
+        Env::default(),
+    );
+    rt.frame(0.0);
+    rt.settle_all();
+    rt.frame(0.0);
+    rt.update(|_, tx| tx.focus("preview-close", true));
+    rt.frame(0.0);
+    rt.key(KeyEvent {
+        key: Key::Enter,
+        mods: rune::Mods::default(),
+    });
+    // The sent Space lands on the next frame.
+    rt.frame(1.0 / 60.0);
+    rt.frame(1.0 / 60.0);
+    assert!(
+        rt.state.closed,
+        "Return on Close fires DrawerIntent::Closed"
+    );
+}

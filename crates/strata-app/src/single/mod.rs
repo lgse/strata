@@ -137,6 +137,14 @@ impl Single {
             first_visit: FirstVisit::default(),
         }
     }
+
+    pub(crate) fn one_click_files(&self) -> bool {
+        self.clicks.files == ClickCount::One
+    }
+
+    pub(crate) fn in_band(&self) -> bool {
+        self.pane.collection().selection.in_band()
+    }
 }
 
 /// A view that shows one pane: its key, and where its [`Single`] is in the [`App`].
@@ -410,6 +418,7 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         Intent::Activate { id, how } => open_in_place::<V>(app, depth, id, how),
         // A slow second click on the name.
         Intent::BeginRename { id } => rename::begin_on(app, depth, id, tx),
+        Intent::Clicked { id } => clicked::<V>(app, depth, id),
         // The opener ends an open rename itself, as a press outside the field does in GTK.
         Intent::ContextMenu { target, anchor } => {
             let request = Request {
@@ -429,6 +438,23 @@ fn heard<V: SinglePane>(app: &mut App, intent: Intent, tx: &mut Tx) {
         _ => {}
     }
     shell::settle(app, tx);
+}
+
+/// A plain click on a file previews it when single-click previews are enabled and two clicks
+/// open files (`PendingActivationKind::Standard { preview: true }`).
+fn clicked<V: SinglePane>(app: &App, depth: usize, id: EntryId) {
+    if V::single(app).one_click_files() || !shell::preferences(app).single_click_previews {
+        return;
+    }
+    let Some(position) = pane::<V>(app).position(depth, id) else {
+        return;
+    };
+    let previews = app.browser.entry_at(depth, position).is_some_and(|entry| {
+        !entry.is_directory() && crate::preview::entry_supports_quick_preview(&entry)
+    });
+    if previews {
+        app.browser.preview(depth, position);
+    }
 }
 
 /// The collection moved its cursor or changed its selection: the browser takes it now, so

@@ -234,7 +234,7 @@ impl<H: Host> Backend for Rune<H> {
             selected: seen.has_state("selected"),
             focused: snapshot.is_focus(seen),
             checked: seen.has_state("checked"),
-            pressed: false,
+            pressed: seen.role() == "toggle button" && seen.has_state("checked"),
             sensitive: !seen.has_state("disabled"),
             selectable: seen.has_state("selected") || seen.has_state("unselected"),
             editable: field::is_one(&seen.role) && !seen.has_state("read-only"),

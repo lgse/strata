@@ -1552,5 +1552,8 @@
   "Unsorted": "Unsortiert",
   "Sort: %{field} %{direction}": "Sortierung: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · Groß-/Kleinschreibung"
+  "%{field} · case-sensitive": "%{field} · Groß-/Kleinschreibung",
+  "Document position": "Dokumentposition",
+  "Line %{line} of %{lines}": "Zeile %{line} von %{lines}",
+  "Blank": "Leer"
 }

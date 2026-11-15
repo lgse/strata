@@ -1552,5 +1552,8 @@
   "Unsorted": "Без сортировки",
   "Sort: %{field} %{direction}": "Сортировка: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · с учётом регистра"
+  "%{field} · case-sensitive": "%{field} · с учётом регистра",
+  "Document position": "Позиция в документе",
+  "Line %{line} of %{lines}": "Строка %{line} из %{lines}",
+  "Blank": "Пустая"
 }

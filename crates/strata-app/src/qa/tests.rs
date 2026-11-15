@@ -93,15 +93,24 @@ fn launched(backend: &Rune) -> tempfile::TempDir {
     folder
 }
 
+/// The QA harness's `single_click_previews = false` (`tests/fixtures/harness.json`).
+fn harness_previews_off() {
+    let file = strata_core::storage::config_directory().join("settings.toml");
+    std::fs::create_dir_all(file.parent().expect("a folder")).expect("settings folder");
+    let saved = "mode = \"theme\"\ntheme = \"azure-glow\"\nsingle_click_previews = false\n";
+    std::fs::write(file, saved).expect("settings");
+}
+
 /// Gate G1's scenario, `arrow-keys-move-focus/columns-arrows`, step for step. The runner
 /// sends `keymap` for the scenario's `layout` step.
 #[test]
 fn the_first_light_scenario_passes_step_for_step() {
     let scratch = tempfile::tempdir().expect("a folder");
     let log = scratch.path().join("input.log");
-    staged(
+    staged_after(
         "the_first_light_scenario_passes_step_for_step",
         Some(log),
+        harness_previews_off,
         |backend| {
             let folder = launched(&backend);
             let kept = Remembered::default();

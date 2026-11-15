@@ -1552,5 +1552,8 @@
   "Unsorted": "정렬 안 함",
   "Sort: %{field} %{direction}": "정렬: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · 대소문자 구분"
+  "%{field} · case-sensitive": "%{field} · 대소문자 구분",
+  "Document position": "문서 위치",
+  "Line %{line} of %{lines}": "%{lines}줄 중 %{line}번째 줄",
+  "Blank": "빈 줄"
 }

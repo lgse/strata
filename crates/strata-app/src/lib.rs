@@ -91,6 +91,7 @@ mod sort;
 // A13 Archives and providers
 // A14 Open with, terminal and custom actions
 // A15 Preview drawer, text and documents
+mod preview;
 // A16 Media, PDF and model viewers
 // A17 Properties
 // A18 Settings and themes
@@ -140,6 +141,7 @@ slots::parts! {
     // A13 Archives and providers
     // A14 Open with, terminal and custom actions
     // A15 Preview drawer, text and documents
+    preview: preview::Preview,
     // A16 Media, PDF and model viewers
     // A17 Properties
     // A18 Settings and themes

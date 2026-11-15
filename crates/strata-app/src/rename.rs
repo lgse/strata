@@ -178,7 +178,7 @@ impl Part for Rename {
             // `inline_editing` in `src/ui/window/keyboard/commands.rs`: not from a text field,
             // but for the filter's.
             Keys::at(Stage::InlineEditing, &[RENAME.in_map(Map::Default)])
-                .when(|_, at| at.filter() || !at.text()),
+                .when(|_, at| !at.within("preview") && (at.filter() || !at.text())),
         ])];
 
     fn keyboard(app: &App) -> Option<Holds> {

@@ -1552,5 +1552,8 @@
   "Unsorted": "Rendezetlen",
   "Sort: %{field} %{direction}": "Rendezés: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · kis- és nagybetűk"
+  "%{field} · case-sensitive": "%{field} · kis- és nagybetűk",
+  "Document position": "Pozíció a dokumentumban",
+  "Line %{line} of %{lines}": "%{line} / %{lines}. sor",
+  "Blank": "Üres"
 }

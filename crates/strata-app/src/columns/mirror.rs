@@ -31,7 +31,9 @@ pub(crate) const WAIT: Duration = Duration::from_millis(75);
 #[derive(Clone)]
 struct Gate {
     /// The saved "Mirror the selection in Columns view" choice.
-    enabled: bool,
+    enabled: Rc<Cell<bool>>,
+    /// The saved "Single-click previews" choice (`mirror_entry` in GTK).
+    single_click_previews: Rc<Cell<bool>>,
     /// Whether the last input that moved the cursor was a key. The GTK views start that way
     /// too (`NavigationInput::default`).
     keyboard: Rc<Cell<bool>>,
@@ -46,7 +48,7 @@ impl Gate {
     /// never once another view shows, which the wait asks again when it is over.
     fn open(&self, by_removal: bool) -> bool {
         let moved_by = by_removal || self.keyboard.get();
-        self.enabled && moved_by && !self.editing.get() && self.shown.is::<Columns>()
+        self.enabled.get() && moved_by && !self.editing.get() && self.shown.is::<Columns>()
     }
 }
 
@@ -60,13 +62,19 @@ pub(crate) struct Mirror {
 impl Mirror {
     /// Whether the saved choice mirrors the selection at all.
     pub(crate) fn enabled(&self) -> bool {
-        self.gate.enabled
+        self.gate.enabled.get()
     }
 
-    pub(crate) fn new(enabled: bool, shown: ShownView) -> Self {
+    pub(crate) fn set_preferences(&self, enabled: bool, single_click_previews: bool) {
+        self.gate.enabled.set(enabled);
+        self.gate.single_click_previews.set(single_click_previews);
+    }
+
+    pub(crate) fn new(enabled: bool, single_click_previews: bool, shown: ShownView) -> Self {
         Self {
             gate: Gate {
-                enabled,
+                enabled: Rc::new(Cell::new(enabled)),
+                single_click_previews: Rc::new(Cell::new(single_click_previews)),
                 keyboard: Rc::new(Cell::new(true)),
                 editing: Rc::default(),
                 shown,
@@ -104,7 +112,7 @@ impl Mirror {
         if let Some(earlier) = self.waiting.borrow_mut().take() {
             earlier.remove();
         }
-        if self.gate.enabled {
+        if self.gate.enabled.get() {
             mirror(browser, depth, position);
         }
     }
@@ -134,6 +142,9 @@ impl Mirror {
             waiting.borrow_mut().take();
             if let Some(browser) = browser.upgrade().filter(|_| gate.open(by_removal)) {
                 mirror(&browser, depth, position);
+                if gate.single_click_previews.get() {
+                    mirror_preview(&browser, depth, position);
+                }
             }
         });
         self.waiting.replace(Some(source));
@@ -157,5 +168,20 @@ fn mirror(browser: &Rc<Browser>, depth: usize, position: usize) {
         browser.show_child(depth, entry.location);
     } else {
         browser.close_column(depth + 1);
+    }
+}
+
+fn mirror_preview(browser: &Rc<Browser>, depth: usize, position: usize) {
+    if browser.pending_navigation_generation().is_some() {
+        return;
+    }
+    let Some((focused_depth, focused_position, entry)) = browser.focused_item() else {
+        return;
+    };
+    if (focused_depth, focused_position) == (depth, position)
+        && !entry.is_directory()
+        && let Some(target) = crate::preview::preview_target(Some(entry))
+    {
+        browser.request_automatic_preview(target);
     }
 }

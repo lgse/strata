@@ -1552,5 +1552,8 @@
   "Unsorted": "Không sắp xếp",
   "Sort: %{field} %{direction}": "Sắp xếp: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · phân biệt chữ hoa/thường"
+  "%{field} · case-sensitive": "%{field} · phân biệt chữ hoa/thường",
+  "Document position": "Vị trí trong tài liệu",
+  "Line %{line} of %{lines}": "Dòng %{line} trên %{lines}",
+  "Blank": "Trống"
 }

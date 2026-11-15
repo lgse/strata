@@ -1552,5 +1552,8 @@
   "Unsorted": "不排序",
   "Sort: %{field} %{direction}": "排序：%{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · 区分大小写"
+  "%{field} · case-sensitive": "%{field} · 区分大小写",
+  "Document position": "文档位置",
+  "Line %{line} of %{lines}": "第 %{line} 行，共 %{lines} 行",
+  "Blank": "空行"
 }

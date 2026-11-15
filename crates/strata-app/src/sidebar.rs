@@ -287,6 +287,25 @@ impl Sidebar {
         (self.state.width.full_width() - rail).max(0.0)
     }
 
+    pub(crate) fn is_started(&self) -> bool {
+        self.started
+    }
+
+    pub(crate) fn chosen_full(&self) -> bool {
+        self.state.width.chosen() == Step::Full
+    }
+
+    pub(crate) fn is_auto_railed(&self) -> bool {
+        self.state.width.auto_rail()
+    }
+
+    /// Applies the preview split's fit rule to a full sidebar, returning whether it changed.
+    pub(crate) fn set_auto_rail(&mut self, rail: bool) -> bool {
+        let before = self.state.width.auto_rail();
+        self.state.width.set_auto_rail(rail);
+        self.state.width.auto_rail() != before
+    }
+
     fn location_of(&self, item: &ItemId) -> Option<&places::Row> {
         self.listed.rows.iter().find(|row| &row.item == item)
     }

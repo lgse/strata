@@ -39,8 +39,9 @@ const EXCEPTIONS: [&str; 3] = [
 
 /// Buttons a component draws and presses on Return itself, by key prefix: C6's ancestor crumbs
 /// (their own `on_key`) and its Copy path (`return_as_space` in its crumbs), which
-/// `super::return_presses_copy_path_and_a_crumb` presses.
-const IN_THEIR_COMPONENT: [&str; 2] = ["location-crumb-", "location-copy"];
+/// `super::return_presses_copy_path_and_a_crumb` presses, and C9's preview drawer controls
+/// (`drawer_button_enter` in `strata_components::preview_drawer`).
+const IN_THEIR_COMPONENT: [&str; 3] = ["location-crumb-", "location-copy", "preview-"];
 
 /// C15's dialog panel, whose own keys turn Return into Space: the `dialog` keyed `{key}-dialog`
 /// inside the layer keyed `{key}-layer` (`strata_components::dialog`'s shell). rune-kit gives

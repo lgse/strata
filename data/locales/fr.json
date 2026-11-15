@@ -1552,5 +1552,8 @@
   "Unsorted": "Sans tri",
   "Sort: %{field} %{direction}": "Tri : %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · sensible à la casse"
+  "%{field} · case-sensitive": "%{field} · sensible à la casse",
+  "Document position": "Position dans le document",
+  "Line %{line} of %{lines}": "Ligne %{line} sur %{lines}",
+  "Blank": "Vide"
 }
