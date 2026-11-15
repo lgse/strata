@@ -64,6 +64,12 @@ impl Rune {
         self.host.turn()
     }
 
+    /// The modifiers the shell holds as held down in the window ([`shell::held_modifiers`]).
+    #[cfg(test)]
+    pub(super) fn held_modifiers(&self) -> rune::Mods {
+        self.host.app(shell::held_modifiers)
+    }
+
     /// Runs `act` on the window's state as a handler would: what a test reaches behind the
     /// steps.
     #[cfg(test)]

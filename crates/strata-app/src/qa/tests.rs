@@ -24,6 +24,7 @@ use crate::{
 mod filter;
 mod icon;
 mod invariants;
+mod modifiers;
 mod ready;
 mod rename;
 mod replaced;

@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use rune::{KeyEvent, PhysicalInput, PointerButton, WheelEvent, accesskit::Action};
+use rune::{KeyEvent, PointerButton, WheelEvent, accesskit::Action};
 use strata_components::contract::EntryId;
 use strata_qa::{Chord, Keymap, Modifier};
 
@@ -67,12 +67,11 @@ impl Staged {
         stage.settle();
     }
 
-    /// Tells Rune which modifiers are down, as a keyboard does before the key they modify.
-    /// The Columns adapter reads them to tell a Shift range from a move.
+    /// Tells Rune and the shell which modifiers are down, as a keyboard does before the key
+    /// they modify. The Columns adapter reads them to tell a Shift range from a move.
     fn show_modifiers(&self, stage: &mut Stage) {
         let mods = self.keyboard.borrow().mods();
-        let runtime = stage.host().runtime();
-        runtime.physical_input(PhysicalInput::Modifiers(mods));
+        stage.host().modifiers(mods);
     }
 
     /// A key going down and up with its modifiers held around it, then a settle. With no
@@ -80,8 +79,9 @@ impl Staged {
     fn tap(&self, name: &str, event: Option<KeyEvent>) {
         let stage = &mut *self.stage.borrow_mut();
         if let Some(event) = event {
-            let runtime = stage.host().runtime();
-            runtime.physical_input(PhysicalInput::Modifiers(event.mods));
+            let host = stage.host();
+            host.modifiers(event.mods);
+            let runtime = host.runtime();
             runtime.key(event.clone());
             runtime.key_up(event);
         }
@@ -220,12 +220,12 @@ impl Host for Staged {
         let Some(event) = event else {
             return Ok(());
         };
-        let runtime = stage.host().runtime();
+        let host = stage.host();
         if pressed {
-            runtime.physical_input(PhysicalInput::Modifiers(event.mods));
-            runtime.key(event);
+            host.modifiers(event.mods);
+            host.runtime().key(event);
         } else {
-            runtime.key_up(event);
+            host.runtime().key_up(event);
             self.show_modifiers(stage);
         }
         Ok(())

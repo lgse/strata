@@ -82,6 +82,7 @@ pub(crate) fn run_with(
     // no `on_close`, so both ask for it; it is written once.
     .on_close(|app: &mut App, _: &mut Tx| folder_views::flush_at_exit(app))
     .on_quit(|app: &mut App, _: &mut Tx| folder_views::flush_at_exit(app))
+    .on_modifiers(shell::modifiers)
     .init(move || {
         let app = App::new(&ui, Csd::new(frame, Backend::from_env()), settings);
         app.open(location);
