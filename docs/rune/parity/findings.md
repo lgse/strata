@@ -154,6 +154,15 @@ closed issue is not a fixed finding: the state given here is the finding's.
 - **With CI off on `strata-next`** (the owner's instruction of 2026-11-12), a sighting now
   comes from `./scripts/quality.sh test`. The rule is unchanged: record it here, rerun the
   test once alone with `./scripts/test-headless.py <name>`, and do not chase it.
+- **Sighting on [#2483](https://github.com/lgse/strata/pull/2483):** a ninth,
+  `ui::browser::progress::tests::minimization::deletion::fast_delete_animates_only_its_own_success_without_showing_progress`
+  (`src/ui/browser/progress/tests/minimization.rs:182`, `progress transition timed out`,
+  sibling of the first above), failed once in `./scripts/quality.sh test` (shard 0, lane 3,
+  109 of 110 passed; all other 11 lanes passed) at `3eca49ef1`, and passed alone under
+  `./scripts/test-headless.py` (7.49 s). That pull request's GTK-side change only delegates
+  the five item-customization getters/setters in `src/ui/preferences/file_settings.rs` and
+  the two emoji/choice helpers in `src/assets.rs` to `strata_desktop::settings`, which
+  `minimization::deletion` never calls.
 
 ### #2176: a GTK critical after a file appears during a rename on a multiple selection
 
@@ -1768,3 +1777,32 @@ sequence only together with the alphabet's version, so the version is part of th
   first frame (`Sidebar::tab_shown`), so the files never lay out at x=0. 30 of 30 runs pass
   loaded and 30 of 30 unloaded. The Rune gap stays: any other move laid out while feedback is
   quiet can still lose its `on_layout` report.
+
+### #2479: the Rune Customize dialog's Clear is enabled where GTK's is insensitive
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2479), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** GTK's Customize dialog makes Clear insensitive while the item has no
+  saved colour or icon, and sensitive once a choice is made (`build_clear_button` in
+  `src/ui/browser/customization.rs`), as driving GTK shows. C15's `StrataDialog` gives its
+  secondary button no disabled state, so the Rune dialog's Clear is always enabled, and
+  pressing it with nothing saved forgets nothing.
+- **Concerns:** [A6](packages/A6.md)'s Customize dialog (`crates/strata-app/src/customize.rs`).
+  No run reads Clear's state.
+- **State:** accepted for now by the coordinator (2026-11-14). The fix is a disabled state for
+  C15's secondary button, as `primary_enabled` gives the primary: a component `contract`
+  change.
+
+### #2480: the Rune Customize dialog's header has no palette icon
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2480), filed on
+  2026-11-14 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** GTK's Customize dialog shows the palette icon in its header's icon box
+  (`modal_layout(PALETTE, …)` in `src/ui/browser/customization.rs`). C15's
+  `StrataDialog::icon` takes a semantic `IconName`, and strata-kit's set has no palette, so
+  the Rune dialog's header has none. The body's theme-colour button draws the catalog's
+  `strata-palette` by name.
+- **Concerns:** [A6](packages/A6.md)'s Customize dialog. No run reads the header icon.
+- **State:** accepted for now by the coordinator (2026-11-14). The fix is a `Palette` name in
+  the semantic set (a W2 contract change, with an icon in every catalog) or a C15 builder
+  that takes a catalog icon.
