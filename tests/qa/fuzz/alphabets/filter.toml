@@ -1,0 +1,219 @@
+# The filter and sort alphabet (A10): what a user does to filter, descend, rename hits and
+# sort across Columns, Icons and List on the canonical fixture: the filter opened by Ctrl+F,
+# by the pane header's funnel toggle and by type-to-search, queries typed and edited (plain
+# substrings, wildcards and misses), `/` descending into a matched folder, Return opening a
+# matched folder, Down into the results and Up back to the field, result clicks with Ctrl and
+# Shift, F2 renaming a result under an active query, files made and removed behind an active
+# filter, hidden files by Ctrl+period and from Appearance, Group by file type in List (which
+# closes an open List filter), view switches carrying an open filter or sort across Columns,
+# Icons and List, List's sortable headings, and Icons' sort-direction toggle.
+#
+# Type to search stays on (the default), so typing from a focused pane exercises `open_with`
+# alongside Ctrl+F and the funnel button.
+#
+# Left out, with why:
+# - Global search and folder jump (`Ctrl+K`, `Ctrl+Shift+K`): on GTK `search_panel` is a box
+#   with `app.dialog = null` while Rune's C17 `SearchPalette` has role `dialog`
+#   (`normalisation.map` excuses only `Appearance` and `Thumbnail size` under
+#   lgse/strata#2405), and `Ctrl+K` searches `$HOME` outside the fixture (`docs/testing.md`,
+#   "Fuzzing").
+# - Opening the Sort by menu (`Choose sort field`) and clicking a Columns column's header
+#   buttons: in Icons and List, `GtkMenuButton` parents `GtkPopoverMenu` inside the `Pane`
+#   widget (`app.focused_pane = "<pane>"`) whereas Rune mounts `Plain` on `Frame::layer`
+#   (`app.focused_pane = null`, lgse/strata#2494); in Columns, GTK leaves focus on the header
+#   button (`app.focused = null`) whereas C2's `header_actions` slot takes no focus on Rune
+#   (lgse/strata#2441), and clicking the funnel toggle to close an open filter returns focus to
+#   the pane on Rune vs the button on GTK. Sort controls are exercised via List's headings,
+#   Icons' sort-direction toggle and Appearance's `Group by file type`, and carried into
+#   Columns by `Ctrl+1`.
+# - `Down` in an open empty filter (`editable_text = ""`): GTK's `FilterNavigation` yields
+#   `Down` to directional focus leaving the entry (`columns/append/keys.rs:59`, the `GtkEntry`
+#   counterpart of `owner.md` A1 item 3), whereas `FilterBar` keeps focus in the empty field.
+# - Shift selection in text fields, on lgse/strata#2350's account.
+# - Return on a file result: it asks for a default application and opens GTK's Open With
+#   chooser (A14's; `columns.toml`). `enter-folder` and `slash-descent` target `documents` and
+#   `pictures` only, and `archive` is left unopened on lgse/strata#2408's account (`views.toml`).
+# - Vertical arrows in Icons' single-row fixture (lgse/strata#2414; `views.toml`), and Escape
+#   or Alt+Up while focus is on a header button (lgse/strata#2411, `owner.md` A1 item 4).
+# - Removing a currently selected filter result in Icons or List: GTK moves selection to a
+#   neighbor slot (`inline_search/collection.rs`), whereas `PaneHits` clears it.
+# - Quick Preview on results (A15's), dragging results (A19's) and 10xer prompts/chords (A11's).
+#
+# Version 1 was the first draft, never merged: its smoke tier uncovered `Columns::drop_hits`
+# following the restored load cursor, `Sort` menu focus after hiding `Make default` or `Reset to
+# default sort`, `Stage::SearchResultKeys` on focused results (all three fixed here), and
+# lgse/strata#2494 (`Choose sort field`'s `app.focused_pane`). Version 2 leaves out `Choose sort
+# field` on #2494's account, adds Appearance's `Group by file type` and `Hidden files`, and keeps
+# `Down` into results and `Up`/`Down` on results to non-empty queries.
+area = "filter"
+version = 2
+about = "Columns, Icons and List on the canonical fixture, type to search on: the filter by Ctrl+F, header toggle and typing, query edits and wildcards, `/` folder descent, Return on folder matches, Down into results and Up back to the field, result selection and F2 rename, live filesystem changes while filtering, Ctrl+period and Appearance hidden files and List grouping, view switches with an open filter, List heading sorts and Icons sort reversal"
+header = '{"modes":["columns"]}'
+
+[[action]]
+name = "open-filter"
+weight = 5
+steps = ['{"key":"ctrl+f","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "header-filter"
+weight = 3
+steps = ['{"click":{"role":"toggle button","name":"<button>"},"when":{"all":[{"editable_fields":0},{"present":{"role":"toggle button","name":"<button>"}},{"not":{"view_mode":"Columns"}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.button = ["Filter icons (Ctrl+F)", "Filter list (Ctrl+F)"]
+
+[[action]]
+name = "type-search"
+weight = 6
+steps = ['{"type":"<query>","when":{"all":[{"focused":true},{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.query = ["no", "re", "to", "doc", "pic", "*o*", "nomatch"]
+
+[[action]]
+name = "filter-type"
+weight = 5
+steps = ['{"type":"<text>","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.text = ["o", "t", "e", ".txt"]
+
+[[action]]
+name = "filter-edit"
+weight = 5
+steps = ['{"key":"<key>","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}']
+choose.key = ["Left", "Right", "Home", "End", "BackSpace", "Delete", "ctrl+a"]
+
+# `/` over a folder match enters that folder and leaves the filter open there, empty.
+[[action]]
+name = "slash-descent"
+weight = 3
+steps = [
+  '{"key":"ctrl+f","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+a","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"type":"<folder>","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"type":"/","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}},{"matches":{"contains":["<folder>"]}}]}}',
+]
+choose.folder = ["documents", "pictures"]
+
+# Return in the filter field opens the Enter target when it is a folder.
+[[action]]
+name = "enter-folder"
+weight = 3
+steps = [
+  '{"key":"ctrl+f","when":{"all":[{"editable_fields":0},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"key":"ctrl+a","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"type":"<folder>","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"key":"Return","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}},{"matches":{"contains":["<folder>"]}}]}}',
+]
+choose.folder = ["documents", "pictures"]
+
+# Down from a non-empty filter field lands on the first (or in Columns last selected) result.
+[[action]]
+name = "into-results"
+weight = 6
+steps = ['{"key":"Down","when":{"all":[{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}},{"not":{"editable_text":""}},{"not":{"matches":[]}}]}}']
+
+[[action]]
+name = "results-down"
+weight = 5
+steps = ['{"key":"<key>","when":{"all":[{"focused":true},{"editable_fields":1},{"not":{"editable_text":""}},{"not":{"field":{"focused":true}}},{"not":{"field":{"name":"Rename"}}},{"not":{"view_mode":"Icons"}}]}}']
+choose.key = ["Down", "shift+Down"]
+
+# Up in the results: on the first result it gives the filter field the keyboard back.
+[[action]]
+name = "results-up"
+weight = 5
+steps = ['{"key":"Up","when":{"all":[{"focused":true},{"editable_fields":1},{"not":{"editable_text":""}},{"not":{"field":{"focused":true}}},{"not":{"field":{"name":"Rename"}}},{"not":{"view_mode":"Icons"}}]}}']
+
+[[action]]
+name = "click-result"
+weight = 4
+steps = ['{"click":{"result":"<result>"},"mods":["<modifier>"],"when":{"all":[{"editable_fields":1},{"not":{"editable_text":""}},{"present":{"result":"<result>"}},{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.result = ["documents/notes.txt", "documents/report.md", "documents/spreadsheet.csv", "pictures/photo.txt", "readme.md", "todo.txt"]
+choose.modifier = ["ctrl", "shift"]
+
+[[action]]
+name = "pick-result"
+weight = 4
+steps = ['{"click":{"result":"<result>"},"when":{"all":[{"editable_fields":1},{"not":{"editable_text":""}},{"present":{"result":"<result>"}},{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.result = ["documents", "pictures", "documents/notes.txt", "documents/report.md", "pictures/photo.txt", "readme.md", "todo.txt"]
+
+[[action]]
+name = "close-escape"
+weight = 6
+steps = ['{"key":"Escape","when":{"all":[{"any":[{"field":{"focused":true}},{"focused":true}]},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "switch-view"
+weight = 6
+steps = ['{"key":"ctrl+<digit>","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.digit = ["1", "2", "3"]
+
+[[action]]
+name = "list-heading-sort"
+weight = 5
+steps = ['{"click":{"header":"<heading>"},"when":{"all":[{"view_mode":"List"},{"present":{"header":"<heading>"}},{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.heading = ["Name", "Size", "Type", "Modified"]
+
+[[action]]
+name = "reverse-sort"
+weight = 4
+steps = ['{"click":{"header":"<button>"},"when":{"all":[{"view_mode":"Icons"},{"present":{"header":"<button>"}},{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+choose.button = ["Ascending — click to reverse", "Descending — click to reverse"]
+
+# Group by file type in List closes an open List filter (`close_for_regroup`) and regroups the
+# table; Escape closes the Appearance popover cleanly.
+[[action]]
+name = "popover-group"
+weight = 3
+steps = [
+  '{"click":{"role":"toggle button","name":"Appearance"},"when":{"all":[{"view_mode":"List"},{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"role":"check menu item","name":"Group by file type"},"when":{"all":[{"view_mode":"List"},{"present":{"role":"check menu item","name":"Group by file type"}}]}}',
+  '{"key":"Escape","when":{"present":{"role":"radio menu item","name":"Columns"}}}',
+]
+
+[[action]]
+name = "popover-hidden"
+weight = 2
+steps = [
+  '{"click":{"role":"toggle button","name":"Appearance"},"when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"click":{"role":"check menu item","name":"Hidden files"},"when":{"present":{"role":"check menu item","name":"Hidden files"}}}',
+  '{"key":"Escape","when":{"present":{"role":"radio menu item","name":"Columns"}}}',
+]
+
+[[action]]
+name = "hidden-files"
+weight = 3
+steps = ['{"key":"ctrl+period","when":{"all":[{"not":{"field":{"name":"Rename"}}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+# Renames a focused result or row while keeping it matching `no`, `note`, `*o*` and `.txt`
+# (`RenamedResult`, lgse/strata#2491), and renames it back without colliding.
+[[action]]
+name = "rename-note"
+weight = 3
+steps = [
+  '{"key":"F2","when":{"all":[{"focused":"notes.txt"},{"absent":{"entry":"renamed-note.txt"}},{"absent":{"result":"documents/renamed-note.txt"}},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"type":"renamed-note","when":{"field":{"name":"Rename","focused":true}}}',
+  '{"key":"<end>","when":{"field":{"name":"Rename","focused":true}}}',
+]
+choose.end = ["Return", "Return", "Escape"]
+
+[[action]]
+name = "rename-back"
+weight = 2
+steps = [
+  '{"key":"F2","when":{"all":[{"focused":"renamed-note.txt"},{"absent":{"entry":"notes.txt"}},{"absent":{"result":"documents/notes.txt"}},{"not":{"dialog":true}},{"menu_items":null}]}}',
+  '{"type":"notes","when":{"field":{"name":"Rename","focused":true}}}',
+  '{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}',
+]
+
+[[action]]
+name = "parent"
+weight = 3
+steps = ['{"key":"alt+Up","when":{"all":[{"focused":true},{"editable_fields":0},{"not":{"directory":"$root"}},{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "write-hit"
+weight = 2
+steps = ['{"fs":{"path":"documents/zz-fuzz-note.txt","write":"fuzz\n"},"when":{"file":{"path":"$fixture/documents/zz-fuzz-note.txt","exists":false}}}']
+
+[[action]]
+name = "remove-hit"
+weight = 2
+steps = ['{"fs":{"path":"documents/zz-fuzz-note.txt","remove":true},"when":{"all":[{"file":{"path":"$fixture/documents/zz-fuzz-note.txt","exists":true}},{"not":{"focused":"zz-fuzz-note.txt"}},{"not":{"all_selected":{"contains":["zz-fuzz-note.txt"]}}}]}}']

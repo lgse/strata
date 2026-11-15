@@ -42,7 +42,7 @@ mod folder_view_file;
 pub mod folder_view_policy;
 mod folder_view_store;
 pub mod folder_views;
-mod item_customization;
+pub mod item_customization;
 mod keymap;
 mod keymap_resolve;
 mod list_columns;
@@ -50,6 +50,7 @@ mod persistence;
 mod saving;
 mod stored;
 mod text_size;
+pub mod trashed;
 
 pub use corner_roundness::CornerRoundness;
 pub use defaults::default_sidebar_order;
@@ -69,7 +70,9 @@ pub use folder_view_store::{
     FolderViewStore, PendingWrite, SAVE_DELAY as FOLDER_VIEWS_SAVE_DELAY, SavedWrite,
     USE_SAVE_DELAY as FOLDER_VIEWS_USE_SAVE_DELAY, UnreadableAtStartup, Written,
 };
-pub use item_customization::{EMOJI_PREFIX, ICON_CHOICES, custom_emoji, is_icon_choice};
+pub use item_customization::{
+    EMOJI_PREFIX, ICON_CHOICES, TrashedCustomizations, custom_emoji, is_icon_choice,
+};
 pub use keymap::KeymapOverrides;
 pub use keymap_resolve::resolve_keymap;
 use list_columns::is_default_list_column_order;

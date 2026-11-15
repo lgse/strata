@@ -10,7 +10,7 @@
 //! Everything else is a part: [`crate::slots`] says where each slot is and what a part gets
 //! from the shell. Each tab has a browser and a state of each part of its own ([`tabs`]).
 
-use std::rc::Rc;
+use std::{path::Path, rc::Rc};
 
 use rune::{Cx, El, Tx, col, row};
 use strata_components::contract::EntryId;
@@ -24,7 +24,7 @@ use strata_desktop::{
         Keys,
         bindings::{SEARCH, TAB_NEW},
     },
-    settings::sort_preferences,
+    settings::{TrashedCustomizations, sort_preferences, trashed::TrashedValues},
 };
 use strata_fs::{
     adapters::{LocalFileSource, LocalOperationProvider},
@@ -44,7 +44,8 @@ use crate::{
     pane,
     settings::Saved,
     slots::{
-        Entry, Frame, Heard, Ids, Inbox, Registry, Setup, ShownView, Slot, TabKey, View, Worn,
+        Entry, Frame, Heard, Ids, Inbox, Later, Registry, Setup, ShownView, Slot, TabKey, View,
+        Worn,
     },
     startup::UiThread,
 };
@@ -89,6 +90,10 @@ pub(crate) struct Window {
     ids: Ids,
     /// The saved item colours and icons, indexed by [`EntryId`].
     worn: Rc<Worn>,
+    /// Customizations of trashed items kept in memory for Put back or undo during this session.
+    trashed_customizations: TrashedValues<TrashedCustomizations>,
+    /// Whether queued item relocations, removals or restores mutated `settings` this batch.
+    customizations_dirty: bool,
     /// The browser's active location as of the last `poll`: what the title names.
     location: Option<Location>,
     title: String,
@@ -146,9 +151,75 @@ fn attach(
             false
         });
     });
+    let queue = events.later();
+    // Operations report items one by one: item colours and icons follow on the window even when
+    // the tab that ran the operation is hidden, and `apply_queued` commits once a batch.
+    browser.observe(move |event| follow_item_customizations(event, &queue));
     // Before the first folder opens, so it opens in its saved sort (A10's).
     folder_views.follow_sorts(browser, setup.settings);
     grouped
+}
+
+fn follow_item_customizations(event: &BrowserEvent, queue: &Later<App>) {
+    match event {
+        BrowserEvent::ItemRelocated { from, to, merged } => {
+            let Some(from) = from.native_path().map(Path::to_path_buf) else {
+                return;
+            };
+            let (to, merged) = (to.native_path().map(Path::to_path_buf), *merged);
+            queue.then(move |app: &mut App, _: &mut Tx| {
+                app.window.customizations_dirty |= app.window.settings.mutate(|preferences| {
+                    preferences.relocate_item_customizations(&from, to.as_deref(), merged)
+                });
+                false
+            });
+        }
+        BrowserEvent::ItemRemoved {
+            location,
+            trash_identity,
+        } => {
+            let Some(path) = location.native_path().map(Path::to_path_buf) else {
+                return;
+            };
+            let trash_identity = *trash_identity;
+            queue.then(move |app: &mut App, _: &mut Tx| {
+                let Window {
+                    settings,
+                    trashed_customizations,
+                    customizations_dirty,
+                    ..
+                } = &mut app.window;
+                *customizations_dirty |= settings.mutate(|preferences| {
+                    preferences.forget_item_customizations(
+                        &path,
+                        trash_identity,
+                        trashed_customizations,
+                    )
+                });
+                false
+            });
+        }
+        BrowserEvent::ItemRestored { location, identity } => {
+            let (Some(path), Some(identity)) =
+                (location.native_path().map(Path::to_path_buf), *identity)
+            else {
+                return;
+            };
+            queue.then(move |app: &mut App, _: &mut Tx| {
+                let Window {
+                    settings,
+                    trashed_customizations,
+                    customizations_dirty,
+                    ..
+                } = &mut app.window;
+                *customizations_dirty |= settings.mutate(|preferences| {
+                    preferences.restore_item_customizations(&path, identity, trashed_customizations)
+                });
+                false
+            });
+        }
+        _ => {}
+    }
 }
 
 /// The window's own share of an event: the columns or the active one changed, so the window
@@ -261,6 +332,8 @@ impl App {
             shown,
             ids,
             worn,
+            trashed_customizations: TrashedValues::default(),
+            customizations_dirty: false,
             location: None,
             title: title_for(None),
             csd,
@@ -411,12 +484,7 @@ pub(crate) fn worn(app: &App) -> &Rc<Worn> {
     &app.window.worn
 }
 
-/// Changes an item's saved colour or icon, rebuilds [`worn`], and tells the active parts.
-pub(crate) fn change_customization(
-    app: &mut App,
-    change: impl FnOnce(&mut strata_desktop::settings::Preferences),
-) {
-    app.window.settings.change(change);
+fn refresh_worn(app: &mut App) {
     let next = app.window.worn.version().wrapping_add(1);
     app.window.worn =
         Worn::from_preferences(app.window.settings.preferences(), &app.window.ids, next);
@@ -424,6 +492,15 @@ pub(crate) fn change_customization(
     for part in parts.active() {
         (part.customized)(app);
     }
+}
+
+/// Changes an item's saved colour or icon, rebuilds [`worn`], and tells the active parts.
+pub(crate) fn change_customization(
+    app: &mut App,
+    change: impl FnOnce(&mut strata_desktop::settings::Preferences),
+) {
+    app.window.settings.change(change);
+    refresh_worn(app);
 }
 
 /// The GTK window's rule (`refresh_title` in `src/ui/window/composition/tabs.rs`): the shown
@@ -1030,6 +1107,11 @@ fn apply_queued(app: &mut App, tx: &mut Tx) -> bool {
         }
     }
     tabs::session::observe_locations(app);
+    if std::mem::take(&mut app.window.customizations_dirty) {
+        app.window.settings.commit();
+        refresh_worn(app);
+        changed = true;
+    }
     let parts = app.window.here.parts;
     for part in parts.active() {
         (part.caught_up)(app);
