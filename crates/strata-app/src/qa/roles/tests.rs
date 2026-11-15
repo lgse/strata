@@ -15,6 +15,8 @@ fn runes_roles_read_as_the_at_spi_names_the_scenarios_use() {
         // The roles the parity set's `role` targets name beside those.
         ("switch", "toggle button"),
         ("text-input", "text"),
+        ("document", "text"),
+        ("tooltip", "label"),
         ("menu-item", "menu item"),
         ("menu-item-radio", "radio menu item"),
     ] {

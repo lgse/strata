@@ -208,6 +208,16 @@ impl DrawerState {
         self.find.open
     }
 
+    /// Whether the find bar's text field holds keyboard focus.
+    pub fn is_find_focused(&self) -> bool {
+        self.find.open && self.find.query.focused
+    }
+
+    /// Whether the divider is being dragged by the pointer.
+    pub fn is_dragging(&self) -> bool {
+        self.dragging
+    }
+
     /// The find query, kept while the preview shows. A host that swaps the view (Rendered
     /// and Source) runs it on the new one.
     pub fn find_query(&self) -> &str {

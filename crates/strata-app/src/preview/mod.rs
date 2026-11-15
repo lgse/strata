@@ -1,0 +1,502 @@
+// SPDX-License-Identifier: MIT
+
+//! Preview drawer part (`A15`, `Place::Drawer`): mounts C9's [`PreviewDrawer`] around the shown
+//! file view, routes Space / Escape / Right / `F8` / `preview-panel`, follows `Browser` focus
+//! and selection events, and hosts read-only text and code previews (`C10a` / `C10b`).
+//!
+//! Other preview packages plug into [`viewer::Viewer`] and [`load`]:
+//! - `A16` adds PDF, media, 3D model, and GPS route viewers.
+//! - `A13` adds archive tree previews and archive password prompts.
+
+use std::{cell::RefCell, path::Path, rc::Rc};
+
+use rune::{El, Tx};
+use strata_components::preview_drawer::{
+    DrawerIntent, DrawerRules, DrawerState, HeaderInfo, PreviewDrawer,
+};
+use strata_core::{
+    i18n::tr,
+    model::{EntryKind, FileEntry},
+};
+use strata_fs::{
+    app::{Browser, BrowserEvent, EntrySplice},
+    services::{
+        PreviewContent,
+        file_activity::{self, Notice},
+    },
+};
+
+mod keys;
+mod labels;
+mod layout;
+mod load;
+mod session;
+pub(crate) mod viewer;
+
+#[cfg(test)]
+mod tests;
+
+use load::Loader;
+use viewer::Viewer;
+
+use crate::{
+    App,
+    commands::{Action, Holds},
+    filter, shell,
+    slots::{Frame, Heard, Listener, Part, Place, Setup},
+};
+
+pub(crate) struct Preview {
+    drawer: DrawerState,
+    viewer: Viewer,
+    header: HeaderInfo,
+    loader: Loader,
+    enabled: bool,
+    reserve_columns: bool,
+    dismissed: bool,
+    child_pane: bool,
+    current: Option<FileEntry>,
+    current_depth: Option<usize>,
+    focus_timer: Rc<RefCell<Option<glib::SourceId>>>,
+    released_from: Option<Option<usize>>,
+    operations: Option<file_activity::Subscription>,
+    last_split_width: Option<f32>,
+}
+
+impl Preview {
+    pub(super) fn reserves_column_space(&self, app: &App) -> bool {
+        self.reserve_columns && session::browsing_columns(app)
+    }
+
+    pub(super) fn reserves_empty_preview(&self, app: &App) -> bool {
+        self.enabled
+            && !self.child_pane
+            && (session::browsing_columns(app) || session::browsing_icons(app))
+    }
+
+    pub(super) fn preview_present(&self, app: &App) -> bool {
+        self.current.is_some()
+            || self.reserves_empty_preview(app)
+            || self.reserves_column_space(app)
+    }
+}
+
+impl Part for Preview {
+    const PLACE: Place<App> = Place::Drawer(wrap);
+    const COMMANDS: &'static [Action<App>] = keys::COMMANDS;
+
+    fn new(setup: &Setup<'_>) -> Self {
+        let mut drawer = DrawerState::new();
+        drawer.reserve(setup.settings.browser_mode == "columns");
+        let loader = Loader::new(setup.later.clone());
+        loader.set_media_backend(&setup.settings.video_preview_backend);
+        Self {
+            drawer,
+            viewer: Viewer::Empty,
+            header: HeaderInfo::default(),
+            loader,
+            enabled: false,
+            reserve_columns: true,
+            dismissed: false,
+            child_pane: false,
+            current: None,
+            current_depth: None,
+            focus_timer: Rc::default(),
+            released_from: None,
+            operations: None,
+            last_split_width: None,
+        }
+    }
+
+    fn keyboard(app: &App) -> Option<Holds> {
+        app.preview.drawer.is_find_focused().then_some(Holds::Field)
+    }
+
+    fn listen(_: &Setup<'_>) -> Option<Listener<App>> {
+        Some(Box::new(hear))
+    }
+
+    fn poll(app: &mut App, _clock: f64, tx: &mut Tx) -> bool {
+        ensure_operations_watch(app);
+        app.preview.loader.sync_theme(&app.look);
+        app.columns
+            .refresh_mirror_preferences(shell::preferences(app));
+        let lit = session::browsing_columns(app) && app.columns.last_edge_lit();
+        let lit_changed = app.preview.drawer.line_lit() != lit;
+        app.preview.drawer.light_line(lit);
+        app.preview.viewer.poll(tx) | lit_changed
+    }
+
+    fn switched(app: &mut App, tx: &mut Tx) {
+        session::sync_reservation(app);
+        if !app.preview.enabled && !app.preview.reserves_column_space(app) {
+            app.preview.drawer.close(&app.look, tx);
+            return;
+        }
+        if app.preview.enabled && app.preview.current.is_none() {
+            let (_, entry) = session::selected_entry(app);
+            app.preview.child_pane = session::browsing_columns(app)
+                && entry.as_ref().is_some_and(FileEntry::is_directory);
+            if app.preview.reserves_empty_preview(app) {
+                app.preview.drawer.open(&app.look, tx);
+            } else {
+                app.preview.drawer.close(&app.look, tx);
+            }
+        }
+    }
+
+    fn tab_shown(app: &mut App, _tx: &mut Tx) {
+        ensure_operations_watch(app);
+        let wrap = shell::preferences(app).preview_text_wrap;
+        let media_backend = shell::preferences(app).video_preview_backend.clone();
+        app.preview.viewer.set_wrap(wrap);
+        app.preview.loader.set_media_backend(&media_backend);
+        let prefs = shell::preferences(app);
+        app.columns.refresh_mirror_preferences(prefs);
+        session::sync_reservation(app);
+    }
+}
+
+fn wrap(app: &App, files: El, frame: &mut Frame<'_, App>) -> El {
+    let files_key = shell::view_focus(app).unwrap_or("columns");
+    let tenxer = shell::preferences(app).tenxer_mode;
+    let mut drawer =
+        PreviewDrawer::new(&app.preview.drawer, |app: &mut App| &mut app.preview.drawer)
+            .arrangement(layout::arrangement(app))
+            .rules(DrawerRules::STRATA)
+            .labels(labels::drawer())
+            .files_key(files_key)
+            .find_keys(keys::find_keys_in(tenxer))
+            .hosted(&app.preview.viewer, |app: &mut App| &mut app.preview.viewer)
+            .on_intent(on_intent);
+
+    if app.preview.current.is_some() {
+        drawer = drawer.header(app.preview.header.clone());
+        if let Some(body) = app.preview.viewer.build(app, frame.cx) {
+            drawer = drawer.content(body);
+        } else {
+            // Keep the slot mounted while a fresh load waits on its 120 ms spinner delay.
+            drawer = drawer.content(rune::el().key("preview-awaiting").w_full().h_full());
+        }
+    } else if app.preview.reserves_empty_preview(app) {
+        drawer = drawer
+            .header(HeaderInfo::new(tr("Preview")))
+            .placeholder(tr("No preview for this selection"));
+    }
+
+    drawer
+        .build(files, &app.look, frame.cx)
+        .on_layout_tx(layout::on_split_layout)
+}
+
+fn on_intent(app: &mut App, intent: DrawerIntent, tx: &mut Tx) {
+    match intent {
+        DrawerIntent::Closed => {
+            app.preview.dismissed = true;
+            app.preview.enabled = false;
+            app.preview.child_pane = false;
+            session::clear_target(app, tx);
+        }
+        DrawerIntent::Open => open_current(app),
+        DrawerIntent::SetWrap(wrap) => {
+            app.preview.viewer.set_wrap(wrap);
+            shell::saved(app).change(|settings| settings.preview_text_wrap = wrap);
+        }
+        DrawerIntent::Suspend(suspended) => on_suspend(app, suspended, tx),
+        DrawerIntent::EmptySlotPressed => {
+            app.columns.clear_selection();
+            tx.focus(crate::columns::VIEW, false);
+        }
+        _ => {}
+    }
+}
+
+fn on_suspend(app: &mut App, suspended: bool, tx: &mut Tx) {
+    if suspended {
+        if app.preview.loader.is_active() {
+            app.preview.loader.cancel();
+            app.preview.loader.defer_on_resume = true;
+        }
+        return;
+    }
+    if session::browsing_columns(app) {
+        app.columns.reveal_active(&app.look, tx);
+    }
+    let reload = std::mem::replace(&mut app.preview.loader.defer_on_resume, false);
+    if reload
+        && app.preview.enabled
+        && let Some(entry) = app.preview.current.clone()
+    {
+        load::start(app, entry);
+    }
+}
+
+pub(super) fn open_current(app: &mut App) {
+    if let Some(location) = app
+        .preview
+        .current
+        .as_ref()
+        .map(|entry| entry.location.clone())
+    {
+        app.browser.open_location(location);
+    }
+}
+
+/// Whether the Appearance popover's "Preview panel" toggle is pressed.
+pub(crate) fn panel_pressed(app: &App) -> bool {
+    app.preview.enabled || app.preview.reserves_column_space(app)
+}
+
+/// Closes an open preview on Escape (`Stage::Dismissal`), returning whether one closed.
+pub(crate) fn dismiss_escape(app: &mut App, tx: &mut Tx) -> bool {
+    if !app.preview.enabled {
+        return false;
+    }
+    session::close(app, tx);
+    if let Some(view) = shell::view_focus(app) {
+        tx.focus(view, true);
+    }
+    true
+}
+
+/// Toggles the preview for `entry` at `depth` (called by C18's `FilterIntent::Preview`).
+pub(crate) fn toggle_entry(
+    app: &mut App,
+    entry: Option<FileEntry>,
+    depth: Option<usize>,
+    tx: &mut Tx,
+) {
+    session::toggle(app, entry, depth, tx);
+}
+
+/// Whether single clicks open files in the currently shown view.
+pub(crate) fn one_click_files_in_shown_view(app: &App) -> bool {
+    if session::browsing_columns(app) {
+        app.columns.one_click_files()
+    } else if session::browsing_icons(app) {
+        app.icons.single.one_click_files()
+    } else {
+        app.list.single.one_click_files()
+    }
+}
+
+/// Updates an already-open preview when the user moves the selection among filtered results.
+pub(crate) fn follow_filter_pick(app: &mut App) {
+    if !app.preview.enabled {
+        return;
+    }
+    let later = app.preview.loader.later.clone();
+    later.then(|app: &mut App, tx: &mut Tx| {
+        if !app.preview.enabled || session::in_band(app) {
+            return false;
+        }
+        let target = filter::targets::preview_result(app);
+        match target {
+            Some((depth, entry)) => {
+                if let Some(target) = preview_target(Some(entry.clone())) {
+                    session::show_after_focus_change(app, target, Some(depth), tx);
+                } else {
+                    session::lend_slot_to_child(app, depth, Some(&entry));
+                    session::clear_target(app, tx);
+                }
+            }
+            None => return false,
+        }
+        true
+    });
+}
+
+pub(crate) fn preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
+    entry.filter(entry_supports_quick_preview)
+}
+
+/// Whether `entry` supports Quick Preview (`entry_supports_quick_preview` in
+/// `src/ui/preview.rs`).
+pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
+    if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
+        return false;
+    }
+    if strata_fs::services::is_model(entry)
+        || strata_fs::services::route_preview::RouteFormat::for_name(&entry.native_name).is_some()
+        || strata_preview::sandbox::CoverFormat::for_name(&entry.native_name).is_some()
+    {
+        return entry.location.native_path().is_some();
+    }
+    let native_path = entry.location.native_path();
+    let (content_type, uncertain) =
+        strata_fs::services::guess_content_type(Path::new(&entry.native_name));
+    let content = strata_fs::services::content_family(&content_type);
+    if strata_fs::services::table::is_workbook(&content_type, &entry.native_name)
+        || strata_preview::sandbox::DocumentFormat::for_file(&content_type, &entry.native_name)
+            .is_some()
+    {
+        return native_path.is_some();
+    }
+    if native_path.is_none() && remote_unsupported(&content, &entry.native_name) {
+        return false;
+    }
+    if native_path.is_some()
+        && strata_fs::services::archive_preview_format(&entry.native_name).is_some()
+    {
+        return true;
+    }
+    !matches!(content, PreviewContent::Unsupported)
+        || uncertain
+        || gio::content_type_is_a(&content_type, "text/plain")
+        || strata_fs::services::has_plain_text_extension(&entry.native_name)
+        || strata_fs::services::is_extensionless_dotfile(&entry.native_name)
+}
+
+fn remote_unsupported(content: &PreviewContent, native_name: &std::ffi::OsStr) -> bool {
+    matches!(content, PreviewContent::Pdf { .. })
+        || (matches!(content, PreviewContent::Media)
+            && !strata_fs::services::supports_remote_video(native_name))
+}
+
+fn hear(event: &BrowserEvent, browser: &Browser, heard: &mut Heard<'_, App>) {
+    match event {
+        BrowserEvent::PreviewRequested { entry, automatic } => {
+            let entry = entry.clone();
+            let automatic = *automatic;
+            let active_depth = browser.active_depth();
+            heard.then(move |app: &mut App, tx: &mut Tx| {
+                if automatic && app.preview.dismissed {
+                    return false;
+                }
+                session::show(app, entry, active_depth, tx);
+                true
+            });
+        }
+        BrowserEvent::FocusChanged {
+            depth,
+            position: Some(position),
+            ..
+        }
+        | BrowserEvent::SelectionSynced {
+            depth,
+            focused: Some(position),
+        }
+        | BrowserEvent::SelectionSetChanged {
+            depth,
+            focused: position,
+            ..
+        } => {
+            let depth = *depth;
+            let entry = browser.entry_at(depth, *position);
+            heard.then(move |app: &mut App, tx: &mut Tx| follow_focus(app, depth, entry, tx));
+        }
+        BrowserEvent::FocusChanged {
+            depth,
+            position: None,
+            ..
+        }
+        | BrowserEvent::SelectionSynced {
+            depth,
+            focused: None,
+        } => {
+            let depth = *depth;
+            heard.then(move |app: &mut App, tx: &mut Tx| {
+                if !app.preview.enabled || session::in_band(app) {
+                    return false;
+                }
+                session::lend_slot_to_child(app, depth, None);
+                session::clear_target(app, tx);
+                true
+            });
+        }
+        BrowserEvent::EntriesSpliced { depth, splices } => {
+            if !splices.iter().any(|s: &EntrySplice| s.removed > 0) {
+                return;
+            }
+            let depth = *depth;
+            heard.then(move |app: &mut App, tx: &mut Tx| follow_removal(app, depth, tx));
+        }
+        _ => {}
+    }
+}
+
+fn follow_focus(app: &mut App, depth: usize, entry: Option<FileEntry>, tx: &mut Tx) -> bool {
+    if !app.preview.enabled || session::in_band(app) {
+        return false;
+    }
+    if let Some(target) = preview_target(entry.clone()) {
+        session::show_after_focus_change(app, target, Some(depth), tx);
+    } else {
+        session::lend_slot_to_child(app, depth, entry.as_ref());
+        session::clear_target(app, tx);
+    }
+    true
+}
+
+fn follow_removal(app: &mut App, depth: usize, tx: &mut Tx) -> bool {
+    if !app.preview.enabled || app.preview.current_depth != Some(depth) {
+        return false;
+    }
+    let Some(current) = app.preview.current.clone() else {
+        return false;
+    };
+    let still_present = (0..)
+        .map_while(|pos| app.browser.entry_at(depth, pos))
+        .any(|entry| entry.location == current.location);
+    if !still_present {
+        session::clear_target(app, tx);
+        return true;
+    }
+    false
+}
+
+fn ensure_operations_watch(app: &mut App) {
+    if app.preview.operations.is_some() {
+        return;
+    }
+    let later = app.preview.loader.later.clone();
+    let subscription = file_activity::observe(move |notice| match notice {
+        Notice::Releasing(roots) => {
+            let roots = roots.to_vec();
+            later.then(move |app: &mut App, tx: &mut Tx| release_for_operation(app, &roots, tx));
+        }
+        Notice::Lifted(_) => {
+            later.then(resume_after_operation);
+        }
+        Notice::Ended(_) => {}
+    });
+    app.preview.operations = Some(subscription);
+}
+
+fn release_for_operation(app: &mut App, roots: &[std::path::PathBuf], tx: &mut Tx) -> bool {
+    let changing = app.preview.current.as_ref().is_some_and(|entry| {
+        entry
+            .local_thumbnail_path()
+            .is_some_and(|path| roots.iter().any(|root| path.starts_with(root)))
+    });
+    if !changing {
+        return false;
+    }
+    let depth = app.preview.current_depth;
+    session::clear_target(app, tx);
+    app.preview.released_from = Some(depth);
+    true
+}
+
+fn resume_after_operation(app: &mut App, tx: &mut Tx) -> bool {
+    let Some(depth) = app.preview.released_from else {
+        return false;
+    };
+    let depth = depth.or_else(|| app.browser.active_depth());
+    let entry = depth
+        .and_then(|d| app.browser.cursor_entry(d))
+        .and_then(|entry| preview_target(Some(entry)));
+    if entry
+        .as_ref()
+        .and_then(FileEntry::local_thumbnail_path)
+        .is_some_and(file_activity::is_changing)
+    {
+        return false;
+    }
+    app.preview.released_from = None;
+    if let Some(entry) = entry.filter(|_| app.preview.enabled) {
+        session::show_after_focus_change(app, entry, depth, tx);
+        return true;
+    }
+    false
+}

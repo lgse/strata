@@ -1572,5 +1572,8 @@
   "Activities": "활동",
   "Objects": "사물",
   "Symbols": "기호",
-  "Flags": "깃발"
+  "Flags": "깃발",
+  "Document position": "문서 위치",
+  "Line %{line} of %{lines}": "%{lines}줄 중 %{line}번째 줄",
+  "Blank": "빈 줄"
 }

@@ -170,7 +170,7 @@ impl Part for Trash {
                     .in_map(Map::Default)
                     .ignoring(DELETE_MODIFIERS)],
             )
-            .when(|_, at| !at.text())]),
+            .when(|_, at| !at.text() && !at.within("preview"))]),
         Action::new("delete", deleted)
             .command(DELETE_PERMANENTLY)
             .keys(&[Keys::at(
@@ -179,7 +179,7 @@ impl Part for Trash {
                     .in_map(Map::Default)
                     .ignoring(DELETE_MODIFIERS)],
             )
-            .when(|_, at| !at.text())]),
+            .when(|_, at| !at.text() && !at.within("preview"))]),
         // No key empties the Trash: the sidebar's Trash menu asks for it.
         Action::new("empty-trash", empty::run),
     ];

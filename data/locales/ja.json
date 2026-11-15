@@ -1572,5 +1572,8 @@
   "Activities": "アクティビティ",
   "Objects": "オブジェクト",
   "Symbols": "記号",
-  "Flags": "旗"
+  "Flags": "旗",
+  "Document position": "ドキュメント内の位置",
+  "Line %{line} of %{lines}": "%{lines} 行中 %{line} 行目",
+  "Blank": "空白"
 }

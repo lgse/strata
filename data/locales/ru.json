@@ -1572,5 +1572,8 @@
   "Activities": "Занятия",
   "Objects": "Предметы",
   "Symbols": "Символы",
-  "Flags": "Флаги"
+  "Flags": "Флаги",
+  "Document position": "Позиция в документе",
+  "Line %{line} of %{lines}": "Строка %{line} из %{lines}",
+  "Blank": "Пустая"
 }

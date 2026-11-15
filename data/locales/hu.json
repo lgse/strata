@@ -1572,5 +1572,8 @@
   "Activities": "Tevékenységek",
   "Objects": "Tárgyak",
   "Symbols": "Szimbólumok",
-  "Flags": "Zászlók"
+  "Flags": "Zászlók",
+  "Document position": "Pozíció a dokumentumban",
+  "Line %{line} of %{lines}": "%{line} / %{lines}. sor",
+  "Blank": "Üres"
 }

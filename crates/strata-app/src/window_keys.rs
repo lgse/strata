@@ -8,10 +8,10 @@
 //!
 //! - **`inline_editing`**, for an Escape while a rename is open: the rename ends
 //!   (`cancel_rename`). The editor takes a plain Escape itself; an alias reaches the stage.
-//! - **`dismissal`**, for an Escape anywhere outside text: the peek closes, or else the active
-//!   column's selection clears (`dismiss_preview_or_selection`). So an Escape on a header
-//!   button clears the selection, as it does in the files. The preview's half waits for the
-//!   drawer.
+//! - **`dismissal`**, for an Escape anywhere outside text: an open preview closes and returns
+//!   the keyboard to the shown view, else the peek closes, else the active column's selection
+//!   clears (`dismiss_preview_or_selection`). With no preview open, an Escape on a header
+//!   button clears the selection and leaves the keyboard on the button.
 //! - **`item_navigation`**, for an Escape that reaches the listing with nothing to clear: the
 //!   browser's `escape()` (`directory_enter_or_escape`), which closes the deepest column. In
 //!   Columns that is the column the keyboard was in; in Icons and List it is one the view does
@@ -43,8 +43,12 @@ fn rename_cancelled(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
     Outcome::Ran
 }
 
-/// `dismiss_preview_or_selection`: the peek, else the active column's selection.
-fn dismissed(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
+/// `dismiss_preview_or_selection`: the preview drawer, the peek, else the active column's
+/// selection.
+fn dismissed(app: &mut App, _: &Call<'_>, tx: &mut Tx) -> Outcome {
+    if crate::preview::dismiss_escape(app, tx) {
+        return Outcome::Ran;
+    }
     let browser = &app.browser;
     if browser.close_peek() || browser.clear_active_selection() {
         Outcome::Ran

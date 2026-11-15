@@ -184,10 +184,6 @@ pub(crate) enum Outcome {
     /// would then act on top of it, and a key nothing takes gets no commit to show it.
     Declined,
     /// The focused element's: nothing else is asked, and Rune is told the key is not taken.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no registered command leaves a key yet")
-    )]
     Left,
 }
 
@@ -438,18 +434,19 @@ pub(crate) fn read(app: &App, event: &KeyEvent, at: &Situation, tx: &Tx) -> KeyP
 fn hear(app: &mut App, event: &KeyEvent, heard: Heard, tx: &mut Tx) -> bool {
     let at = Situation::of(app, tx);
     let stamp = Stamp::of(event, &at, tx);
-    let asked = &shell::live_keys(app).asked;
-    let Some(span) = span(&at, heard, asked.early_for(&stamp)) else {
+    let early = shell::live_keys(app).asked.early_for(&stamp);
+    let Some(span) = span(&at, heard, early) else {
         return false;
     };
-    asked.note(stamp, span);
     let press = read(app, event, &at, tx);
     let offer = Offer {
         press: &press,
         at: &at,
         span,
     };
-    walk(app, &offer, tx) == Outcome::Ran
+    let outcome = walk(app, &offer, tx);
+    shell::live_keys(app).asked.note(stamp, span, outcome);
+    outcome == Outcome::Ran
 }
 
 /// Puts the registry ahead of a view's own keys. A view calls it once on the collection its
