@@ -246,10 +246,19 @@ fn tab_in_a_rename_on_a_result_only_commits(case: &Case, name: &str) {
         // Shift+Tab: the listing under the results has an entry before the top result.
         press(&mut host, Key::Tab, crate::test_support::view::shift());
 
+        let renamed = format!("{first}x");
         let committed = host.run_until(crate::test_support::PATIENCE, |_| {
-            walkdir_has(folder.path(), &format!("{first}x"))
+            walkdir_has(folder.path(), &renamed)
         });
         assert!(committed, "Tab did not commit the name");
+        let after = wait(
+            &mut host,
+            case.shape,
+            "the renamed result in the pane",
+            |seen| seen.names().contains(&renamed.as_str()),
+        );
+        assert_eq!(after.focused.as_deref(), Some(renamed.as_str()));
+        assert_eq!(after.selected, [renamed]);
         crate::test_support::view::idle(&mut host);
         let (held, _) = crate::test_support::view::browser_holds(&host);
         assert_eq!(held, before, "the browser's selection changed");
