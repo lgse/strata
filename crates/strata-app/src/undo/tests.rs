@@ -13,6 +13,7 @@ use strata_fs::services::TypedPath;
 use crate::{
     App,
     commands::{On, Outcome, run},
+    conflict_dialog,
     host::offscreen::Offscreen,
     test_support::{PATIENCE, fixture, hosted, send_key},
 };
@@ -139,14 +140,14 @@ fn a_move_into_a_folder_it_made_is_undone_after_the_check() {
     );
 }
 
-/// An item now where the undo would put the moved one back: GTK asks, and with no prompt
-/// here the replay stops as the prompt's Cancel does. The key is taken, nothing moves, the
-/// item in the way keeps what it holds, and the entry is still there to undo.
+/// An item now where the undo would put the moved one back opens the conflict prompt: Escape
+/// leaves both files and the history entry intact, and Replace on the next undo restores the
+/// moved file and removes the group's folder.
 #[test]
-fn an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry() {
+fn an_undo_with_an_item_in_the_way_prompts_dismisses_and_replaces() {
     hosted(
         MODULE,
-        "an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry",
+        "an_undo_with_an_item_in_the_way_prompts_dismisses_and_replaces",
         |mut host| {
             let folder = listed(&mut host);
             moved_into_notes(&mut host, folder.path());
@@ -154,10 +155,18 @@ fn an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry() {
             std::fs::write(&in_the_way, "in the way").expect("the item in the way");
 
             assert_eq!(undo_now(&mut host), Some(Outcome::Ran));
-            let answered = host.run_until(PATIENCE, |host| host.app().undo.checking.is_empty());
-            assert!(answered, "the check never answered");
+            assert!(host.run_until(PATIENCE, |host| conflict_dialog::is_open(host.app())));
             while host.turn() {}
 
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            while host.turn() {}
+            assert!(!conflict_dialog::is_open(host.app()));
             assert_eq!(
                 std::fs::read_to_string(folder.path().join("notes/todo.txt")).ok(),
                 Some("todo.txt".to_owned()),
@@ -168,6 +177,22 @@ fn an_undo_with_an_item_in_the_way_moves_nothing_and_keeps_its_entry() {
                 Some("in the way".to_owned())
             );
             assert!(host.app().browser().pending_undo_group().is_some());
+
+            assert_eq!(undo_now(&mut host), Some(Outcome::Ran));
+            assert!(host.run_until(PATIENCE, |host| conflict_dialog::is_open(host.app())));
+            while host.turn() {}
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Enter,
+                    mods: Mods::default(),
+                },
+            );
+            wait_on_disk(&mut host, folder.path(), "notes", false);
+            assert_eq!(
+                std::fs::read_to_string(&in_the_way).ok(),
+                Some("todo.txt".to_owned())
+            );
         },
     );
 }

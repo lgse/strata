@@ -35,7 +35,6 @@ use strata_fs::{
 
 use crate::{
     App, clipboard,
-    commands::Holds,
     shell::{self, tabs as tabs_of},
     slots::{Later, Setup, TabKey},
     transfer,
@@ -120,9 +119,7 @@ impl Drops {
 
 /// Whether a modal layer is open in the window (`TabWindow::blocked`).
 pub(super) fn blocked(app: &App) -> bool {
-    shell::parts(app)
-        .active()
-        .any(|part| matches!((part.keyboard)(app), Some(Holds::Modal { .. })))
+    shell::modal_open(app)
 }
 
 fn destination(app: &App, key: TabKey) -> Option<Location> {
