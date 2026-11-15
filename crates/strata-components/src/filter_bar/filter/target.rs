@@ -5,19 +5,27 @@
 //!
 //! Until the user picks a result after the query last changed, Enter opens the top result,
 //! and while the field has the keyboard that row is outlined. After a pick, while something is
-//! selected, Enter opens the first selected result in display order, where Down lands too: in
-//! search results that replace the listing, `inline_search/collection.rs`'s `current_position`
-//! finds no focused item widget while the field has the keyboard and falls back to the first
-//! selected result (`unwrap_or(0)` with none, or the unselected cursor in 10xer mode); in a
-//! listing narrowed in place, `filter_activation_position` takes the first selected result and
-//! opens nothing with none ([`super::Shows`]). Deselecting
-//! everything gives the top result back. In 10xer mode nothing is outlined, and before any
-//! results show for the text (the host's debounce, or after a restart) nothing is offered, so
-//! the per-mode rules apply from the start.
+//! selected, Enter opens the first selected result in display order (or the last when the host
+//! sets [`super::FilterState::set_pick_last`], as Strata's `columns/append/keys.rs` does),
+//! where Down lands too: in search results that replace a single-pane listing,
+//! `inline_search/collection.rs`'s `current_position` finds no focused item widget while the
+//! field has the keyboard and falls back to the first selected result (`unwrap_or(0)` with
+//! none, or the unselected cursor in 10xer mode); in a listing narrowed in place,
+//! `filter_activation_position` takes the first selected result and opens nothing with none
+//! ([`super::Shows`]). Deselecting everything gives the top result back. In 10xer mode nothing
+//! is outlined, and before any results show for the text (the host's debounce, or after a
+//! restart) nothing is offered, so the per-mode rules apply from the start.
 
 use super::state::Shows;
 use crate::collection::selection::Selection;
 use crate::contract::{EntryId, EntrySource};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Rules {
+    pub shows: Shows,
+    pub tenxer: bool,
+    pub pick_last: bool,
+}
 
 /// What Enter in the field reads: the results the host shows under the filter and their
 /// selection.
@@ -86,49 +94,59 @@ impl Tracker {
         !self.scrolled && self.offers_top(has_rows, has_selection, tenxer)
     }
 
-    /// Where Down from the field lands, and what Enter opens in search results: the top result
-    /// while it is offered, else the first selected result in display order
-    /// (`inline_search/collection.rs`, `current_position` with the field focused), else an
-    /// unselected cursor or the top result.
-    pub fn landing(&self, r: Results<'_>, tenxer: bool) -> Option<EntryId> {
+    /// Where Down from the field lands, and what Enter opens in single-pane search results:
+    /// the top result while it is offered, else the first selected result in display order
+    /// (`inline_search/collection.rs`, `current_position` with the field focused; or the last
+    /// when `rules.pick_last` is on, `columns/append/keys.rs`), else an unselected cursor (in
+    /// single-pane search results) or the top result.
+    pub fn landing(&self, r: Results<'_>, rules: Rules) -> Option<EntryId> {
         if r.source.is_empty() {
             return None;
         }
-        if self.offers_top(true, !r.selection.is_empty(), tenxer) {
+        if self.offers_top(true, !r.selection.is_empty(), rules.tenxer) {
             return Some(r.source.id_at(0));
         }
-        first_selected(r).or_else(|| {
-            let at = r.selection.cursor_index(r.source).unwrap_or(0);
+        selected_pick(r, rules.pick_last).or_else(|| {
+            let at = if rules.pick_last {
+                0
+            } else {
+                r.selection.cursor_index(r.source).unwrap_or(0)
+            };
             Some(r.source.id_at(at))
         })
     }
 
-    /// What Enter opens: the top result while it is offered; else the first selected result in
-    /// display order, falling back in search results with nothing selected to the cursor or the
-    /// top result. Before any results show for the text (the host's debounce, or after a
-    /// restart) nothing is offered, so the per-mode rule applies at once, as Strata's.
-    pub fn target(&self, r: Results<'_>, tenxer: bool, shows: Shows) -> Option<EntryId> {
-        match shows {
-            Shows::Replace => self.landing(r, tenxer),
-            Shows::InPlace => {
-                if r.source.is_empty() {
-                    return None;
-                }
-                if self.offers_top(true, !r.selection.is_empty(), tenxer) {
-                    return Some(r.source.id_at(0));
-                }
-                first_selected(r)
-            }
+    /// What Enter opens: the top result while it is offered; else the selected pick (first by
+    /// default, last when `rules.pick_last` is on), falling back in single-pane search results
+    /// with nothing selected to the cursor or the top result. Before any results show for the
+    /// text (the host's debounce, or after a restart) nothing is offered, so the per-mode rule
+    /// applies at once, as Strata's.
+    pub fn target(&self, r: Results<'_>, rules: Rules) -> Option<EntryId> {
+        if rules.shows == Shows::Replace && !rules.pick_last {
+            return self.landing(r, rules);
         }
+        if r.source.is_empty() {
+            return None;
+        }
+        if self.offers_top(true, !r.selection.is_empty(), rules.tenxer) {
+            return Some(r.source.id_at(0));
+        }
+        selected_pick(r, rules.pick_last)
     }
 }
 
-/// The first selected result in display order, found without collecting the selection.
-fn first_selected(r: Results<'_>) -> Option<EntryId> {
+/// The first (or, when `last`, last) selected result in display order, found without
+/// collecting the selection.
+fn selected_pick(r: Results<'_>, last: bool) -> Option<EntryId> {
     if r.selection.is_empty() {
         return None;
     }
-    (0..r.source.len())
-        .find(|&i| r.selection.is_selected_at(r.source, i))
-        .map(|i| r.source.id_at(i))
+    let found = if last {
+        (0..r.source.len())
+            .rev()
+            .find(|&i| r.selection.is_selected_at(r.source, i))
+    } else {
+        (0..r.source.len()).find(|&i| r.selection.is_selected_at(r.source, i))
+    };
+    found.map(|i| r.source.id_at(i))
 }

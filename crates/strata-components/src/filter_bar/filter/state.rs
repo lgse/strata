@@ -4,7 +4,7 @@
 
 use rune::TextEdit;
 
-use super::target::{Results, Tracker};
+use super::target::{Results, Rules, Tracker};
 use crate::collection::selection::Position;
 use crate::contract::{EntryId, Point};
 use crate::filter_bar::field::FocusWatch;
@@ -120,6 +120,7 @@ pub struct FilterState {
     open: bool,
     shows: Shows,
     tenxer: bool,
+    pick_last: bool,
     pub(crate) tracker: Tracker,
     /// The listing's selection from before the filter, while results replace it.
     saved: Option<Position>,
@@ -171,6 +172,27 @@ impl FilterState {
     /// Turns 10xer mode's rules on or off.
     pub fn set_tenxer(&mut self, on: bool) {
         self.tenxer = on;
+    }
+
+    /// Whether Down and Enter over a multi-selection choose the last selected result rather
+    /// than the first.
+    pub fn pick_last(&self) -> bool {
+        self.pick_last
+    }
+
+    /// Chooses the last selected result (`on = true`, Strata's `columns/append/keys.rs`) or
+    /// the first (`on = false`, the default, Strata's `inline_search/collection.rs` and
+    /// `filter_activation_position`) when Down or Enter acts after a pick.
+    pub fn set_pick_last(&mut self, on: bool) {
+        self.pick_last = on;
+    }
+
+    fn rules(&self) -> Rules {
+        Rules {
+            shows: self.shows,
+            tenxer: self.tenxer,
+            pick_last: self.pick_last,
+        }
     }
 
     /// Opens the bar empty with the keyboard in it: Ctrl+F, the pane's filter button, `/`
@@ -272,25 +294,25 @@ impl FilterState {
     }
 
     /// What Enter in the field opens: the top result until the user picks one after the query
-    /// last changed; after that, the first selected result in display order, falling back in
-    /// search results ([`Shows::Replace`]) with nothing selected to the cursor or the top
+    /// last changed; after that, the first selected result in display order (or the last when
+    /// [`FilterState::pick_last`] is on), falling back in single-pane search results
+    /// ([`Shows::Replace`] with `pick_last` off) with nothing selected to the cursor or the top
     /// result (`inline_search/collection.rs`, `current_position` with the field focused): where
-    /// Down lands. A listing narrowed in place ([`Shows::InPlace`]) opens its first selected
-    /// result (`filter_activation_position`) and nothing with none. `None` with an empty query,
-    /// no results, or (in place, after a pick or in 10xer mode) nothing selected.
+    /// Down lands. A listing narrowed in place ([`Shows::InPlace`]) or `pick_last` opens
+    /// nothing with none selected. `None` with an empty query, no results, or nothing to open.
     pub fn target(&self, r: Results<'_>) -> Option<EntryId> {
         if !self.open || self.edit.text.trim().is_empty() {
             return None;
         }
-        self.tracker.target(r, self.tenxer, self.shows)
+        self.tracker.target(r, self.rules())
     }
 
     /// Where Down from the field lands: the top result while Enter opens it, else the first
-    /// selected result in display order (Strata's search results, `inline_search/collection.rs`
-    /// with the field focused), else an unselected cursor or the top result. `None` with no
+    /// selected result in display order (or the last when [`FilterState::pick_last`] is on),
+    /// else an unselected cursor (when `pick_last` is off) or the top result. `None` with no
     /// results.
     pub fn landing(&self, r: Results<'_>) -> Option<EntryId> {
-        self.tracker.landing(r, self.tenxer)
+        self.tracker.landing(r, self.rules())
     }
 
     /// The result to outline (C1e's `RowMarks::enter_target`): the top result while Enter

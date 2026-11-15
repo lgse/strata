@@ -1558,5 +1558,19 @@
   "Unsorted": "並べ替えなし",
   "Sort: %{field} %{direction}": "並べ替え: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · 大文字と小文字を区別"
+  "%{field} · case-sensitive": "%{field} · 大文字と小文字を区別",
+  "Emoji": "絵文字",
+  "Choose an emoji": "絵文字を選択",
+  "Categories": "カテゴリー",
+  "Recently used": "最近使ったもの",
+  "Current": "現在",
+  "Smileys & Emotion": "スマイリーと感情",
+  "People & Body": "人と体",
+  "Animals & Nature": "動物と自然",
+  "Food & Drink": "食べ物と飲み物",
+  "Travel & Places": "旅行と場所",
+  "Activities": "アクティビティ",
+  "Objects": "オブジェクト",
+  "Symbols": "記号",
+  "Flags": "旗"
 }

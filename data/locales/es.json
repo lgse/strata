@@ -1558,5 +1558,19 @@
   "Unsorted": "Sin ordenar",
   "Sort: %{field} %{direction}": "Ordenar: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · distingue mayúsculas"
+  "%{field} · case-sensitive": "%{field} · distingue mayúsculas",
+  "Emoji": "Emoji",
+  "Choose an emoji": "Elegir un emoji",
+  "Categories": "Categorías",
+  "Recently used": "Usados recientemente",
+  "Current": "Actual",
+  "Smileys & Emotion": "Emoticonos y emociones",
+  "People & Body": "Personas y cuerpo",
+  "Animals & Nature": "Animales y naturaleza",
+  "Food & Drink": "Comida y bebida",
+  "Travel & Places": "Viajes y lugares",
+  "Activities": "Actividades",
+  "Objects": "Objetos",
+  "Symbols": "Símbolos",
+  "Flags": "Banderas"
 }

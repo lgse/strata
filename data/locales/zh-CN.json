@@ -1558,5 +1558,19 @@
   "Unsorted": "不排序",
   "Sort: %{field} %{direction}": "排序：%{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · 区分大小写"
+  "%{field} · case-sensitive": "%{field} · 区分大小写",
+  "Emoji": "表情符号",
+  "Choose an emoji": "选择表情符号",
+  "Categories": "分类",
+  "Recently used": "最近使用",
+  "Current": "当前",
+  "Smileys & Emotion": "笑脸与情感",
+  "People & Body": "人物与身体",
+  "Animals & Nature": "动物与自然",
+  "Food & Drink": "食物与饮料",
+  "Travel & Places": "旅行与地点",
+  "Activities": "活动",
+  "Objects": "物品",
+  "Symbols": "符号",
+  "Flags": "旗帜"
 }

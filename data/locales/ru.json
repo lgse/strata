@@ -1558,5 +1558,19 @@
   "Unsorted": "Без сортировки",
   "Sort: %{field} %{direction}": "Сортировка: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · с учётом регистра"
+  "%{field} · case-sensitive": "%{field} · с учётом регистра",
+  "Emoji": "Эмодзи",
+  "Choose an emoji": "Выбрать эмодзи",
+  "Categories": "Категории",
+  "Recently used": "Недавно использованные",
+  "Current": "Текущий",
+  "Smileys & Emotion": "Смайлики и эмоции",
+  "People & Body": "Люди и тело",
+  "Animals & Nature": "Животные и природа",
+  "Food & Drink": "Еда и напитки",
+  "Travel & Places": "Путешествия и места",
+  "Activities": "Занятия",
+  "Objects": "Предметы",
+  "Symbols": "Символы",
+  "Flags": "Флаги"
 }

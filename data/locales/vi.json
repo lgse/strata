@@ -1558,5 +1558,19 @@
   "Unsorted": "Không sắp xếp",
   "Sort: %{field} %{direction}": "Sắp xếp: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · phân biệt chữ hoa/thường"
+  "%{field} · case-sensitive": "%{field} · phân biệt chữ hoa/thường",
+  "Emoji": "Biểu tượng cảm xúc",
+  "Choose an emoji": "Chọn biểu tượng cảm xúc",
+  "Categories": "Danh mục",
+  "Recently used": "Dùng gần đây",
+  "Current": "Hiện tại",
+  "Smileys & Emotion": "Mặt cười và cảm xúc",
+  "People & Body": "Con người và cơ thể",
+  "Animals & Nature": "Động vật và thiên nhiên",
+  "Food & Drink": "Đồ ăn và thức uống",
+  "Travel & Places": "Du lịch và địa điểm",
+  "Activities": "Hoạt động",
+  "Objects": "Đồ vật",
+  "Symbols": "Ký hiệu",
+  "Flags": "Cờ"
 }

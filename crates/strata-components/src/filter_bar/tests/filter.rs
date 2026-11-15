@@ -396,3 +396,31 @@ fn before_any_results_show_enter_follows_the_mode_rule() {
         "the first selected, with no query shown"
     );
 }
+
+// Strata's Columns filter field (`columns/append/keys.rs`, `FilterNavigation::pressed`) picks
+// `bitset_positions.last()` over a multi-selection, and with nothing selected after `offers_top`
+// goes off (10xer mode) opens nothing on Enter while Down falls back to row 0.
+#[test]
+fn pick_last_chooses_the_last_selected_result_for_down_and_enter() {
+    let src = source(&["a", "b", "c", "d"]);
+    let mut sel = Selection::new();
+    let mut st = FilterState::new();
+    st.set_pick_last(true);
+    let _ = typed(&mut st, "x");
+    let _ = sel.select_only(&src, 3);
+    let _ = sel.toggle(&src, 1);
+    st.pick();
+    assert_eq!(
+        sel.cursor(),
+        Some(id(2)),
+        "cursor is on the earlier selected row"
+    );
+    assert_eq!(st.landing(r(&src, &sel)), Some(id(4)));
+    assert_eq!(st.target(r(&src, &sel)), Some(id(4)));
+
+    let _ = sel.clear();
+    let _ = sel.move_cursor(&src, 2, crate::collection::selection::AnchorRule::Move);
+    st.set_tenxer(true);
+    assert_eq!(st.target(r(&src, &sel)), None);
+    assert_eq!(st.landing(r(&src, &sel)), Some(id(1)));
+}
