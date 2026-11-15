@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: MIT
 
-//! The window's error dialog: a title and a message, as GTK's `show_error_dialog` shows them
-//! (`Message::error` in `src/ui/modal/messages.rs`), and with an action beside Close as its
-//! `show_error_dialog_with_action` does. Every failure the window reports goes through it:
-//! a rename the browser fails ([`crate::rename_failed`]) and a folder or location that
-//! cannot be opened ([`crate::open_failed`]).
+//! The window's message dialog: an error, a partial failure, or an informational report, as
+//! GTK's `src/ui/modal/messages.rs` shows them (`Message::error`, `Message::partial_failure`,
+//! `Message::information`), and with an action beside Close as `show_error_dialog_with_action`
+//! does. Every failure or post-operation report the window shows goes through it: a rename the
+//! browser fails ([`crate::rename_failed`]), a folder or location that cannot be opened
+//! ([`crate::open_failed`]), and transfer outcomes ([`crate::transfer`]).
 //!
 //! It is GTK's message dialog on C15's [`StrataDialog`]: an icon in a toned box, the title,
-//! "The operation could not be completed" under it, the message as the body.
+//! a summary line under it ("The operation could not be completed" by default for errors), and
+//! the message as the body.
 //!
 //! - **An error alone:** the X in a danger box and one Close button, which has the keyboard
 //!   when it opens.
+//! - **A partial failure (`Completed with errors`):** the X in a danger box, "Some items could
+//!   not be processed" under the title, and Close.
+//! - **An informational report:** the Info icon in an accent box, the caller's summary under
+//!   the title, and Close.
 //! - **An error with an action** (Open as Administrator): the action's icon in an accent box,
 //!   the action as the primary button with the keyboard, and Close beside it. The action closes
 //!   the dialog, then runs.
@@ -58,11 +64,14 @@ impl Offer {
     }
 }
 
-/// One error to show.
+/// One message dialog to show.
 #[derive(Clone)]
 pub(crate) struct Error {
     title: String,
+    summary: Option<String>,
     message: String,
+    icon: IconName,
+    tone: Tone,
     offer: Option<Offer>,
     /// Where the keyboard goes when the dialog closes, when not where it was as it opened.
     returns_to: Option<&'static str>,
@@ -72,7 +81,40 @@ impl Error {
     pub(crate) fn new(title: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             title: title.into(),
+            summary: None,
             message: message.into(),
+            icon: IconName::Close,
+            tone: Tone::Danger,
+            offer: None,
+            returns_to: None,
+        }
+    }
+
+    /// GTK's `show_partial_failure_dialog` (`MessageKind::PartialFailure` in `messages.rs`).
+    pub(crate) fn partial_failure(message: impl Into<String>) -> Self {
+        Self {
+            title: tr("Completed with errors"),
+            summary: Some(tr("Some items could not be processed")),
+            message: message.into(),
+            icon: IconName::Close,
+            tone: Tone::Danger,
+            offer: None,
+            returns_to: None,
+        }
+    }
+
+    /// GTK's `show_information_dialog_with_summary` (`MessageKind::Information` in `messages.rs`).
+    pub(crate) fn information(
+        title: impl Into<String>,
+        summary: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            summary: Some(summary.into()),
+            message: message.into(),
+            icon: IconName::Info,
+            tone: Tone::Accent,
             offer: None,
             returns_to: None,
         }
@@ -146,9 +188,13 @@ fn dialog(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {
     let dialog = &app.error_dialog;
     let error = dialog.shown.as_ref()?;
     let labels = &dialog.labels;
+    let subtitle = error
+        .summary
+        .clone()
+        .unwrap_or_else(|| labels.summary.clone());
     let built = StrataDialog::new("error", error.title.clone(), close)
         .open(dialog.open)
-        .subtitle(labels.summary.clone())
+        .subtitle(subtitle)
         .message(error.message.clone())
         .initial_focus(Focus::Primary)
         .close_label(labels.close_dialog.clone())
@@ -164,12 +210,28 @@ fn dialog(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {
             .secondary(labels.close.clone(), close)
             .primary(offer.label.clone(), act),
         None => built
-            .icon(IconName::Close)
-            .tone(Tone::Danger)
+            .icon(error.icon)
+            .tone(error.tone)
             .primary(labels.close.clone(), close),
     };
     built.build(&app.look, frame.layer);
     None
+}
+
+#[cfg(test)]
+pub(crate) fn shown_details(app: &App) -> Option<(IconName, Tone, &str, Option<&str>, &str)> {
+    let dialog = &app.error_dialog;
+    if !dialog.open {
+        return None;
+    }
+    let error = dialog.shown.as_ref()?;
+    Some((
+        error.icon,
+        error.tone,
+        error.title.as_str(),
+        error.summary.as_deref(),
+        error.message.as_str(),
+    ))
 }
 
 impl Part for ErrorDialog {

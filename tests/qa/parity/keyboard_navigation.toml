@@ -122,10 +122,8 @@ scenario = "keyboard-only-copy-paste"
 run = "columns"
 package = "A12"
 gate = "G2"
-status = "pending"
+status = "required"
 host = "session"
-reason = "platform"
-blocker = "the clipboard, at Ctrl+C and Ctrl+V: the offscreen host has none (the session host; P2 and X3 hold the pieces)"
 
 [[run]]
 scenario = "list-typed-file-path"

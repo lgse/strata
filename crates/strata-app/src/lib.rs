@@ -89,6 +89,8 @@ mod palette;
 mod sort;
 // A11 10xer mode
 // A12 Clipboard and conflicts
+mod clipboard;
+mod transfer;
 // A13 Archives and providers
 // A14 Open with, terminal and custom actions
 // A15 Preview drawer, text and documents
@@ -139,6 +141,9 @@ slots::parts! {
     sort: sort::Sort,
     // A11 10xer mode
     // A12 Clipboard and conflicts
+    clipboard: clipboard::Clipboard,
+    transfer: transfer::Transfer,
+    transfer_dialog: transfer::TransferDialog,
     // A13 Archives and providers
     // A14 Open with, terminal and custom actions
     // A15 Preview drawer, text and documents
