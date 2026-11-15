@@ -61,11 +61,15 @@ impl Saved {
         });
     }
 
-    /// Changes the saved settings and queues a save of what changed, off the interface
-    /// thread. A file that could not be read at start-up is the user's to repair, and
-    /// nothing is saved over it.
-    pub(crate) fn change(&mut self, change: impl FnOnce(&mut Preferences)) {
-        change(&mut self.preferences);
+    /// Mutates `Preferences` in place without committing yet, for batches that commit once.
+    pub(crate) fn mutate(&mut self, change: impl FnOnce(&mut Preferences) -> bool) -> bool {
+        change(&mut self.preferences)
+    }
+
+    /// Commits whatever changed in `Preferences` since the last save and queues the write off
+    /// the interface thread. A file that could not be read at start-up is the user's to repair,
+    /// and nothing is saved over it.
+    pub(crate) fn commit(&mut self) {
         let Commit { save, problem, .. } = self.saving.commit(&self.preferences);
         // The GTK window shows "Settings can't be saved"; this interface has no notice yet.
         if let Some(SaveProblem::Snapshot { path, error }) = problem {
@@ -86,6 +90,14 @@ impl Saved {
                 });
             }
         });
+    }
+
+    /// Changes the saved settings and queues a save of what changed, off the interface
+    /// thread. A file that could not be read at start-up is the user's to repair, and
+    /// nothing is saved over it.
+    pub(crate) fn change(&mut self, change: impl FnOnce(&mut Preferences)) {
+        change(&mut self.preferences);
+        self.commit();
     }
 
     fn saved(&mut self, finished: FinishedSave) {

@@ -21,9 +21,8 @@ blocker = "A6: the Compress dialog (line 10); then A20: the floating Extract to 
 scenario = "customization-follows-move-and-trash"
 run = "list"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A12: Ctrl+X and Ctrl+V (lines 16 and 21), at the wait for the move on line 22; then A6: the customization following a trash and a restore"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "customize-takes-focus-single-escape"

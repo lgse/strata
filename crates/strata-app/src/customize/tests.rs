@@ -624,3 +624,218 @@ fn assert_filter_clear_and_hidden_tab(host: &mut Offscreen, case: &WornCase) {
     );
     assert_eq!(host.app().sidebar.places()[0].tint, case.red);
 }
+
+fn select_row(host: &mut Offscreen, depth: usize, location: &Location) {
+    let location = location.clone();
+    host.runtime().update(move |app: &mut App, tx| {
+        let id = shell::id_of(app, &location);
+        let view = shell::shown_view(app).expect("shown view");
+        (view.rows.select_only)(app, (depth, id), tx);
+    });
+    idle(host);
+}
+
+#[test]
+fn customizations_follow_rename_move_trash_restore_and_delete() {
+    hosted(
+        MODULE,
+        "customizations_follow_rename_move_trash_restore_and_delete",
+        |mut host| {
+            let folder = fixture();
+            let pictures = folder.path().join("pictures");
+            std::fs::write(pictures.join("nested.txt"), b"note").expect("nested file");
+            let root = Location::local(folder.path());
+
+            host.app().open(root.clone());
+            let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, listed), "first tab listed");
+            idle(&mut host);
+
+            let first_tab = shell::tabs::shown_tab(host.app());
+            host.runtime().update(|app, tx| {
+                shell::tabs::open(app, Some(root), 1, tx);
+            });
+            assert!(host.run_until(PATIENCE, listed), "second tab listed");
+            idle(&mut host);
+
+            let green = FolderColorValue::Preset(FolderColor::Green);
+            let blue = FolderColorValue::Preset(FolderColor::Blue);
+            let pictures_buf = pictures.clone();
+            let nested_buf = pictures.join("nested.txt");
+            host.runtime().update(move |app, _| {
+                let g = green;
+                let b = blue;
+                shell::change_customization(app, |settings| {
+                    settings.set_item_colors(std::slice::from_ref(&pictures_buf), Some(&g));
+                    settings.set_item_icon(&pictures_buf, Some("strata-file-code"));
+                    settings.set_item_colors(std::slice::from_ref(&nested_buf), Some(&b));
+                });
+            });
+            idle(&mut host);
+
+            let moved = rename_and_move_customized(&mut host, folder.path(), &pictures);
+            trash_restore_and_delete_customized(&mut host, &moved, first_tab);
+        },
+    );
+}
+
+fn rename_and_move_customized(
+    host: &mut Offscreen,
+    root: &Path,
+    pictures: &Path,
+) -> std::path::PathBuf {
+    let green = FolderColorValue::Preset(FolderColor::Green);
+    let blue = FolderColorValue::Preset(FolderColor::Blue);
+    let green_tint = color_of(&green);
+    let code_icon = Some(OwnedGlyph::Icon("strata-file-code".into()));
+
+    select_row(host, 0, &Location::local(pictures));
+    press(host, Key::Function(2), Mods::default());
+    assert!(host.run_until(PATIENCE, |h| h.app().rename.state.is_open()));
+    press(host, Key::Text("photos".to_owned()), Mods::default());
+    press(host, Key::Enter, Mods::default());
+
+    let photos = root.join("photos");
+    let listed_photos = |h: &Offscreen| {
+        let id = shell::id_of(h.app(), &Location::local(&photos));
+        photos.exists()
+            && h.app()
+                .columns
+                .listing(0)
+                .is_some_and(|col| col.index_of(id).is_some())
+    };
+    assert!(host.run_until(PATIENCE, listed_photos), "photos renamed");
+    idle(host);
+    assert_eq!(saved(host, pictures), (None, None));
+    assert_eq!(
+        saved(host, &photos),
+        (Some(green.clone()), Some("strata-file-code".to_owned()))
+    );
+    assert_eq!(
+        saved(host, &photos.join("nested.txt")),
+        (Some(blue.clone()), None)
+    );
+    let photos_id = shell::id_of(host.app(), &Location::local(&photos));
+    assert_eq!(
+        entry_worn(host.app().columns.listing(0).unwrap(), photos_id),
+        (green_tint, code_icon.clone(), false)
+    );
+
+    let ctrl = Mods {
+        ctrl: true,
+        cmd: true,
+        ..Mods::default()
+    };
+    select_row(host, 0, &Location::local(&photos));
+    press(host, Key::Command('x'), ctrl);
+    host.app().open(Location::local(root.join("archive")));
+    let in_archive = |h: &Offscreen| {
+        h.app().browser().active_location().as_ref() == Some(&Location::local(root.join("archive")))
+            && h.app().browser().column_entry_counts(0).is_some()
+    };
+    assert!(host.run_until(PATIENCE, in_archive), "opened archive");
+    idle(host);
+    press(host, Key::Command('v'), ctrl);
+
+    let moved = root.join("archive/photos");
+    let listed_moved = |h: &Offscreen| {
+        let id = shell::id_of(h.app(), &Location::local(&moved));
+        moved.exists()
+            && !photos.exists()
+            && h.app()
+                .columns
+                .listing(0)
+                .is_some_and(|col| col.index_of(id).is_some())
+    };
+    assert!(
+        host.run_until(PATIENCE, listed_moved),
+        "photos moved into archive"
+    );
+    idle(host);
+    assert_eq!(saved(host, &photos), (None, None));
+    assert_eq!(
+        saved(host, &moved),
+        (Some(green), Some("strata-file-code".to_owned()))
+    );
+    assert_eq!(saved(host, &moved.join("nested.txt")), (Some(blue), None));
+    let moved_id = shell::id_of(host.app(), &Location::local(&moved));
+    assert_eq!(
+        entry_worn(host.app().columns.listing(0).unwrap(), moved_id),
+        (green_tint, code_icon, false)
+    );
+    moved
+}
+
+fn trash_restore_and_delete_customized(
+    host: &mut Offscreen,
+    moved: &Path,
+    first_tab: crate::slots::TabKey,
+) {
+    let green = FolderColorValue::Preset(FolderColor::Green);
+    let blue = FolderColorValue::Preset(FolderColor::Blue);
+    let green_tint = color_of(&green);
+    let code_icon = Some(OwnedGlyph::Icon("strata-file-code".into()));
+    let ctrl = Mods {
+        ctrl: true,
+        cmd: true,
+        ..Mods::default()
+    };
+
+    select_row(host, 0, &Location::local(moved));
+    press(host, Key::Delete, Mods::default());
+    assert!(host.run_until(PATIENCE, |_| !moved.exists()), "trashed");
+    idle(host);
+    assert_eq!(saved(host, moved), (None, None));
+
+    press(host, Key::Command('z'), ctrl);
+    let restored = |h: &Offscreen| {
+        let id = shell::id_of(h.app(), &Location::local(moved));
+        moved.exists()
+            && h.app()
+                .columns
+                .listing(0)
+                .is_some_and(|col| col.index_of(id).is_some())
+    };
+    assert!(host.run_until(PATIENCE, restored), "restored from trash");
+    idle(host);
+    assert_eq!(
+        saved(host, moved),
+        (Some(green), Some("strata-file-code".to_owned()))
+    );
+    assert_eq!(saved(host, &moved.join("nested.txt")), (Some(blue), None));
+    let moved_id = shell::id_of(host.app(), &Location::local(moved));
+    assert_eq!(
+        entry_worn(host.app().columns.listing(0).unwrap(), moved_id),
+        (green_tint, code_icon, false)
+    );
+
+    // Permanent delete forgets without keeping anything to restore, and hidden tabs stay valid.
+    select_row(host, 0, &Location::local(moved));
+    press(
+        host,
+        Key::Delete,
+        Mods {
+            shift: true,
+            ..Mods::default()
+        },
+    );
+    let dialog_open = |h: &Offscreen| {
+        h.elements()
+            .iter()
+            .any(|e| !e.exiting && matches!(e.role, "dialog" | "alert-dialog"))
+    };
+    assert!(host.run_until(PATIENCE, dialog_open), "delete dialog");
+    press(host, Key::Enter, Mods::default());
+    assert!(
+        host.run_until(PATIENCE, |_| !moved.exists()),
+        "permanently deleted"
+    );
+    idle(host);
+    assert_eq!(saved(host, moved), (None, None));
+
+    host.runtime().update(|app, tx| {
+        assert!(shell::tabs::show(app, first_tab, tx));
+    });
+    idle(host);
+    assert_eq!(saved(host, moved), (None, None));
+}

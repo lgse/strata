@@ -13,7 +13,6 @@ use std::{collections::HashMap, fs};
 use gtk::{glib, prelude::*};
 // The schema, its defaults and stored forms, and the reading of the file live in
 // strata-desktop, where the Rune interface reads them too. This module keeps what needs GTK.
-use strata_desktop::settings::folder_views;
 #[cfg(test)]
 use strata_desktop::settings::read_preferences;
 pub use strata_desktop::settings::{
@@ -35,6 +34,7 @@ pub(in crate::ui) use strata_desktop::settings::{
 };
 #[cfg(test)]
 use strata_desktop::settings::{RETIRED_SETTINGS, default_sidebar_order, salvage_preferences};
+use strata_desktop::settings::{folder_views, trashed};
 
 use crate::{
     model::{FolderColorValue, SortKey, ViewPreferences},
@@ -63,7 +63,6 @@ mod save_notice;
 mod sidebar_settings;
 mod stored;
 mod text_size;
-mod trashed;
 pub(in crate::ui) use bindings::notify_live;
 #[cfg(test)]
 use desktop_scale::text_scale_factor_from_xft_dpi;
