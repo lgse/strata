@@ -63,6 +63,12 @@ impl Offscreen {
         &self.runtime.state
     }
 
+    /// Starts the window from `initial`, as the windowed host's `App::init` does.
+    #[cfg(test)]
+    pub(crate) fn start(&mut self, initial: crate::launch::Initial) {
+        self.runtime.state.start(initial);
+    }
+
     /// Turns the look's motion off, as the GTK QA runs do through `gtk-enable-animations`:
     /// a column that closes then leaves the tree at once.
     #[cfg(feature = "qa")]

@@ -33,9 +33,9 @@
 //!   "File operations are still active" (`has_background_operations`, `operations_active`).
 //! - **Keys** are read at the GTK window's first stage ([`Stage::TabStrip`](crate::commands::Stage)),
 //!   from anywhere but a modal layer: `keys.rs`.
+//! - **Tab sessions** live in [`shell::tabs::session`] over `strata_desktop::tabs_session`.
 //!
-//! Not yet: tab sessions (`A4`'s plan item 7), and A19's drag binder, cross-volume confirmation
-//! and foreign content saving.
+//! Not yet: A19's drag binder, cross-volume confirmation and foreign content saving.
 
 use std::path::Path;
 
@@ -300,14 +300,21 @@ pub(crate) fn select(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
     tabs_of::show(app, key, tx)
 }
 
-/// Opens a tab at the end at the shown tab's folder, or at home with none (`new_tab`).
+/// Opens a tab at the end at the shown tab's folder, or at the default folder with none
+/// (`TabWindow::new_tab`).
 pub(crate) fn new_tab(app: &mut App, tx: &mut Tx) {
     if drops::blocked(app) {
         return;
     }
-    let location = app.browser.active_location();
-    let location = location.or_else(|| launch::location(None));
-    open_at(app, location, tabs(app).len(), tx);
+    match app.browser.active_location() {
+        Some(location) => {
+            open_at(app, Some(location), tabs(app).len(), tx);
+        }
+        None => {
+            let key = open_at(app, None, tabs(app).len(), tx);
+            tabs_of::session::open_default_folder(app, key, tx);
+        }
+    }
 }
 
 /// Opens `location` in a tab at the end, shown (`open_in_new_tab`).
@@ -318,9 +325,9 @@ pub(crate) fn open_in_new_tab(app: &mut App, location: Location, tx: &mut Tx) {
     open_at(app, Some(location), tabs(app).len(), tx);
 }
 
-fn open_at(app: &mut App, location: Option<Location>, at: usize, tx: &mut Tx) {
+fn open_at(app: &mut App, location: Option<Location>, at: usize, tx: &mut Tx) -> TabKey {
     leaving(app, tx);
-    tabs_of::open(app, location, at, tx);
+    tabs_of::open(app, location, at, tx)
 }
 
 /// Closes tab `key` (`close`): not while its browser has an operation running, which GTK's
