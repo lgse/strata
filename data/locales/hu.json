@@ -1556,5 +1556,19 @@
   "Unsorted": "Rendezetlen",
   "Sort: %{field} %{direction}": "Rendezés: %{field} %{direction}",
   "%{field} · %{order}": "%{field} · %{order}",
-  "%{field} · case-sensitive": "%{field} · kis- és nagybetűk"
+  "%{field} · case-sensitive": "%{field} · kis- és nagybetűk",
+  "Emoji": "Emodzsi",
+  "Choose an emoji": "Emodzsi kiválasztása",
+  "Categories": "Kategóriák",
+  "Recently used": "Nemrég használt",
+  "Current": "Jelenlegi",
+  "Smileys & Emotion": "Hangulatjelek és érzelmek",
+  "People & Body": "Emberek és test",
+  "Animals & Nature": "Állatok és természet",
+  "Food & Drink": "Ételek és italok",
+  "Travel & Places": "Utazás és helyek",
+  "Activities": "Tevékenységek",
+  "Objects": "Tárgyak",
+  "Symbols": "Szimbólumok",
+  "Flags": "Zászlók"
 }

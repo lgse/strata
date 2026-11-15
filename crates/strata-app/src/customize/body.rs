@@ -15,7 +15,7 @@ use strata_core::{
 use strata_desktop::settings::ICON_CHOICES;
 use strata_kit::{icons::IconName, look::Look};
 
-use super::{Item, choose_color, choose_icon, custom};
+use super::{Item, choose_color, choose_icon, custom, emoji};
 use crate::App;
 
 /// What the body shows: the item and what it wears now.
@@ -32,13 +32,22 @@ const DOT: f32 = 20.0;
 const CHOICE_ICON: f32 = 20.0;
 const PREVIEW: f32 = 56.0;
 
-pub(super) fn children(app: &App, shown: &Shown<'_>) -> Vec<El> {
+pub(super) fn children(app: &App, shown: &Shown<'_>, over: &mut Vec<El>) -> Vec<El> {
     let look = &app.look;
     vec![
         preview(look, shown),
         section(look, "COLOR", color_bar(look, shown)),
-        section(look, "ICON", icon_choices(look, shown)),
+        section(look, "ICON", icon_section(app, shown, over)),
     ]
+}
+
+fn icon_section(app: &App, shown: &Shown<'_>, over: &mut Vec<El>) -> El {
+    let look = &app.look;
+    col()
+        .w_full()
+        .gap(look.space.sm)
+        .child(icon_choices(look, shown))
+        .child(emoji::button(app, shown.icon, over))
 }
 
 fn section(look: &Look, heading: &str, content: El) -> El {
@@ -58,25 +67,29 @@ pub(super) fn color_of(value: &FolderColorValue) -> Option<Color> {
     Srgba::parse_hex(value.hex()).map(Srgba::to_color)
 }
 
-/// The item's icon in its colour, with its name under it, as GTK's 56 px preview.
+/// The item's icon in its colour, or its chosen emoji, with its name under it, as GTK's 56 px
+/// preview.
 fn preview(look: &Look, shown: &Shown<'_>) -> El {
     let k = &look.kit;
-    let ink = shown.color.and_then(color_of).unwrap_or(k.c.icon_accent);
-    let fallback = if shown.item.folder {
-        IconName::Folder
-    } else {
-        IconName::File
-    };
-    let art = shown
-        .icon
-        .and_then(|name| look.icon_named(name))
-        .unwrap_or_else(|| look.icon(fallback));
+    let glyph = emoji::preview(look, shown.icon, PREVIEW).unwrap_or_else(|| {
+        let ink = shown.color.and_then(color_of).unwrap_or(k.c.icon_accent);
+        let fallback = if shown.item.folder {
+            IconName::Folder
+        } else {
+            IconName::File
+        };
+        let art = shown
+            .icon
+            .and_then(|name| look.icon_named(name))
+            .unwrap_or_else(|| look.icon(fallback));
+        icon(art, PREVIEW).color(ink).a11y_hidden()
+    });
     col()
         .key("customize-preview")
         .w_full()
         .gap(look.space.xs)
         .items_center()
-        .child(icon(art, PREVIEW).color(ink).a11y_hidden())
+        .child(glyph)
         .child(
             text(shown.item.name.clone())
                 .font(k.ty.ui_medium)
