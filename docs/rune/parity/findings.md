@@ -388,6 +388,9 @@ sequence only together with the alphabet's version, so the version is part of th
   build loaded the machine, the held lookup in the test's `hold` helper stayed `Pending` where
   `NotFound` was wanted, after its 10 s wait (`loader/tests.rs:116`). The branch did not touch
   `strata-platform`. Alone, the test passed 3 of 3.
+  Seen again on 2026-11-14, in a full `mise run test-rune` for [A4](packages/A4.md)'s
+  modifiers hook, run alone at a load average of 6 to 7: the same assertion at the same line.
+  That branch did not touch `strata-platform` either. Alone, the test passed 3 of 3.
 - **Concerns:** `icon_theme::loader::tests::a_request_dropped_and_pushed_out_of_the_recent_icons_before_its_turn_is_skipped`
   in `crates/strata-platform/src/icon_theme/loader/tests.rs`.
 - **What it suggests:** Rune-side tests are meant to run on Rune's virtual clock, but this one
