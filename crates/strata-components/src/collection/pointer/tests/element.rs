@@ -184,6 +184,7 @@ fn heard(rt: &mut Runtime<Host>) -> Vec<String> {
             Intent::Activate { id, how } => format!("activate {} {how:?}", id.get()),
             Intent::Clicked { id } => format!("clicked {}", id.get()),
             Intent::OpenInNew { id, window } => format!("new {} window={window}", id.get()),
+            Intent::Reveal { id } => format!("reveal {}", id.get()),
             Intent::BeginDrag { ids, .. } => format!("drag {}", ids.len()),
             Intent::BeginRename { id } => format!("rename {}", id.get()),
             Intent::ContextMenu { target, .. } => format!("menu {:?}", target.map(EntryId::get)),
@@ -298,6 +299,12 @@ fn ctrl_or_shift_middle_click_on_a_folder_opens_a_window() {
         wait(&mut rt, 1.0);
     }
     assert_eq!(heard(&mut rt), ["new 1 window=true", "new 2 window=true"]);
+    let (x, y) = at(&rt, 6, "");
+    rt.button_down(x, y, PointerButton::Middle);
+    rt.frame(1.0 / 60.0);
+    rt.button_up(x, y, PointerButton::Middle);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(heard(&mut rt), ["reveal 6"]);
 }
 
 #[test]

@@ -196,6 +196,8 @@
 //! `columns/intents.rs`, where Left in the first column calls `shell::leave_view_at_start`. The rename editor (`rename.rs`) and the context menu (`menus.rs`)
 //! are the two overlays: the editor's message is registered first, so it shows under a menu.
 
+use std::rc::Rc;
+
 use rune::{Cx, El, Tx};
 use strata_components::{contract::EntryId, rename::Polled};
 use strata_desktop::settings::Preferences;
@@ -210,10 +212,12 @@ use crate::{
 mod ids;
 mod inbox;
 mod registry;
+mod worn;
 
 pub(crate) use ids::Ids;
 pub(crate) use inbox::{Heard, Inbox, Later, Listener, Queued, Source, TabKey, Update};
 pub(crate) use registry::{Entry, Registry, ShownView};
+pub(crate) use worn::{SavedGlyph, Worn, color_of, path_customization};
 
 /// A place in the window. The module docs say where each is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -244,6 +248,8 @@ pub(crate) struct Setup<'a> {
     pub(crate) settings: &'a Preferences,
     /// The one table that names an entry for the components.
     pub(crate) ids: &'a Ids,
+    /// The saved item colours and icons, indexed by [`EntryId`].
+    pub(crate) worn: &'a Rc<Worn>,
     /// Where the callback of a service other than `Browser` queues: clone it into the state.
     pub(crate) later: &'a Later<App>,
     /// Which view is shown, now and later: clone it into the state of what asks after start.
@@ -379,6 +385,9 @@ pub(crate) struct Strip<S: 'static> {
     /// Builds the strip, with the window's Close in `close` while it shows, as GTK's strip
     /// takes it from the header (`refresh_chrome`). Nothing while it does not show.
     pub(crate) build: fn(&S, Option<El>, &mut Frame<'_, S>) -> Option<El>,
+    /// Builds the header's New tab button, keyed `key`, while the strip is hidden, so a drag
+    /// onto it opens a tab (`NewTabButton`). `None` falls back to a plain command button.
+    pub(crate) new_tab: Option<fn(&S, &'static str) -> El>,
     /// Whether the strip shows. The header then leaves out New tab and the window's Close.
     pub(crate) shows: fn(&S) -> bool,
 }
@@ -474,6 +483,10 @@ pub(crate) trait Part: Sized + 'static {
 
     /// The queue of the browser's events has been applied, this part's updates among them.
     fn caught_up(_app: &mut App) {}
+
+    /// The window's saved item colours or icons changed ([`crate::shell::change_customization`]):
+    /// what draws them follows [`crate::shell::worn`].
+    fn customized(_app: &mut App) {}
 
     /// The window shows another view ([`shell::show_view`](crate::shell::show_view)), rebuilt
     /// from the browser: what follows the view shown follows it, as the folder the location

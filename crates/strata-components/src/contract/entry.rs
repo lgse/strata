@@ -107,6 +107,47 @@ impl ThumbKey {
     }
 }
 
+/// A custom icon or emoji an entry wears in place of its default icon.
+///
+/// Used by: C1e, C2, C3, C4, C25, hosts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum EntryGlyph<'a> {
+    /// A catalog icon name (`Look::icon_named`).
+    Icon(&'a str),
+    /// An emoji sequence.
+    Emoji(&'a str),
+}
+
+/// Owned [`EntryGlyph`] stored on a [`ListEntry`].
+///
+/// Used by: [`ListEntry`], tests.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum OwnedGlyph {
+    /// A catalog icon name (`Look::icon_named`).
+    Icon(String),
+    /// An emoji sequence.
+    Emoji(String),
+}
+
+impl OwnedGlyph {
+    /// Borrowed as an [`EntryGlyph`].
+    pub fn as_glyph(&self) -> EntryGlyph<'_> {
+        match self {
+            Self::Icon(name) => EntryGlyph::Icon(name),
+            Self::Emoji(emoji) => EntryGlyph::Emoji(emoji),
+        }
+    }
+}
+
+impl From<EntryGlyph<'_>> for OwnedGlyph {
+    fn from(glyph: EntryGlyph<'_>) -> Self {
+        match glyph {
+            EntryGlyph::Icon(name) => Self::Icon(name.to_owned()),
+            EntryGlyph::Emoji(emoji) => Self::Emoji(emoji.to_owned()),
+        }
+    }
+}
+
 /// One entry's display fields, borrowed from its [`EntrySource`], so a mounted row costs one
 /// call and copies nothing.
 ///
@@ -131,10 +172,15 @@ pub struct Entry<'a> {
     pub icon: &'a str,
     /// The thumbnail key, if the entry can have a thumbnail.
     pub thumbnail: Option<ThumbKey>,
+    /// A custom icon or emoji worn over [`Entry::icon`]. When set, collection slots show the
+    /// custom glyph instead of [`Entry::thumbnail`].
+    pub glyph: Option<EntryGlyph<'a>>,
+    /// A custom colour worn over the view's default icon colour.
+    pub color: Option<rune::Color>,
 }
 
 impl<'a> Entry<'a> {
-    /// An entry with no thumbnail.
+    /// An entry with no thumbnail or customization.
     pub const fn new(id: EntryId, name: &'a str, kind: EntryKind, icon: &'a str) -> Self {
         Self {
             id,
@@ -142,12 +188,38 @@ impl<'a> Entry<'a> {
             kind,
             icon,
             thumbnail: None,
+            glyph: None,
+            color: None,
         }
     }
 
     /// The same entry, with thumbnail key `key`.
     pub const fn thumbnail(mut self, key: ThumbKey) -> Self {
         self.thumbnail = Some(key);
+        self
+    }
+
+    /// The same entry, wearing `glyph`.
+    pub const fn glyph(mut self, glyph: EntryGlyph<'a>) -> Self {
+        self.glyph = Some(glyph);
+        self
+    }
+
+    /// The same entry, wearing `glyph` when `Some`.
+    pub const fn maybe_glyph(mut self, glyph: Option<EntryGlyph<'a>>) -> Self {
+        self.glyph = glyph;
+        self
+    }
+
+    /// The same entry, coloured `color`.
+    pub const fn color(mut self, color: rune::Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+
+    /// The same entry, coloured `color` when `Some`.
+    pub const fn maybe_color(mut self, color: Option<rune::Color>) -> Self {
+        self.color = color;
         self
     }
 }
@@ -198,10 +270,14 @@ pub struct ListEntry {
     pub icon: String,
     /// The thumbnail key, if any.
     pub thumbnail: Option<ThumbKey>,
+    /// A custom icon or emoji, if any; see [`Entry::glyph`].
+    pub glyph: Option<OwnedGlyph>,
+    /// A custom icon colour, if any; see [`Entry::color`].
+    pub color: Option<rune::Color>,
 }
 
 impl ListEntry {
-    /// An entry with no thumbnail.
+    /// An entry with no thumbnail or customization.
     pub fn new(
         id: EntryId,
         name: impl Into<String>,
@@ -214,6 +290,8 @@ impl ListEntry {
             kind,
             icon: icon.into(),
             thumbnail: None,
+            glyph: None,
+            color: None,
         }
     }
 }
@@ -288,7 +366,9 @@ impl EntrySource for ListSource {
 
     fn entry(&self, index: usize) -> Entry<'_> {
         let e = &self.entries[index];
-        let entry = Entry::new(e.id, &e.name, e.kind, &e.icon);
+        let entry = Entry::new(e.id, &e.name, e.kind, &e.icon)
+            .maybe_glyph(e.glyph.as_ref().map(OwnedGlyph::as_glyph))
+            .maybe_color(e.color);
         match e.thumbnail {
             Some(key) => entry.thumbnail(key),
             None => entry,

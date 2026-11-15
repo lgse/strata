@@ -244,6 +244,11 @@ pub enum Intent {
         /// A new window rather than a tab.
         window: bool,
     },
+    /// Reveal the entry in its folder (a middle click on a file).
+    Reveal {
+        /// The entry.
+        id: EntryId,
+    },
     /// Start a drag of these entries: the host builds the `DragPayload` and starts the system
     /// drag (X2). Rows have no drag source of their own (see the element's Decisions).
     BeginDrag {

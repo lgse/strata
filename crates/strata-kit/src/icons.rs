@@ -141,6 +141,8 @@ icon_names! {
     // Entries.
     /// A folder: entry rows and tiles (C1e, C2–C4), folder peek (C22).
     Folder = "folder" => kit!(FOLDER),
+    /// A folder filled at 92 % opacity, behind a custom icon or emoji badge (C1e, C3, C8).
+    FolderFilled = "folder_filled" => line!(r#"<path fill="currentColor" fill-opacity="0.92" d="M2.5 12.5v-9h4l1.5 1.5h5.5v7.5z"/>"#),
     /// An open folder: the folder a column came from (C2), a drop-target folder.
     FolderOpen = "folder_open" => kit!(FOLDER_OPEN),
     /// A file of no particular kind, and the fallback for an unknown icon key.

@@ -36,13 +36,6 @@ pub(crate) fn modifiers(app: &mut App, mods: Mods, tx: &mut Tx) {
 
 /// The modifiers held down in the window as of the last change heard, none while the window
 /// has no keyboard focus.
-#[cfg_attr(
-    not(any(test, feature = "qa")),
-    expect(
-        dead_code,
-        reason = "the tab strip's number badges, A4's next pull request, read it"
-    )
-)]
 pub(crate) fn held_modifiers(app: &App) -> Mods {
     app.window.held
 }

@@ -8,7 +8,7 @@
 //! (`search_recursively` in `src/ui/browser/columns/append/query.rs`): the column's listing
 //! stays, and follows the browser underneath.
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, rc::Rc};
 
 use strata_components::{
     columns::ColumnSources,
@@ -18,11 +18,13 @@ use strata_components::{
 use crate::{
     details,
     listing::{Column, Words},
+    slots::Worn,
 };
 
 /// The open columns, root first, and the words for what a row is.
 pub(super) struct Listings {
     pub(super) columns: Vec<Column>,
+    pub(super) worn: Rc<Worn>,
     described: Words,
     /// A filter's results, and the column whose rows they replace.
     hits: Option<(usize, Column)>,
@@ -36,14 +38,25 @@ pub(super) struct Listings {
 }
 
 impl Listings {
-    pub(super) fn translated() -> Self {
+    pub(super) fn translated(worn: Rc<Worn>) -> Self {
         Self {
             columns: Vec::new(),
+            worn,
             described: Words::translated(),
             hits: None,
             hit_paths: HashMap::new(),
             hit_details: false,
             swaps: 0,
+        }
+    }
+
+    pub(super) fn set_worn(&mut self, worn: &Rc<Worn>) {
+        self.worn = worn.clone();
+        for column in &mut self.columns {
+            column.set_worn(worn);
+        }
+        if let Some((_, hits)) = &mut self.hits {
+            hits.set_worn(worn);
         }
     }
 
@@ -61,7 +74,8 @@ impl Listings {
     }
 
     /// Shows `hits` in the place of column `depth`'s rows, or replaces the results shown there.
-    pub(super) fn show_hits(&mut self, depth: usize, hits: Column) {
+    pub(super) fn show_hits(&mut self, depth: usize, mut hits: Column) {
+        hits.set_worn(&self.worn);
         self.swaps = self.swaps.wrapping_add(1);
         self.hits = Some((depth, hits));
     }

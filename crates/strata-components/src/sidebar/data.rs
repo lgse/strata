@@ -41,12 +41,16 @@ impl ItemId {
     }
 }
 
-/// A row's icon: a semantic one, or a catalog icon by name (a folder's custom icon).
+/// A row's icon: a semantic one, or a folder's custom icon or emoji badge.
 #[derive(Clone, Debug, PartialEq)]
 pub enum RowIcon {
+    /// A semantic icon from [`IconName`].
     Name(IconName),
-    /// A catalog icon key, falling back to [`IconName::Folder`] when the catalog has none.
+    /// A catalog icon key drawn inside a filled folder, falling back to [`IconName::Folder`]
+    /// when the catalog has none.
     Catalog(String),
+    /// An emoji sequence drawn inside a filled folder.
+    Emoji(String),
 }
 
 /// What a built-in place is, where it matters to the sidebar.

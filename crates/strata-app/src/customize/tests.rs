@@ -5,8 +5,12 @@
 
 use std::path::Path;
 
-use rune::{Key, KeyEvent, Mods, Tx};
-use strata_components::controls::icon_picker::{Choice, IconPickerState, Page, drawn_text};
+use rune::{Color, Key, KeyEvent, Mods, Tx};
+use strata_components::{
+    contract::{EntryId, EntrySource, OwnedGlyph},
+    controls::icon_picker::{Choice, IconPickerState, Page, drawn_text},
+    sidebar::RowIcon,
+};
 use strata_core::model::{FolderColor, FolderColorValue, Location};
 use strata_desktop::keys::{Binding, Key as CatalogKey};
 
@@ -16,6 +20,7 @@ use crate::{
     commands::{self, On, Outcome, Situation},
     host::offscreen::Offscreen,
     shell,
+    slots::color_of,
     test_support::{PATIENCE, fixture, hosted, send_key, view::idle},
 };
 
@@ -419,4 +424,203 @@ fn emoji_picker_translates_chrome_and_categories_while_keeping_english_search() 
         picker.results().is_some_and(|count| count > 0),
         "English CLDR keywords still match under a non-English UI locale"
     );
+}
+
+fn entry_worn(source: &dyn EntrySource, id: EntryId) -> (Option<Color>, Option<OwnedGlyph>, bool) {
+    let index = source.index_of(id).expect("the row is listed");
+    let entry = source.entry(index);
+    (
+        entry.color,
+        entry.glyph.map(OwnedGlyph::from),
+        entry.thumbnail.is_some(),
+    )
+}
+
+struct WornCase {
+    first_tab: crate::slots::TabKey,
+    shot_id: EntryId,
+    pictures_id: EntryId,
+    blue: Option<Color>,
+    green: Option<Color>,
+    red: Option<Color>,
+    code_icon: Option<OwnedGlyph>,
+    astro: Option<OwnedGlyph>,
+}
+
+#[test]
+fn customizations_reach_rows_filter_hits_switched_views_hidden_tabs_and_sidebar() {
+    hosted(
+        MODULE,
+        "customizations_reach_rows_filter_hits_switched_views_hidden_tabs_and_sidebar",
+        |mut host| {
+            let folder = fixture();
+            let shot = folder.path().join("shot.png");
+            std::fs::write(&shot, b"png").expect("image file");
+            let pictures = folder.path().join("pictures");
+            let root = Location::local(folder.path());
+
+            host.app().open(root.clone());
+            let listed = |host: &Offscreen| host.app().browser().column_entry_counts(0).is_some();
+            assert!(host.run_until(PATIENCE, listed), "first tab listed");
+            idle(&mut host);
+
+            let first_tab = shell::tabs::shown_tab(host.app());
+            host.runtime().update(|app, tx| {
+                shell::tabs::open(app, Some(root), 1, tx);
+            });
+            assert!(host.run_until(PATIENCE, listed), "second tab listed");
+            idle(&mut host);
+
+            let red = customize_first_place(&mut host);
+            let shot_id = shell::id_of(host.app(), &Location::local(&shot));
+            let pictures_id = shell::id_of(host.app(), &Location::local(&pictures));
+            let (blue, code_icon) = customize_shot_row(&mut host, shot_id);
+            let (green, astro) = customize_pictures_row(&mut host, pictures_id);
+
+            let case = WornCase {
+                first_tab,
+                shot_id,
+                pictures_id,
+                blue,
+                green,
+                red,
+                code_icon,
+                astro,
+            };
+            assert_switched_views(&mut host, &case);
+            assert_filter_clear_and_hidden_tab(&mut host, &case);
+        },
+    );
+}
+
+fn customize_first_place(host: &mut Offscreen) -> Option<Color> {
+    let home_location = host.app().sidebar.first_place_location();
+    host.runtime().update(|app, tx| {
+        commands::run(app, "customize", On::Place(home_location), tx);
+    });
+    idle(host);
+    click(host, "customize-color-red");
+    click(host, "customize-icon-6");
+    let red = color_of(&FolderColorValue::Preset(FolderColor::Red));
+    assert_eq!(host.app().sidebar.places()[0].tint, red);
+    assert_eq!(
+        host.app().sidebar.places()[0].icon,
+        RowIcon::Catalog("strata-terminal".to_owned())
+    );
+    red
+}
+
+fn customize_shot_row(
+    host: &mut Offscreen,
+    shot_id: EntryId,
+) -> (Option<Color>, Option<OwnedGlyph>) {
+    assert_eq!(
+        entry_worn(host.app().columns.listing(0).unwrap(), shot_id),
+        (None, None, true)
+    );
+    host.runtime().update(|app, tx| {
+        commands::run(app, "customize", On::Row((0, shot_id)), tx);
+    });
+    idle(host);
+    click(host, "customize-color-blue");
+    let blue = color_of(&FolderColorValue::Preset(FolderColor::Blue));
+    assert_eq!(
+        entry_worn(host.app().columns.listing(0).unwrap(), shot_id),
+        (blue, None, true),
+        "colour alone keeps a file's thumbnail"
+    );
+    click(host, "customize-icon-2");
+    let code_icon = Some(OwnedGlyph::Icon("strata-file-code".into()));
+    assert_eq!(
+        entry_worn(host.app().columns.listing(0).unwrap(), shot_id),
+        (blue, code_icon.clone(), false),
+        "a custom icon suppresses a file's thumbnail"
+    );
+    (blue, code_icon)
+}
+
+fn customize_pictures_row(
+    host: &mut Offscreen,
+    pictures_id: EntryId,
+) -> (Option<Color>, Option<OwnedGlyph>) {
+    host.runtime().update(|app, tx| {
+        commands::run(app, "customize", On::Row((0, pictures_id)), tx);
+    });
+    idle(host);
+    click(host, "customize-color-green");
+    click(host, "customize-emoji-button");
+    press(host, Key::Text("astronaut".to_owned()), Mods::default());
+    press(host, Key::Enter, Mods::default());
+    press(host, Key::Escape, Mods::default());
+    (
+        color_of(&FolderColorValue::Preset(FolderColor::Green)),
+        Some(OwnedGlyph::Emoji("🧑\u{200d}🚀".into())),
+    )
+}
+
+fn assert_switched_views(host: &mut Offscreen, case: &WornCase) {
+    for mode in ["icons", "list"] {
+        host.runtime().update(|app, tx| {
+            assert!(shell::show_view(app, mode, tx));
+        });
+        idle(host);
+    }
+    assert_eq!(
+        entry_worn(host.app().list.source(), case.pictures_id),
+        (case.green, case.astro.clone(), false)
+    );
+    assert_eq!(
+        entry_worn(host.app().list.source(), case.shot_id),
+        (case.blue, case.code_icon.clone(), false)
+    );
+    host.runtime().update(|app, tx| {
+        assert!(shell::show_view(app, "icons", tx));
+    });
+    idle(host);
+    assert_eq!(
+        entry_worn(host.app().icons.source(), case.pictures_id),
+        (case.green, case.astro.clone(), false)
+    );
+}
+
+fn assert_filter_clear_and_hidden_tab(host: &mut Offscreen, case: &WornCase) {
+    host.runtime().update(|app, tx| {
+        assert_eq!(commands::run(app, "filter", On::Focus, tx), Outcome::Ran);
+    });
+    idle(host);
+    press(host, Key::Text("shot".to_owned()), Mods::default());
+    let shot_id = case.shot_id;
+    let hit = |host: &Offscreen| crate::filter::targets::at(host.app(), 0, shot_id).is_some();
+    assert!(host.run_until(PATIENCE, hit), "shot filter hit");
+    assert_eq!(
+        entry_worn(host.app().filter.pane.source(), shot_id),
+        (case.blue, case.code_icon.clone(), false)
+    );
+
+    host.runtime().update(|app, tx| {
+        commands::run(app, "customize", On::Row((0, shot_id)), tx);
+    });
+    idle(host);
+    let clear_key = format!("customize-{}-secondary", host.app().customize.opened);
+    click(host, &clear_key);
+    assert_eq!(
+        entry_worn(host.app().filter.pane.source(), shot_id),
+        (None, None, true),
+        "Clear restores the file's thumbnail across filter results and panes"
+    );
+    assert_eq!(
+        entry_worn(host.app().icons.source(), shot_id),
+        (None, None, true)
+    );
+
+    let first_tab = case.first_tab;
+    host.runtime().update(|app, tx| {
+        assert!(shell::tabs::show(app, first_tab, tx));
+    });
+    idle(host);
+    assert_eq!(
+        entry_worn(host.app().columns.listing(0).unwrap(), case.pictures_id),
+        (case.green, case.astro.clone(), false)
+    );
+    assert_eq!(host.app().sidebar.places()[0].tint, case.red);
 }

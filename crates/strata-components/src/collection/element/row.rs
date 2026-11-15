@@ -7,8 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Duration;
 
-use rune::{El, Tx, el, icon, memo, row, text};
-use strata_kit::icons::IconName;
+use rune::{El, Tx, el, memo, row, text};
 use strata_kit::look::Look;
 use strata_kit::slots::collection as tokens;
 
@@ -26,8 +25,10 @@ use crate::contract::{DropHover, DropZone, ElementKey, Entry, EntryId, Point, Re
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct RowMarks {
-    /// Cut to the clipboard: drawn faded (`collection.cut.opacity`).
+    /// Cut to the clipboard: drawn faded (`collection.cut.opacity`), with the cut icon.
     pub cut: bool,
+    /// Copied to the clipboard: its icon is the copy mark at full opacity.
+    pub copied: bool,
     /// Part of a drag in progress: drawn faded (`collection.drag.opacity`).
     pub dragging: bool,
     /// What Enter in the filter field opens: outlined in the accent.
@@ -533,7 +534,14 @@ fn build_item<S: 'static>(cfg: &Rc<Config<S>>, frame: &Frame, s: &S, index: usiz
         .peek_anchor
         .then(|| color_key(tokens::peek_fill(look)));
     let version = (
-        (entry.name, entry.kind, entry.icon, entry.thumbnail),
+        (
+            entry.name,
+            entry.kind,
+            entry.icon,
+            entry.thumbnail,
+            entry.glyph,
+            entry.color.map(color_key),
+        ),
         state,
         frame.look_key,
         frame.config_key,
@@ -743,21 +751,20 @@ pub(super) fn header_body(style: &GroupStyle, h: f32, label: El) -> El {
     el
 }
 
-/// The entry's catalog icon, else the Folder or File icon, at the row icon size.
+/// The clipboard mark icon, else the entry's catalog icon or custom decoration, else the Folder
+/// or File icon, at the row icon size.
 fn default_icon(rcx: &RowCx<'_>) -> El {
     let look = rcx.look;
-    let fallback = if rcx.entry.kind.is_folder_like() {
-        IconName::Folder
-    } else {
-        IconName::File
-    };
-    let glyph = look
-        .icon_named(rcx.entry.icon)
-        .unwrap_or_else(|| look.icon(fallback));
-    icon(glyph, look.icon_size.md)
-        .key(ICON)
-        .color(look.kit.c.icon_base)
-        .a11y_hidden()
+    match crate::thumbnails::mark_icon(rcx.state.marks) {
+        Some(mark) => rune::icon(look.icon(mark), look.icon_size.md)
+            .key(ICON)
+            .color(look.kit.c.icon_base)
+            .a11y_hidden(),
+        None => {
+            crate::thumbnails::entry_glyph(look, rcx.entry, look.icon_size.md, look.kit.c.icon_base)
+                .key(ICON)
+        }
+    }
 }
 
 /// The entry's name, cut short with an ellipsis.

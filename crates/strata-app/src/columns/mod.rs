@@ -30,11 +30,11 @@ use strata_fs::app::Browser;
 use strata_kit::look::Look;
 
 use crate::{
-    App, commands,
+    commands,
     events::{Added, Change, Marks, Moved},
     handover::{self, Held, Moving},
     listing::{Column, Edit, Load, Row},
-    slots::{Ids, Later, ShownView},
+    slots::{Ids, Setup, Worn},
     surface::Surface,
 };
 
@@ -106,26 +106,22 @@ fn clicks(count: u8) -> ClickCount {
 }
 
 impl Columns {
-    fn with_settings(
-        settings: &Preferences,
-        ids: Ids,
-        later: Later<App>,
-        shown: ShownView,
-    ) -> Self {
+    fn with_setup(setup: &Setup<'_>) -> Self {
+        let settings: &Preferences = setup.settings;
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
         Self {
-            listings: Listings::translated(),
+            listings: Listings::translated(setup.worn.clone()),
             state: {
                 let mut state = ColumnsState::new(VIEW, Autoscroll::new());
                 state.set_default_width(width::saved(settings));
                 state
             },
-            ids,
+            ids: setup.ids.clone(),
             held: Vec::new(),
             followed: None,
             moving: Moving::default(),
-            mirror: Mirror::new(settings.columns_mirror_selection, shown),
+            mirror: Mirror::new(settings.columns_mirror_selection, setup.shown.clone()),
             clicks: ClickModes::new(
                 clicks(settings.columns_file_clicks),
                 clicks(settings.columns_folder_clicks),
@@ -133,9 +129,13 @@ impl Columns {
             keys: keys(typing),
             labels: view::Labels::translated(),
             surface: Surface::translated(),
-            thumbs: Thumbs::new(later),
+            thumbs: Thumbs::new(setup.later.clone()),
             fills: ColumnFills::new(settings.columns_show_sizes),
         }
+    }
+
+    pub(crate) fn set_worn(&mut self, worn: &Rc<Worn>) {
+        self.listings.set_worn(worn);
     }
 
     /// "Show sizes in Columns view" changed: the open columns ask for their folders' counts,
@@ -262,9 +262,10 @@ impl Columns {
         }
         // The row of the column before it that this folder is: the open path.
         let from = depth.checked_sub(1).map(|_| self.ids.of(&location));
+        let worn = self.listings.worn.clone();
         self.listings
             .columns
-            .push(Column::new(location, show_hidden, from));
+            .push(Column::new(location, show_hidden, from).with_worn(worn));
         if depth == 0 {
             // Another location: the old columns go with no exit.
             self.state
@@ -352,10 +353,14 @@ impl Columns {
     }
 
     fn activate(&mut self, active: Option<usize>, hands: &mut Hands<'_>) {
+        self.follow_active(active, hands.look, hands.tx);
+    }
+
+    pub(super) fn follow_active(&mut self, active: Option<usize>, look: &Look, tx: &mut Tx) {
         if let Some(active) = active.filter(|active| *active < self.open())
             && active != self.state.active()
         {
-            self.state.set_active(active, hands.look, hands.tx);
+            self.state.set_active(active, look, tx);
         }
     }
 

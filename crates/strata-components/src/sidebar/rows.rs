@@ -105,21 +105,35 @@ pub(crate) fn over(top: rune::Color, bottom: rune::Color) -> rune::Color {
     }
 }
 
-/// A row's icon: the semantic or catalog icon, in the accent on the current row, else the
-/// folder's tint, else the muted icon colour.
+/// A row's icon: a folder badge for a custom icon or emoji, else the semantic icon in the
+/// folder's saved tint (kept on the active row too, as GTK's `sidebar_rows` keeps it), else
+/// the accent on the active row, else the muted icon colour.
 pub(crate) fn row_icon(look: &Look, i: &RowIcon, tint: Option<rune::Color>, selected: bool) -> El {
-    let glyph = match i {
-        RowIcon::Name(n) => look.icon(*n),
-        RowIcon::Catalog(name) => look
-            .icon_named(name)
-            .unwrap_or_else(|| look.icon(IconName::Folder)),
-    };
-    let colour = if selected {
-        slot::selected_icon(look)
-    } else {
-        tint.unwrap_or(look.kit.c.icon_muted)
-    };
-    icon(glyph, look.icon_size.md).color(colour)
+    let badge_fill = tint.unwrap_or(look.kit.c.icon_accent);
+    match i {
+        RowIcon::Catalog(name) => crate::thumbnails::folder_badge(
+            look,
+            crate::contract::EntryGlyph::Icon(name),
+            look.icon_size.md,
+            badge_fill,
+        ),
+        RowIcon::Emoji(emoji) => crate::thumbnails::folder_badge(
+            look,
+            crate::contract::EntryGlyph::Emoji(emoji),
+            look.icon_size.md,
+            badge_fill,
+        ),
+        RowIcon::Name(n) => {
+            let colour = tint.unwrap_or_else(|| {
+                if selected {
+                    slot::selected_icon(look)
+                } else {
+                    look.kit.c.icon_muted
+                }
+            });
+            icon(look.icon(*n), look.icon_size.md).color(colour)
+        }
+    }
 }
 
 /// The Trash row's icon, keyed for C23's flight and passed through the host's hook.

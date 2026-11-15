@@ -7,13 +7,22 @@
 //! - **One strip for the window** ([`Scope::Window`]): its drag, its reveal and the closed
 //!   tabs are the window's, as GTK's `TabStrip` and `closed_tabs` are.
 //! - **It shows with two tabs or more,** and then holds New tab and the window's Close, which
-//!   the header leaves out (`refresh_chrome`).
+//!   the header leaves out (`refresh_chrome`); with one tab the header holds C7's
+//!   [`NewTabButton`] so a drag onto New tab still opens a second tab.
 //! - **A tab is named after its folder** ([`tabs_of::label`]): `~` for home, `/` for the root,
 //!   else the folder's name, and "Home" with none. A tab opened at a location is named after it
 //!   until its folder opens (`await_location`).
 //! - **Opening a folder in a new tab** (`open-in-tab`, `open.rs`): a place (a sidebar row, a
-//!   crumb), the folders a menu's row acts on, or Ctrl+Enter on the cursor's folder. The tab
-//!   opens at the end and is shown, as GTK's `open_in_new_tab` adds it.
+//!   crumb, a view's folder row on middle click), the folders a menu's row acts on, or
+//!   Ctrl+Enter on the cursor's folder. The tab opens at the end and is shown, as GTK's
+//!   `open_in_new_tab` adds it.
+//! - **Drops and the spring** (`drops.rs`): a file drag resting on an inactive accepting tab for
+//!   [`HOVER_DELAY`] (450 ms) selects it; dropping files transfers them into that tab's folder
+//!   and selects it; sidebar and folder-only view drags open tabs on New tab and the strip.
+//! - **The number badges** ([`badges_shown`]): 1 to 9 and then 0 on the first ten tabs while
+//!   [`TAB_NUMBERS`]'s modifiers are held alone, read from [`shell::held_modifiers`] so a
+//!   modal layer does not hide them, and cleared when a key is released or the window loses
+//!   focus.
 //! - **Showing another tab ends an open rename as Enter does,** as GTK's field commits when
 //!   the keyboard leaves it (driven on 2026-11-14). A Columns mirror waiting to open a child
 //!   column opens it when the tab is shown again, where GTK's hidden tab opens it at once:
@@ -25,22 +34,28 @@
 //! - **Keys** are read at the GTK window's first stage ([`Stage::TabStrip`](crate::commands::Stage)),
 //!   from anywhere but a modal layer: `keys.rs`.
 //!
-//! Not yet: the number badges, drops on the strip and the spring (the tabs take no drop), and
-//! tab sessions. A4's package file has the plan.
+//! Not yet: tab sessions (`A4`'s plan item 7), and A19's drag binder, cross-volume confirmation
+//! and foreign content saving.
 
 use std::path::Path;
 
 use rune::{El, Tx};
-use strata_components::tabs::{
-    Accepts, BrowserTabs, BrowserTabsState, ClosedTabs, Tab, TabId, TabsData, TabsIntent,
-    TabsLabels,
+use strata_components::{
+    contract::dnd::Dnd,
+    tabs::{
+        BrowserTabs, BrowserTabsState, ClosedTabs, HOVER_DELAY, NewTabButton, Tab, TabId, TabOpen,
+        TabsData, TabsIntent, TabsLabels, Via, new_tab_key,
+    },
 };
 use strata_core::{i18n::tr, model::Location};
-use strata_desktop::keys::{Keys, bindings::TAB_NEW};
+use strata_desktop::keys::{
+    Keys, Modifiers,
+    bindings::{TAB_NEW, TAB_NUMBERS},
+};
 use strata_kit::icons::IconName;
 
 use crate::{
-    App, launch,
+    App, buttons, launch,
     location::labels::with_keys,
     rename,
     shell::{
@@ -50,18 +65,21 @@ use crate::{
     slots::{Frame, Part, Place, Scope, Setup, Strip, TabKey},
 };
 
+mod drops;
 mod keys;
 mod open;
 
-/// The strip's state: C7's and the closed tabs.
+/// The strip's state: C7's, its drop classification, and the closed tabs.
 pub(crate) struct TabStrip {
     state: BrowserTabsState,
+    drops: drops::Drops,
     closed: ClosedTabs<Location>,
 }
 
 impl Part for TabStrip {
     const PLACE: Place<App> = Place::Tabs(Strip {
         build,
+        new_tab: Some(header_new_tab),
         shows: |app| tabs(app).len() > 1,
     });
 
@@ -69,15 +87,20 @@ impl Part for TabStrip {
 
     const COMMANDS: &'static [crate::commands::Action<App>] = keys::COMMANDS;
 
-    fn new(_: &Setup<'_>) -> Self {
+    fn new(setup: &Setup<'_>) -> Self {
         Self {
             state: BrowserTabsState::default(),
+            drops: drops::Drops::new(setup),
             closed: ClosedTabs::new(),
         }
     }
 
     fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
         tabs_of::forget_arrived(app);
+        if drops::blocked(app) {
+            app.tab_strip.state.end_drag();
+            app.tab_strip.drops.clear_hover();
+        }
         let tabs = named(app);
         let data = TabsData::new(&tabs, Some(id(shown_tab(app))));
         let polled = app.tab_strip.state.tick(clock, &data, tx);
@@ -89,12 +112,79 @@ impl Part for TabStrip {
     }
 }
 
+/// Sets the drag-and-drop binder the strip and the header's New tab button attach their zones
+/// through (default [`Dnd::rune`]), for A19's system drag-and-drop binder.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "A19's drag binder wires in-process and Wayland drags"
+    )
+)]
+pub(crate) fn set_dnd(app: &mut App, dnd: Dnd<App>) {
+    app.tab_strip.drops.dnd = dnd;
+}
+
+/// Tells the strip and the header's New tab button whether an in-process drag that opens tabs is
+/// running (`Some(TabOpen::AtGap)` for a sidebar row, `Some(TabOpen::AtEnd)` for a folder-only
+/// view drag, `None` when none runs), lighting New tab while it runs and clearing any open gap or
+/// hover when it ends.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "A19's drag binder marks sidebar and folder-only drags"
+    )
+)]
+pub(crate) fn set_open_drag(app: &mut App, open: Option<TabOpen>) {
+    app.tab_strip.drops.open_drag = open;
+    app.tab_strip
+        .state
+        .set_open_drag(open.is_some() && !drops::blocked(app));
+    if open.is_none() {
+        app.tab_strip.state.end_drag();
+        app.tab_strip.drops.clear_hover();
+    }
+}
+
 fn id(key: TabKey) -> TabId {
     TabId(key.0)
 }
 
 fn key(id: TabId) -> TabKey {
     TabKey(id.0)
+}
+
+fn labels() -> TabsLabels {
+    TabsLabels {
+        list: tr("Tabs").into(),
+        new_tab: tr("New tab").into(),
+        new_tab_help: with_keys(
+            "New tab (%{keys})",
+            Some("New tab"),
+            Keys::One(TAB_NEW.shown()),
+        )
+        .into(),
+    }
+}
+
+/// The single-tab header's New tab button: C7's [`NewTabButton`] keyed `key` (`"header-new-tab"`)
+/// so header focus navigation and drops onto New tab both work while the strip is hidden.
+fn header_new_tab(app: &App, key: &'static str) -> El {
+    let el = NewTabButton::new(
+        &app.tab_strip.state,
+        |app: &mut App| &mut app.tab_strip.state,
+        tabs(app).len(),
+    )
+    .key(key)
+    .dnd(app.tab_strip.drops.dnd.clone())
+    .tab_open(drops::tab_open)
+    .labels(labels())
+    .on_intent(|app: &mut App, intent, tx: &mut Tx| {
+        route(app, intent, tx);
+    })
+    .build(&app.look);
+    buttons::on_return(key, el)
 }
 
 /// The strip while it shows, with the window's Close after New tab.
@@ -104,32 +194,41 @@ fn build(app: &App, close: Option<El>, frame: &mut Frame<'_, App>) -> Option<El>
     }
     let tabs = named(app);
     let data = TabsData::new(&tabs, Some(id(shown_tab(app))));
-    let labels = TabsLabels {
-        list: tr("Tabs").into(),
-        new_tab: tr("New tab").into(),
-        new_tab_help: with_keys(
-            "New tab (%{keys})",
-            Some("New tab"),
-            Keys::One(TAB_NEW.shown()),
-        )
-        .into(),
-    };
+    let spring = (!drops::blocked(app)).then_some(HOVER_DELAY);
     let strip = BrowserTabs::new(
         &data,
         &app.tab_strip.state,
         |app: &mut App| &mut app.tab_strip.state,
         |app| &mut app.tab_strip.state.drag,
     )
-    .spring_delay(None)
-    .labels(labels)
+    .dnd(app.tab_strip.drops.dnd.clone())
+    .drop_action(drops::drop_action)
+    .tab_open(drops::tab_open)
+    .badges(badges_shown(app))
+    .spring_delay(spring)
+    .labels(labels())
     .on_intent(|app: &mut App, intent, tx: &mut Tx| {
         route(app, intent, tx);
     });
     let band = strip.build_layered(&app.look, frame.cx, frame.layer);
-    Some(band.children(close))
+    debug_assert_eq!(new_tab_key(app.tab_strip.state.key()), "tabs-new");
+    Some(buttons::on_return_within("tabs-new", band.children(close)))
 }
 
-/// Each tab, in the strip's order, named as GTK names it. No tab takes a drop yet.
+/// Whether the tab numbers' modifiers (`TAB_NUMBERS.modifiers()`) are held alone: GTK's
+/// `handle_key` and `install_keys` in `src/ui/window/composition/tabs.rs`, read before
+/// `blocked()` so a modal layer does not hide them.
+fn badges_shown(app: &App) -> bool {
+    let mods = shell::held_modifiers(app);
+    let mut held = Modifiers::empty();
+    held.set(Modifiers::SHIFT_MASK, mods.shift);
+    held.set(Modifiers::CONTROL_MASK, mods.ctrl || mods.cmd);
+    held.set(Modifiers::ALT_MASK, mods.alt);
+    held.set(Modifiers::SUPER_MASK, mods.logo);
+    held == TAB_NUMBERS.modifiers()
+}
+
+/// Each tab, in the strip's order, named as GTK names it, with the drops its active folder takes.
 fn named(app: &App) -> Vec<Tab<'static>> {
     let home = Location::local(launch::home_directory());
     tabs(app)
@@ -138,7 +237,7 @@ fn named(app: &App) -> Vec<Tab<'static>> {
             let location = located(app, key);
             let name = tabs_of::label(location.as_ref());
             let icon = icon(location.as_ref(), &home);
-            Tab::new(id(key), name, icon).accepts(Accepts::NONE)
+            Tab::new(id(key), name, icon).accepts(drops::accepts(app, key))
         })
         .collect()
 }
@@ -163,20 +262,26 @@ fn icon(location: Option<&Location>, home: &Location) -> IconName {
 /// What the strip asked. True when the view has to run.
 fn route(app: &mut App, intent: TabsIntent, tx: &mut Tx) -> bool {
     match intent {
+        TabsIntent::Select {
+            id,
+            via: Via::Spring,
+        } => !drops::blocked(app) && select(app, key(id), tx),
         TabsIntent::Select { id, .. } => select(app, key(id), tx),
         TabsIntent::Close { id } => close(app, key(id), tx),
         TabsIntent::New => {
+            if drops::blocked(app) {
+                return false;
+            }
             new_tab(app, tx);
             true
         }
         TabsIntent::Reorder { id, to, .. } => tabs_of::move_to(app, key(id), to),
         // The shell titles the window for the tab shown.
         TabsIntent::Title(_) => false,
-        TabsIntent::TearOut { .. }
-        | TabsIntent::TearMove { .. }
-        | TabsIntent::DropInto { .. }
-        | TabsIntent::OpenTabs { .. }
-        | TabsIntent::DropHover { .. } => false,
+        TabsIntent::DropHover { site, hover, offer } => drops::hover(app, site, hover, offer),
+        TabsIntent::DropInto { id, dropped } => drops::drop_into(app, id, dropped, tx),
+        TabsIntent::OpenTabs { at, dropped } => drops::open_tabs(app, at, dropped, tx),
+        TabsIntent::TearOut { .. } | TabsIntent::TearMove { .. } => false,
     }
 }
 
@@ -197,6 +302,9 @@ pub(crate) fn select(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
 
 /// Opens a tab at the end at the shown tab's folder, or at home with none (`new_tab`).
 pub(crate) fn new_tab(app: &mut App, tx: &mut Tx) {
+    if drops::blocked(app) {
+        return;
+    }
     let location = app.browser.active_location();
     let location = location.or_else(|| launch::location(None));
     open_at(app, location, tabs(app).len(), tx);
@@ -204,6 +312,9 @@ pub(crate) fn new_tab(app: &mut App, tx: &mut Tx) {
 
 /// Opens `location` in a tab at the end, shown (`open_in_new_tab`).
 pub(crate) fn open_in_new_tab(app: &mut App, location: Location, tx: &mut Tx) {
+    if drops::blocked(app) {
+        return;
+    }
     open_at(app, Some(location), tabs(app).len(), tx);
 }
 
@@ -243,6 +354,9 @@ pub(crate) fn close(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
 /// Reopens the last closed tab where it stood, or at the end when fewer tabs are open
 /// (`reopen_closed_tab`). Nothing with none recorded.
 pub(crate) fn reopen(app: &mut App, tx: &mut Tx) {
+    if drops::blocked(app) {
+        return;
+    }
     let Some(closed) = app.tab_strip.closed.reopen() else {
         return;
     };

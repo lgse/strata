@@ -218,6 +218,7 @@ fn made_parts() -> Vec<Entry<App>> {
         listen: |_| None,
         publish: |_| {},
         caught_up: |_| {},
+        customized: |_| {},
         poll: |_, _, _| false,
         switched: |_, _| {},
         tab_hidden: |_, _| {},

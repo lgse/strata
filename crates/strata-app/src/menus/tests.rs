@@ -281,6 +281,7 @@ fn a_saved_keymap_moves_the_hints_with_the_keys() {
             let menu = entry(&one(&todo, true));
             let pane = folder(&FolderTarget {
                 has_entries: true,
+                can_paste: false,
                 hidden_shown: false,
                 typing: true,
             });
@@ -297,6 +298,7 @@ fn a_saved_keymap_moves_the_hints_with_the_keys() {
 fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
     let menu = folder(&FolderTarget {
         has_entries: true,
+        can_paste: false,
         hidden_shown: false,
         typing: true,
     });
@@ -320,8 +322,18 @@ fn a_panes_menu_lists_the_gtk_menus_rows_with_paste_greyed() {
     assert_eq!(hint(&menu, "Show Hidden Files"), Some("Ctrl+H"));
     assert_eq!(hint(&menu, "Refresh"), Some("F5"));
 
+    let pasteable = folder(&FolderTarget {
+        has_entries: true,
+        can_paste: true,
+        hidden_shown: false,
+        typing: true,
+    });
+    let paste = items(&pasteable).find(|item| item.label == "Paste");
+    assert!(paste.is_some_and(|item| item.enabled));
+
     let empty = folder(&FolderTarget {
         has_entries: false,
+        can_paste: false,
         hidden_shown: true,
         typing: true,
     });
@@ -360,10 +372,18 @@ fn the_rows_with_a_command_act_and_the_rest_are_inert() {
                     "open",
                     "run",
                     "open-in-tab",
+                    "cut",
+                    "copy",
+                    "duplicate",
                     "rename",
                     "customize",
+                    "copy-path",
+                    "copy-name",
+                    "copy-paths",
+                    "copy-names",
                     "trash",
                     "delete",
+                    "paste",
                     "select-all",
                     "refresh",
                     "hidden"
@@ -403,6 +423,7 @@ fn a_plain_view_and_the_menu() -> Vec<Entry<App>> {
         listen: |_| None,
         publish: |_| {},
         caught_up: |_| {},
+        customized: |_| {},
         poll: |_, _, _| false,
         switched: |_, _| {},
         tab_hidden: |_, _| {},

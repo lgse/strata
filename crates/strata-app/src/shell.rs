@@ -43,20 +43,15 @@ use crate::{
     location::{self, labels::with_keys},
     pane,
     settings::Saved,
-    slots::{Entry, Frame, Heard, Ids, Inbox, Registry, Setup, ShownView, Slot, TabKey, View},
+    slots::{
+        Entry, Frame, Heard, Ids, Inbox, Registry, Setup, ShownView, Slot, TabKey, View, Worn,
+    },
     startup::UiThread,
 };
 
 mod held;
 pub(crate) mod tabs;
 
-#[cfg_attr(
-    not(any(test, feature = "qa")),
-    expect(
-        unused_imports,
-        reason = "the tab strip's number badges, A4's next pull request, read it"
-    )
-)]
 pub(crate) use held::{held_modifiers, modifiers};
 use tabs::{Here, Tabs};
 
@@ -92,6 +87,8 @@ pub(crate) struct Window {
     shown: ShownView,
     /// The table that names an entry for the components: every part holds the same one.
     ids: Ids,
+    /// The saved item colours and icons, indexed by [`EntryId`].
+    worn: Rc<Worn>,
     /// The browser's active location as of the last `poll`: what the title names.
     location: Option<Location>,
     title: String,
@@ -230,6 +227,7 @@ impl App {
         ));
         let browser = browser_for(saved);
         let ids = Ids::default();
+        let worn = Worn::from_preferences(saved, &ids, 0);
         debug_assert_eq!(Registry::check(parts, commands::own()), Ok(()));
         let registry = Registry::new(parts, &saved.browser_mode);
         let (key, tabs) = Tabs::first();
@@ -239,6 +237,7 @@ impl App {
         let tab = Setup {
             settings: saved,
             ids: &ids,
+            worn: &worn,
             later: &tab_later,
             shown: &here.shown,
         };
@@ -261,6 +260,7 @@ impl App {
             tabs,
             shown,
             ids,
+            worn,
             location: None,
             title: title_for(None),
             csd,
@@ -396,6 +396,26 @@ pub(crate) fn preferences(app: &App) -> &strata_desktop::settings::Preferences {
     app.window.settings.preferences()
 }
 
+/// The window's saved item colours and icons, indexed by [`EntryId`].
+pub(crate) fn worn(app: &App) -> &Rc<Worn> {
+    &app.window.worn
+}
+
+/// Changes an item's saved colour or icon, rebuilds [`worn`], and tells the active parts.
+pub(crate) fn change_customization(
+    app: &mut App,
+    change: impl FnOnce(&mut strata_desktop::settings::Preferences),
+) {
+    app.window.settings.change(change);
+    let next = app.window.worn.version().wrapping_add(1);
+    app.window.worn =
+        Worn::from_preferences(app.window.settings.preferences(), &app.window.ids, next);
+    let parts = app.window.here.parts;
+    for part in parts.active() {
+        (part.customized)(app);
+    }
+}
+
 /// The GTK window's rule (`refresh_title` in `src/ui/window/composition/tabs.rs`): the shown
 /// tab's name, then the application's.
 fn title_for(location: Option<&Location>) -> String {
@@ -505,12 +525,15 @@ pub(crate) fn show_view(app: &mut App, mode: &str, tx: &mut Tx) -> bool {
 /// cursor it shows is no move of the view's, and Columns' child does not follow it (GTK's
 /// views mirror from `FocusChanged`, which no rebuild raises; finding lgse/strata#2437).
 fn rebuild(app: &mut App, view: &View<App>, tx: &mut Tx) {
+    let parts = app.window.here.parts;
+    for part in parts.active() {
+        (part.customized)(app);
+    }
     app.window.here.grouped = mount(&app.browser, view, preferences(app));
     let rebuilt = events::replay(&app.browser, &app.window.ids);
     for change in rebuilt.changes {
         (view.apply)(app, change, tx);
     }
-    let parts = app.window.here.parts;
     for part in parts.active() {
         (part.caught_up)(app);
     }
@@ -783,12 +806,24 @@ fn bar(app: &App, chrome: &WindowChrome, location: Option<El>) -> El {
         Some(location) => header.center(location),
         None => header,
     };
-    // While the strip shows it holds New tab.
+    // While the strip shows it holds New tab; otherwise the strip may build it as a drop target.
+    let strip_new_tab = app
+        .window
+        .here
+        .parts
+        .strip()
+        .and_then(|strip| strip.new_tab);
     let in_strip = strip_shows(app).then_some(NEW_TAB);
     let trailing = TRAILING
         .iter()
         .filter(|button| Some(button.key) != in_strip);
-    let header = trailing.fold(header, |header, button| header.action(action(button)));
+    let header = trailing.fold(header, |header, button| {
+        let built = (button.key == NEW_TAB)
+            .then(|| strip_new_tab.map(|new_tab| new_tab(app, "header-new-tab")))
+            .flatten()
+            .unwrap_or_else(|| action(button));
+        header.action(built)
+    });
     header
         .window_buttons(
             window_buttons(app),

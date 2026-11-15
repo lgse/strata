@@ -94,8 +94,7 @@
 //!
 //! A middle click (released within the threshold, the first of a run) opens a folder in a new
 //! tab, or a new window with Ctrl or Shift held at the release, as Strata reads them then. On a
-//! file it selects the file and opens nothing. Strata reveals a file in its own folder, which
-//! is this one except in recursive search results; that reveal is left to C17 and C18.
+//! file it selects the file and asks the host to reveal it ([`Outcome::Reveal`]).
 //!
 //! A secondary press selects an unselected entry alone and keeps a selection it lands in, then
 //! asks for the menu ([`Outcome::ContextMenu`]). It moves the cursor and not a Shift anchor

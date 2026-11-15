@@ -34,6 +34,11 @@ pub(super) fn heard(app: &mut App, intent: LocationIntent, tx: &mut Tx) {
             super::completion::complete(app, query, &later, tx);
         }
         LocationIntent::CancelCompletion => app.location.completing.cancel(),
+        LocationIntent::CopyPath => {
+            if let Some(folder) = app.location.shown.clone() {
+                commands::run(app, "copy-path", On::Place(folder), tx);
+            }
+        }
         other => tracing::debug!(?other, "the location bar asked for what is not ported yet"),
     }
 }

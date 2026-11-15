@@ -11,10 +11,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use serde_json::{Value, json};
 use strata_core::{i18n::tr, logging::criticals, storage};
 use strata_qa::{
-    Backend, Chord, Command, FieldState, Labels, Mark, Modifier, Orientation, Outcome, Rect, Scope,
-    Scroll, States,
+    Backend, Chord, Command, DEFAULT_WAIT, Failure, FieldState, Labels, Mark, Modifier,
+    Orientation, Outcome, Rect, Scope, Scroll, States, TextMatch,
 };
 
 use super::{
@@ -391,8 +392,8 @@ impl<H: Host> Backend for Rune<H> {
             .is_some_and(|target| self.host.activate(&target))
     }
 
-    /// The two steps of Rune's own: the keyboard layout, which the GTK application reads from
-    /// its display server, and the invariants ([`invariants`]), which it does not check.
+    /// The steps of Rune's own: the keyboard layout, the invariants ([`invariants`]), and the
+    /// session host's second-connection clipboard steps (`clipboard_set` and `clipboard`).
     async fn command(&self, scope: &Scope<'_, Self>, command: &Command) -> Option<Outcome> {
         match command {
             Command::Keymap(keymap) => Some(Outcome::from(self.host.set_layout(keymap))),
@@ -404,13 +405,74 @@ impl<H: Host> Backend for Rune<H> {
                     .with_app(move |app| invariants::check(app, &observation, focused));
                 Some(match failed {
                     Ok(failed) => Outcome {
-                        result: serde_json::json!(failed),
+                        result: json!(failed),
                         ..Outcome::default()
                     },
                     Err(error) => Outcome::from(Err::<(), _>(error)),
                 })
             }
+            Command::ClipboardSet(content) => {
+                self.host.set_clipboard(content).await.map(Outcome::from)
+            }
+            Command::Clipboard {
+                text,
+                mime,
+                message,
+            } => {
+                let result = self.host.read_clipboard(mime.as_deref()).await?;
+                let check = ClipboardCheck {
+                    text,
+                    mime: mime.as_deref(),
+                    message: message.clone(),
+                };
+                Some(clipboard_outcome(scope, check, result))
+            }
             _ => None,
+        }
+    }
+}
+
+fn abridged(text: &str) -> String {
+    const LIMIT: usize = 200;
+    match text.char_indices().nth(LIMIT) {
+        Some((end, _)) => format!("{}… ({} characters)", &text[..end], text.chars().count()),
+        None => text.to_owned(),
+    }
+}
+
+struct ClipboardCheck<'a> {
+    text: &'a TextMatch,
+    mime: Option<&'a str>,
+    message: Option<String>,
+}
+
+fn clipboard_outcome<B: Backend>(
+    scope: &Scope<'_, B>,
+    check: ClipboardCheck<'_>,
+    result: Result<Option<String>, String>,
+) -> Outcome {
+    let predicate = json!({ "clipboard": check.text, "mime": check.mime });
+    match result {
+        Err(error) => Outcome::error(error),
+        Ok(Some(read)) if check.text.matches(&read) => Outcome::default(),
+        Ok(Some(read)) => Outcome {
+            failures: vec![Failure {
+                predicate,
+                actual: json!(abridged(&read)),
+                message: check.message,
+            }],
+            error: Some("the clipboard holds other text".to_owned()),
+            ..Outcome::default()
+        },
+        Ok(None) => {
+            let failure = Failure {
+                predicate,
+                actual: Value::Null,
+                message: check.message.or_else(|| {
+                    Some("selected table text on the private display clipboard".to_owned())
+                }),
+            };
+            scope.timed_out(failure, DEFAULT_WAIT)
         }
     }
 }

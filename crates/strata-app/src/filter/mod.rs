@@ -120,7 +120,8 @@ struct OpenIn {
 
 impl OpenIn {
     /// Shows `update` in the place of column `self.depth`'s rows.
-    pub(super) fn show_hits(&self, app: &mut App, update: HitsUpdate, tx: &mut Tx) {
+    pub(super) fn show_hits(&self, app: &mut App, mut update: HitsUpdate, tx: &mut Tx) {
+        update.hits.set_worn(shell::worn(app));
         match self.place {
             Where::Columns => {
                 let paths = hits::paths(&app.filter.found);
@@ -985,6 +986,11 @@ impl Part for Filter {
         }]),
     ];
 
+    fn customized(app: &mut App) {
+        let worn = shell::worn(app).clone();
+        app.filter.pane.set_worn(&worn);
+    }
+
     fn switched(app: &mut App, tx: &mut Tx) {
         switch::follow(app, tx);
     }
@@ -994,6 +1000,8 @@ impl Part for Filter {
     }
 
     fn tab_shown(app: &mut App, _: &mut Tx) {
+        let worn = shell::worn(app).clone();
+        app.filter.pane.set_worn(&worn);
         switch::tab_shown(app);
     }
 
