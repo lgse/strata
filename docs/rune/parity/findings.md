@@ -1806,3 +1806,19 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** accepted for now by the coordinator (2026-11-14). The fix is a `Palette` name in
   the semantic set (a W2 contract change, with an icon in every catalog) or a C15 builder
   that takes a catalog icon.
+
+### #2509: the Rune sheet preview is a table of cells where GTK's GtkColumnView is named rows under a tree table
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2509), filed on
+  2026-11-15 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** what a screen reader hears of a CSV/workbook preview. GTK's
+  `GtkColumnView` (`src/ui/preview/table/grid.rs`) reports a `tree table` containing a `list`
+  of `table row` nodes whose accessible names concatenate all cells in the row (`"a 1"`).
+  C11b's `SheetGrid` (`crates/strata-components/src/sheet_grid/render.rs`) reports a `table`
+  named `"Table"` whose `table row` children have no concatenated row name and hold a
+  `row header` (1-based row number) plus `table cell` children with each cell's `label`.
+- **Concerns:** `quick_preview/table-preview-keeps-secondary-sorts/columns` (lines 6, 8, 10,
+  12, 14 and 16 read `child_names` of `table row` under `list` within `tree table`).
+- **State:** open, carried as `parallel` under an `a11y` twin from [A15](packages/A15.md),
+  which clicks the same `column header` controls and reads the ordered cell labels of C11b's
+  `table`.
