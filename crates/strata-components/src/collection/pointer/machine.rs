@@ -118,6 +118,11 @@ pub enum Outcome {
         /// A new window rather than a tab (Ctrl or Shift held at release).
         window: bool,
     },
+    /// Reveal the file in its folder (a middle click).
+    Reveal {
+        /// The file.
+        id: EntryId,
+    },
     /// Start a file drag of these entries: the host builds the payload.
     BeginDrag {
         /// The dragged entries, in display order.
@@ -337,7 +342,7 @@ impl PointerMachine {
             return true;
         }
         match g.press.button {
-            Button::Middle => middle(&g, index, id, release.mods, s),
+            Button::Middle => middle(&g, (index, id), release.mods, s),
             Button::Primary => {
                 self.rename = primary_release(&g, index, id, &settings, s).map(|due| {
                     s.emit(Outcome::WakeAfter(settings.double_click));
@@ -549,8 +554,8 @@ fn primary_release(
 }
 
 /// A middle click opens a folder in a new tab, or a window with Ctrl or Shift held at release,
-/// and selects a file. Only the first click of a run counts.
-fn middle(g: &Gesture, index: usize, id: EntryId, mods: Mods, s: &mut dyn Surface) {
+/// and selects and reveals a file. Only the first click of a run counts.
+fn middle(g: &Gesture, (index, id): (usize, EntryId), mods: Mods, s: &mut dyn Surface) {
     if g.count != 1 {
         return;
     }
@@ -561,5 +566,6 @@ fn middle(g: &Gesture, index: usize, id: EntryId, mods: Mods, s: &mut dyn Surfac
         });
     } else {
         apply(s, |sel, src| sel.select_only(src, index));
+        s.emit(Outcome::Reveal { id });
     }
 }

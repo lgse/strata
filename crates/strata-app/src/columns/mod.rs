@@ -352,10 +352,14 @@ impl Columns {
     }
 
     fn activate(&mut self, active: Option<usize>, hands: &mut Hands<'_>) {
+        self.follow_active(active, hands.look, hands.tx);
+    }
+
+    pub(super) fn follow_active(&mut self, active: Option<usize>, look: &Look, tx: &mut Tx) {
         if let Some(active) = active.filter(|active| *active < self.open())
             && active != self.state.active()
         {
-            self.state.set_active(active, hands.look, hands.tx);
+            self.state.set_active(active, look, tx);
         }
     }
 
