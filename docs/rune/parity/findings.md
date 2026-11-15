@@ -1325,7 +1325,7 @@ sequence only together with the alphabet's version, so the version is part of th
   to `report.md` in Columns, and nowhere in Icons, where the grid's one row is its edge.
 - **Concerns:** GTK's keyboard cursor after a view switch and an open in Icons. The sequences
   are parked in `tests/qa/fuzz/corpus/views/`, with seed `0x09` of `views v4`, the same four
-  steps.
+  steps, and in `tests/qa/fuzz/corpus/tabs/` (`fuzz-tabs-v3-000000000000000c`).
 - **State:** open, set aside: no Rune change, by the coordinator's ruling, as with
   [#2367](https://github.com/lgse/strata/issues/2367). GTK drops the cursor its List view
   showed, a fault for `main`, from a bug issue there.
@@ -1852,3 +1852,48 @@ sequence only together with the alphabet's version, so the version is part of th
 - **Concerns:** `src/ui/inline_search/collection.rs`, `crates/strata-app/src/qa/tree.rs`,
   `crates/strata-qa/src/engine/scan.rs`, and `fuzz-filter-v2-0000000000000006`.
 - **State:** open; `v2-0000000000000006` parked in `tests/qa/fuzz/corpus/filter/parked`.
+
+### #2507: open C21 submenus are absent from `app.menu` and `Target::MenuItem` on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2507), filed on
+  2026-11-15 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A4](packages/A4.md)'s draft `tabs` differential smoke run (seeds `0x03`, `0x07`,
+  `0x08`, `0x09`, `0x0c`, `0x0f`, `0x12`, `0x13` and `0x14`). Opening `"Open in…"` inside an
+  entry's context menu lists `"New Tab"` and `"New Window"` in `app.menu` on GTK and omits both
+  on Rune, and `{"click":{"menu_item":"New Tab"}}` fails to locate the submenu row on Rune.
+- **Why:** GTK's `src/ui/context_menu.rs` expands a submenu inline inside the single
+  `GtkPopoverMenu` (`GtkRevealer`). On Rune, C21
+  (`crates/strata-components/src/context_menu/view.rs:208-224`) mounts each open submenu as a
+  sibling `role = "menu"` surface on `Frame::layer`, while `strata-qa`'s `open_menu`
+  (`crates/strata-qa/src/engine/scan.rs:161-169`) and `Target::MenuItem`
+  (`crates/strata-qa/src/engine/locate.rs:241-245`) inspect only `first_rendered(backend,
+  presented, "menu")`.
+- **Concerns:** `crates/strata-qa/src/engine/scan.rs`, `crates/strata-qa/src/engine/locate.rs`,
+  `crates/strata-components/src/context_menu/view.rs`,
+  `dialogs_and_menus/submenu-arrows-return-to-parent` (line 12), and `tabs.toml` (`Open in… →
+  New Tab` left out until `strata-qa` reads sibling submenu surfaces).
+- **State:** open, [H3](packages/H3.md)'s and [A6](packages/A6.md)'s.
+
+### #2510: inline rename in Icons and List omits the edited row from `app.matches` and `app.panes` on GTK
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2510), filed on
+  2026-11-15 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A4](packages/A4.md)'s `tabs v2` differential smoke run, seed `0x0f` at step 39
+  (`F2` on `"notes.txt"` in `Icons`). While the inline `"Rename"` field is open on `"notes.txt"`,
+  Rune reports `app.matches = ["notes.txt", "report.md", "spreadsheet.csv", "zz-tab-b.txt"]` and
+  `app.panes[0].selected = ["notes.txt"]`, whereas GTK omits `"notes.txt"` from `app.matches` and
+  reports `app.panes[0].selected = []` until the rename ends.
+- **Why:** `src/ui/collection_edit.rs` hides the primary name widget
+  (`target.widgets.display.set_visible(false)`) while `"Rename"` is visible. In `Columns`
+  (`src/ui/browser/columns/rows/widgets.rs:108`), `bind_size_visibility` hides the secondary
+  `size` label during rename too, so the row has no presented `"label"` widget and
+  `row_label_matches` (`src/qa/state.rs:152-171`) returns `true`. In `Icons`
+  (`src/ui/icons_cell.rs:41-58`) and `List` (`src/ui/browser_modes/list_pane.rs:488-508`),
+  secondary metadata `"label"` widgets (`icons-card-details` in `Icons`, and visible metadata
+  columns in `List`) stay presented outside `image.parent()`, so `row_label_matches`'s
+  `.or_else(...)` fallback compares a metadata label against `row.name`, returns `false`, and
+  `container_rows` (`src/qa/state.rs:127`) drops the edited row.
+- **Concerns:** `src/qa/state.rs`, `src/ui/icons_cell.rs`,
+  `src/ui/browser_modes/list_pane.rs`, and `tabs.toml` (`rename-switch` and `rename-back` scoped
+  to `Columns` until `row_label_matches` checks only the primary name widget).
+- **State:** open, [H3](packages/H3.md)'s.

@@ -10,6 +10,7 @@ use std::path::Path;
 use rune::{Key, Mods, Tx};
 use serde_json::Value;
 use strata_core::model::Location;
+use strata_desktop::settings::ListColumnId;
 
 use super::{HELD_EVENTS, close, move_to, open, show, shown_tab, tab_browser, tabs};
 use crate::{
@@ -325,6 +326,101 @@ fn a_tabs_sidebar_follows_a_place_another_tab_hid() {
             act(&mut host, |app, tx| show(app, first, tx));
             let gone = host.run_until(PATIENCE, |host| !home(host));
             assert!(gone, "the first tab's sidebar hides Home");
+        },
+    );
+}
+
+/// When another tab switches `browser_mode` while a tab is hidden, showing that tab again
+/// runs `Part::tab_shown` on its newly shown view and gives the keyboard to that view instead
+/// of the hidden view's unmounted key.
+#[test]
+fn a_tab_shown_after_a_view_switch_focuses_and_syncs_its_new_view() {
+    hosted(
+        MODULE,
+        "a_tab_shown_after_a_view_switch_focuses_and_syncs_its_new_view",
+        |mut host| {
+            let folder = fixture();
+            opened(&mut host, folder.path());
+            let listed = host.run_until(PATIENCE, |host| named(&host.tree(), "todo.txt"));
+            assert!(listed, "the folder is listed");
+            press(&mut host, Key::End, Mods::default());
+            assert_eq!(focused_name(&host.tree()).as_deref(), Some("todo.txt"));
+            let first = shown_tab(host.app());
+
+            second_tab(&mut host, folder.path());
+            act(&mut host, |app, tx| {
+                commands::run(app, "view-icons", On::Focus, tx);
+            });
+            act(&mut host, |app, tx| show(app, first, tx));
+            let focused_icons = host.run_until(PATIENCE, |host| {
+                focused_name(&host.tree()).as_deref() == Some("todo.txt")
+            });
+            assert!(
+                focused_icons,
+                "the keyboard moves to the newly shown Icons view: {:?}",
+                focused_name(&host.tree())
+            );
+
+            act(&mut host, |app, tx| {
+                let second = tabs(app)[1];
+                show(app, second, tx);
+                commands::run(app, "view-list", On::Focus, tx);
+                shell::saved(app).change(|settings| {
+                    settings.list_hidden_columns = vec![ListColumnId::Size];
+                });
+            });
+            act(&mut host, |app, tx| show(app, first, tx));
+            let synced_list = host.run_until(PATIENCE, |host| {
+                let tree = host.tree();
+                focused_name(&tree).as_deref() == Some("todo.txt")
+                    && named(&tree, "Name")
+                    && !named(&tree, "Size")
+            });
+            assert!(
+                synced_list,
+                "the newly shown List view gets the keyboard and runs tab_shown: {:?}",
+                focused_name(&host.tree())
+            );
+        },
+    );
+}
+
+/// A tab left with the keyboard in its sidebar gives the keyboard back to its files when
+/// another tab hid the sidebar while it was away, as GTK's `select` falls back to
+/// `focus_active` when the saved widget is unmapped.
+#[test]
+fn a_tab_left_in_the_sidebar_falls_back_to_its_files_when_the_sidebar_was_hidden() {
+    hosted(
+        MODULE,
+        "a_tab_left_in_the_sidebar_falls_back_to_its_files_when_the_sidebar_was_hidden",
+        |mut host| {
+            let folder = fixture();
+            opened(&mut host, folder.path());
+            let listed = host.run_until(PATIENCE, |host| named(&host.tree(), "todo.txt"));
+            assert!(listed, "the folder is listed");
+            press(&mut host, Key::End, Mods::default());
+            press(&mut host, Key::Left, Mods::default());
+            assert!(
+                focused_name(&host.tree())
+                    .as_deref()
+                    .is_some_and(|name| name != "todo.txt"),
+                "the keyboard is in the sidebar"
+            );
+            let first = shown_tab(host.app());
+
+            second_tab(&mut host, folder.path());
+            act(&mut host, |app, _| {
+                shell::saved(app).change(|settings| settings.sidebar_expanded = false);
+            });
+            act(&mut host, |app, tx| show(app, first, tx));
+            let files = host.run_until(PATIENCE, |host| {
+                focused_name(&host.tree()).as_deref() == Some("todo.txt")
+            });
+            assert!(
+                files,
+                "the keyboard falls back to the tab's files: {:?}",
+                focused_name(&host.tree())
+            );
         },
     );
 }
