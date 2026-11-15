@@ -1575,5 +1575,7 @@
   "Flags": "Drapeaux",
   "Document position": "Position dans le document",
   "Line %{line} of %{lines}": "Ligne %{line} sur %{lines}",
-  "Blank": "Vide"
+  "Blank": "Vide",
+  "Show password": "Afficher le mot de passe",
+  "Hide password": "Masquer le mot de passe"
 }

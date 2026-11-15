@@ -1575,5 +1575,7 @@
   "Flags": "Zászlók",
   "Document position": "Pozíció a dokumentumban",
   "Line %{line} of %{lines}": "%{line} / %{lines}. sor",
-  "Blank": "Üres"
+  "Blank": "Üres",
+  "Show password": "Jelszó megjelenítése",
+  "Hide password": "Jelszó elrejtése"
 }

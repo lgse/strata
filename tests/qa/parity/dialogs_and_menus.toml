@@ -15,7 +15,7 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6: the Compress dialog (line 10); then A20: the floating Extract to chooser (line 25)"
+blocker = "A20: the floating Extract to chooser (line 25)"
 
 [[run]]
 scenario = "customization-follows-move-and-trash"
@@ -44,7 +44,7 @@ run = "columns"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A18: Settings on Ctrl+, (line 4); then A10: the search and folder palettes on Ctrl+K and Ctrl+Shift+K (line 13), and A6: the Compress dialog (line 29)"
+blocker = "A18: Settings on Ctrl+, (line 4)"
 
 [[run]]
 scenario = "entry-menu-named-actions"
@@ -87,9 +87,8 @@ blocker = "A20: the floating Move to chooser (line 25), by the coordinator's rul
 scenario = "invalid-archive-name-keeps-dialog"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "modal-dialog-blocks-window-shortcuts"

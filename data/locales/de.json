@@ -1575,5 +1575,7 @@
   "Flags": "Flaggen",
   "Document position": "Dokumentposition",
   "Line %{line} of %{lines}": "Zeile %{line} von %{lines}",
-  "Blank": "Leer"
+  "Blank": "Leer",
+  "Show password": "Passwort anzeigen",
+  "Hide password": "Passwort ausblenden"
 }

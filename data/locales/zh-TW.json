@@ -1575,5 +1575,7 @@
   "Flags": "旗幟",
   "Document position": "文件位置",
   "Line %{line} of %{lines}": "第 %{line} 行，共 %{lines} 行",
-  "Blank": "空行"
+  "Blank": "空行",
+  "Show password": "顯示密碼",
+  "Hide password": "隱藏密碼"
 }
