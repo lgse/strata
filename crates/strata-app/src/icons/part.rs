@@ -39,6 +39,16 @@ fn fill(app: &mut App) {
     }
 }
 
+fn sync_worn(app: &mut App) {
+    single::sync_worn::<Icons>(app);
+    if let Some(id) = app.icons.thumbs.id() {
+        let pane = &app.icons.single.pane;
+        let version = pane.version();
+        let source = pane.source();
+        app.window.thumbnails_mut().resync(id, source, version);
+    }
+}
+
 /// Whether the saved `browser_mode` names this view: `icons`, or `grid`, which the GTK
 /// application reads as Icons too (`src/ui/preferences/stored.rs`).
 fn shows(mode: &str) -> bool {
@@ -96,11 +106,11 @@ impl Part for Icons {
     }
 
     fn customized(app: &mut App) {
-        single::sync_worn::<Self>(app);
+        sync_worn(app);
     }
 
     fn tab_shown(app: &mut App, _: &mut Tx) {
-        single::sync_worn::<Self>(app);
+        sync_worn(app);
     }
 
     fn listen(setup: &Setup<'_>) -> Option<Listener<App>> {
