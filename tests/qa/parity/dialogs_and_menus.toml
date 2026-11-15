@@ -6,9 +6,8 @@
 scenario = "background-customize-ancestor-column"
 run = "columns"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "compress-then-chooser-extracts"
@@ -24,23 +23,21 @@ run = "list"
 package = "A6"
 status = "pending"
 reason = "scope"
-blocker = "A6: the Customize dialog (line 8); then A12: Ctrl+X and Ctrl+V (lines 16 and 21)"
+blocker = "A12: Ctrl+X and Ctrl+V (lines 16 and 21), at the wait for the move on line 22; then A6: the customization following a trash and a restore"
 
 [[run]]
 scenario = "customize-takes-focus-single-escape"
 run = "columns-item-menu"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "customize-takes-focus-single-escape"
 run = "columns-background-menu"
 package = "A6"
-status = "pending"
-reason = "scope"
-blocker = "A6"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "dismissed-overlays-return-focus"

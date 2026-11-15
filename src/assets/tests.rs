@@ -66,6 +66,11 @@ fn customization_choices_are_unique_and_whitelisted() {
             .all(|(name, label)| icons::is_customization_choice(name) && !label.is_empty())
     );
     assert!(!icons::is_customization_choice("folder-from-system-theme"));
+    assert_eq!(
+        icons::CUSTOMIZATION_CHOICES,
+        strata_desktop::settings::ICON_CHOICES,
+        "the Rune interface offers the same icons"
+    );
 }
 
 #[test]

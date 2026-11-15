@@ -68,12 +68,12 @@ pub(super) fn mode(roots: &[PathBuf]) -> PaletteMode {
     }
 }
 
-fn items(n: usize) -> String {
+pub(super) fn items(n: usize) -> String {
     count("items", n)
 }
 
 /// `search_footer`: the arrows, Enter, and the key for a result's folder.
-fn hints() -> Vec<Hint> {
+pub(super) fn hints() -> Vec<Hint> {
     vec![
         Hint::text(with_keys(
             "%{keys}  navigate",
@@ -144,12 +144,12 @@ fn delivered(app: &mut App, batch: Batch, tx: &mut Tx) -> bool {
     palette.state.deliver(answer, tx).changed
 }
 
-fn id(item: &SearchItem) -> String {
+pub(super) fn id(item: &SearchItem) -> String {
     item.path.to_string_lossy().into_owned()
 }
 
 /// `result_row`: the name over the full path, which names the row; no characters marked.
-fn item(found: &SearchItem) -> PaletteItem {
+pub(super) fn item(found: &SearchItem) -> PaletteItem {
     let icon = match found.is_directory {
         true => IconName::Folder,
         false => IconName::File,

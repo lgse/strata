@@ -2,7 +2,7 @@
 
 //! The search palette in a window: Ctrl+K opens it on Home with its field typing, a result's
 //! menu holds the keyboard and gives it back to the field, a middle click opens nothing, and
-//! the header's Search button closes it again.
+//! the header's Search button closes it again. Ctrl+Shift+K opens it on the folders visited.
 
 use rune::{Key, Mods, PointerButton, Tx};
 
@@ -155,6 +155,11 @@ fn a_results_menu_holds_the_keyboard_and_gives_it_back_to_the_field() {
                 "Ctrl+K leaves the menu open, as on GTK"
             );
             assert!(host.app().palette.state.is_open(), "and the palette");
+            press(&mut host, Key::Command('k'), ctrl_shift());
+            assert!(
+                host.app().palette.menu.is_open() && host.app().palette.state.is_open(),
+                "Ctrl+Shift+K leaves both open, as on GTK"
+            );
 
             press(&mut host, Key::Escape, Mods::default());
             assert!(!host.app().palette.menu.is_open(), "Escape closed the menu");
@@ -256,6 +261,79 @@ fn alt_return_reveals_the_highlighted_result_in_its_folder() {
                 .and_then(|name| name.to_str())
                 .expect("a name");
             assert_eq!(selected, [name], "the result is selected in its folder");
+        },
+    );
+}
+
+fn ctrl_shift() -> Mods {
+    Mods {
+        ctrl: true,
+        cmd: true,
+        shift: true,
+        ..Mods::default()
+    }
+}
+
+/// The ids the palette shows.
+fn listed(host: &Offscreen) -> Vec<String> {
+    let state = &host.app().palette.state;
+    state.items().iter().map(|item| item.id.clone()).collect()
+}
+
+/// Ctrl+Shift+K lists the folders the columns finished listing, at once and with the field
+/// typing; a query narrows them; Enter opens the one highlighted. Ctrl+K closes the jump as
+/// it closes its own mode.
+#[test]
+fn ctrl_shift_k_jumps_to_a_folder_visited_before() {
+    hosted_in(
+        MODULE,
+        "columns",
+        "ctrl_shift_k_jumps_to_a_folder_visited_before",
+        |mut host| {
+            let folder = ready(&mut host);
+            let documents = folder.path().join("documents");
+            let path = |path: &std::path::Path| path.to_string_lossy().into_owned();
+            host.app()
+                .open(strata_core::model::Location::local(&documents));
+            let listed_documents = host.run_until(PATIENCE, |host| {
+                host.app().columns.listed(0)
+                    && host.app().browser().location_at(0)
+                        == Some(strata_core::model::Location::local(&documents))
+            });
+            assert!(listed_documents, "documents was not listed");
+            idle(&mut host);
+
+            press(&mut host, Key::Command('k'), ctrl_shift());
+            assert!(host.app().palette.state.is_open(), "Ctrl+Shift+K opened it");
+            let mut shown = listed(&host);
+            shown.sort();
+            assert_eq!(shown, [path(folder.path()), path(&documents)]);
+            assert_eq!(holds(&mut host), Some(Holds::Modal { field: true }));
+            assert_eq!(focused(&mut host).as_deref(), Some("palette-field"));
+
+            press(&mut host, Key::Text("k".to_owned()), ctrl());
+            assert!(
+                !host.app().palette.state.is_open(),
+                "Ctrl+K closed the jump"
+            );
+
+            press(&mut host, Key::Command('k'), ctrl_shift());
+            let name = folder
+                .path()
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("the fixture's name");
+            for character in name.chars() {
+                press(&mut host, Key::Text(character.to_string()), Mods::default());
+            }
+            assert_eq!(listed(&host).first(), Some(&path(folder.path())));
+            press(&mut host, Key::Enter, Mods::default());
+            let opened = host.run_until(PATIENCE, |host| {
+                !host.app().palette.state.is_open()
+                    && host.app().browser().location_at(0)
+                        == Some(strata_core::model::Location::local(folder.path()))
+            });
+            assert!(opened, "Enter opened the folder");
         },
     );
 }

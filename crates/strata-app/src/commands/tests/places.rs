@@ -3,8 +3,8 @@
 //! What runs a command on a place, a location that is no row of the view, or on a folder row's
 //! middle click: the sidebar's menu rows and its middle click, a crumb's middle click, and a
 //! folder row's middle click in every view, each on its location (`On::Place`). `open-in-tab`
-//! is the tab strip's own, so each opens a tab there; the others are a made-up part's, which
-//! records what it ran.
+//! is the tab strip's own, so each opens a tab there, and `customize` the Customize dialog's,
+//! which opens on it; `open-in-window` is a made-up part's, which records what it ran.
 
 use std::{cell::RefCell, path::Path, time::Duration};
 
@@ -47,14 +47,7 @@ fn in_window(_: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     ran("open-in-window", call)
 }
 
-fn customize(_: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
-    ran("customize", call)
-}
-
-const PLACES: &[Action<App>] = &[
-    Action::new("open-in-window", in_window),
-    Action::new("customize", customize),
-];
+const PLACES: &[Action<App>] = &[Action::new("open-in-window", in_window)];
 
 /// The registered parts, and one that registers the other commands a place's routes name.
 fn with_the_commands() -> Vec<Entry<App>> {
@@ -199,7 +192,11 @@ fn a_sidebar_rows_middle_click_and_menu_rows_run_on_its_location() {
             );
             let row = menu_row(&mut host, "Customize…");
             press(&mut host, &row, PointerButton::Primary, Mods::default());
-            assert_eq!(ran_so_far(), [("customize", home())]);
+            assert_eq!(
+                crate::customize::customizing(host.app()),
+                home().native_path(),
+                "Customize opens on the row's folder"
+            );
         },
     );
 }
