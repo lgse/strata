@@ -47,8 +47,17 @@ use crate::{
     startup::UiThread,
 };
 
+mod held;
 pub(crate) mod tabs;
 
+#[cfg_attr(
+    not(any(test, feature = "qa")),
+    expect(
+        unused_imports,
+        reason = "the tab strip's number badges, A4's next pull request, read it"
+    )
+)]
+pub(crate) use held::{held_modifiers, modifiers};
 use tabs::{Here, Tabs};
 
 /// The window buttons' accessible names, translated once: the language changes only on
@@ -89,6 +98,8 @@ pub(crate) struct Window {
     csd: Csd,
     /// Whether the window has keyboard focus.
     active: bool,
+    /// The modifier keys held down in the window ([`held`]).
+    held: rune::Mods,
     /// What the key catalog reads of the settings at each press and label.
     keys: Rc<Live>,
     labels: Labels,
@@ -254,6 +265,7 @@ impl App {
             title: title_for(None),
             csd,
             active: true,
+            held: rune::Mods::default(),
             keys,
             labels: Labels::translated(),
             applied: (0, 0),
@@ -904,6 +916,9 @@ pub(crate) fn view(app: &App, cx: &mut Cx<App>) -> El {
         .on_key(commands::from_element)
         .on_window_focus(|app: &mut App, focused, tx: &mut Tx| {
             app.window.active = focused;
+            if !focused && app.window.held != rune::Mods::default() {
+                modifiers(app, rune::Mods::default(), tx);
+            }
             location::window_focused(app, focused, tx);
         })
 }

@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use rune::{KeyEvent, Mods, PhysicalInput};
+use rune::{KeyEvent, Mods};
 use strata_components::rename::Polled;
 use strata_fs::app::VisibleDepths;
 
@@ -151,10 +151,9 @@ pub(crate) fn idle_view<S>(
 /// parts read the held modifiers to tell a Shift range from a move. The caller lets the
 /// window settle as its test needs.
 pub(crate) fn send_key(host: &mut Offscreen, event: KeyEvent) {
-    let runtime = host.runtime();
-    runtime.physical_input(PhysicalInput::Modifiers(event.mods));
-    runtime.key(event);
-    runtime.physical_input(PhysicalInput::Modifiers(Mods::default()));
+    host.modifiers(event.mods);
+    host.runtime().key(event);
+    host.modifiers(Mods::default());
 }
 
 pub(crate) fn folder_of(names: &[&str]) -> tempfile::TempDir {
