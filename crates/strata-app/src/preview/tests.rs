@@ -291,10 +291,19 @@ fn delete_and_rename_wait_while_preview_has_focus() {
                 ..Mods::default()
             };
             press(&mut host, Key::Delete, shift);
+            let ctrl = Mods {
+                ctrl: true,
+                ..Mods::default()
+            };
+            press(&mut host, Key::Text("d".to_owned()), ctrl);
             host.run_until(std::time::Duration::from_millis(250), |_| false);
             assert!(
                 path.exists(),
                 "Delete / Shift+Delete in preview leaves the file"
+            );
+            assert!(
+                !folder.path().join("todo (1).txt").exists(),
+                "Ctrl+D in preview does not duplicate the file"
             );
             assert!(!tree_has_name(&host.tree(), "Permanently delete 1 item?"));
         },

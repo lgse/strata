@@ -98,14 +98,15 @@ impl Part for Transfer {
             Stage::FileCommands,
             &[PASTE.ignoring(Modifiers::empty())],
         )
-        .when(|_, at| !at.text())]),
+        .when(|_, at| !at.text() && !at.within("preview"))]),
         Action::new("duplicate", duplicate)
             .command(DUPLICATE)
             .keys(&[
                 Keys::at(Stage::DirectCommands, &[DUPLICATE.in_map(Map::Tenxer)])
-                    .when(|_, at| !at.text()),
-                Keys::at(Stage::FileCommands, &[DUPLICATE.in_map(Map::Default)])
-                    .when(|app, at| !at.text() && filter::targets::selected(app).is_none()),
+                    .when(|_, at| !at.text() && !at.within("preview")),
+                Keys::at(Stage::FileCommands, &[DUPLICATE.in_map(Map::Default)]).when(|app, at| {
+                    !at.text() && !at.within("preview") && filter::targets::selected(app).is_none()
+                }),
             ]),
     ];
 }

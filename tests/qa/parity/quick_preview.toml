@@ -142,7 +142,7 @@ run = "columns-default"
 package = "A15"
 status = "pending"
 reason = "scope"
-blocker = "A12: clipboard paste into the preview find field (`{\"clipboard\": \"NEEDLE\"}` and Ctrl+V)"
+blocker = "A15"
 
 [[run]]
 scenario = "preview-find-navigates-content"
@@ -156,17 +156,15 @@ blocker = "A11"
 scenario = "preview-focus-ignores-file-commands"
 run = "columns-md"
 package = "A15"
-status = "pending"
-reason = "scope"
-blocker = "A12: duplicate file command (`Ctrl+D` in the listing at the end of the scenario)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "preview-focus-ignores-file-commands"
 run = "list-md"
 package = "A15"
-status = "pending"
-reason = "scope"
-blocker = "A12: duplicate file command (`Ctrl+D` in the listing at the end of the scenario)"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "preview-focus-ignores-file-commands"
@@ -289,7 +287,7 @@ run = "columns"
 package = "A15"
 status = "pending"
 reason = "scope"
-blocker = "A12: clipboard probe and paste (`{\"clipboard\": \"the\"}` and Ctrl+V)"
+blocker = "A15"
 
 [[run]]
 scenario = "rendered-document-word-selection"
