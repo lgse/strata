@@ -44,6 +44,14 @@ impl Custom {
     pub(super) fn is_open(&self) -> bool {
         self.open
     }
+
+    pub(super) fn field_focused(&self) -> bool {
+        self.open && self.picker.edit().focused
+    }
+
+    pub(super) fn close(&mut self) {
+        self.open = false;
+    }
 }
 
 fn state(app: &App) -> &ColorPickerState {
@@ -68,11 +76,15 @@ fn cancel(app: &mut App) {
 }
 
 fn apply(app: &mut App) {
-    if !app.customize.custom.open {
+    let custom = &mut app.customize.custom;
+    if !custom.open {
         return;
     }
-    app.customize.custom.open = false;
-    let hex = app.customize.custom.picker.value().hex_rgb();
+    custom.open = false;
+    if let Some(parsed) = Srgba::parse_hex(&custom.picker.edit().text) {
+        custom.picker.set_value(parsed);
+    }
+    let hex = custom.picker.value().hex_rgb();
     choose_color(app, Some(FolderColorValue::Custom(hex)));
 }
 

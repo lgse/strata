@@ -84,27 +84,27 @@ fn preview(look: &Look, shown: &Shown<'_>) -> El {
         )
 }
 
-/// A round button of the bar, named `name`, drawing `dot`.
-fn dot_button(
-    look: &Look,
+struct Dot {
     key: String,
     name: String,
     active: bool,
-    dot: El,
-    press: impl Fn(&mut App, &mut Tx) + 'static,
-) -> El {
+    art: El,
+}
+
+/// A round button of the bar, named `dot.name`, drawing `dot.art`.
+fn dot_button(look: &Look, dot: Dot, press: impl Fn(&mut App, &mut Tx) + 'static) -> El {
     let k = &look.kit;
-    let ring = if active {
+    let ring = if dot.active {
         k.c.border_focus
     } else {
         Color::TRANSPARENT
     };
-    Button::new(name)
+    Button::new(dot.name)
         .variant(ButtonVariant::Ghost)
-        .label_with(move |_, _| dot)
+        .label_with(move |_, _| dot.art)
         .on_press_tx(press)
         .build(k)
-        .key(key)
+        .key(dot.key)
         .px(look.space.xxs)
         .radius(DOT)
         .border(2.0, ring)
@@ -127,10 +127,12 @@ fn color_bar(look: &Look, shown: &Shown<'_>) -> El {
         .unwrap_or_else(|| look.icon(IconName::Settings));
     bar = bar.child(dot_button(
         look,
-        "customize-color-default".to_owned(),
-        tr("Default (Theme color)"),
-        shown.color.is_none(),
-        icon(theme, DOT).color(k.c.icon_accent),
+        Dot {
+            key: "customize-color-default".to_owned(),
+            name: tr("Default (Theme color)"),
+            active: shown.color.is_none(),
+            art: icon(theme, DOT).color(k.c.icon_accent),
+        },
         |app, _| choose_color(app, None),
     ));
     for preset in FolderColor::ALL {
@@ -139,10 +141,12 @@ fn color_bar(look: &Look, shown: &Shown<'_>) -> El {
         let color = color_of(&value).unwrap_or(k.c.icon_accent);
         bar = bar.child(dot_button(
             look,
-            format!("customize-color-{}", preset.name().to_ascii_lowercase()),
-            tr(preset.name()),
-            active,
-            swatch(look, color, active),
+            Dot {
+                key: format!("customize-color-{}", preset.name().to_ascii_lowercase()),
+                name: tr(preset.name()),
+                active,
+                art: swatch(look, color, active),
+            },
             // A second press on the active preset puts the theme's colour back.
             move |app, _| choose_color(app, (!active).then_some(FolderColorValue::Preset(preset))),
         ));
@@ -156,7 +160,7 @@ fn custom_button(look: &Look, shown: &Shown<'_>) -> El {
     let custom = shown
         .color
         .filter(|value| matches!(value, FolderColorValue::Custom(_)));
-    let (name, dot) = match custom {
+    let (name, art) = match custom {
         Some(value) => (
             rust_i18n::t!("Custom (%{hex})", hex = value.hex()).into_owned(),
             swatch(look, color_of(value).unwrap_or(k.c.icon_accent), true),
@@ -172,10 +176,12 @@ fn custom_button(look: &Look, shown: &Shown<'_>) -> El {
     let initial = shown.color.map(|value| value.hex().to_owned());
     dot_button(
         look,
-        CUSTOM.to_owned(),
-        name,
-        custom.is_some(),
-        dot,
+        Dot {
+            key: CUSTOM.to_owned(),
+            name,
+            active: custom.is_some(),
+            art,
+        },
         move |app, _| custom::open(app, initial.as_deref()),
     )
 }

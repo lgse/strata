@@ -85,7 +85,7 @@ impl Part for Customize {
     fn keyboard(app: &App) -> Option<Holds> {
         let customize = &app.customize;
         (customize.open || customize.custom.is_open()).then_some(Holds::Modal {
-            field: customize.custom.is_open(),
+            field: customize.custom.field_focused(),
         })
     }
 
@@ -114,6 +114,9 @@ fn customize(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
 }
 
 fn row_entry(app: &App, (depth, id): At) -> Option<FileEntry> {
+    if let Some(result) = crate::filter::targets::at(app, depth, id) {
+        return Some(result);
+    }
     shell::shown_view(app)
         .and_then(|view| (view.rows.position)(app, (depth, id)))
         .and_then(|position| app.browser.entry_at(depth, position))
@@ -130,6 +133,7 @@ fn name_of(location: &Location) -> String {
 
 fn open(app: &mut App, path: PathBuf, name: String, folder: bool) {
     let customize = &mut app.customize;
+    customize.custom.close();
     customize.opened += 1;
     customize.item = Some(Item {
         path,
