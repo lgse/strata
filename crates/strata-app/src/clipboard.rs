@@ -47,6 +47,7 @@ pub(crate) struct Clipboard {
     handle: PlatformClipboard<App>,
     owned: Option<CopyId>,
     has_files: bool,
+    read_revision: u64,
     fallback: Fallback,
     copied: Vec<Location>,
     cut: Vec<Location>,
@@ -68,6 +69,7 @@ impl Part for Clipboard {
             handle: PlatformClipboard::new().on_change(changed),
             owned: None,
             has_files: false,
+            read_revision: 0,
             fallback: Fallback::Empty,
             copied: Vec::new(),
             cut: Vec::new(),
@@ -115,10 +117,22 @@ impl Clipboard {
         self.cut = cut;
     }
 
-    fn offered_files(&self) -> bool {
-        self.handle
-            .offered(Selection::Clipboard)
-            .is_some_and(|offered| Files::offered(&offered.mimes))
+    fn bump_revision(&mut self) -> u64 {
+        self.read_revision = self.read_revision.wrapping_add(1);
+        self.read_revision
+    }
+
+    fn forget_owned(&mut self) -> u64 {
+        self.owned = None;
+        self.clear_marks();
+        self.has_files = false;
+        self.bump_revision()
+    }
+
+    fn apply_offered_read(&mut self, revision: u64, has_files: bool) {
+        if self.read_revision == revision {
+            self.has_files = has_files;
+        }
     }
 
     fn write_files(&mut self, locations: &[Location], cut: bool) -> bool {
@@ -130,12 +144,14 @@ impl Clipboard {
             Ok(copy_id) => {
                 self.owned = Some(copy_id);
                 self.has_files = true;
+                self.bump_revision();
                 true
             }
             Err(Error::NotAttached) => {
                 self.owned = None;
                 self.fallback = Fallback::Files(files);
                 self.has_files = true;
+                self.bump_revision();
                 true
             }
             Err(error) => {
@@ -154,11 +170,13 @@ impl Clipboard {
             Ok(copy_id) => {
                 self.owned = Some(copy_id);
                 self.has_files = false;
+                self.bump_revision();
             }
             Err(Error::NotAttached) => {
                 self.owned = None;
                 self.fallback = Fallback::Text(text.to_owned());
                 self.has_files = false;
+                self.bump_revision();
             }
             Err(error) => tracing::warn!(%error, "unable to write text to the clipboard"),
         }
@@ -186,31 +204,36 @@ pub(crate) fn shutdown() {
 
 /// Handles selection ownership and offer notifications from `strata_platform::clipboard`.
 pub(crate) fn changed(app: &mut App, change: &Change, _: &mut Tx) {
-    let clip = &mut app.clipboard;
     match change {
         Change::Offered {
             selection: Selection::Clipboard,
             mimes,
         } => {
-            clip.owned = None;
-            clip.clear_marks();
-            clip.has_files = Files::offered(mimes);
+            let revision = app.clipboard.forget_owned();
+            if Files::offered(mimes) {
+                let _ = app.clipboard.handle.read_files(
+                    Selection::Clipboard,
+                    Limits::default(),
+                    move |app, result, _| {
+                        let any = result
+                            .ok()
+                            .is_some_and(|files| !paths::locations_from_files(&files).is_empty());
+                        app.clipboard.apply_offered_read(revision, any);
+                    },
+                );
+            }
         }
         Change::Emptied {
             selection: Selection::Clipboard,
         } => {
-            clip.owned = None;
-            clip.clear_marks();
-            clip.has_files = false;
+            app.clipboard.forget_owned();
         }
         Change::Lost {
             selection: Selection::Clipboard,
             copy,
             ..
-        } if clip.owned == Some(*copy) => {
-            clip.owned = None;
-            clip.clear_marks();
-            clip.has_files = clip.offered_files();
+        } if app.clipboard.owned == Some(*copy) => {
+            app.clipboard.forget_owned();
         }
         _ => {}
     }
@@ -227,6 +250,11 @@ pub(crate) fn fallback_text(app: &App) -> Option<&str> {
         Fallback::Text(text) => Some(text.as_str()),
         Fallback::Empty | Fallback::Files(_) => None,
     }
+}
+
+#[cfg(test)]
+pub(crate) fn write_test_files(app: &mut App, locations: &[Location]) {
+    let _ = app.clipboard.write_files(locations, false);
 }
 
 /// Whether Paste should be enabled for `location`.
@@ -269,6 +297,7 @@ pub(crate) fn complete_cut_transfer(app: &mut App, transferred: &[Location]) {
             if app.clipboard.handle.clear(copy_id).unwrap_or(false) {
                 app.clipboard.owned = None;
                 app.clipboard.has_files = false;
+                app.clipboard.bump_revision();
             }
         } else {
             let _ = app.clipboard.write_files(&remaining, true);
@@ -277,6 +306,7 @@ pub(crate) fn complete_cut_transfer(app: &mut App, transferred: &[Location]) {
         if remaining.is_empty() {
             app.clipboard.fallback = Fallback::Empty;
             app.clipboard.has_files = false;
+            app.clipboard.bump_revision();
         } else {
             let _ = app.clipboard.write_files(&remaining, true);
         }

@@ -10,7 +10,8 @@ use strata_components::contract::EntryId;
 use strata_core::model::Location;
 
 use super::{
-    complete_cut_transfer, fallback_text, has_files, is_cut_match, marks, may_paste, paths,
+    Change, Selection, changed, complete_cut_transfer, fallback_text, has_files, is_cut_match,
+    marks, may_paste, paths,
 };
 use crate::{
     App,
@@ -303,6 +304,76 @@ fn copy_path_key_stops_on_filter_results_and_empty_results_never_copy_hidden_sel
             );
             while host.turn() {}
             assert_eq!(fallback_text(host.app()), None);
+        },
+    );
+}
+
+#[test]
+fn offered_clipboard_reads_update_file_availability_and_ignore_stale_revisions() {
+    hosted(
+        MODULE,
+        "offered_clipboard_reads_update_file_availability_and_ignore_stale_revisions",
+        |mut host| {
+            let (_folder, _, _) = open_two_files(&mut host);
+            let alpha_id = entry_id(host.app(), "alpha file.txt");
+
+            host.runtime().update(move |app, tx| {
+                assert_eq!(run(app, "copy", On::Row((0, alpha_id)), tx), Outcome::Ran);
+            });
+            assert!(has_files(host.app()));
+            assert!(marks(host.app(), alpha_id).copied);
+
+            host.runtime().update(|app, tx| {
+                changed(
+                    app,
+                    &Change::Offered {
+                        selection: Selection::Clipboard,
+                        mimes: vec!["text/uri-list".to_owned()],
+                    },
+                    tx,
+                );
+            });
+            let stale_rev = host.app().clipboard.read_revision;
+            assert!(!has_files(host.app()));
+            assert!(!marks(host.app(), alpha_id).copied);
+
+            host.runtime().state.clipboard.write_text("newer text");
+            host.runtime()
+                .state
+                .clipboard
+                .apply_offered_read(stale_rev, true);
+            assert!(
+                !has_files(host.app()),
+                "stale external file read must not override a newer text clipboard"
+            );
+
+            host.runtime().update(|app, tx| {
+                changed(
+                    app,
+                    &Change::Offered {
+                        selection: Selection::Clipboard,
+                        mimes: vec!["x-special/gnome-copied-files".to_owned()],
+                    },
+                    tx,
+                );
+            });
+            let live_rev = host.app().clipboard.read_revision;
+            host.runtime()
+                .state
+                .clipboard
+                .apply_offered_read(live_rev, true);
+            assert!(has_files(host.app()));
+
+            host.runtime().update(|app, tx| {
+                changed(
+                    app,
+                    &Change::Emptied {
+                        selection: Selection::Clipboard,
+                    },
+                    tx,
+                );
+            });
+            assert!(!has_files(host.app()));
         },
     );
 }
