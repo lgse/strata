@@ -41,9 +41,8 @@ host = "offscreen"
 scenario = "copy-offers-file-manager-formats"
 run = "columns"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "copying-directory-copies-contents"
@@ -84,33 +83,29 @@ host = "offscreen"
 scenario = "paste-honors-foreign-cut-markers"
 run = "columns-gnome-cut"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "paste-honors-foreign-cut-markers"
 run = "columns-gnome-copy"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "paste-honors-foreign-cut-markers"
 run = "columns-kde-cut"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "paste-honors-foreign-cut-markers"
 run = "columns-kde-copy"
 package = "A12"
-status = "pending"
-reason = "scope"
-blocker = "A12"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "paste-into-parent-current-directory"
