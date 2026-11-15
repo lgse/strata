@@ -173,6 +173,17 @@ pub(crate) fn replay(browser: &Browser, ids: &Ids) -> Read {
     }
 }
 
+/// What the browser holds of column `depth`'s cursor, selection and Shift anchor now.
+pub(crate) fn marks(browser: &Browser, depth: usize, ids: &Ids) -> Marks {
+    Reader {
+        browser,
+        ids,
+        copied: 0,
+        changes: Vec::new(),
+    }
+    .marks(depth)
+}
+
 /// Reads out of the browser what one event changed.
 struct Reader<'a> {
     browser: &'a Browser,
@@ -339,15 +350,19 @@ impl Reader<'_> {
         }
     }
 
-    /// The event that gives an entry another id. False when `event` is not it.
+    /// The event that gives an entry another id within the same folder. A move into another
+    /// folder removes the entry from one listing and adds it to another, rather than carrying a
+    /// selection range inside one listing. False when `event` is not `ItemRelocated`.
     fn read_moved(&mut self, event: &BrowserEvent) -> bool {
         let BrowserEvent::ItemRelocated { from, to, .. } = event else {
             return false;
         };
-        self.changes.push(Change::Moved {
-            from: self.ids.of(from),
-            to: self.ids.of(to),
-        });
+        if from.parent().zip(to.parent()).is_some_and(|(a, b)| a == b) {
+            self.changes.push(Change::Moved {
+                from: self.ids.of(from),
+                to: self.ids.of(to),
+            });
+        }
         true
     }
 

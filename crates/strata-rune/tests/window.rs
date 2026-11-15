@@ -153,4 +153,57 @@ mod window {
             "{covered:?} covered, {shown:?} shown"
         );
     }
+
+    /// The offscreen host never calls `writer::flush_at_exit()`. Here a plain launch opens home
+    /// and a second tab, exits when sway closes its window, and a second plain launch restores
+    /// both tabs from the flushed `tabs.toml` (`docs/rune/shared-state.md`, "Tab sessions").
+    #[test]
+    #[ignore = "needs a private session: mise run test-platform"]
+    fn a_plain_launch_flushes_its_tabs_at_exit_and_restores_them() {
+        let s = Session::start();
+        let home = s.runtime_dir().join("home");
+        let alpha = home.join("alpha");
+        std::fs::create_dir_all(&alpha).expect("alpha folder");
+        std::fs::write(alpha.join("notes.txt"), "notes").expect("file");
+
+        let mut first = s.command(env!("CARGO_BIN_EXE_strata-rune"), Display::Wayland);
+        first.env("RUST_LOG", "strata_app=trace");
+        let mut app = s.spawn("strata-rune-first", first);
+        let window = s.wait_window_where("the home window with focus", |w| {
+            w.pid == app.pid() && w.title == "~ — Strata" && w.focused
+        });
+        app.wait_for(0, "the Columns view listing home", |line| {
+            lists(line, 1, "home")
+        });
+
+        // The cursor starts on `alpha`: Ctrl+Return opens it in a second tab and selects it.
+        s.input().key("ctrl+Return");
+        s.wait_window_where("the window retitled for the second tab", |w| {
+            w.id == window.id && w.title == "alpha — Strata"
+        });
+        app.wait_for(0, "the second tab listing alpha", |line| {
+            lists(line, 1, "alpha")
+        });
+
+        s.sway_command(&format!("[con_id={}] kill", window.id));
+        assert!(
+            app.wait_exit().success(),
+            "first plain launch exited cleanly"
+        );
+
+        let mut second = s.command(env!("CARGO_BIN_EXE_strata-rune"), Display::Wayland);
+        second.env("RUST_LOG", "strata_app=trace");
+        let restored = s.spawn("strata-rune-second", second);
+        let reopened = s.wait_window_where("the restored window on the active tab", |w| {
+            w.pid == restored.pid() && w.title == "alpha — Strata" && w.focused
+        });
+        restored.wait_for(0, "the restored active tab listing alpha", |line| {
+            lists(line, 1, "alpha")
+        });
+
+        s.input().key("ctrl+shift+1");
+        s.wait_window_where("switching to the first restored tab", |w| {
+            w.id == reopened.id && w.title == "~ — Strata"
+        });
+    }
 }

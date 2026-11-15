@@ -227,3 +227,56 @@ fn found_under(folder: &std::path::Path, name: &str) -> bool {
         entry.file_name() == name || (path.is_dir() && found_under(&path, name))
     })
 }
+
+fn click_key(host: &mut Offscreen, key: &str) {
+    let elements = host.runtime().elements();
+    let found = elements
+        .iter()
+        .find(|element| !element.exiting && element.key.as_deref() == Some(key));
+    let [x, y, w, h] = found.unwrap_or_else(|| panic!("{key} is drawn")).visible;
+    let (x, y) = (x + w / 2.0, y + h / 2.0);
+    host.runtime().pointer_move(x, y);
+    host.runtime().pointer_down(x, y);
+    host.turn();
+    host.runtime().pointer_up(x, y);
+    idle(host);
+}
+
+/// Leaving a filtered column for window chrome (`header-appearance`) closes its filter and
+/// restores its rows and selection, while opening the column's own Sort menu keeps it open
+/// (`close_filter_after_blur` in `src/ui/browser/columns/append/shell.rs`).
+#[test]
+fn leaving_a_filtered_column_for_chrome_closes_its_filter() {
+    hosted(
+        MODULE,
+        "filter::leaving_a_filtered_column_for_chrome_closes_its_filter",
+        |mut host| {
+            let _folder = filtered_to_photo(&mut host);
+
+            click_key(&mut host, "columns-sort-0");
+            assert_eq!(
+                fields(&host),
+                [("Filter this pane (Ctrl+F)".to_owned(), "photo".to_owned())],
+                "the column's Sort menu closed the filter"
+            );
+            press(&mut host, "Escape");
+            assert_eq!(
+                fields(&host),
+                [("Filter this pane (Ctrl+F)".to_owned(), "photo".to_owned())],
+                "dismissing the column's Sort menu closed the filter"
+            );
+
+            click_key(&mut host, "header-appearance");
+            let closed = host.run_until(PATIENCE, |host| fields(host).is_empty());
+            assert!(
+                closed,
+                "Appearance left the Columns filter open: {:?}",
+                fields(&host)
+            );
+            let restored = wait(&mut host, "the restored column listing", |seen| {
+                seen.panes[0].names().contains(&"todo.txt")
+            });
+            assert_eq!(restored.panes[0].selected(), ["todo.txt"]);
+        },
+    );
+}

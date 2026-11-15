@@ -8,13 +8,21 @@ use std::path::Path;
 use rune::{Key, KeyEvent, Mods};
 use strata_components::dialog::Tone;
 use strata_core::model::{EntryKind, FileEntry, Location, MetadataValue};
-use strata_fs::services::{KeptCause, KeptItem, RenameCause, RenamedItem, TransferReport};
+use strata_fs::{
+    adapters::TransferTargetCollision,
+    services::{KeptCause, KeptItem, RenameCause, RenamedItem, ShownName, TransferReport},
+};
 use strata_kit::icons::IconName;
 
-use super::{begin_transfer, dock, paste_destination};
+use super::{
+    begin_transfer,
+    collisions::{TransferCollision, TransferPlan, transfer_conflict_text},
+    dock, paste_destination,
+};
 use crate::{
     clipboard,
     commands::{On, Outcome, run},
+    conflict_dialog::{self, ConflictFocus},
     error_dialog,
     host::offscreen::Offscreen,
     shell,
@@ -235,6 +243,9 @@ fn duplicate_stops_on_filter_results_in_default_map_and_runs_in_tenxer_direct_st
             while host.turn() {}
 
             ctrl_key(&mut host, 'd');
+            assert!(host.app().transfer.preparing.is_empty());
+            assert!(host.app().browser().last_started_operation().is_none());
+            assert!(!host.app().browser().has_foreground_operation());
             assert!(!temp.path().join("alpha (1).txt").exists());
             assert!(!temp.path().join("beta (1).txt").exists());
 
@@ -249,10 +260,10 @@ fn duplicate_stops_on_filter_results_in_default_map_and_runs_in_tenxer_direct_st
 }
 
 #[test]
-fn mixed_collision_paste_aborts_whole_batch_and_preserves_cut_marks() {
+fn mixed_collision_paste_dismissal_preserves_both_and_skip_moves_remaining() {
     hosted(
         MODULE,
-        "mixed_collision_paste_aborts_whole_batch_and_preserves_cut_marks",
+        "mixed_collision_paste_dismissal_preserves_both_and_skip_moves_remaining",
         |mut host| {
             let temp = tempfile::tempdir().expect("tempdir");
             let src = temp.path().join("src");
@@ -277,12 +288,22 @@ fn mixed_collision_paste_aborts_whole_batch_and_preserves_cut_marks() {
             ctrl_key(&mut host, 'a');
             ctrl_key(&mut host, 'x');
             let dest_loc = Location::local(&dest);
+            let dest_first = dest_loc.clone();
             host.runtime().update(move |app, tx| {
-                assert_eq!(run(app, "paste", On::Place(dest_loc), tx), Outcome::Ran);
+                assert_eq!(run(app, "paste", On::Place(dest_first), tx), Outcome::Ran);
             });
-            assert!(host.run_until(PATIENCE, |h| h.app().transfer.preparing.is_empty()));
+            assert!(host.run_until(PATIENCE, |h| conflict_dialog::is_open(h.app())));
             while host.turn() {}
 
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            while host.turn() {}
+            assert!(!conflict_dialog::is_open(host.app()));
             assert!(!dest.join("beta.txt").exists(), "beta must not move");
             assert_eq!(
                 std::fs::read_to_string(dest.join("alpha.txt")).expect("dest alpha"),
@@ -293,7 +314,115 @@ fn mixed_collision_paste_aborts_whole_batch_and_preserves_cut_marks() {
             let beta_id = shell::id_of(host.app(), &Location::local(&beta));
             assert!(clipboard::marks(host.app(), alpha_id).cut);
             assert!(clipboard::marks(host.app(), beta_id).cut);
+
+            // Paste again and choose Skip via Shift+Tab x2 (Replace -> Keep Both -> Skip).
+            host.runtime().update(move |app, tx| {
+                assert_eq!(run(app, "paste", On::Place(dest_loc), tx), Outcome::Ran);
+            });
+            assert!(host.run_until(PATIENCE, |h| conflict_dialog::is_open(h.app())));
+            while host.turn() {}
+            for _ in 0..2 {
+                send_key(
+                    &mut host,
+                    KeyEvent {
+                        key: Key::Tab,
+                        mods: Mods {
+                            shift: true,
+                            ..Mods::default()
+                        },
+                    },
+                );
+            }
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Enter,
+                    mods: Mods::default(),
+                },
+            );
+            wait_exists(&mut host, &dest.join("beta.txt"), true);
+            wait_exists(&mut host, &beta, false);
+            assert!(alpha.exists(), "skipped source stays");
+            assert!(clipboard::marks(host.app(), alpha_id).cut);
         },
+    );
+}
+
+#[test]
+fn conflict_explanations_cover_merge_unreplaceable_renamed_and_no_trash_warnings() {
+    let local_dest = Location::local(Path::new("/tmp/dest"));
+    let admin_dest = Location::uri("admin:///etc");
+
+    let merge_move = transfer_conflict_text(
+        &TransferCollision {
+            source: Location::local(Path::new("/src/docs")),
+            target_name: None,
+            kinds: TransferTargetCollision::between(true, true),
+            fixes_inside: true,
+        },
+        &TransferPlan {
+            destination: local_dest.clone(),
+            move_sources: true,
+            reveal: true,
+            focus: ConflictFocus::Replace,
+        },
+        true,
+    );
+    assert!(
+        merge_move.contains("Merging combines the contents"),
+        "{merge_move}"
+    );
+    assert!(merge_move.contains("names change to suit"), "{merge_move}");
+    assert!(
+        merge_move.contains("removes the source folder"),
+        "{merge_move}"
+    );
+
+    let unreplaceable = transfer_conflict_text(
+        &TransferCollision {
+            source: Location::local(Path::new("/src/col:name")),
+            target_name: Some(ShownName {
+                name: "col_name".into(),
+                cause: Some(RenameCause::Invalid),
+            }),
+            kinds: TransferTargetCollision::between(false, true),
+            fixes_inside: false,
+        },
+        &TransferPlan {
+            destination: local_dest,
+            move_sources: false,
+            reveal: true,
+            focus: ConflictFocus::Replace,
+        },
+        false,
+    );
+    assert!(
+        unreplaceable.contains("“col:name” will be saved as “col_name”"),
+        "{unreplaceable}"
+    );
+    assert!(
+        unreplaceable.contains("A file and a folder can’t replace one another."),
+        "{unreplaceable}"
+    );
+
+    let no_trash = transfer_conflict_text(
+        &TransferCollision {
+            source: Location::local(Path::new("/src/hosts")),
+            target_name: None,
+            kinds: TransferTargetCollision::between(false, false),
+            fixes_inside: false,
+        },
+        &TransferPlan {
+            destination: admin_dest,
+            move_sources: false,
+            reveal: true,
+            focus: ConflictFocus::Replace,
+        },
+        false,
+    );
+    assert!(
+        no_trash.contains("\n\nReplaced items can't be moved to Trash here and will be deleted."),
+        "{no_trash}"
     );
 }
 

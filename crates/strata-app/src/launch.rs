@@ -10,10 +10,11 @@ use std::{
 };
 
 use strata_core::model::Location;
+use strata_desktop::tabs_session::{self, RestoredSession};
 use strata_fs::adapters::{list_archive_entries_direct, location_for_file};
 use strata_preview::sandbox_helper;
 
-use crate::{host, startup};
+use crate::{host, settings::Saved, startup};
 
 const USAGE: &str = "usage: strata-rune [DIRECTORY]";
 
@@ -68,11 +69,39 @@ pub(crate) fn leave_launch_folder() {
     }
 }
 
+/// What a launch opens in its first window (`docs/rune/shared-state.md`, "Tab sessions").
+pub(crate) enum Initial {
+    /// A directory argument, or a test's or QA run's folder: opens that folder in one tab and
+    /// leaves `tabs.toml` alone.
+    Explicit(Location),
+    /// A plain launch (`strata-rune` with no directory argument): restores the saved session
+    /// when `Some`, or opens the default folder, and persists this window's tabs.
+    Plain(Option<RestoredSession>),
+}
+
+/// Resolves what a launch opens, reading `tabs.toml` at start-up before the first window shows
+/// only on a plain launch with `restore_tabs` on.
+pub(crate) fn initial(directory: Option<&OsStr>, settings: &Saved) -> Result<Initial, String> {
+    match directory {
+        Some(argument) => location(Some(argument))
+            .map(Initial::Explicit)
+            .ok_or_else(|| "the argument is not a location".to_owned()),
+        None => {
+            let restored = settings
+                .preferences()
+                .restore_tabs
+                .then(tabs_session::load_restorable)
+                .flatten();
+            Ok(Initial::Plain(restored))
+        }
+    }
+}
+
 fn open(directory: Option<&OsStr>) -> Result<(), String> {
     let settings = startup::initialize_process();
-    let location = location(directory).ok_or("the argument is not a location")?;
+    let initial = initial(directory, &settings)?;
     leave_launch_folder();
-    host::windowed::run(startup::UiThread::claim()?, settings, location)
+    host::windowed::run(startup::UiThread::claim()?, settings, initial)
 }
 
 /// The argument the sandbox's worker pool runs this executable with

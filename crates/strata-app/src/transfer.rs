@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! Paste (`Ctrl+V`, folder menu) and Duplicate (`Ctrl+D`, entry menu), transfer progress in
-//! C16's [`DockView`](strata_components::progress_dock::DockView) and
+//! Paste (`Ctrl+V`, folder menu) and Duplicate (`Ctrl+D`, entry menu), destination conflict
+//! resolution through [`crate::conflict_dialog`], transfer progress in C16's
+//! [`DockView`](strata_components::progress_dock::DockView) and
 //! [`ProgressDialog`](strata_components::progress_dock::ProgressDialog), and revealing placed
-//! items (`src/ui/browser/transfer.rs`, `view_edit.rs`, `events/reveal.rs`).
-//!
-//! Destination conflict dialogs (`Replace`, `Keep Both`, `Merge`, `Skip`, `Apply to All`) land
-//! in A12's conflict-dialog slice; until then, any batch where an item collides stops safely
-//! like Cancel, while non-colliding transfers and same-folder numbered copies run end-to-end.
+//! items (`src/ui/browser/transfer.rs`, `transfer/collisions.rs`, `view_edit.rs`,
+//! `events/reveal.rs`).
 
 use gio::prelude::*;
 use rune::Tx;
@@ -22,18 +20,20 @@ use strata_desktop::keys::{
 use strata_fs::{
     adapters::{TransferTargetCollision, gio_file_for_location, transfer_targets},
     app::{Browser, BrowserEvent},
-    services::{PasteItem, ShownName, TransferConflict},
+    services::ShownName,
 };
 
 use crate::{
     App,
     clipboard::{self, paths},
     commands::{Action, Call, Holds, Keys, On, Outcome, Stage},
+    conflict_dialog::ConflictFocus,
     error_dialog::{self, Error},
     filter, menus, shell,
     slots::{Heard, Later, Listener, Part, Place, Scope, Setup},
 };
 
+mod collisions;
 mod dock;
 mod reveal;
 #[cfg(test)]
@@ -103,8 +103,11 @@ impl Part for Transfer {
         Action::new("duplicate", duplicate)
             .command(DUPLICATE)
             .keys(&[
-                Keys::at(Stage::DirectCommands, &[DUPLICATE.in_map(Map::Tenxer)])
-                    .when(|_, at| !at.text() && !at.within("preview")),
+                Keys::at(Stage::DirectCommands, &[DUPLICATE.in_map(Map::Tenxer)]).when(
+                    |app, at| {
+                        shell::preferences(app).tenxer_mode && !at.text() && !at.within("preview")
+                    },
+                ),
                 Keys::at(Stage::FileCommands, &[DUPLICATE.in_map(Map::Default)]).when(|app, at| {
                     !at.text() && !at.within("preview") && filter::targets::selected(app).is_none()
                 }),
@@ -540,29 +543,18 @@ fn finish_preparing(
             return;
         }
     };
-    if targets
-        .iter()
-        .any(|(_, _, collision, _)| collision.is_some())
-    {
-        return;
-    }
-    let accepted: Vec<PasteItem> = targets
+    let (sources, facts): (Vec<_>, Vec<_>) = targets
         .into_iter()
-        .map(|(source, target_name, _, _)| PasteItem {
-            source,
-            conflict: TransferConflict::FailIfExists,
-            target_name,
-        })
-        .collect();
-    if accepted.is_empty() {
-        return;
-    }
+        .map(|(source, name, collision, fixes_inside)| (source, (name, collision, fixes_inside)))
+        .unzip();
+    let (accepted, collisions) = collisions::sort_transfer_targets(sources, facts);
+    let plan = collisions::TransferPlan {
+        destination: key.destination.clone(),
+        move_sources: key.move_sources,
+        reveal: key.reveal,
+        focus: ConflictFocus::Replace,
+    };
     shell::publish(app);
-    app.browser.transfer(
-        key.destination.clone(),
-        accepted,
-        key.move_sources,
-        key.reveal,
-    );
+    collisions::resolve(app, plan, collisions, accepted);
     shell::settle(app, tx);
 }

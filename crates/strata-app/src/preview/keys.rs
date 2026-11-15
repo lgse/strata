@@ -40,14 +40,21 @@ pub(super) const COMMANDS: &[Action<App>] = &[
     .when(in_preview_outside_find)]),
     Action::new("preview", space_preview)
         .command(PREVIEW)
-        .keys(&[Keys::at(
-            Stage::ItemNavigation,
-            &[
-                PREVIEW.in_map(Map::Default).ignoring(PREVIEW_IGNORED),
-                PREVIEW.in_map(Map::Tenxer),
-            ],
-        )
-        .when(in_listing_for_preview)]),
+        .keys(&[
+            Keys::at(
+                Stage::FilterAndLocationCommands,
+                &[PREVIEW.in_map(Map::Default)],
+            )
+            .when(on_filtered_result),
+            Keys::at(
+                Stage::ItemNavigation,
+                &[
+                    PREVIEW.in_map(Map::Default).ignoring(PREVIEW_IGNORED),
+                    PREVIEW.in_map(Map::Tenxer),
+                ],
+            )
+            .when(in_listing_for_preview),
+        ]),
     Action::new("preview-enter", enter_preview)
         .command(RIGHT)
         .keys(&[Keys::at(
@@ -61,6 +68,10 @@ pub(super) const COMMANDS: &[Action<App>] = &[
         when: divider_focusable,
     }]),
 ];
+
+fn on_filtered_result(app: &App, at: &Situation) -> bool {
+    at.in_view() && filter::targets::preview_result(app).is_some()
+}
 
 fn in_preview_outside_find(app: &App, at: &Situation) -> bool {
     app.preview.enabled && at.within("preview") && !app.preview.drawer.is_find_focused()

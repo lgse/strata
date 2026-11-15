@@ -19,7 +19,7 @@ use strata_platform::{
 };
 
 use crate::{
-    App, commands, folder_views,
+    App, commands, folder_views, launch,
     settings::Saved,
     shell,
     startup::{APPLICATION_ID, UiThread},
@@ -56,17 +56,33 @@ fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     shell::poll(app, clock, tx) | pumped
 }
 
-/// Opens the window on `location` and returns when it closes.
-pub(crate) fn run(ui: UiThread, settings: Saved, location: Location) -> Result<(), String> {
-    run_with(ui, settings, location, |app| app)
+/// Opens the window on `initial` and returns when it closes.
+pub(crate) fn run(ui: UiThread, settings: Saved, initial: launch::Initial) -> Result<(), String> {
+    run_initial(ui, settings, initial, |app| app)
 }
 
-/// [`run`], with the app handed to `extend` before it runs: the QA mode's session host adds
-/// its frame hook and takes a handle there (`qa::session`).
+/// Opens the window on `location` with the app handed to `extend` before it runs: the QA mode's
+/// session host adds its frame hook and takes a handle there (`qa::session`).
+#[cfg_attr(
+    not(feature = "qa"),
+    expect(
+        dead_code,
+        reason = "only the QA mode's session host extends the window"
+    )
+)]
 pub(crate) fn run_with(
     ui: UiThread,
     settings: Saved,
     location: Location,
+    extend: impl FnOnce(rune::App<App>) -> rune::App<App>,
+) -> Result<(), String> {
+    run_initial(ui, settings, launch::Initial::Explicit(location), extend)
+}
+
+fn run_initial(
+    ui: UiThread,
+    settings: Saved,
+    initial: launch::Initial,
     extend: impl FnOnce(rune::App<App>) -> rune::App<App>,
 ) -> Result<(), String> {
     rune::set_app_id(APPLICATION_ID);
@@ -95,7 +111,7 @@ pub(crate) fn run_with(
     .init(move || {
         let mut app = App::new(&ui, Csd::new(frame, Backend::from_env()), settings);
         crate::clipboard::bind(&mut app, clip_for_init);
-        app.open(location);
+        app.start(initial);
         app
     })
     // Rune's own flags (`--snap`, `--tree`) are not this binary's.

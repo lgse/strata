@@ -172,6 +172,13 @@ fn open_at(app: &App, anchor: &str) -> bool {
         .is_some_and(|open| open.anchor == anchor)
 }
 
+impl Sort {
+    /// Whether the sort menu currently holds focus or is handing it back to the view.
+    pub(crate) fn holds_focus(&self) -> bool {
+        self.open.is_some() || self.refocus.is_some()
+    }
+}
+
 /// The menu closes when the keyboard leaves it, or when another folder or view shows; the
 /// keyboard goes back to the Columns view after it closed there. True when anything changed.
 fn follow(app: &mut App, tx: &mut Tx) -> bool {
@@ -184,7 +191,7 @@ fn follow(app: &mut App, tx: &mut Tx) -> bool {
     };
     // A Columns column's button takes no focus: the view keeps it while the menu opens.
     let anchor = open.returns.unwrap_or(&open.anchor);
-    let left = popover::focus_left(tx, anchor, &menu::stops(app), &[]);
+    let left = popover::focus_left(tx, anchor, &menu::stops(app), &[menu::SURFACE]);
     let moved =
         shell::view_focus(app) != open.view || app.browser.location_at(open.depth) != open.over;
     if left || moved {

@@ -1546,8 +1546,11 @@ sequence only together with the alphabet's version, so the version is part of th
   view keeps a mark the browser no longer has, until a key moves the cursor.
 - **What a user sees:** nothing found, as with #2386: the mark decides only a 10xer verb's
   targets and the cursor's own moves.
-- **State:** open, [A10](packages/A10.md)'s; the three seeds parked in
-  `tests/qa/fuzz/corpus/calibration/`.
+- **State:** fixed in [A10](packages/A10.md)'s closing pull request: `Columns::drop_hits`
+  adopts the browser's marks (`events::marks`) and settles the mirror (`Columns::caught_up`)
+  after restoring the saved position, as GTK's `resync_column_selection` does, and
+  `Columns::take_hits` refreshes `held[depth]`. Seeds `0x02`, `0x06` and `0x0a` of
+  `calibration v3` are unparked and pass 20 of 20 on Rune.
 
 ### #2421: Escape from a pane's filter results leaves no element with the keyboard on Rune
 
@@ -1806,6 +1809,49 @@ sequence only together with the alphabet's version, so the version is part of th
 - **State:** accepted for now by the coordinator (2026-11-14). The fix is a `Palette` name in
   the semantic set (a W2 contract change, with an icon in every catalog) or a C15 builder
   that takes a catalog icon.
+
+### #2494: an open pane-header popover reports `focused_pane` on GTK, `null` on Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2494), filed on
+  2026-11-15 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A10](packages/A10.md)'s draft `filter` v1 differential smoke run (seeds
+  `0x01`, `0x05`, `0x06`, `0x0b`, `0x0c`, `0x0e` and `0x13`). While a pane header's popover or
+  menu ("Choose sort field" in Icons and List, or [A5](packages/A5.md)'s "Thumbnail size" in
+  Icons) is open and holds the keyboard, GTK's `app.focused_pane` reports the pane's folder
+  name (`"$root"`, `"documents"`, …) and Rune's reports `null`. Once Escape or a click outside
+  closes the popover, `app.focused_pane` matches again.
+- **Why:** GTK's `GtkMenuButton` parents its `GtkPopover` / `GtkPopoverMenu` under the pane
+  header inside the `Pane` widget, so `strata-qa`'s `is_ancestor(pane, focus)` is `true`. On
+  Rune, `popover::Plain::build` mounts popovers and menus on `Frame::layer` (`Place::Overlays`),
+  outside the `Mark::Pane` subtree.
+- **Concerns:** `crates/strata-app/src/popover.rs`, `crates/strata-app/src/sort/`,
+  `crates/strata-app/src/appearance/icon_size.rs`, and `tests/qa/fuzz/normalisation.map`
+  (should the owner rule it widget ancestry rather than behaviour). No scenario run checks
+  `focused_pane` while a header popover is open; `filter v2` exercises header sort controls
+  without holding the popover open across steps.
+- **State:** open, [A10](packages/A10.md)'s.
+
+### #2499: Icons and List filter results populate `app.panes` on Rune, leave it empty on GTK
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2499), filed on
+  2026-11-15 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A10](packages/A10.md)'s `filter v2` differential smoke run, seed `0x06` at
+  step 24, shrunk from 54 steps to 6 and confirmed 3 of 3 (`Ctrl+F`, `documents`, `/`, `o`,
+  `Ctrl+3`, `Down`). With `"Search results"` replacing the List or Icons listing and `"notes.txt"`
+  focused, both targets report `app.focused = "notes.txt"` and
+  `app.matches = ["notes.txt", "report.md"]`, and `Escape` restores the folder's `app.panes` on
+  both; while `"Search results"` holds focus, GTK reports
+  `app.panes = [{"focused": null, "name": "documents", "selected": []}]` and Rune reports
+  `app.panes = [{"focused": "notes.txt", "name": "documents", "selected": ["notes.txt"]}]`.
+- **Why:** GTK's `src/ui/inline_search/collection.rs` does not call `describe_entry_container`
+  (`Mark::EntryContainer`), and the folder's own `EntryContainer` is hidden while `"Search
+  results"` shows (`pane_entries` in `crates/strata-qa/src/engine/scan.rs`). On Rune,
+  `crates/strata-app/src/qa/tree.rs` marks `PaneHits` with `Mark::EntryContainer` (`a22af3f08`)
+  so [F3](packages/F3.md)'s `tree-view` invariant (`Presented::drawn`) checks the results'
+  selection against the tree.
+- **Concerns:** `src/ui/inline_search/collection.rs`, `crates/strata-app/src/qa/tree.rs`,
+  `crates/strata-qa/src/engine/scan.rs`, and `fuzz-filter-v2-0000000000000006`.
+- **State:** open; `v2-0000000000000006` parked in `tests/qa/fuzz/corpus/filter/parked`.
 
 ### #2509: the Rune sheet preview is a table of cells where GTK's GtkColumnView is named rows under a tree table
 
