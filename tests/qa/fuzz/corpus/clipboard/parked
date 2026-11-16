@@ -1,0 +1,12 @@
+# The clipboard and conflicts alphabet's sequences parked against their findings
+# (docs/rune/parity/findings.md):
+#
+#   v<version>-<seed> <code> <issue>
+#
+# Version 1 was A12's first draft, never merged: its smoke tier met lgse/strata#2356 (clicking an
+# already-open mirrored folder column reports row 0 as focused on GTK with nothing selected) and
+# lgse/strata#2525 (`BrowserView::paste_location` falling back to the parent column under a parked
+# pointer after clicking a folder in Columns, the `paste_location` sibling of #867). Both shrunk
+# sequences are kept here.
+v1-0000000000000001 oracle lgse/strata#2356
+v1-000000000000000f oracle lgse/strata#2525

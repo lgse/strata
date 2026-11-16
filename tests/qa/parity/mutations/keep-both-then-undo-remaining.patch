@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/transfer/collisions.rs b/crates/strata-app/src/transfer/collisions.rs
+index 3d74f15be..716219412 100644
+--- a/crates/strata-app/src/transfer/collisions.rs
++++ b/crates/strata-app/src/transfer/collisions.rs
+@@ -179,7 +179,7 @@ fn apply_transfer_choice(
+         }
+         ConflictChoice::Replace => TransferConflict::ReplaceExisting,
+         ConflictChoice::Merge => TransferConflict::Merge,
+-        ConflictChoice::KeepBoth => TransferConflict::KeepBoth,
++        ConflictChoice::KeepBoth => TransferConflict::ReplaceExisting,
+     };
+     accepted.push(current.clone().paste_item(conflict));
+     if !apply_to_all {
