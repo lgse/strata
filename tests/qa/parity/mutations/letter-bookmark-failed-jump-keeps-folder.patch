@@ -1,0 +1,12 @@
+diff --git a/crates/strata-app/src/tenxer/bookmarks.rs b/crates/strata-app/src/tenxer/bookmarks.rs
+--- a/crates/strata-app/src/tenxer/bookmarks.rs
++++ b/crates/strata-app/src/tenxer/bookmarks.rs
+@@ -150,7 +150,7 @@ async fn resolve_jump(letter: char) -> JumpOutcome {
+                 glib::future_with_timeout(mount_lanes::STALLED_AFTER, probes::folder(&path)).await,
+                 Ok(Ok(()))
+             );
+-            if valid {
++            if valid || true {
+                 JumpOutcome::Navigate(path)
+             } else {
+                 JumpOutcome::Unavailable
