@@ -1,0 +1,259 @@
+# The tabs alphabet (A4): what a user does to open, close, reopen, switch and reorder tabs
+# across Columns, Icons and List on the canonical fixture, and what happens inside and across
+# tabs while others sit hidden: Ctrl+T and the New tab button (in the header with one tab, in
+# the strip with two or more), Ctrl+Return and Ctrl+Shift+Return on folders, middle-clicking
+# folder rows to open tabs and file rows to reveal their parent, Ctrl+W to close tabs and
+# Ctrl+Shift+T to reopen closed tabs in place, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+Page_Down,
+# Ctrl+Page_Up, Ctrl+Shift+1..4/0 and tab clicks to switch tabs, Ctrl+Shift+Page_Up/Page_Down
+# and tab drags to reorder the strip, view switches, Hidden files and List's Group by file type
+# propagated to hidden tabs when shown, inline renames committed and Columns filters or location
+# edits ended when a tab is hidden, and live filesystem writes and removals queued for hidden
+# tabs (`hidden-tab` invariant).
+#
+# Type to search is off (the header's `prefs`), as in `columns.toml`, `location.toml` and
+# `views.toml`.
+#
+# Left out, with why:
+# - Closing the window's last tab: it closes the window (`closed`), ending the replay. `Ctrl+W`
+#   runs only while the strip shows (`{"present":{"role":"page tab"}}`, two or more tabs).
+# - Each tab's close (`X`) button and middle-clicking a tab or a crumb: finding
+#   lgse/strata#2469 (`rune-gap`, U-C7-1: rune-kit names the close button in English in every
+#   locale), and `click` takes buttons 1 and 3 only, while splitting `button_down: 2` and
+#   `button_up: 2` observes between press and release (where C10's crumbs act on press and
+#   GTK's on release, `A4.md` Open; `breadcrumb-opens-new-tab` covers crumb middle clicks).
+#   Folder and file rows act on release on both targets (`PointerMachine::middle`).
+# - `Open in… → New Tab` from the entry menu: finding lgse/strata#2507 (`divergence`: C21 mounts
+#   an open submenu as a sibling `menu` surface on `Frame::layer`, while `strata-qa`'s
+#   `open_menu` and `Target::MenuItem` read only the first rendered `menu`).
+# - Built-in sidebar places (`Home`, `Trash`, `Network`, `Desktop`) on `Open in New Tab` or
+#   middle click, and `Left` from the root column: each opens a folder outside the fixture,
+#   ending the replay (`sidebar.toml`), and `Pin to sidebar` is not bound on Rune yet (`A3.md`).
+# - `open-in-window` (`Shift+Return`, `Ctrl/Shift`+middle click, `Open in… → New Window`),
+#   tearing tabs out, and window-switch session checks: `A21`'s second window.
+# - Dragging files, folders or sidebar rows onto tabs and `New tab`: `A19`'s drag binder.
+# - Dragging an unselected tab: GTK's `GtkDragSource` reorders without selecting, whereas
+#   rune-kit's `TabStrip` selects on press; `drag-tab` drags the selected tab.
+# - `Up` and `Down` outside a focused non-empty pane: on a focused `page tab` button after
+#   `drag-tab`, rune-kit's `TabStrip` handles ARIA `tablist` arrows (`tabs/mod.rs:118`) while
+#   GTK's horizontal strip takes neither; in an empty `List` or `Icons` pane (`archive`), `Down`
+#   moves GTK's directional focus out of the pane while Rune keeps the pane focused
+#   (lgse/strata#2408).
+# - 10xer `t` tab chords: `A11`'s (`tenxer-tab-chords`).
+# - Leaving an Icons or List filter open across a tab switch: `A4.md`'s open item on C18's
+#   `focus_field` (caret at the end on Rune vs selected text on GTK) and lgse/strata#2499
+#   (`PaneHits` populating `app.panes` on Rune). Columns' filter is exercised across tab
+#   switches (`columns-filter-switch`), where `Part::tab_hidden` closes it on both targets.
+# - `F2` inline rename in Icons and List: finding lgse/strata#2510 (`divergence`: while `Rename`
+#   hides the primary name widget on GTK, `src/qa/state.rs`'s `row_label_matches` falls back to
+#   visible secondary metadata labels and drops the edited row from `app.matches` and `app.panes`
+#   in Icons and List). `rename-switch` and `rename-back` run in Columns, where switching tabs
+#   mid-rename commits the edit on both targets.
+# - Return or `Ctrl+Return` on a file (`A14`'s Open With chooser), `Right` on empty `archive`
+#   (lgse/strata#2408), vertical arrows in Icons (lgse/strata#2414), `Shift` range arrows across
+#   view switches (lgse/strata#2412), `Up` off a folder's first row (`owner.md` A1 item 3), and
+#   `Escape`, `Alt+Up` or `Alt+Left` outside the panes (lgse/strata#2411, `owner.md` A1 item 4).
+#
+# Version 1 was the first draft, never merged: its smoke tier caught a hidden tab shown after
+# another tab switched views restoring its old view's focus key and running `Part::tab_shown` on
+# the old view (`shell/tabs.rs`, fixed here), met lgse/strata#2507 on `Open in… → New Tab`, and
+# sent `Up` and `Down` onto focused `page tab` buttons and empty `archive` in List. Version 2,
+# never merged either, left out `Open in… → New Tab` and kept pane arrows to focused non-empty
+# panes; its smoke tier met lgse/strata#2510 on `F2` in Icons (`0x0f`), lgse/strata#2415 (`0x0c`),
+# and `ctrl+shift+t` inside `location-switch` when `closed_tabs` was empty (`0x12`). Version 3
+# scopes `rename-switch` and `rename-back` to Columns, switches from `location-switch` only with
+# keys that always change tabs, and guards pointer actions with `editable_fields: 0`.
+area = "tabs"
+version = 3
+about = "Columns, Icons and List on the canonical fixture, type to search off: tabs opened by Ctrl+T, New tab, Ctrl+Return on folders and folder middle clicks, file middle clicks revealing their parent, tabs closed by Ctrl+W and reopened by Ctrl+Shift+T, switched by cycling, number shortcuts and clicks, reordered by keys and drag, with view switches, hidden files, List grouping, navigation, inline renames, Columns filters and location edits across tab switches, and live filesystem changes held for hidden tabs"
+header = '{"modes":["columns"],"prefs":{"type_to_search":false}}'
+
+[[action]]
+name = "new-tab"
+weight = 6
+steps = ['{"key":"ctrl+t","when":{"all":[{"not":{"dialog":true}},{"menu_items":null}]}}']
+
+[[action]]
+name = "new-tab-button"
+weight = 3
+steps = ['{"click":{"role":"button","name":"New tab"},"when":{"all":[{"present":{"role":"button","name":"New tab"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}']
+
+[[action]]
+name = "open-in-tab-key"
+weight = 5
+steps = ['{"key":"<key>","when":{"all":[{"any":[{"focused":"archive"},{"focused":"documents"},{"focused":"pictures"}]},{"focused_pane":true},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}']
+choose.key = ["ctrl+Return", "ctrl+shift+Return"]
+
+[[action]]
+name = "middle-click-folder"
+weight = 5
+steps = [
+  '{"move":{"entry":"<folder>"},"when":{"all":[{"present":{"entry":"<folder>"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}',
+  '{"button_down":2,"when":{"all":[{"present":{"entry":"<folder>"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}',
+  '{"button_up":2,"when":{"all":[{"present":{"entry":"<folder>"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}',
+]
+choose.folder = ["archive", "documents", "pictures"]
+
+[[action]]
+name = "middle-click-file"
+weight = 3
+steps = [
+  '{"move":{"entry":"<file>"},"when":{"all":[{"present":{"entry":"<file>"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}',
+  '{"button_down":2,"when":{"all":[{"present":{"entry":"<file>"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}',
+  '{"button_up":2,"when":{"all":[{"present":{"entry":"<file>"}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}',
+]
+choose.file = ["readme.md", "todo.txt", "notes.txt", "report.md", "photo.txt"]
+
+[[action]]
+name = "close-tab"
+weight = 7
+steps = ['{"key":"ctrl+w","when":{"all":[{"present":{"role":"page tab"}},{"menu_items":null},{"not":{"dialog":true}}]}}']
+
+[[action]]
+name = "reopen-tab"
+weight = 5
+steps = ['{"key":"ctrl+shift+t","when":{"all":[{"menu_items":null},{"not":{"dialog":true}}]}}']
+
+[[action]]
+name = "cycle-tab"
+weight = 8
+steps = ['{"key":"<key>","when":{"all":[{"present":{"role":"page tab"}},{"menu_items":null},{"not":{"dialog":true}}]}}']
+choose.key = ["ctrl+Tab", "ctrl+shift+Tab", "ctrl+Page_Down", "ctrl+Page_Up"]
+
+[[action]]
+name = "number-tab"
+weight = 6
+steps = ['{"key":"ctrl+shift+<digit>","when":{"all":[{"menu_items":null},{"not":{"dialog":true}}]}}']
+choose.digit = ["1", "2", "3", "4", "0"]
+
+[[action]]
+name = "click-tab"
+weight = 5
+steps = ['{"click":{"role":"page tab","nth":<nth>},"when":{"all":[{"present":{"role":"page tab","nth":<nth>}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}']
+choose.nth = ["0", "1", "2", "-1"]
+
+[[action]]
+name = "move-tab"
+weight = 4
+steps = ['{"key":"<key>","when":{"all":[{"present":{"role":"page tab"}},{"menu_items":null},{"not":{"dialog":true}}]}}']
+choose.key = ["ctrl+shift+Page_Up", "ctrl+shift+Page_Down"]
+
+[[action]]
+name = "drag-tab"
+weight = 2
+steps = ['{"drag":{"from":{"role":"page tab","states":["selected"]},"to":{"role":"page tab","nth":0}},"when":{"all":[{"present":{"role":"page tab","nth":1}},{"state":{"target":{"role":"page tab","nth":0},"selected":false}},{"menu_items":null},{"not":{"dialog":true}},{"editable_fields":0}]}}']
+
+# Cross-tab settings and view switches: hidden tabs catch up when shown again.
+[[action]]
+name = "switch-view"
+weight = 6
+steps = ['{"key":"ctrl+<digit>","when":{"all":[{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}']
+choose.digit = ["1", "2", "3"]
+
+[[action]]
+name = "hidden-files"
+weight = 3
+steps = ['{"key":"ctrl+period","when":{"all":[{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}']
+
+[[action]]
+name = "popover-group"
+weight = 2
+steps = [
+  '{"click":{"role":"toggle button","name":"Appearance"},"when":{"all":[{"view_mode":"List"},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}',
+  '{"click":{"role":"check menu item","name":"Group by file type"},"when":{"all":[{"view_mode":"List"},{"present":{"role":"check menu item","name":"Group by file type"}}]}}',
+  '{"key":"Escape","when":{"present":{"role":"radio menu item","name":"Columns"}}}',
+]
+
+# Navigation and selection inside tabs so each tab carries distinct columns, cursor and selection.
+[[action]]
+name = "down"
+weight = 7
+steps = ['{"key":"Down","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"not":{"view_mode":"Icons"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}']
+
+[[action]]
+name = "up"
+weight = 4
+steps = ['{"key":"Up","when":{"all":[{"focused_pane":true},{"focused_in_matches":true},{"not":{"matches":[]}},{"not":{"view_mode":"Icons"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}},{"not":{"focused":{"one_of":["archive", "notes.txt", "renamed-note.txt", "diagram.txt", "zz-tab-b.txt"]}}}]}}']
+
+[[action]]
+name = "edge"
+weight = 3
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}']
+choose.key = ["Home", "End"]
+
+[[action]]
+name = "right"
+weight = 4
+steps = ['{"key":"Right","when":{"all":[{"focused_pane":true},{"not":{"matches":[]}},{"view_mode":"Columns"},{"not":{"focused":"archive"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}']
+
+[[action]]
+name = "open-folder"
+weight = 3
+steps = ['{"click":{"entry":"<folder>"},"count":2,"when":{"all":[{"present":{"entry":"<folder>"}},{"not":{"view_mode":"Columns"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}']
+choose.folder = ["documents", "pictures"]
+
+[[action]]
+name = "parent"
+weight = 3
+steps = ['{"key":"<key>","when":{"all":[{"focused_pane":true},{"editable_fields":0},{"not":{"directory":"$root"}},{"menu_items":null},{"not":{"dialog":true}}]}}']
+choose.key = ["alt+Up", "alt+Left"]
+
+[[action]]
+name = "click-entry"
+weight = 4
+steps = ['{"click":{"entry":"<entry>"},"when":{"all":[{"present":{"entry":"<entry>"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}']
+choose.entry = ["archive", "documents", "pictures", "readme.md", "todo.txt", "notes.txt", "report.md", "photo.txt"]
+
+# Switching tabs mid-rename commits the rename on the tab being hidden, as focus-out does on GTK.
+[[action]]
+name = "rename-switch"
+weight = 3
+steps = [
+  '{"key":"F2","when":{"all":[{"view_mode":"Columns"},{"focused":"notes.txt"},{"present":{"role":"page tab"}},{"absent":{"entry":"renamed-note.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}',
+  '{"type":"renamed-note","when":{"field":{"name":"Rename","focused":true}}}',
+  '{"key":"<switch>","when":{"all":[{"present":{"role":"page tab"}},{"field":{"name":"Rename","focused":true}}]}}',
+]
+choose.switch = ["ctrl+Tab", "ctrl+shift+Tab", "ctrl+t"]
+
+[[action]]
+name = "rename-back"
+weight = 2
+steps = [
+  '{"key":"F2","when":{"all":[{"view_mode":"Columns"},{"focused":"renamed-note.txt"},{"absent":{"entry":"notes.txt"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}',
+  '{"type":"notes","when":{"field":{"name":"Rename","focused":true}}}',
+  '{"key":"Return","when":{"field":{"name":"Rename","focused":true}}}',
+]
+
+# Switching tabs from an open Columns filter or location entry ends it (`Part::tab_hidden`).
+[[action]]
+name = "columns-filter-switch"
+weight = 3
+steps = [
+  '{"key":"ctrl+f","when":{"all":[{"view_mode":"Columns"},{"present":{"role":"page tab"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}',
+  '{"type":"<query>","when":{"all":[{"view_mode":"Columns"},{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}',
+  '{"key":"<switch>","when":{"all":[{"view_mode":"Columns"},{"present":{"role":"page tab"}},{"field":{"focused":true}},{"not":{"field":{"name":"Rename"}}}]}}',
+]
+choose.query = ["no", "doc"]
+choose.switch = ["ctrl+Tab", "ctrl+shift+Tab"]
+
+[[action]]
+name = "location-switch"
+weight = 3
+steps = [
+  '{"key":"ctrl+l","when":{"all":[{"present":{"role":"page tab"}},{"editable_fields":0},{"menu_items":null},{"not":{"dialog":true}}]}}',
+  '{"type":"$fixture/documents","when":{"field":{"name":"Location (Ctrl+L)","focused":true}}}',
+  '{"key":"<switch>","when":{"all":[{"present":{"role":"page tab"}},{"field":{"name":"Location (Ctrl+L)","focused":true}}]}}',
+]
+choose.switch = ["ctrl+Tab", "ctrl+shift+Tab", "ctrl+t"]
+
+# Files made and removed behind open and hidden tabs (`hidden-tab` queue and replay).
+[[action]]
+name = "write"
+weight = 3
+steps = ['{"fs":{"path":"<path>","write":"fuzz\n"},"when":{"file":{"path":"$fixture/<path>","exists":false}}}']
+choose.path = ["zz-tab-a.txt", "documents/zz-tab-b.txt", "pictures/zz-tab-c.txt"]
+
+[[action]]
+name = "remove"
+weight = 2
+steps = ['{"fs":{"path":"<path>","remove":true},"when":{"all":[{"file":{"path":"$fixture/<path>","exists":true}},{"not":{"focused":"zz-tab-a.txt"}},{"not":{"focused":"zz-tab-b.txt"}},{"not":{"focused":"zz-tab-c.txt"}}]}}']
+choose.path = ["zz-tab-a.txt", "documents/zz-tab-b.txt", "pictures/zz-tab-c.txt"]

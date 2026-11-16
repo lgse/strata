@@ -42,7 +42,7 @@ use strata_fs::app::Browser;
 use super::{App, preferences, publish, settle};
 use crate::{
     TabParts, pane,
-    slots::{Queued, Registry, Setup, ShownView, Source, TabKey, Update},
+    slots::{Queued, Registry, Setup, ShownView, Slot, Source, TabKey, Update},
 };
 
 pub(crate) mod session;
@@ -395,9 +395,9 @@ pub(crate) fn show(app: &mut App, key: TabKey, tx: &mut Tx) -> bool {
     let (queued, waiting) = app.window.events.queued_for(left);
     parked.held = Held::since(queued - waiting);
     app.window.tabs.parked.push((left, parked));
-    let parts = app.window.here.parts;
-    app.window.shown.follow(parts);
+    app.window.shown.follow(app.window.here.parts);
     catch_up(app, held, tx);
+    let parts = app.window.here.parts;
     super::retitle_now(app, tx);
     for part in parts.active() {
         (part.tab_shown)(app, tx);
@@ -454,10 +454,33 @@ fn catch_up(app: &mut App, held: Held, tx: &mut Tx) {
     }
 }
 
+/// Whether `key` is still in an active pane that can take the keyboard, as GTK's `select`
+/// checks `is_mapped` and `grab_focus` before falling back to `focus_active`.
+fn can_restore_focus(app: &App, key: &str) -> bool {
+    let parts = app.window.here.parts;
+    if !parts.in_panes(key) {
+        return false;
+    }
+    let in_sidebar = parts.of(Slot::Sidebar).any(|entry| {
+        key.strip_prefix(entry.name)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('-'))
+    });
+    !in_sidebar
+        || parts
+            .sidebar()
+            .and_then(|sidebar| (sidebar.focus)(app))
+            .is_some()
+}
+
 /// The keyboard goes back to what had it when the tab was hidden, or to the view, as GTK's
 /// `select` restores a tab's saved focus or calls `focus_active`.
 fn give_back_the_keyboard(app: &mut App, tx: &mut Tx) {
-    let key = app.window.here.focus.take();
+    let key = app
+        .window
+        .here
+        .focus
+        .take()
+        .filter(|key| can_restore_focus(app, key));
     let key = key.or_else(|| super::view_focus(app).map(str::to_owned));
     if let Some(key) = key {
         tx.focus(key, true);

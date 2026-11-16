@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! Paste (`Ctrl+V`, folder menu) and Duplicate (`Ctrl+D`, entry menu), destination conflict
+//! Paste (`Ctrl+V`, folder menu), Duplicate (`Ctrl+D`, entry menu), and the move half of
+//! New Folder with Selection (`Ctrl+Alt+N`, entry menu), destination conflict
 //! resolution through [`crate::conflict_dialog`], transfer progress in C16's
 //! [`DockView`](strata_components::progress_dock::DockView) and
 //! [`ProgressDialog`](strata_components::progress_dock::ProgressDialog), and revealing placed
@@ -461,6 +462,28 @@ pub(crate) fn start_drop_transfer(
             reveal,
         },
     );
+}
+
+/// Moves `sources` into a newly created group folder (`move_selection_into_created` in
+/// `src/ui/browser/inline_edit/new_entry.rs`), without revealing the moved children inside it.
+pub(crate) fn move_into_group_folder(app: &mut App, destination: Location, sources: Vec<Location>) {
+    begin_transfer_request(
+        app,
+        TransferRequest {
+            destination,
+            sources,
+            move_sources: true,
+            reveal: false,
+        },
+    );
+}
+
+/// Whether a transfer targeting `destination` is still resolving target names.
+pub(crate) fn is_preparing_to(app: &App, destination: &Location) -> bool {
+    app.transfer
+        .preparing
+        .iter()
+        .any(|key| &key.destination == destination)
 }
 
 fn begin_transfer(
