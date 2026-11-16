@@ -4,6 +4,8 @@
 //! is read once for as long as nothing ran.
 
 use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write as _,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -199,6 +201,63 @@ fn drawn_buttons(elements: &[ElementInfo], lists: &[String]) -> Vec<DrawnButton>
     elements.iter().enumerate().filter_map(button).collect()
 }
 
+/// Window-level `Tx::announce` live region (`a11y/tree.rs` at the pinned rev).
+const ANNOUNCER_ID: u64 = 3;
+
+fn child_segment(author_id: Option<&str>, place: usize, taken: &mut Vec<String>) -> String {
+    let mut segment = author_id.map_or_else(|| format!("#{place}"), str::to_owned);
+    if taken.contains(&segment) {
+        let _ = write!(segment, "~{place}");
+    }
+    taken.push(segment.clone());
+    segment
+}
+
+fn collect_busy(
+    nodes: &HashMap<u64, &rune::accesskit::Node>,
+    id: u64,
+    path: &str,
+    busy: &mut HashSet<String>,
+) {
+    let Some(node) = nodes.get(&id).copied() else {
+        return;
+    };
+    if node.is_busy() {
+        busy.insert(path.to_owned());
+    }
+    let children = node
+        .children()
+        .iter()
+        .filter_map(|child| Some((child.0, *nodes.get(&child.0)?)))
+        .filter(|(_, child)| child.role() != rune::accesskit::Role::TextRun);
+    let mut taken: Vec<String> = Vec::new();
+    for (place, (child_id, child)) in children.enumerate() {
+        if path == "window" && child_id == ANNOUNCER_ID {
+            continue;
+        }
+        let segment = child_segment(child.author_id(), place, &mut taken);
+        collect_busy(nodes, child_id, &format!("{path}/{segment}"), busy);
+    }
+}
+
+/// Paths of nodes whose AccessKit node reports `is_busy` (`El::busy`), keyed as
+/// [`Snapshot`] keys `Runtime::accessibility_json`. Rune's JSON dump (`a11y/dump.rs` at the
+/// pinned rev) omits `is_busy` from `"states"`.
+fn busy_paths(update: &rune::accesskit::TreeUpdate) -> HashSet<String> {
+    if !update.nodes.iter().any(|(_, node)| node.is_busy()) {
+        return HashSet::new();
+    }
+    let nodes: HashMap<u64, &rune::accesskit::Node> =
+        update.nodes.iter().map(|(id, node)| (id.0, node)).collect();
+    let root = update.tree.as_ref().map_or_else(
+        || update.nodes.first().map_or(1, |(id, _)| id.0),
+        |tree| tree.root.0,
+    );
+    let mut busy = HashSet::new();
+    collect_busy(&nodes, root, "window", &mut busy);
+    busy
+}
+
 /// What the snapshot reads beside the accessibility tree: what `app` draws as `elements`.
 /// Both hosts read it, the session host's on each frame its window draws.
 pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
@@ -219,7 +278,24 @@ pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
         buttons: drawn_buttons(elements, &lists),
         sidebar: super::sidebar::Gaps::drawn(elements),
         outlined: crate::filter::outlined(app),
+        edit_range: elements
+            .iter()
+            .find(|element| !element.exiting && element.focused)
+            .and_then(|element| element.edit_range),
+        busy: HashSet::new(),
         lists,
+    }
+}
+
+/// [`drawn`], plus the busy nodes from `update` (`Runtime::accessibility_tree`).
+pub(super) fn drawn_with_busy(
+    elements: &[ElementInfo],
+    app: &App,
+    update: &rune::accesskit::TreeUpdate,
+) -> Drawn {
+    Drawn {
+        busy: busy_paths(update),
+        ..drawn(elements, app)
     }
 }
 
@@ -245,10 +321,11 @@ impl Stage {
     }
 
     pub(super) fn snapshot(&mut self) -> Rc<Snapshot> {
-        let host = &self.host;
+        let host = &mut self.host;
         self.seen
             .get_or_insert_with(|| {
-                let drawn = drawn(&host.elements(), host.app());
+                let update = host.runtime().accessibility_tree();
+                let drawn = drawn_with_busy(&host.elements(), host.app(), &update);
                 Rc::new(Snapshot::read(&host.tree(), &drawn))
             })
             .clone()

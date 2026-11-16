@@ -240,7 +240,7 @@ impl<H: Host> Backend for Rune<H> {
             selectable: seen.has_state("selected") || seen.has_state("unselected"),
             editable: field::is_one(&seen.role) && !seen.has_state("read-only"),
             focusable: snapshot.is_focusable(seen),
-            busy: false,
+            busy: seen.busy || seen.has_state("busy"),
             marked: filter::marked(snapshot.outlined(), seen),
         })
         .unwrap_or_default()

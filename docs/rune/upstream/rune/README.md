@@ -8,11 +8,11 @@ no pull requests; each entry below is one issue or one comment.
 
 | | |
 | --- | --- |
-| Pin | `2a44156b21d63b0342a366b26d9222a6edd4622c` (plan §0), `dev` head on 2026-11-10 |
+| Pin | `631e8a67cb3c40225efa3f6c4f57b80e7b18f190` (plan §0), `dev` head on 2026-11-15 |
 | Written against | `5d421fd` (the earlier pin) and `dev` `04b38ae` (2026-11-10), in a read-only clone |
-| Re-verified | Every entry at `2a44156`, 2026-11-10 (see [Re-verification](#re-verification-at-2a44156)) |
+| Re-verified | Every entry at `2a44156` (2026-11-10; [notes](#re-verification-at-2a44156)), and targeted source re-check at `631e8a67` (2026-11-15; [notes](#re-verification-at-631e8a67)) |
 | Upstream issues | All 222 issues (open and closed), with bodies and comments, read-only with `gh issue list` on 2026-11-10, plus targeted searches that day; none past #507. Re-check before filing: upstream moves daily. |
-| Entries | 98 files: 82 new issues and 16 comments on open issues. 12 drafts dropped, and 3 drafts dropped in part. At `2a44156`, 94 are ready to file (6 of them trimmed), 1 is filed (97, as #657), 1 is drafted and waits for a check in a window (98) and 2 are dropped (65, 80), leaving 81 new issues and 15 comments. Entries 97 and 98 were added on 2026-11-11 by the vertical slice's V8 and V9, after the packet's count of sources below. |
+| Entries | 98 files in the initial set (82 new issues and 16 comments on open issues), plus 9 parity entries (99–107). At `631e8a67`, 92 of 01–98 are ready to file (13 of them trimmed), 1 is filed (97, as #657), 1 is drafted and waits for a check in a window (98) and 4 are dropped (55, 65, 80, 83), leaving 80 new issues and 14 comments. Entries 97 and 98 were added on 2026-11-11 by the vertical slice's V8 and V9, after the packet's count of sources below. |
 | Sources | 174 drafts: 161 with ids (S5's U1–U17, C8's U18–U23, the work packages' `U-*` and `R-*`, C11's R1–R7) and 13 without (comment drafts for #102, #149 and #173, C15's five gaps, C14a's two, C9's, C20a's NumberField proposal and wheel follow-up). The [mapping](#draft-to-entry-mapping) places every one. |
 
 ## How it was built
@@ -74,6 +74,42 @@ Follow-ups in this repository, found on the way (not filings):
 - Entry 89 asks against Rune's stated design (`frame/clock.rs`: "a late frame never loses
   time"); the owner may keep only its "make it an option" half.
 
+## Re-verification at `631e8a67`
+
+On 2026-11-15 the pin moved to `631e8a67` (553 commits past `2a44156`), and entries touched by
+`2a44156b..631e8a67` were checked against Rune's source at the new pin:
+
+- **Dropped (fixed upstream):**
+  - **55** (`U-C24b-3`): Linux primary selection (`PRIMARY` on X11, Wayland data-control) is
+    written when a pointer selects text and pasted on middle-click in text fields
+    (`clipboard/primary.rs:1–49`); custom MIME clipboard/primary access for the app remains [07].
+  - **83** (`#102` comment): `text/fallback.rs:128–133` now routes default `Emoji_Presentation`
+    characters to `Route::Emoji` without `U+FE0F`, alongside COLR v1 colour emoji painting.
+- **Trimmed (partially fixed upstream; trim bodies before filing):**
+  - **29**: `Tx::scroll_key_to` now lands unmounted virtual rows in the same frame
+    (`el/tx/scroll.rs:106–115`, dropping `U-C12-3`); `El::reveal_selected` still walks
+    `virtualize` children only (`runtime/commit/measure.rs:659`, `U-C17-4`).
+  - **33**: `El::dir_by_paragraph` (`text/paragraphs.rs`) shapes a multi-line field by paragraph
+    and reuses unchanged paragraphs across edits, while `text_hash` (`text/hash.rs:39–40`) still
+    hashes each span's start and end, reshaping on colour-only span moves (`U-C10b-1`, `U-C10b-5`).
+  - **39**: `TabStrip::words(TabWords)` localizes the close button's accessible label and status
+    words (`rune-kit/src/shell/tab_strip.rs:267`, `tab.rs:352`); the close tooltip and items 2–5
+    remain.
+  - **42**: `El::busy` (`a11y/node.rs:178`, dropping `R-C14b-1`; note `a11y/dump.rs:70–90` omits
+    `is_busy` from `accessibility_json`), `El::labelled_by`, `El::described_by` and `Tx::announce`
+    (`a11y/tree.rs:406`) landed; `aria-current` (`U-C6-2`), a `scrollbar` role (`U-C10b-3`) and a
+    two-axis value (`U-C20b-3`) remain.
+  - **44**: Headless scripts now accept `{"type": "ime", …}` (`tooling/script.rs:247`), and
+    `--tree` and `ElementInfo::edit_range` expose `imeArea`, `preedit` and the focused field's
+    UTF-8 byte selection (`tooling/trace.rs:363, 386`, `runtime/elements.rs:60`, dropping
+    `U-C6-7`); items 2–6 remain.
+  - **77**: Built-in Linux/Windows middle-click autoscroll draws internal `pan_*` cursors
+    (`input/cursor.rs:77`) and `Cursor::Cell` landed (`:30`), while public `Cursor` (`:15–45`)
+    still lacks `AllScroll`, `Wait` and `Progress` (`U-C24-5`, `R-C14b-2`).
+  - **94**: Single-colour icon rasterization now inherits and applies `stroke-miterlimit`
+    (`text/icon.rs:206, 316`), alongside hairline and rectangle stroke coverage fixes;
+    `stroke-dasharray` and `clip-path` (`:1–4, 330`) remain (`U-K3-3`).
+
 ## Filing
 
 - Each file has notes for the owner (a table), then a line "Paste from here.", then the title and
@@ -87,14 +123,14 @@ Follow-ups in this repository, found on the way (not filings):
 - The bodies name Strata as "Strata (lgse/strata), a file manager on Rune" (owner decision,
   2026-11-10).
 - Each entry's last notes row, `Status`, says whether it is ready. Before filing, if Rune's `dev`
-  has moved past `2a44156`, re-check the gap there and search for a duplicate filed since
-  2026-11-10. After filing, record the link in
+  has moved past `631e8a67` (or past `2a44156` for entries not trimmed above), re-check the gap
+  there and search for a duplicate filed since 2026-11-10. After filing, record the link in
   [`S5-upstream.md`](../../decisions/S5-upstream.md)'s index and in the module docs that cite the
   draft.
 
 ## Entries, highest value first
 
-| # | Entry | Kind | Affects | Retires | Status at `2a44156` |
+| # | Entry | Kind | Affects | Retires | Status at `631e8a67` |
 | --- | --- | --- | --- | --- | --- |
 | 01 | [Display handle, its lifetime, and an every-turn hook](01-display-handle.md) | New issue | P0, P1, P2, P3 (X11), P4 | P0's `dlsym("wl_proxy_get_display")` recovery and its reader thread, the second X11 connection | Ready |
 | 02 | [A held drag hears no `Up` when its element leaves or a modal mounts](02-held-drag-no-up.md) | New issue | C2, C4, C10b, C11b, C24, P1 | `stop()`/`reset()` calls hosts must make on a view switch, C10b's "bar wasn't laid out" check, C24's `Bar::release` | Ready |
@@ -124,22 +160,22 @@ Follow-ups in this repository, found on the way (not filings):
 | 26 | [Linux: play app-decoded PCM with a playback clock, without `Player`](26-pcm-output.md) | New issue | P7 (media audio), C13 (media player) | P7's GStreamer `appsrc` sink and its clock | Ready |
 | 27 | [A scroll request past the mounted rows runs the view; the wheel doesn't](27-scroll-request-view-runs.md) | New issue | C24 (scroll bars), rune-kit's own `ScrollBar` | C24's allowance for Rune's "stepping its own glide" warning on a thumb drag | Ready |
 | 28 | [A scoped reveal can't be kept to its own viewport's axis](28-scoped-reveal-axis.md) | New issue | C2 (Miller columns), C1e (`set_own_viewport_reveals`) | C1e's own-viewport reveals by an offset computed from geometry, which give up Rune's following of a row layout moves | Ready |
-| 29 | [`virtual_rows`: `reveal_selected` and `scroll_key_to` miss rows that aren't laid out](29-virtual-rows-reveal.md) | New issue | C17 (search palette), C12 (PDF view) | C17's `Tx::scroll_into_view_in` on each arrow; C12's re-request of a zoom's centre row a frame later | Ready |
+| 29 | [`virtual_rows`: `reveal_selected` and `scroll_key_to` miss rows that aren't laid out](29-virtual-rows-reveal.md) | New issue | C17 (search palette), C12 (PDF view) | C17's `Tx::scroll_into_view_in` on each arrow; C12's re-request of a zoom's centre row a frame later | Ready, trimmed (`scroll_key_to` fixed at `631e8a67`; `reveal_selected` remains) |
 | 30 | [Comment on #265: hover and hover delays reach elements under an overlay too](30-comment-265-hover-under-overlay.md) | Comment on #265 | C22 (folder peek), C1e (row hover) | C22's `set_covered` host duty and its "no peek while covered" rule | Ready |
 | 31 | [Live values for more than rects, opacity and text](31-live-bindings.md) | New issue | C13 (spectrum, waveform), C16 (progress bars), C4 (column resize) | C13's 96 `live_rect` bars in place of a shape; C16's track width read back through `on_layout_tx` and its four-a-second accessibility commits; C4's view commit on every resize move | Ready, trimmed (see its Status) |
 | 32 | [`El::modal`: say why it was dismissed, and a capture layer that leaves focus where it is](32-modal-dismiss-and-focus.md) | New issue | C20b (colour picker), C24b (autoscroll shield), C5 (rename commits on blur), C17 | C20b's Escape taken in an ancestor's `on_key` first, and its outside-press report a frame late; C5's "autoscroll commits the rename" note | Ready |
-| 33 | [Text shaping: colour changes and single keystrokes reshape the whole text](33-text-reshape-cost.md) | New issue | C10b (code view and script editor), C10a (highlighting) | C10b's 128-line colour window and its D9 deviation (a 25–27 ms keystroke at 5,000 lines) | Ready |
+| 33 | [Text shaping: colour changes and single keystrokes reshape the whole text](33-text-reshape-cost.md) | New issue | C10b (code view and script editor), C10a (highlighting) | C10b's 128-line colour window and its D9 deviation (a 25–27 ms keystroke at 5,000 lines) | Ready, trimmed (`El::dir_by_paragraph` shapes fields by paragraph at `631e8a67`; span-range `text_hash` remains) |
 | 34 | [A caret and keyboard selection in read-only text](34-read-only-caret.md) | New issue | C10b (code view), C11 (document view), C12 (PDF text, which ports its own caret) | C10b's D1 and C11's D3 deviations (no caret or keyboard selection in read-only views) | Ready |
 | 35 | [Selection across several texts: `select_text`, triple-click, an empty end, links](35-selection-across-texts.md) | New issue | C11 (document view), C10b (code view) | C11's D4 (a find match across units selects its first part) and D9; C10b's D11 and D12 | Ready |
 | 36 | [Copying a selection across unbuilt virtual rows stops at a cap, silently](36-selection-copy-cap.md) | New issue | C11 (document view), C10b (code view) | C11's and C10b's Ctrl+A copy from their own model (and the frame in which Ctrl+C copies Rune's cut report) | Ready |
 | 37 | [rune-kit `Table`: reusable column sizing, reorder, visibility, sideways overflow, fit](37-kit-table.md) | New issue | C4 (list table, built on its own collection instead of `Table`), C11b (sheet grid) | C4's and C11b's own tables styled as rune-kit's | Ready |
 | 38 | [rune-kit menus and pop-up lists: submenu keys and hover, item keys, names, rich labels](38-kit-menu.md) | New issue | C21 (context menus), C6 (location bar's hierarchy menu and completion list), C17, C18 | C21's own Right/Left/Enter handling and the sent Tab into a submenu, its "rows keyed by position" deviation, C21's reliance on `Menu::build`'s layer order; C6's own completion list instead of `PopupList` | Ready |
-| 39 | [rune-kit `TabStrip`: labels, look hooks, gaps, keys and edge margin](39-kit-tab-strip.md) | New issue | C7 (browser tabs), C11b (sheet tabs) | C7's ids prefixed with the strip key, the underline and tint set over each tab, its one-jump reveal clear of the edge fades (`probe.rs`) | Ready |
+| 39 | [rune-kit `TabStrip`: labels, look hooks, gaps, keys and edge margin](39-kit-tab-strip.md) | New issue | C7 (browser tabs), C11b (sheet tabs) | C7's ids prefixed with the strip key, the underline and tint set over each tab, its one-jump reveal clear of the edge fades (`probe.rs`) | Ready, trimmed (`TabStrip::words` close label at `631e8a67`; close tooltip and items 2–5 remain) |
 | 40 | [rune-kit `Sidebar` and `Reorder`: a rail form, focus without pressing, sections, keyboard moves](40-kit-sidebar.md) | New issue | C8 (places sidebar) | C8's own list, headings, section and icon-only rail on `SidebarRow`, its parked reorder move | Ready |
 | 41 | [Route an assistive client's action on an option to its container](41-a11y-option-action.md) | New issue | C1e (every collection: list, icons, columns, table), C20d (icon picker, D10) | "A screen-reader user selects with the keyboard only" in C1e; C20d's D10 | Ready |
-| 42 | [Accessibility: `aria-current`, a scroll bar role, busy, and a two-axis control](42-a11y-roles-states.md) | New issue | C6 (breadcrumbs), C10b and C24 (scroll bars), C14b (3D model view), C20b (colour plane) | C6's current crumb as a label last in the list, C10b's position bar read as a slider, C14b's spinner label standing for busy | Ready |
+| 42 | [Accessibility: `aria-current`, a scroll bar role, busy, and a two-axis control](42-a11y-roles-states.md) | New issue | C6 (breadcrumbs), C10b and C24 (scroll bars), C14b (3D model view), C20b (colour plane) | C6's current crumb as a label last in the list, C10b's position bar read as a slider, C14b's spinner label standing for busy | Ready, trimmed (`El::busy` at `631e8a67`; `aria-current`, `scrollbar` role and two-axis value remain) |
 | 43 | [`Tx::scroll_by`, a viewport's offset, and arrow keys that scroll a focused viewport](43-scroll-by.md) | New issue | C19 (shortcut reference), C7 (tab strip wheel) | C19's row-step reveals for arrow scrolling; C7's offset read back from where its content drew | Ready |
-| 44 | [Headless tooling: what scripts and `--tree` can't reach](44-headless-tooling.md) | New issue | C1c, C1e, C5, C6, C7, C17, C18, C25, X1 (tests that run in process instead of as scripts) | In-process tests for IME, titlebar actions, layout-dependent chords and image state; the gallery's 1.1 s warm-up for the commit-budget line | Ready |
+| 44 | [Headless tooling: what scripts and `--tree` can't reach](44-headless-tooling.md) | New issue | C1c, C1e, C5, C6, C7, C17, C18, C25, X1 (tests that run in process instead of as scripts) | In-process tests for IME, titlebar actions, layout-dependent chords and image state; the gallery's 1.1 s warm-up for the commit-budget line | Ready, trimmed (script IME and `--tree` `selection`/`preedit`/`imeArea` at `631e8a67`; items 2–6 remain) |
 | 45 | [Section headers that stick across virtual rows](45-sticky-sections.md) | New issue | C1e/C1f (grouped collections), C4 (grouped list table) | C1f's stuck-header copy drawn over the viewport's top line, pushed by a live value | Ready |
 | 46 | [`on_press` also fires after the element's own drag](46-press-after-drag.md) | New issue | C4 (header sort click after a resize or reorder drag), C2 | C4's held-back sort click cleared in `ListTable::build` | Ready |
 | 47 | [Alt with a letter types the letter into a text field on Linux](47-alt-letter.md) | New issue | C18 (footer prompt), C19 (shortcut reference search) | The "Alt+letter types into a prompt" known gap; the prompt's Alt chords | Ready |
@@ -150,7 +186,7 @@ Follow-ups in this repository, found on the way (not filings):
 | 52 | [Comment on #365: a scroll bar with a trough, apart from its viewport](52-comment-365-scroll-bar.md) | Comment on #365 | C24 (its own overlay bar) | C24's own bar (with 51) | Ready |
 | 53 | [`on_step`'s Page Up and Page Down are always 10 steps](53-range-page.md) | New issue | C13 (media timeline: 5 s steps, 30 s pages), C20a (slider: Strata pages 4 steps) | C13's and C20a's Page keys taken in `on_key` before `on_step` | Ready |
 | 54 | [Comment on #149: what a kit Slider needs, from a file manager's sliders](54-comment-149-slider.md) | Comment on #149 | C20a (slider), C13 (volume and timeline) | C20a's own Slider (with 53) | Ready, trimmed (see its Status) |
-| 55 | [Linux: middle-click paste of the primary selection in text fields](55-middle-click-paste.md) | New issue | C24b, C5 (rename field), C6, every text field; P2 | C24b's "no middle-click paste" deviation | Ready |
+| 55 | [Linux: middle-click paste of the primary selection in text fields](55-middle-click-paste.md) | New issue | C24b, C5 (rename field), C6, every text field; P2 | C24b's "no middle-click paste" deviation | Drop: fixed at `631e8a67` (`clipboard/primary.rs`; app-side primary stays [07](07-clipboard.md)) |
 | 56 | [rune-kit `Keybind` upper-cases single characters](56-keybind-case.md) | New issue | C18 (chord panel), C8 (sidebar keycaps), C19 | C18's own keycap chip | Ready |
 | 57 | [rune-kit: export the Combobox fuzzy matcher, with match positions](57-fuzzy-matcher.md) | New issue | W1's `contract::fuzzy`, C17, C19, C20c, C20d | The port of `score` that also records matched ranges | Ready |
 | 58 | [X11: `AppHandle::activate(token)` on an open window ignores the startup id](58-x11-activation-token.md) | New issue | P8 (single instance) | P8's note that a forwarded launch may not raise the window on mutter or KWin | Ready |
@@ -172,13 +208,13 @@ Follow-ups in this repository, found on the way (not filings):
 | 74 | [Comment on #505: matched flights that start late or arc, and rotation in a beat](74-comment-505-matched-flights.md) | Comment on #505 | C23 (trash flight, shudder) | C23's deviations 1 (a straight path), 2 (stagger by arrival) and 4 (a scale-only shake) | Ready |
 | 75 | [Capture an element's drawn pixels](75-capture-pixels.md) | New issue | C23 (dissolve), P1 (drag icons rendered in a second `Runtime`) | C23's dissolve from a host-built ghost instead of the real pixels | Ready |
 | 76 | [A handler can't read a layout](76-tx-layout.md) | New issue | C23 (effects started from a handler) | C23's frame spent recording where an effect's sources are | Ready |
-| 77 | [Cursors: all-scroll, wait and progress](77-cursors.md) | New issue | C24 (middle-click autoscroll), C14b (model view rendering) | C24's `Move` cursor for autoscroll; C14b's default arrow while rendering | Ready |
+| 77 | [Cursors: all-scroll, wait and progress](77-cursors.md) | New issue | C24 (middle-click autoscroll), C14b (model view rendering) | C24's `Move` cursor for autoscroll; C14b's default arrow while rendering | Ready, trimmed (built-in autoscroll `pan_*` cursors at `631e8a67`; public `AllScroll`, `Wait` and `Progress` remain) |
 | 78 | [Inside a draggable parent, a child's cursor never shows](78-cursor-innermost.md) | New issue | C12 (PDF text over draggable pages) | C12's text band showing the page's grab cursor | Ready |
 | 79 | [Selectable text laid over glyph boxes the app places](79-positioned-text.md) | New issue | C12 (PDF text layer) | C12's port of a PDF text selection (caret, word and line, copy) and its silent accessible text | Ready |
 | 80 | [Comment on #350: inline images in read-only rich text](80-comment-350-inline-images.md) | Comment on #350 | C11 (document view: inline images in Markdown and documents) | C11's images as blocks of their own | Drop: duplicate of #350 |
 | 81 | [A multi-line text field that doesn't wrap](81-field-no-wrap.md) | New issue | C10b (script editor with wrap off) | C10b's field made wider than its widest line inside a sideways viewport | Ready |
 | 82 | [Ask whether a grapheme draws](82-glyph-coverage.md) | New issue | C20d (emoji picker) | C20d's D3 (an emoji version cap instead of hiding what can't draw) | Ready |
-| 83 | [Comment on #102: the outline route isn't DejaVu's alone](83-comment-102-emoji-outlines.md) | Comment on #102 | C20d (`drawn_text` adds U+FE0F) | C20d's `drawn_text` workaround | Ready |
+| 83 | [Comment on #102: the outline route isn't DejaVu's alone](83-comment-102-emoji-outlines.md) | Comment on #102 | C20d (`drawn_text` adds U+FE0F) | C20d's `drawn_text` workaround | Drop: fixed at `631e8a67` (`Emoji_Presentation` routes to `Route::Emoji` without `U+FE0F`) |
 | 84 | [Comment on #114: list the installed families](84-comment-114-font-list.md) | Comment on #114 | K2 (font picker) | K2's font list passed in as data | Ready |
 | 85 | [A thread's measurer can keep the wrong fonts under the new fonts' generation](85-measurer-race.md) | New issue | K6 (font tests), strata-kit and gallery test layout | The rule that a test needing the measure path's fonts lives alone in its own test binary | Ready |
 | 86 | [Off macOS, Ctrl+wheel over `on_magnify` becomes an inverted pinch with no fallback](86-ctrl-wheel-pinch.md) | New issue | C14a (image viewport), C12 (PDF zoom) | C14a's `on_magnify` on macOS only, with Ctrl+wheel handled in `on_wheel` elsewhere | Ready |
@@ -189,7 +225,7 @@ Follow-ups in this repository, found on the way (not filings):
 | 91 | [`on_window_focus` is heard only on the root](91-window-focus-root.md) | New issue | C6 (location bar), X1 (header's active state), gallery pages | Hosts forwarding window activation to each component | Ready |
 | 92 | [`Pixels::set` drops the image it replaces](92-pixels-replace.md) | New issue | P7 (frame pacer) | A 3.7 MB allocation and free per 720p frame | Ready |
 | 93 | [Draw a run-time image in the element's colour (symbolic icons)](93-pixels-tint.md) | New issue | P6 (icon theme), the sidebar and toolbar icons loaded from the desktop's theme | P6's deviation "symbolic icons drawn as authored" | Ready |
-| 94 | [The single-colour icon rasterizer ignores dashes, miter limits and clip paths](94-icon-rasterizer-attributes.md) | New issue | K3 (icon catalogs drawn under Theme colors) | The three Catppuccin icons listed as drawn differently under Theme colors | Ready |
+| 94 | [The single-colour icon rasterizer ignores dashes, miter limits and clip paths](94-icon-rasterizer-attributes.md) | New issue | K3 (icon catalogs drawn under Theme colors) | The three Catppuccin icons listed as drawn differently under Theme colors | Ready, trimmed (`stroke-miterlimit` honoured at `631e8a67`; `stroke-dasharray` and `clip-path` remain) |
 | 95 | [Whether a `Pixels` is drawn](95-pixels-last-drawn.md) | New issue | C25 (thumbnail store's recency) | C25's recency approximated from builds and visible ranges | Ready |
 | 96 | [Comment on #354: a text-field menu's Undo and Redo](96-comment-354-undo-state.md) | Comment on #354 | C21 (field menu) | C21's undo of a cloned `TextEdit` when the menu opens, to learn whether Undo would do anything | Ready |
 | 97 | [A host that owns a `Runtime` cannot send a key press with its physical key](97-key-press-with-physical-key.md) | New issue | `strata-app`'s QA backend (the vertical slice's offscreen host) | The parity ledger's `rune` blocker on a plain-letter binding under a non-Latin layout | Filed: [#657](https://github.com/anomalyco/rune/issues/657) |
@@ -215,7 +251,7 @@ gaps"), by number. The owner ranks each at the filing pass.
 ## Owner decisions (2026-11-10)
 
 - **Hold off filing.** The owner will make a second pass over the entries to avoid flooding the project; until then the packet is documentation only.
-- **Re-verify at a new pin first.** The owner will bump the Rune pin and have each entry re-verified before anything is filed. Done at `2a44156` (see [Re-verification](#re-verification-at-2a44156)). That covers #173 (`Tx::focus`, fixed upstream in `22aa8cde` but still open) and the 12 entries checked only at `5d421fd`.
+- **Re-verify at a new pin first.** The owner will bump the Rune pin and have each entry re-verified before anything is filed. Done at `2a44156` (see [Re-verification](#re-verification-at-2a44156)) and updated at `631e8a67` (see [Re-verification at `631e8a67`](#re-verification-at-631e8a67)). That covers #173 (`Tx::focus`, fixed upstream in `22aa8cde` and adopted in `R-2a44156`) and the 12 entries checked only at `5d421fd`.
 - **Name Strata** in the bodies (done: the context lines say "Strata (lgse/strata), a file manager on Rune").
 - **Entry 24:** attach the fake-portal script as a gist instead of pasting it inline.
 - The scratch in `strata-spikes/rune-packet/` (repro crates and a worktree of Rune head) stays for the re-verification.
@@ -234,9 +270,10 @@ Each has a recommendation; the packet is written to it.
    rest in batches, and hold the rune-kit look and configuration asks (37–40, 66, 68–70) if
    the maintainers prefer fewer, larger kit issues.
 3. **Naming Strata** in the bodies (S5 question 7). They say "a file manager on Rune".
-4. **#173 is fixed but open.** `Tx::focus` landed in `22aa8cde`. Recommendation: leave #173
-   to its author; adopt `Tx::focus` at the next bump, which retires the `focus_return` hops and sent Tabs
-   in C9, C12, C14b, C15, C17, C18, C19 and C20c, and lets C1e restore focus after Back and Up.
+4. **#173 is fixed but open.** `Tx::focus` landed in `22aa8cde` and was adopted in `R-2a44156`
+   (alongside `El::autofocus`, `El::modal_tx`, `Tx::clock` and `Tx::by_keys`), retiring the
+   `focus_return` hops and sent Tabs in C9, C12, C14b, C15, C17, C18, C19 and C20c and restoring
+   focus in C1e after Back and Up. Recommendation: leave #173 to its author.
 5. **Entries checked only at the pin** (12 entries, marked "at the pin" above): re-run their
    probes at head before filing, or file with the pin's evidence and say so (the bodies do).
 6. **Entry 24's fake portal** is pasted in full in a `<details>` block (about 100 lines).
@@ -255,14 +292,20 @@ Each has a recommendation; the packet is written to it.
 | U-C17-2, U-C24-6, and U-C20b-2's `Tx` half | Fixed in `22aa8cde`: `El::modal_tx` gives the dismissal the change's `Tx`. The dismissal's reason (U-C20b-2's other half) is entry [32](32-modal-dismiss-and-focus.md). |
 | U23 | Fixed in `3847cf0a`, past the pin: `Tx::by_keys` says a key brought the change, including Return or Space on a control. |
 | U-C13-4 | Duplicate of [#387](https://github.com/anomalyco/rune/issues/387) (`aspect_fit` with `max_w` overflows: `fit_room` turns `max_w` into the room width), filed upstream 2026-11-09 with its own repro. |
-| C15: keyboard focus mode can't be cleared | Likely covered by `Tx::focus(key, ring: false)` (`22aa8cde`; `el/tx.rs:361` at `2a44156`): a chained dialog can take focus without the ring. Confirm when C15 adopts `Tx::focus`; file nothing until then. |
+| C15: keyboard focus mode can't be cleared | Covered by `Tx::focus(key, ring: false)` (`22aa8cde`), adopted in `R-2a44156`: a chained dialog takes focus without the ring. |
 | Entry 65 (U-C2-3) | Dropped at `2a44156`: already in Rune at the pin. `El::drawn_rect_into` writes the drawn rect on every frame of a layout spring; C2 can adopt it. |
 | Entry 80 (R3, #350 comment) | Dropped at `2a44156`: duplicate of [#350](https://github.com/anomalyco/rune/issues/350), whose thread already asks for it; read-only text already has `El::inline_icon` and `El::pill`. |
+| Entry 55 (U-C24b-3) | Dropped at `631e8a67`: Linux primary selection (`PRIMARY` on X11, Wayland data-control) is written on pointer text selection and pasted on middle-click in text fields (`clipboard/primary.rs:1–49`); custom MIME clipboard/primary access for the app stays entry [07](07-clipboard.md). |
+| Entry 83 (#102 comment, C20d) | Dropped at `631e8a67`: `text/fallback.rs:128–133` routes default `Emoji_Presentation` characters to `Route::Emoji` without `U+FE0F`, alongside COLR v1 colour emoji painting. |
+| U-C12-3 (entry [29](29-virtual-rows-reveal.md)'s `scroll_key_to` half) | Fixed at `631e8a67`: `Tx::scroll_key_to` lands unmounted virtual rows in the same frame (`el/tx/scroll.rs:106–115`). `El::reveal_selected` (`U-C17-4`) remains in [29](29-virtual-rows-reveal.md). |
+| R-C14b-1 (entry [42](42-a11y-roles-states.md)'s `busy` half) | Fixed at `631e8a67`: `El::busy(bool)` sets `accesskit::Node::set_busy()` (`a11y/node.rs:178`; `a11y/dump.rs:70–90` still omits `"busy"` from `accessibility_json`). The other three parts of [42](42-a11y-roles-states.md) remain. |
+| U-C6-7 (entry [44](44-headless-tooling.md)'s script IME and field selection/preedit half) | Fixed at `631e8a67`: scripts accept `{"type": "ime", …}` (`tooling/script.rs:247`), and `--tree` and `ElementInfo::edit_range` expose `imeArea`, `preedit` and focused field UTF-8 byte selection (`tooling/trace.rs:363, 386`, `runtime/elements.rs:60`). Items 2–6 of [44](44-headless-tooling.md) remain. |
 | U-X1-1 | Doesn't apply: scripts can deactivate a window (`{"t": .., "focus": false}` reaches the root's `on_window_focus`, C6's probe P2b). Its real gap is entry [91](91-window-focus-root.md). |
 | U-C17-1 | Never a draft: C17 reserved the id, then found the hidden live region works. |
 
-Adopting the fixes above (and dropping the workarounds they retire) waits for the next Rune
-bump, which is its own change.
+The `2a44156` fixes above (`Tx::focus`, `El::autofocus`, `El::modal_tx`, `Tx::clock`, `Tx::by_keys`
+and `El::drawn_rect_into`) were adopted in `R-2a44156`; the `631e8a67` fixes above are adopted with
+the `631e8a67` bump.
 
 ## Draft-to-entry mapping
 
@@ -326,7 +369,7 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 | U-C6-4 | `location_bar/mod.rs` | [38] |
 | U-C6-5 | `location_bar/mod.rs` | [10] |
 | U-C6-6 | `location_bar/mod.rs` | [91] |
-| U-C6-7 | `location_bar/mod.rs` | [44] |
+| U-C6-7 | `location_bar/mod.rs` | [44] (drop: fixed at `631e8a67`) |
 | U-C6-8 | `location_bar/mod.rs` | [38] |
 | U-C7-1, U-C7-3, U-C7-4, U-C7-5, U-C7-7 | `tabs/mod.rs` | [39] |
 | U-C7-2 | `tabs/mod.rs` | [10], [43] |
@@ -347,7 +390,7 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 | U-C11b-3 | `sheet_grid/mod.rs` | [17] |
 | U-C12-1 | `pdf_view/mod.rs` | [79] |
 | U-C12-2 | `pdf_view/mod.rs` | [18] |
-| U-C12-3 | `pdf_view/mod.rs` | [29] |
+| U-C12-3 | `pdf_view/mod.rs` | [29] (drop: fixed at `631e8a67`) |
 | U-C12-4 | `pdf_view/mod.rs` | [78] |
 | U-C13-1, U-C13-3 | `media_player/mod.rs` | [31] |
 | U-C13-2 | `media_player/mod.rs` | [53] |
@@ -375,7 +418,7 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 | U-C20c-4 | `controls/tabbed_form/mod.rs` | [72] |
 | #173 comment (C20c) | `controls/tabbed_form/mod.rs` | drop: fixed in `22aa8cde` |
 | U-C20d-1 | `controls/icon_picker/mod.rs` | [82] |
-| #102 comment (C20d) | `controls/icon_picker/mod.rs` | [83] |
+| #102 comment (C20d) | `controls/icon_picker/mod.rs` | [83] (drop: fixed at `631e8a67`) |
 | U-C21-1 | `context_menu/mod.rs` | [04] |
 | U-C21-2 | `context_menu/mod.rs` | [03] |
 | U-C21-3 | `context_menu/mod.rs` | [96] |
@@ -396,7 +439,7 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 | U-C24-8 | `scroll/mod.rs` | [27] |
 | U-C24b-1 | `scroll/mod.rs` | [50] |
 | U-C24b-2 | `scroll/mod.rs` | [10] |
-| U-C24b-3 | `scroll/mod.rs` | [55] |
+| U-C24b-3 | `scroll/mod.rs` | [55] (drop: fixed at `631e8a67`) |
 | U-C24b-4 | `scroll/mod.rs` | [32] |
 | R-C24-1 | `scroll/mod.rs` | [51] |
 | R-C24-2 (#365 comment) | `scroll/mod.rs` | [52] |
@@ -409,7 +452,7 @@ Every draft found, where it was written, and its packet entry. Module paths are 
 | R-C4-2 | `list_table/mod.rs` | [02] |
 | R-C4-3 | `list_table/mod.rs` | [16] |
 | R-C4-4 | `list_table/mod.rs` | [31] |
-| R-C14b-1 | `viewers/mod.rs` | [42] |
+| R-C14b-1 | `viewers/mod.rs` | [42] (drop: fixed at `631e8a67`) |
 | R-C14b-2 | `viewers/mod.rs` | [77] |
 | R-C14b-3 | `viewers/mod.rs` | [03] |
 | R-K6-1 | `docs/rune/testing.md` | [85] |

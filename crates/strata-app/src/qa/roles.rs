@@ -4,7 +4,7 @@
 //! AT-SPI's, which the GTK harness reports (`src/qa/targets/naming.rs`).
 
 /// Rune's name for a role, as `Runtime::accessibility_json` spells it, and the AT-SPI name.
-pub(super) const ROLES: [(&str, &str); 47] = [
+pub(super) const ROLES: [(&str, &str); 52] = [
     ("alert", "alert"),
     ("alert-dialog", "alert"),
     ("button", "button"),
@@ -48,9 +48,14 @@ pub(super) const ROLES: [(&str, &str); 47] = [
     ("switch", "toggle button"),
     ("tab", "page tab"),
     ("tab-list", "page tab list"),
+    ("tab-panel", "panel"),
     ("table", "table"),
     ("text-input", "text"),
+    ("toolbar", "tool bar"),
     ("tooltip", "label"),
+    ("tree", "tree"),
+    ("tree-grid", "tree table"),
+    ("tree-item", "tree item"),
     ("window", "frame"),
 ];
 
@@ -78,7 +83,7 @@ pub(super) fn at_spi(role: &str, named: bool) -> &'static str {
 /// not. A button with one is a toggle button, as AccessKit hands it to AT-SPI (`Role::Button`
 /// with `toggled`, in `accesskit_atspi_common`) and as GTK's toggle buttons are.
 pub(super) fn at_spi_toggled(role: &str, named: bool, toggled: bool) -> &'static str {
-    if toggled && role == "button" {
+    if toggled && matches!(role, "button" | "default-button") {
         return TOGGLE_BUTTON;
     }
     at_spi(role, named)
