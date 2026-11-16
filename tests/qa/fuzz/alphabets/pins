@@ -45,6 +45,12 @@ location v2 c074595ff2aab0b4
 # while bundle.zip or bundle.tar exists and met Right/l on created archives opening A15's Quick
 # Preview on GTK. Version 4 keeps Right/l off created archives.
 menus v4 389c2a5b99f176f3
+# pointer: versions 1 and 2 were A9's drafts, never merged: version 1 met GTK's Settings window
+# (`app.dialog`), lgse/strata#2414, lgse/strata#2551 (fixed) and lgse/strata#2552 on arrows after
+# a marquee; version 2 met name-space drags from a selected row (A19's) and a deselecting
+# Ctrl+click (as in lgse/strata#2353). Version 3 sends no keyboard cursor moves and guards both;
+# its seeds name the shrunk sequences of lgse/strata#2552, parked in tests/qa/fuzz/corpus/pointer.
+pointer v3 e4a464d3bf25d6d6
 # properties: versions 1 and 2 were A17's drafts, never merged: version 1 met `Open` on fixture
 # folders opening GTK's Open With chooser (`BrowserEvent::OpenRequested`, A14's Slice 2) and
 # lgse/strata#2356 on already-open folder clicks and cursorless background-menu Escape; version 2

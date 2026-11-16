@@ -1940,3 +1940,50 @@ sequence only together with the alphabet's version, so the version is part of th
   `v1-000000000000000f` is parked in `tests/qa/fuzz/corpus/clipboard/parked`; `clipboard v4` moves
   the pointer onto a clicked folder's opened column and pastes into `archive` via the
   selected-folder route from `$root`.
+
+### #2551: Rune anchors a Shift+click at a load's cursor and at the cursor after a clear
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2551), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A9](packages/A9.md)'s `pointer` alphabet: seed `0x05` of `pointer v1` and seed
+  `0x01` of `pointer v3`, both drafts and never merged, GTK against Rune. GTK's Shift+click
+  (`pointer_selection`, `src/ui/collection_interaction.rs`) ranges from the anchor the shared
+  browser keeps, and selects the clicked entry alone when there is none. After a folder's load
+  in List or Icons (cursor on `notes.txt`, nothing selected), a Shift+click on `report.md`
+  selects `[report.md]` on GTK and selected `[notes.txt, report.md]` on Rune. After a click on
+  `diagram.txt`, a Shift+click on `photo.txt` and a click on the pane's empty space, a
+  Shift+click on `diagram.txt` selects `[diagram.txt]` on GTK, whose empty-space press
+  (`unselect_all`) and Escape (`clear_active_selection`) leave the anchor where it was, and
+  selected `[diagram.txt, photo.txt]` on Rune.
+- **Why:** the first visit's cursor took the anchor with it (`single/first_visit.rs`,
+  `AnchorRule::Move`), `Selection::sync` gave a missing anchor the cursor on every sync of a
+  listing, and `Selection::clear` moved the anchor to the cursor (`crates/strata-components/src/collection/selection/mod.rs`).
+- **State:** fixed by [A9](packages/A9.md)'s closing pull request. The first visit keeps the
+  anchor missing, `sync` moves only an anchor whose entry left, and `clear` keeps the anchor.
+  The keyboard's Shift+arrow still starts at the cursor when nothing is selected, as GTK's
+  `resume_native_selection` does, since the keyboard machine moves the anchor there first
+  (`keyboard::tests`). Held by `qa::tests::clicks::a_shift_click_after_a_load_*` and
+  `a_shift_click_after_a_background_click_*` in List and Icons, and by
+  `collection::selection::tests::clear_keeps_the_anchor_for_the_next_shift_click`.
+
+### #2552: after a marquee, GTK's browser cursor is the band's end while its focus stays where it was
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2552), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A9](packages/A9.md)'s `pointer` alphabet, GTK against Rune. GTK's selection
+  sync (`SelectionSync::changed`, `src/ui/browser_modes/selection.rs`) gives the shared browser,
+  as its cursor, the last entry each selection change newly selected. During a band, that is the
+  entry the band reached last, while the list's own focus, which GTK's snapshot reports, stays on
+  the row it was on. What reads the browser's cursor afterwards then starts from the band's end:
+  a return to the folder (click `pictures`, click `photo.txt`, a marquee from empty space up to
+  `diagram.txt`, Alt+Up, click `pictures`: GTK focuses `diagram.txt`, Rune `photo.txt`), a
+  reload (a marquee from empty space up to `readme.md` with `todo.txt` focused, then a file
+  removed: GTK refocuses `readme.md`), and the next arrow (GTK's `j` selected the focused
+  `notes.txt` in place where Rune moved on to `report.md`). Rune keeps its cursor on the
+  focused row.
+- **Concerns:** `fuzz-pointer-v3-000000000000000c` and `-0d`, each shrunk to 5 steps, confirmed
+  3 of 3 against Rune and agreeing with itself in 24 of 24 GTK replays, parked in
+  `tests/qa/fuzz/corpus/pointer/`; the arrow cases, seeds `0x0a`, `0x0e` and `0x14` of
+  `pointer v1`, never merged. Not driven by hand on GTK.
+- **State:** open, set aside: no Rune change. `pointer v3` sends no keyboard cursor moves, and
+  any fix belongs on `main`.
