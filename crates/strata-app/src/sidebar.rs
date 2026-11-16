@@ -337,6 +337,26 @@ impl Sidebar {
         self.state.width.auto_rail() != before
     }
 
+    /// Pinned places in sidebar display order, excluding rows the sidebar hides
+    /// (`SidebarState::visible_pins` in `src/ui/window/sidebar_places.rs`).
+    pub(crate) fn visible_pins(&self) -> Vec<Location> {
+        if self.started {
+            return self
+                .listed
+                .rows
+                .iter()
+                .filter(|row| matches!(row.item, ItemId::Pin(_)))
+                .map(|row| row.location.clone())
+                .collect();
+        }
+        let env = Environment::current();
+        bookmarks::current()
+            .into_iter()
+            .map(|(location, _)| location)
+            .filter(|location| !env.is_standard(location))
+            .collect()
+    }
+
     fn location_of(&self, item: &ItemId) -> Option<&places::Row> {
         self.listed.rows.iter().find(|row| &row.item == item)
     }
@@ -442,13 +462,39 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
     }
 }
 
+/// Shows or hides 10xer's `g` place and pin keycaps on sidebar rows, relisting when shown so
+/// live `[keymap.tenxer]` or locale updates take effect immediately.
+pub(crate) fn show_keycaps(app: &mut App, shown: bool) {
+    if shown && app.sidebar.started {
+        relist(app);
+    }
+    app.sidebar.state.keycaps = shown;
+}
+
+/// Refreshes `app.sidebar.pins` from the shared store at once so a caller reading
+/// [`Sidebar::visible_pins`] after `bookmarks::update` sees the newly saved slot.
+pub(crate) fn sync_pins_from_store(app: &mut App) {
+    if !app.sidebar.started {
+        return;
+    }
+    let pins = bookmarks::current();
+    if app.sidebar.pins != pins {
+        app.sidebar.pins = pins;
+        relist(app);
+    }
+}
+
 /// Opens a row's location, with its row marked before the folder opens.
 fn open(app: &mut App, item: &ItemId, via: Via, tx: &mut Tx) {
     let Some(row) = app.sidebar.location_of(item).cloned() else {
         return;
     };
+    let tenxer = shell::preferences(app).tenxer_mode;
+    let before = app.browser.active_location();
     app.sidebar.current = Some(row.item);
-    let select_first = via == Via::Keyboard;
+    // In 10xer mode, GTK activates a sidebar row with `emit_clicked()` (`select_first = false`)
+    // and hands focus back to the view once the location changes (`keyboard/tenxer.rs:181`).
+    let select_first = via == Via::Keyboard && !tenxer;
     shell::publish(app);
     let browser = app.browser.clone();
     match row.navigation {
@@ -456,6 +502,16 @@ fn open(app: &mut App, item: &ItemId, via: Via, tx: &mut Tx) {
         Navigation::Validate => browser.navigate_location(row.location, select_first),
     }
     shell::settle(app, tx);
+    let moved = app.browser.active_location() != before;
+    if returns_focus_to_view(tenxer, via, moved)
+        && let Some(view) = shell::view_focus(app)
+    {
+        tx.focus(view, true);
+    }
+}
+
+fn returns_focus_to_view(tenxer: bool, via: Via, moved: bool) -> bool {
+    tenxer && via == Via::Keyboard && moved
 }
 
 #[cfg(test)]

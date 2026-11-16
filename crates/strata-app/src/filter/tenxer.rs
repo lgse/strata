@@ -88,6 +88,31 @@ pub(crate) fn dismiss_filter_only(app: &mut App, tx: &mut Tx) -> bool {
     true
 }
 
+/// `reveal_listing_search_hit` (`src/ui/browser/listing_search.rs`): ends an active `s`
+/// search and opens the hit's parent folder with the hit selected.
+pub(crate) fn reveal_search_hit(app: &mut App, tx: &mut Tx) -> bool {
+    if !search_active(app) {
+        return false;
+    }
+    let Some((_, entry)) = targets::under_cursor(app) else {
+        return false;
+    };
+    let Some(folder) = entry.location.parent() else {
+        return false;
+    };
+    let polled = app.filter.state.close();
+    route(app, polled, tx);
+    shell::publish(app);
+    app.browser.reveal_locations(folder, vec![entry.location]);
+    if let Some(view) = shell::shown_view(app)
+        && (view.shows)("columns")
+    {
+        app.columns
+            .follow_active(app.browser.active_depth(), &app.look, tx);
+    }
+    true
+}
+
 /// Non-Latin fallback `h j k l` on search results (`search_result_keys`'s `vim_arrow` where
 /// C1c lacks the offscreen key's physical origin).
 pub(super) fn fallback_vim_arrow(press: &KeyPress) -> Option<Direction> {
