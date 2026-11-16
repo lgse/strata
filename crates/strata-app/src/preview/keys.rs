@@ -33,11 +33,13 @@ const PREVIEW_IGNORED: Modifiers = Modifiers::SHIFT_MASK.union(Modifiers::SUPER_
 
 pub(super) const COMMANDS: &[Action<App>] = &[
     Action::new("preview-panel", toggle_panel),
-    Action::new("preview-close", close_from_preview).keys(&[Keys::at(
-        Stage::FilterAndLocationCommands,
-        &[PREVIEW.ignoring(Modifiers::empty())],
-    )
-    .when(in_preview_outside_find)]),
+    Action::new("preview-close", close_from_preview)
+        .command(PREVIEW)
+        .keys(&[Keys::at(
+            Stage::FilterAndLocationCommands,
+            &[PREVIEW.ignoring(Modifiers::empty())],
+        )
+        .when(in_preview_outside_find)]),
     Action::new("preview", space_preview)
         .command(PREVIEW)
         .keys(&[

@@ -217,14 +217,16 @@ fn cap_alt(alt: &str) -> String {
     out
 }
 
+pub(super) type DocumentAccess = (
+    fn(&App) -> &DocumentState,
+    fn(&mut App) -> &mut DocumentState,
+);
+
 pub(super) fn build_view(
     app: &App,
     cx: &mut Cx<App>,
     blocks: &CodeBlocks,
-    (get, get_mut): (
-        fn(&App) -> &DocumentState,
-        fn(&mut App) -> &mut DocumentState,
-    ),
+    (get, get_mut): DocumentAccess,
 ) -> El {
     DocumentView::new(get, get_mut)
         .blocks(blocks)
