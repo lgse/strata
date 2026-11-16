@@ -315,6 +315,7 @@ pub(super) fn drawn(elements: &[ElementInfo], app: &App) -> Drawn {
         icons: row_icons(elements),
         buttons: drawn_buttons(elements, &lists),
         sidebar: super::sidebar::Gaps::drawn(elements),
+        tenxer: super::tenxer::Labels::drawn(elements),
         outlined: crate::filter::outlined(app),
         edit_range: elements
             .iter()
