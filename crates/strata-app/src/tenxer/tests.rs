@@ -250,3 +250,134 @@ fn l_and_right_on_file_keep_open_preview_instead_of_closing_it() {
         },
     );
 }
+
+#[test]
+fn copy_action_and_tab_chords_update_clipboard_dialogs_and_tabs() {
+    hosted(
+        MODULE,
+        "copy_action_and_tab_chords_update_clipboard_dialogs_and_tabs",
+        |mut host| {
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = true);
+            });
+            let _folder = open_and_focus(&mut host);
+            host.app().browser().select(0, 1);
+            while host.turn() {}
+
+            // `c n` copies the selected display name; `c c` copies its path.
+            tap(&mut host, char_key("c"), Mods::default());
+            assert_eq!(node_name(&host, "footer-chord-pill").as_deref(), Some("c-"));
+            tap(&mut host, char_key("n"), Mods::default());
+            assert_eq!(
+                crate::clipboard::fallback_text(host.app()),
+                Some("beta.txt")
+            );
+
+            // `; e` on a plain file flashes "Not an archive"; `; c` opens Compress.
+            tap(&mut host, char_key(";"), Mods::default());
+            assert_eq!(node_name(&host, "footer-chord-pill").as_deref(), Some(";-"));
+            tap(&mut host, char_key("e"), Mods::default());
+            assert_eq!(
+                node_name(&host, "footer-flash").as_deref(),
+                Some("Not an archive")
+            );
+
+            tap(&mut host, char_key(";"), Mods::default());
+            tap(&mut host, char_key("c"), Mods::default());
+            assert!(has_key(&host, "compress-1-name"));
+            tap(&mut host, Key::Escape, Mods::default());
+
+            // `t n` opens a second tab; arming `g-` and switching tabs via `Ctrl+PageUp` cancels it.
+            tap(&mut host, char_key("t"), Mods::default());
+            tap(&mut host, char_key("n"), Mods::default());
+            assert_eq!(shell::tabs::tabs(host.app()).len(), 2);
+            tap(&mut host, char_key("g"), Mods::default());
+            assert_eq!(node_name(&host, "footer-chord-pill").as_deref(), Some("g-"));
+            tap(&mut host, Key::PageUp, ctrl());
+            assert!(!has_key(&host, "footer-chord-pill"));
+        },
+    );
+}
+
+#[test]
+fn go_chord_toggles_sidebar_keycaps_and_letter_bookmarks_save_and_jump() {
+    hosted(
+        MODULE,
+        "go_chord_toggles_sidebar_keycaps_and_letter_bookmarks_save_and_jump",
+        |mut host| {
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = true);
+            });
+            let first = open_and_focus(&mut host);
+            let second = folder_of(&["other.txt"]);
+
+            // Arming `g` turns sidebar keycaps on; Escape turns them back off.
+            tap(&mut host, char_key("g"), Mods::default());
+            assert!(host.app().sidebar.is_started());
+            tap(&mut host, Key::Escape, Mods::default());
+            assert!(!has_key(&host, "footer-chord-pill"));
+
+            // `m a` saves the listed folder; navigating away and pressing `' a` returns there.
+            tap(&mut host, char_key("m"), Mods::default());
+            assert_eq!(node_name(&host, "footer-chord-pill").as_deref(), Some("m-"));
+            tap(&mut host, char_key("a"), Mods::default());
+            assert!(host.run_until(PATIENCE, |h| {
+                node_name(h, "footer-flash").as_deref() == Some("Saved bookmark a")
+            }));
+
+            host.app().open(Location::local(second.path()));
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app().browser().active_location() == Some(Location::local(second.path()))
+            }));
+            while host.turn() {}
+
+            tap(&mut host, char_key("'"), Mods::default());
+            assert_eq!(node_name(&host, "footer-chord-pill").as_deref(), Some("'-"));
+            tap(&mut host, char_key("a"), Mods::default());
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app().browser().active_location() == Some(Location::local(first.path()))
+            }));
+        },
+    );
+}
+
+#[test]
+fn tenxer_sidebar_keyboard_activation_selects_nothing_and_returns_focus_to_view() {
+    hosted(
+        MODULE,
+        "tenxer_sidebar_keyboard_activation_selects_nothing_and_returns_focus_to_view",
+        |mut host| {
+            let home = std::path::PathBuf::from(std::env::var_os("HOME").expect("test home"));
+            for name in ["a.txt", "b.txt"] {
+                std::fs::write(home.join(name), name).expect("a file at home");
+            }
+            host.runtime().update(|app, _| {
+                shell::saved(app).change(|s| s.tenxer_mode = true);
+            });
+            let _folder = open_and_focus(&mut host);
+            assert!(host.run_until(PATIENCE, |h| has_key(h, "sidebar-place-home")));
+
+            host.runtime().update(|_, tx| {
+                tx.focus("sidebar-place-home", true);
+            });
+            while host.turn() {}
+
+            tap(&mut host, char_key("l"), Mods::default());
+            assert!(host.run_until(PATIENCE, |h| {
+                h.app().browser().active_location() == Some(Location::local(&home))
+                    && h.app().browser().column_entry_counts(0).is_some()
+            }));
+            while host.turn() {}
+            assert!(host.app().browser().selected_positions(0).is_empty());
+            let tree = host.tree();
+            let focused_view = !all(&tree, &|node| {
+                text(node, "key").starts_with(crate::columns::VIEW)
+                    && node["states"]
+                        .as_array()
+                        .is_some_and(|states| states.iter().any(|state| state == "focused"))
+            })
+            .is_empty();
+            assert!(focused_view, "focus returned to the Columns view");
+        },
+    );
+}

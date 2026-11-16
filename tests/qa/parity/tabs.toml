@@ -154,25 +154,22 @@ host = "offscreen"
 scenario = "tenxer-tab-chords"
 run = "columns"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-tab-chords"
 run = "icons"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-tab-chords"
 run = "list"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "view-folders-open-new-tabs"

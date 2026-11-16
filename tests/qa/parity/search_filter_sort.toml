@@ -172,25 +172,22 @@ blocker = "A11"
 scenario = "tenxer-sort-chords-keep-cursor"
 run = "columns"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-sort-chords-keep-cursor"
 run = "icons"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "tenxer-sort-chords-keep-cursor"
 run = "list"
 package = "A11"
-status = "pending"
-reason = "scope"
-blocker = "A11"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "type-to-search-finds-nested"

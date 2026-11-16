@@ -248,6 +248,29 @@ fn target_entries(app: &mut App, on: &On) -> Vec<FileEntry> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CompressAttempt {
+    Nothing,
+    Refused,
+    Started,
+}
+
+/// `BrowserView::compress_targets` (`src/ui/browser/file_commands.rs`) for 10xer's `; c` chord.
+pub(crate) fn open_for_focus(app: &mut App) -> CompressAttempt {
+    let entries = focus_entries(app);
+    if entries.is_empty() {
+        return CompressAttempt::Nothing;
+    }
+    if entries
+        .iter()
+        .any(|entry| entry.location.native_path().is_none())
+    {
+        return CompressAttempt::Refused;
+    }
+    open(app, entries);
+    CompressAttempt::Started
+}
+
 fn compress(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
     let entries = target_entries(app, &call.on);
     if !entries.is_empty()

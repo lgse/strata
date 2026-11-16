@@ -63,6 +63,7 @@ pub(crate) const RESET: Action<App> =
 /// Saves the size `to` makes of the saved one, and has the look follow it. The key is taken
 /// at either end of the range too, as GTK's stage takes it.
 fn set(app: &mut App, to: fn(TextSize) -> TextSize) -> Outcome {
+    crate::tenxer::cancel_chord(app);
     let size = to(shell::preferences(app).text_size);
     shell::saved(app).change(|settings| settings.text_size = size);
     shell::follow_look(app);
