@@ -5,8 +5,8 @@
 //! `A15` mounts C9's [`PreviewDrawer`](strata_components::preview_drawer::PreviewDrawer) once in
 //! [`Place::Drawer`](crate::slots::Place::Drawer) and delegates header capabilities, find, and
 //! content rendering through [`Viewer`]:
-//! - `A15` owns plain text and code (`Viewer::Code`), plus rendered documents, spreadsheets, and
-//!   still images in subsequent `A15` slices.
+//! - `A15` owns plain text and code (`Viewer::Code`), rendered documents and spreadsheets
+//!   (`Viewer::Document`), and still images in Slice 3.
 //! - `A16` plugs PDF (`PdfView`), audio/video (`MediaPlayer`), 3D models (`ModelView`), and GPS
 //!   routes (`RouteView`) in as new [`Viewer`] variants and arms in [`super::load`].
 //! - `A13` plugs archive trees (`ArchiveTree`) and archive password prompts in as new [`Viewer`]
@@ -19,21 +19,39 @@ use rune::{Cx, El, Tx, col, text};
 use rune_kit::{Button, Spinner};
 use strata_components::{
     code_view::{CodeIntent, CodeState, CodeView, highlight::Highlighter},
+    document_view::DocumentState,
     preview_drawer::{DocumentView, FindStatus, HostedPreview},
+    sheet_grid::SheetGridState,
 };
 use strata_core::i18n::tr;
 use strata_kit::look::Look;
 
-use super::labels;
+use super::{
+    document::{self, DecodedMedia, MediaTask, RenderedDocument},
+    labels, sheet,
+};
 use crate::{App, buttons};
 
 /// Key of the read-only source/text viewer inside the preview drawer.
 pub(crate) const CODE_KEY: &str = "preview-code";
 
+pub(super) enum RenderedBody {
+    Document(Box<RenderedDocument>),
+    Sheet(Box<SheetGridState>),
+}
+
+pub(super) struct DocumentViewer {
+    active: DocumentView,
+    rendered: Option<RenderedBody>,
+    source: Option<Box<CodeState>>,
+    render_pending: bool,
+}
+
 pub(super) enum Viewer {
     Empty,
     Loading,
     Code(Box<CodeState>),
+    Document(DocumentViewer),
     Message {
         title: String,
         detail: Option<String>,
@@ -41,12 +59,13 @@ pub(super) enum Viewer {
     },
 }
 
-/// Source text and metadata handed to [`Viewer::code`].
+/// Source text and metadata handed to [`Viewer::code`] or [`build_code_state`].
 pub(super) struct CodeSource<'a> {
     pub(super) content: String,
     pub(super) truncated: bool,
     pub(super) wrap: bool,
     pub(super) file_name: &'a str,
+    pub(super) fallback_reason: Option<&'a str>,
 }
 
 impl Viewer {
@@ -54,29 +73,125 @@ impl Viewer {
         matches!(self, Self::Empty)
     }
 
-    pub(super) fn code(source: CodeSource<'_>, highlighter: &Highlighter) -> Self {
-        let mut state = CodeState::new(source.content).key(CODE_KEY).highlighter(
-            highlighter,
-            Some(source.file_name),
-            None,
-        );
-        state.set_wrap(source.wrap);
-        if source.truncated {
-            state.set_notices(vec![tr("Preview limited to the first 1 MB")]);
-        }
-        Self::Code(Box::new(state))
+    #[cfg(test)]
+    pub(super) fn is_sheet(&self) -> bool {
+        matches!(
+            self,
+            Self::Document(DocumentViewer {
+                rendered: Some(RenderedBody::Sheet(_)),
+                ..
+            })
+        )
     }
 
-    pub(super) fn poll(&mut self, tx: &mut Tx) -> bool {
+    pub(super) fn can_focus(&self) -> bool {
+        match self {
+            Self::Code(_) | Self::Document(_) => true,
+            Self::Message { can_open, .. } => *can_open,
+            Self::Empty | Self::Loading => false,
+        }
+    }
+
+    pub(super) fn code(source: CodeSource<'_>, highlighter: &Highlighter) -> Self {
+        Self::Code(Box::new(build_code_state(source, highlighter)))
+    }
+
+    pub(super) fn rendered_only(rendered: RenderedBody) -> Self {
+        Self::Document(DocumentViewer {
+            active: DocumentView::Rendered,
+            rendered: Some(rendered),
+            source: None,
+            render_pending: false,
+        })
+    }
+
+    pub(super) fn document(
+        active: DocumentView,
+        rendered: Option<RenderedBody>,
+        source: CodeState,
+        render_pending: bool,
+    ) -> Self {
+        let initial = if active == DocumentView::Rendered && rendered.is_some() {
+            DocumentView::Rendered
+        } else {
+            DocumentView::Source
+        };
+        Self::Document(DocumentViewer {
+            active: initial,
+            rendered,
+            source: Some(Box::new(source)),
+            render_pending,
+        })
+    }
+
+    pub(super) fn stop(&mut self) {
+        if let Self::Document(doc) = self {
+            doc.stop();
+        }
+    }
+
+    pub(super) fn reset_viewport(&self, tx: &mut Tx) {
+        tx.clear_text_selection();
+        for key in [
+            CODE_KEY,
+            super::document::DOCUMENT_KEY,
+            super::sheet::SHEET_KEY,
+        ] {
+            tx.scroll_to_instant(format!("{key}-scroll"), 0.0, 0.0);
+        }
+    }
+
+    pub(super) fn take_render_pending(&mut self) -> bool {
+        match self {
+            Self::Document(doc) => std::mem::replace(&mut doc.render_pending, false),
+            _ => false,
+        }
+    }
+
+    pub(super) fn show_view(&mut self, view: DocumentView) -> bool {
+        match self {
+            Self::Document(doc) => doc.show_view(view),
+            _ => false,
+        }
+    }
+
+    pub(super) fn on_media_ready(
+        &mut self,
+        doc_id: u64,
+        task: &MediaTask,
+        outcome: DecodedMedia,
+    ) -> bool {
+        let Self::Document(DocumentViewer {
+            rendered: Some(RenderedBody::Document(doc)),
+            ..
+        }) = self
+        else {
+            return false;
+        };
+        doc.on_media_ready(doc_id, task, outcome)
+    }
+
+    pub(super) fn poll(&mut self, clock: f64, look: &Look, tx: &mut Tx) -> bool {
         match self {
             Self::Code(code) => code.poll(tx),
+            Self::Document(doc) => doc.poll(clock, look, tx),
+            Self::Empty | Self::Loading | Self::Message { .. } => false,
+        }
+    }
+
+    pub(super) fn poll_async(&mut self, tx: &mut Tx) -> bool {
+        match self {
+            Self::Code(code) => code.poll(tx),
+            Self::Document(doc) => doc.poll_async(tx),
             Self::Empty | Self::Loading | Self::Message { .. } => false,
         }
     }
 
     pub(super) fn set_wrap(&mut self, wrap: bool) {
-        if let Self::Code(code) = self {
-            code.set_wrap(wrap);
+        match self {
+            Self::Code(code) => code.set_wrap(wrap),
+            Self::Document(doc) => doc.set_wrap(wrap),
+            Self::Empty | Self::Loading | Self::Message { .. } => {}
         }
     }
 
@@ -84,7 +199,8 @@ impl Viewer {
         match self {
             Self::Empty => None,
             Self::Loading => Some(loading_view(&app.look)),
-            Self::Code(_) => Some(code_view(app, cx)),
+            Self::Code(_) => Some(code_view(app, cx, code_ref, code_mut)),
+            Self::Document(doc) => doc.build(app, cx),
             Self::Message {
                 title,
                 detail,
@@ -94,10 +210,138 @@ impl Viewer {
     }
 }
 
+pub(super) fn build_code_state(source: CodeSource<'_>, highlighter: &Highlighter) -> CodeState {
+    let mut state = CodeState::new(source.content).key(CODE_KEY).highlighter(
+        highlighter,
+        Some(source.file_name),
+        None,
+    );
+    state.set_wrap(source.wrap);
+    let mut notices = Vec::new();
+    if let Some(reason) = source.fallback_reason {
+        notices.push(tr(reason));
+    }
+    if source.truncated {
+        notices.push(tr("Preview limited to the first 1 MB"));
+    }
+    if !notices.is_empty() {
+        state.set_notices(notices);
+    }
+    state
+}
+
+impl DocumentViewer {
+    fn active_hosted(&self) -> Option<&dyn HostedPreview> {
+        match self.active {
+            DocumentView::Rendered => match self.rendered.as_ref()? {
+                RenderedBody::Document(doc) => Some(&doc.state),
+                RenderedBody::Sheet(sheet) => Some(&**sheet),
+            },
+            DocumentView::Source => Some(&**self.source.as_ref()?),
+        }
+    }
+
+    fn active_hosted_mut(&mut self) -> Option<&mut dyn HostedPreview> {
+        match self.active {
+            DocumentView::Rendered => match self.rendered.as_mut()? {
+                RenderedBody::Document(doc) => Some(&mut doc.state),
+                RenderedBody::Sheet(sheet) => Some(&mut **sheet),
+            },
+            DocumentView::Source => Some(&mut **self.source.as_mut()?),
+        }
+    }
+
+    fn stop(&mut self) {
+        if let Some(body) = &mut self.rendered {
+            match body {
+                RenderedBody::Document(doc) => doc.stop(),
+                RenderedBody::Sheet(sheet) => sheet.stop(),
+            }
+        }
+    }
+
+    fn show_view(&mut self, view: DocumentView) -> bool {
+        let can_show = match view {
+            DocumentView::Rendered => self.rendered.is_some(),
+            DocumentView::Source => self.source.is_some(),
+        };
+        if !can_show || self.active == view {
+            return false;
+        }
+        if let Some(RenderedBody::Sheet(sheet)) = &mut self.rendered {
+            sheet.stop();
+        }
+        self.active = view;
+        true
+    }
+
+    fn set_wrap(&mut self, wrap: bool) {
+        if let Some(code) = &mut self.source {
+            code.set_wrap(wrap);
+        }
+        if let Some(RenderedBody::Document(doc)) = &mut self.rendered
+            && doc.state.wrap().is_some()
+        {
+            doc.state.set_wrap(Some(wrap));
+        }
+    }
+
+    fn poll(&mut self, clock: f64, look: &Look, tx: &mut Tx) -> bool {
+        match self.active {
+            DocumentView::Rendered => match &mut self.rendered {
+                Some(RenderedBody::Document(doc)) => {
+                    let ticked = doc.state.tick(clock);
+                    let flushed = doc.state.flush(tx);
+                    ticked | flushed
+                }
+                Some(RenderedBody::Sheet(sheet)) => sheet.tick(clock, look, tx),
+                None => false,
+            },
+            DocumentView::Source => self.source.as_mut().is_some_and(|code| code.poll(tx)),
+        }
+    }
+
+    fn poll_async(&mut self, tx: &mut Tx) -> bool {
+        match self.active {
+            DocumentView::Rendered => match &mut self.rendered {
+                Some(RenderedBody::Document(doc)) => doc.state.flush(tx),
+                Some(RenderedBody::Sheet(_)) | None => false,
+            },
+            DocumentView::Source => self.source.as_mut().is_some_and(|code| code.poll(tx)),
+        }
+    }
+
+    fn build(&self, app: &App, cx: &mut Cx<App>) -> Option<El> {
+        match self.active {
+            DocumentView::Rendered => match self.rendered.as_ref()? {
+                RenderedBody::Document(doc) => Some(document::build_view(
+                    app,
+                    cx,
+                    doc.blocks(),
+                    (doc_state_ref, doc_state_mut),
+                )),
+                RenderedBody::Sheet(_) => {
+                    Some(sheet::build_view(app, cx, sheet_state_ref, sheet_state_mut))
+                }
+            },
+            DocumentView::Source => {
+                self.source.as_ref()?;
+                Some(code_view(app, cx, doc_code_ref, doc_code_mut))
+            }
+        }
+    }
+}
+
 impl HostedPreview for Viewer {
     fn document_view(&self) -> Option<DocumentView> {
         match self {
             Self::Code(code) => code.document_view(),
+            Self::Document(doc) => match doc.active {
+                DocumentView::Rendered => doc.source.is_some().then_some(DocumentView::Rendered),
+                DocumentView::Source => {
+                    (doc.rendered.is_some() || doc.render_pending).then_some(DocumentView::Source)
+                }
+            },
             _ => None,
         }
     }
@@ -105,6 +349,7 @@ impl HostedPreview for Viewer {
     fn wrap(&self) -> Option<bool> {
         match self {
             Self::Code(code) => code.wrap(),
+            Self::Document(doc) => doc.active_hosted()?.wrap(),
             _ => None,
         }
     }
@@ -112,38 +357,59 @@ impl HostedPreview for Viewer {
     fn searchable(&self) -> bool {
         match self {
             Self::Code(code) => code.searchable(),
+            Self::Document(doc) => doc.active_hosted().is_some_and(HostedPreview::searchable),
             _ => false,
         }
     }
 
     fn find(&mut self, query: &str) {
-        if let Self::Code(code) = self {
-            code.find(query);
+        match self {
+            Self::Code(code) => code.find(query),
+            Self::Document(doc) => {
+                if let Some(hosted) = doc.active_hosted_mut() {
+                    hosted.find(query);
+                }
+            }
+            _ => {}
         }
     }
 
     fn find_step(&mut self, forward: bool) {
-        if let Self::Code(code) = self {
-            code.find_step(forward);
+        match self {
+            Self::Code(code) => code.find_step(forward),
+            Self::Document(doc) => {
+                if let Some(hosted) = doc.active_hosted_mut() {
+                    hosted.find_step(forward);
+                }
+            }
+            _ => {}
         }
     }
 
     fn find_status(&self) -> Option<FindStatus> {
         match self {
             Self::Code(code) => code.find_status(),
+            Self::Document(doc) => doc.active_hosted()?.find_status(),
             _ => None,
         }
     }
 
     fn find_end(&mut self) {
-        if let Self::Code(code) = self {
-            code.find_end();
+        match self {
+            Self::Code(code) => code.find_end(),
+            Self::Document(doc) => {
+                if let Some(hosted) = doc.active_hosted_mut() {
+                    hosted.find_end();
+                }
+            }
+            _ => {}
         }
     }
 
     fn busy(&self) -> Option<&str> {
         match self {
             Self::Code(code) => code.busy(),
+            Self::Document(doc) => doc.active_hosted()?.busy(),
             _ => None,
         }
     }
@@ -163,8 +429,71 @@ fn code_mut(app: &mut App) -> &mut CodeState {
     }
 }
 
-fn code_view(app: &App, cx: &mut Cx<App>) -> El {
-    CodeView::new(code_ref, code_mut)
+fn doc_code_ref(app: &App) -> &CodeState {
+    match &app.preview.viewer {
+        Viewer::Document(DocumentViewer {
+            source: Some(code), ..
+        }) => code,
+        _ => unreachable!("Document source built only while source CodeState exists"),
+    }
+}
+
+fn doc_code_mut(app: &mut App) -> &mut CodeState {
+    match &mut app.preview.viewer {
+        Viewer::Document(DocumentViewer {
+            source: Some(code), ..
+        }) => code,
+        _ => unreachable!("Document source mutated only while source CodeState exists"),
+    }
+}
+
+fn doc_state_ref(app: &App) -> &DocumentState {
+    match &app.preview.viewer {
+        Viewer::Document(DocumentViewer {
+            rendered: Some(RenderedBody::Document(doc)),
+            ..
+        }) => &doc.state,
+        _ => unreachable!("DocumentView built only while RenderedBody::Document is active"),
+    }
+}
+
+fn doc_state_mut(app: &mut App) -> &mut DocumentState {
+    match &mut app.preview.viewer {
+        Viewer::Document(DocumentViewer {
+            rendered: Some(RenderedBody::Document(doc)),
+            ..
+        }) => &mut doc.state,
+        _ => unreachable!("DocumentView mutated only while RenderedBody::Document is active"),
+    }
+}
+
+fn sheet_state_ref(app: &App) -> &SheetGridState {
+    match &app.preview.viewer {
+        Viewer::Document(DocumentViewer {
+            rendered: Some(RenderedBody::Sheet(sheet)),
+            ..
+        }) => sheet,
+        _ => unreachable!("SheetGrid built only while RenderedBody::Sheet is active"),
+    }
+}
+
+fn sheet_state_mut(app: &mut App) -> &mut SheetGridState {
+    match &mut app.preview.viewer {
+        Viewer::Document(DocumentViewer {
+            rendered: Some(RenderedBody::Sheet(sheet)),
+            ..
+        }) => sheet,
+        _ => unreachable!("SheetGrid mutated only while RenderedBody::Sheet is active"),
+    }
+}
+
+fn code_view(
+    app: &App,
+    cx: &mut Cx<App>,
+    get: fn(&App) -> &CodeState,
+    get_mut: fn(&mut App) -> &mut CodeState,
+) -> El {
+    CodeView::new(get, get_mut)
         .labels(labels::code())
         .on_intent(|app: &mut App, intent, _| {
             if intent == CodeIntent::Leave {

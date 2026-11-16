@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-//! Translated labels and dynamic shortcut wording for C9's [`DrawerLabels`] and C10b's
-//! [`CodeLabels`], read at each run of the view so keymap changes show at once.
+//! Translated labels and dynamic shortcut wording for C9's [`DrawerLabels`], C10b's
+//! [`CodeLabels`], C11's [`DocumentLabels`], and C11b's [`SheetLabels`].
 
-use strata_components::{code_view::CodeLabels, preview_drawer::DrawerLabels};
+use strata_components::{
+    code_view::CodeLabels, document_view::DocumentLabels, preview_drawer::DrawerLabels,
+    sheet_grid::SheetLabels,
+};
 use strata_core::i18n::{integer, tr};
 use strata_desktop::keys::{
     Keys,
@@ -62,4 +65,40 @@ pub(super) fn code() -> CodeLabels {
         .replace("%{lines}", "{lines}");
     labels.blank = tr("Blank");
     labels
+}
+
+pub(super) fn document() -> DocumentLabels {
+    let mut labels = DocumentLabels::default();
+    labels.document = tr("Document");
+    labels.copy_code = tr("Copy code");
+    labels.code_copied = tr("Code copied");
+    labels.copy_diagram = tr("Copy diagram source");
+    labels.copy_equation = tr("Copy equation source");
+    labels.loading_image = tr("Loading preview…");
+    labels.diagram = tr("Mermaid diagram");
+    labels.equation = tr("LaTeX equation");
+    labels
+}
+
+pub(super) fn sheet() -> SheetLabels {
+    SheetLabels {
+        sheets: tr("Sheets"),
+        table: tr("Table"),
+        row: tr("Row"),
+        column: tr("Column %{value1}").replace("%{value1}", "{}"),
+        resize: tr("Resize %{column}").replace("%{column}", "{}"),
+        sort_key: tr("Sort key %{index}").replace("%{index}", "{}"),
+        ascending: tr("ascending"),
+        descending: tr("descending"),
+        limited: tr(
+            "Table preview reached its text, column, or value budget; open the file to see all data.",
+        ),
+        shortened: tr(
+            "Cell shortened for responsive preview; copying the table keeps the complete text.",
+        ),
+        loading: tr("Loading sheet…"),
+        failed: tr("Preview unavailable"),
+        retry: tr("Try again"),
+        empty: tr("This sheet is empty"),
+    }
 }

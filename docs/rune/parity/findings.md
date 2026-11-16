@@ -1874,6 +1874,22 @@ sequence only together with the alphabet's version, so the version is part of th
   New Tab` left out until `strata-qa` reads sibling submenu surfaces).
 - **State:** open, [H3](packages/H3.md)'s and [A6](packages/A6.md)'s.
 
+### #2509: the Rune sheet preview is a table of cells where GTK's GtkColumnView is named rows under a tree table
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2509), filed on
+  2026-11-15 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** what a screen reader hears of a CSV/workbook preview. GTK's
+  `GtkColumnView` (`src/ui/preview/table/grid.rs`) reports a `tree table` containing a `list`
+  of `table row` nodes whose accessible names concatenate all cells in the row (`"a 1"`).
+  C11b's `SheetGrid` (`crates/strata-components/src/sheet_grid/render.rs`) reports a `table`
+  named `"Table"` whose `table row` children have no concatenated row name and hold a
+  `row header` (1-based row number) plus `table cell` children with each cell's `label`.
+- **Concerns:** `quick_preview/table-preview-keeps-secondary-sorts/columns` (lines 6, 8, 10,
+  12, 14 and 16 read `child_names` of `table row` under `list` within `tree table`).
+- **State:** open, carried as `parallel` under an `a11y` twin from [A15](packages/A15.md),
+  which clicks the same `column header` controls and reads the ordered cell labels of C11b's
+  `table`.
+
 ### #2510: inline rename in Icons and List omits the edited row from `app.matches` and `app.panes` on GTK
 
 - **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2510), filed on

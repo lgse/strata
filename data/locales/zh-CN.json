@@ -1577,5 +1577,17 @@
   "Line %{line} of %{lines}": "第 %{line} 行，共 %{lines} 行",
   "Blank": "空行",
   "Show password": "显示密码",
-  "Hide password": "隐藏密码"
+  "Hide password": "隐藏密码",
+  "Document": "文档",
+  "Sheets": "工作表",
+  "Table": "表格",
+  "Row": "行",
+  "Resize %{column}": "调整 %{column} 大小",
+  "Sort key %{index}": "排序键 %{index}",
+  "ascending": "升序",
+  "descending": "降序",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "表格预览已达到文本、列或单元格数量上限；请打开文件以查看全部数据。",
+  "Loading sheet…": "正在加载工作表…",
+  "Try again": "重试",
+  "This sheet is empty": "此工作表为空"
 }

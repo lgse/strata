@@ -127,6 +127,8 @@ pub struct DocumentLabels {
     pub copy_diagram: String,
     pub copy_equation: String,
     pub loading_image: String,
+    pub diagram: String,
+    pub equation: String,
 }
 
 impl Default for DocumentLabels {
@@ -138,6 +140,8 @@ impl Default for DocumentLabels {
             copy_diagram: "Copy diagram source".into(),
             copy_equation: "Copy equation source".into(),
             loading_image: "Loading image".into(),
+            diagram: "Mermaid diagram".into(),
+            equation: "LaTeX equation".into(),
         }
     }
 }
@@ -498,7 +502,8 @@ fn code<S: 'static>(
         } else {
             &ctx.labels.copy_code
         };
-        panel = panel.child(copy_button(ctx, i, copied, label, block_code, "copy"));
+        let copy_key = format!("{}-copy", st.row_key(i));
+        panel = panel.child(copy_button(ctx, i, copied, label, block_code, &copy_key));
     }
     panel
 }
@@ -542,6 +547,7 @@ fn copy_button<S: 'static>(
         .radius(p.radius)
         .hover(p.hover)
         .child(icon(if copied { p.check } else { p.copy }, p.icon).color(p.muted))
+        .on_key(crate::preview_drawer::return_as_space::<S>)
         .on_press_tx(move |s: &mut S, tx| {
             let st = get_mut(s);
             tx.copy(copy(st, unit));
@@ -565,6 +571,11 @@ fn media_el<S: 'static>(
         Media::Image => u.text.clone(),
         Media::Diagram { source } | Media::Equation { source, .. } => source.to_string(),
     };
+    let description = match media {
+        Media::Image => media_alt_description(&u.text),
+        Media::Diagram { .. } => ctx.labels.diagram.clone(),
+        Media::Equation { .. } => ctx.labels.equation.clone(),
+    };
     let shown = match st.media(i) {
         MediaState::Ready(px) => {
             let (w, h) = px.size();
@@ -575,6 +586,7 @@ fn media_el<S: 'static>(
                 .aspect_ratio(w / h)
                 .role("img")
                 .label(alt.clone())
+                .description(description)
         }
         MediaState::Loading => el()
             .w_full()
@@ -585,9 +597,12 @@ fn media_el<S: 'static>(
             .label(ctx.labels.loading_image.clone())
             .description(alt.clone()),
         MediaState::Failed => {
+            let fallback = st
+                .failed_text(i)
+                .map_or_else(|| u.text.clone(), str::to_owned);
             return col().w_full().child(styled_text(
                 ctx,
-                u.text.clone(),
+                fallback,
                 styled(&[], p),
                 (p.body, p.muted),
                 "t",
@@ -604,9 +619,24 @@ fn media_el<S: 'static>(
     let mut out = col().w_full().child(shown);
     if let Some(label) = label {
         let copied = st.copied.is_some_and(|(at, _)| at == i);
-        out = out
-            .pr(p.icon + 16.0)
-            .child(copy_button(ctx, i, copied, label, media_source, "copy"));
+        let copy_key = format!("{}-copy", st.row_key(i));
+        out = out.pr(p.icon + 16.0).child(copy_button(
+            ctx,
+            i,
+            copied,
+            label,
+            media_source,
+            &copy_key,
+        ));
+    }
+    out
+}
+
+fn media_alt_description(alt: &str) -> String {
+    let mut chars = alt.chars();
+    let mut out: String = chars.by_ref().take(512).collect();
+    if chars.next().is_some() {
+        out.push('…');
     }
     out
 }

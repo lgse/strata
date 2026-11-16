@@ -11,7 +11,8 @@ use std::{
 
 use strata_core::model::Location;
 use strata_desktop::tabs_session::{self, RestoredSession};
-use strata_fs::adapters::location_for_file;
+use strata_fs::adapters::{list_archive_entries_direct, location_for_file};
+use strata_preview::sandbox_helper;
 
 use crate::{host, settings::Saved, startup};
 
@@ -120,10 +121,46 @@ fn is_browser_worker(arguments: &[OsString]) -> bool {
 /// binaries: the pool starts this executable under bubblewrap, bound read-only at
 /// `/app/strata`, and the worker restricts itself (`sandbox::browser::worker::run`).
 fn browser_worker() -> ExitCode {
-    match strata_preview::sandbox::browser::run(strata_preview::sandbox_helper::browser_render) {
+    match strata_preview::sandbox::browser::run(sandbox_helper::browser_render) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("Browser helper failed: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// The argument `strata_preview::sandbox` runs this executable with inside bubblewrap for
+/// one-shot preview rendering (office documents, PDFs, archives, media, 3D models).
+const PREVIEW_HELPER: &str = "--preview-helper";
+
+/// Whether this process is a sandboxed preview helper: the first argument, and only the first,
+/// names it, as `launch_mode` in `src/main.rs` reads it.
+fn is_preview_helper(arguments: &[OsString]) -> bool {
+    arguments
+        .get(1)
+        .is_some_and(|argument| argument == PREVIEW_HELPER)
+}
+
+fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
+    let arguments = arguments
+        .iter()
+        .map(|argument| {
+            argument
+                .to_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "Invalid UTF-8 in preview helper arguments".to_owned())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    sandbox_helper::install_archive_lister(list_archive_entries_direct);
+    sandbox_helper::run(&arguments)
+}
+
+fn preview_helper(arguments: &[OsString]) -> ExitCode {
+    match run_preview_helper(arguments) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Preview helper failed: {error}");
             ExitCode::FAILURE
         }
     }
@@ -135,6 +172,9 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> ExitCode {
     // Before anything else starts: a worker sets up no logging, settings or window.
     if is_browser_worker(&arguments) {
         return browser_worker();
+    }
+    if is_preview_helper(&arguments) {
+        return preview_helper(&arguments[2..]);
     }
     #[cfg(feature = "qa")]
     if let Some(code) = crate::qa::launch(&arguments) {

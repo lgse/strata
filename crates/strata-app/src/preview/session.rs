@@ -94,6 +94,7 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
         .is_none_or(|current| current.location != entry.location);
     if other_file {
         app.preview.drawer.reset_find();
+        app.preview.viewer.stop();
         app.preview.viewer = Viewer::Empty;
     }
     cancel_focus_timer(app);
@@ -162,6 +163,7 @@ pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
     app.preview.drawer.reset_find();
     app.preview.current = None;
     app.preview.current_depth = None;
+    app.preview.viewer.stop();
     app.preview.viewer = Viewer::Empty;
     app.preview.header = HeaderInfo::default();
     sync_reservation(app);

@@ -5,21 +5,22 @@
 //! `LocalPreviewProvider` already dispatches `PreviewEvent` callbacks on the GLib main context,
 //! so its callback queues directly into the tab's [`Later`](crate::slots::Later). C10a's
 //! [`Highlighter`] runs on its own background thread and wakes the UI thread through
-//! `glib::MainContext::default().invoke`, which fans out to registered `Later` handles so a
-//! covered Wayland window still runs `poll` (`AppHandle::update_if`).
+//! `glib::MainContext::default().invoke`, which fans out to weak `Later` handles so closed tabs
+//! or windows are not retained and a covered Wayland window still runs `poll`
+//! (`AppHandle::update_if`).
 
 use std::{
     cell::{Cell, RefCell},
     path::Path,
-    rc::Rc,
+    rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
 };
 
 use rune::Tx;
 use strata_components::{
-    code_view::highlight::Highlighter,
-    preview_drawer::{HeaderInfo, HostedPreview},
+    code_view::highlight::{CodeBlocks, Highlighter},
+    preview_drawer::{DocumentView, HeaderInfo, HostedPreview},
 };
 use strata_core::{
     i18n::{file_size, tr},
@@ -29,8 +30,8 @@ use strata_core::{
 use strata_fs::{
     adapters::LocalPreviewProvider,
     services::{
-        LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider,
-        PreviewRequest, PreviewRequestId, normalize_preview_text,
+        DocumentLayout, LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent,
+        PreviewProvider, PreviewRequest, PreviewRequestId, normalize_preview_text,
     },
 };
 use strata_kit::{
@@ -38,9 +39,13 @@ use strata_kit::{
     look::Look,
     theme::syntax::{Editor, editor, syntect_theme},
 };
-use strata_preview::sandbox::MediaPreviewBackend;
+use strata_preview::sandbox::{DocumentFormat, MediaPreviewBackend};
 
-use super::viewer::{CodeSource, Viewer};
+use super::{
+    document::{DocumentSpec, RenderedDocument},
+    sheet,
+    viewer::{CodeSource, RenderedBody, Viewer, build_code_state},
+};
 use crate::{App, listing::known, shell, slots::Later};
 
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
@@ -49,12 +54,17 @@ const DEFAULT_MEDIA_EDGE: i32 = 520;
 
 thread_local! {
     static HIGHLIGHTER: RefCell<Option<Highlighter>> = const { RefCell::new(None) };
-    static HIGHLIGHT_WAITERS: RefCell<Vec<Later<App>>> = const { RefCell::new(Vec::new()) };
+    static HIGHLIGHT_WAITERS: RefCell<Vec<Weak<Later<App>>>> = const { RefCell::new(Vec::new()) };
 }
 
-fn shared_highlighter(look: &Look, later: &Later<App>) -> Highlighter {
-    HIGHLIGHT_WAITERS.with(|waiters| {
-        waiters.borrow_mut().push(later.clone());
+fn shared_highlighter(look: &Look, waiter: &Rc<Later<App>>) -> Highlighter {
+    let weak = Rc::downgrade(waiter);
+    HIGHLIGHT_WAITERS.with(|slot| {
+        let mut waiters = slot.borrow_mut();
+        waiters.retain(|existing| existing.strong_count() > 0);
+        if !waiters.iter().any(|existing| Weak::ptr_eq(existing, &weak)) {
+            waiters.push(weak);
+        }
     });
     HIGHLIGHTER.with(|slot| {
         let mut slot = slot.borrow_mut();
@@ -71,17 +81,36 @@ fn shared_highlighter(look: &Look, later: &Later<App>) -> Highlighter {
 }
 
 fn notify_highlight_waiters() {
-    let waiters = HIGHLIGHT_WAITERS.with(|slot| slot.borrow().clone());
-    for later in waiters {
-        later.then(|app: &mut App, tx: &mut Tx| app.preview.viewer.poll(tx));
+    let live: Vec<Rc<Later<App>>> = HIGHLIGHT_WAITERS.with(|slot| {
+        let mut waiters = slot.borrow_mut();
+        waiters.retain(|weak| weak.strong_count() > 0);
+        waiters.iter().filter_map(Weak::upgrade).collect()
+    });
+    for later in live {
+        later.then(|app: &mut App, tx: &mut Tx| {
+            let blocks = app.preview.loader.poll_blocks();
+            let viewer = app.preview.viewer.poll_async(tx);
+            blocks | viewer
+        });
     }
+}
+
+#[cfg(test)]
+pub(super) fn live_highlight_waiter_count() -> usize {
+    HIGHLIGHT_WAITERS.with(|slot| {
+        let mut waiters = slot.borrow_mut();
+        waiters.retain(|weak| weak.strong_count() > 0);
+        waiters.len()
+    })
 }
 
 pub(super) struct Loader {
     provider: Rc<dyn PreviewProvider>,
     media_backend: Rc<Cell<MediaPreviewBackend>>,
     pub(super) later: Later<App>,
+    waiter: Rc<Later<App>>,
     highlighter: Option<Highlighter>,
+    blocks: Option<CodeBlocks>,
     last_editor: Option<Editor>,
     next_request: u64,
     current_request: Option<PreviewRequestId>,
@@ -94,13 +123,16 @@ impl Loader {
     pub(super) fn new(later: Later<App>) -> Self {
         let media_backend = Rc::new(Cell::new(MediaPreviewBackend::Automatic));
         let backend_reader = media_backend.clone();
+        let waiter = Rc::new(later.clone());
         Self {
             provider: Rc::new(LocalPreviewProvider::new(Rc::new(move || {
                 backend_reader.get()
             }))),
             media_backend,
             later,
+            waiter,
             highlighter: None,
+            blocks: None,
             last_editor: None,
             next_request: 1,
             current_request: None,
@@ -140,14 +172,27 @@ impl Loader {
         }
     }
 
+    pub(super) fn poll_blocks(&mut self) -> bool {
+        self.blocks.as_mut().is_some_and(CodeBlocks::poll)
+    }
+
     fn highlighter(&mut self, look: &Look) -> Highlighter {
         if let Some(existing) = &self.highlighter {
             return existing.clone();
         }
-        let highlighter = shared_highlighter(look, &self.later);
+        let highlighter = shared_highlighter(look, &self.waiter);
         self.last_editor = Some(editor(look));
         self.highlighter = Some(highlighter.clone());
         highlighter
+    }
+
+    fn blocks(&mut self, look: &Look) -> CodeBlocks {
+        if let Some(existing) = &self.blocks {
+            return existing.clone();
+        }
+        let blocks = self.highlighter(look).blocks();
+        self.blocks = Some(blocks.clone());
+        blocks
     }
 }
 
@@ -184,10 +229,26 @@ fn icon_for(entry: &FileEntry) -> IconName {
 }
 
 pub(super) fn start(app: &mut App, entry: FileEntry) {
+    let render_document = shell::preferences(app).render_documents_by_default;
+    app.preview.document_view = if render_document {
+        DocumentView::Rendered
+    } else {
+        DocumentView::Source
+    };
+    start_request(app, entry, render_document);
+}
+
+pub(super) fn reload_rendered(app: &mut App, entry: FileEntry) {
+    app.preview.document_view = DocumentView::Rendered;
+    start_request(app, entry, true);
+}
+
+fn start_request(app: &mut App, entry: FileEntry, render_document: bool) {
     app.preview.header = identity_for(&app.look, &entry, None);
     app.preview.loader.cancel();
     if app.preview.drawer.is_suspended() {
         app.preview.loader.defer_on_resume = true;
+        app.preview.viewer.stop();
         app.preview.viewer = Viewer::Empty;
         return;
     }
@@ -196,7 +257,6 @@ pub(super) fn start(app: &mut App, entry: FileEntry) {
     app.preview.loader.current_request = Some(request_id);
     schedule_spinner(app, request_id);
 
-    let render_document = shell::preferences(app).render_documents_by_default;
     let later = app.preview.loader.later.clone();
     let emit = Rc::new(move |event: PreviewEvent| {
         later.then(move |app: &mut App, tx: &mut Tx| on_event(app, request_id, event, tx));
@@ -255,6 +315,7 @@ fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: 
             true
         }
         PreviewEvent::NeedsPassword { .. } => {
+            app.preview.viewer.stop();
             app.preview.viewer = Viewer::Message {
                 title: tr("Password required"),
                 detail: None,
@@ -263,6 +324,7 @@ fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: 
             true
         }
         PreviewEvent::Failed { message, .. } => {
+            app.preview.viewer.stop();
             let offers_open = message == strata_preview::sandbox::PDF_PASSWORD_PROTECTED;
             app.preview.viewer = Viewer::Message {
                 title: tr("Preview unavailable"),
@@ -275,10 +337,11 @@ fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: 
 }
 
 fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
+    app.preview.viewer.stop();
     app.preview.header = identity_for(&app.look, &loaded.entry, Some(&loaded.content_type));
     let wrap = shell::preferences(app).preview_text_wrap;
     let highlighter = app.preview.loader.highlighter(&app.look);
-    let file_name = loaded.entry.native_name.to_string_lossy();
+    let file_name = loaded.entry.native_name.to_string_lossy().into_owned();
     app.preview.viewer = match loaded.content {
         PreviewContent::Text { content, truncated } => Viewer::code(
             CodeSource {
@@ -286,20 +349,42 @@ fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
                 truncated,
                 wrap,
                 file_name: &file_name,
+                fallback_reason: None,
             },
             &highlighter,
         ),
         PreviewContent::Document {
-            source, truncated, ..
-        } => Viewer::code(
-            CodeSource {
-                content: normalize_preview_text(&source).into_owned(),
+            source,
+            document,
+            fallback_reason,
+            warnings,
+            truncated,
+        } => build_document_viewer(
+            app,
+            DocumentLoad {
+                entry: &loaded.entry,
+                content_type: &loaded.content_type,
+                file_name: &file_name,
+                source,
+                document,
+                fallback_reason,
+                warnings,
                 truncated,
                 wrap,
-                file_name: &file_name,
             },
             &highlighter,
         ),
+        PreviewContent::Rendered { document, warnings } => {
+            let body = build_rendered_body(
+                app,
+                &loaded.entry,
+                &loaded.content_type,
+                (document, warnings),
+                false,
+                wrap,
+            );
+            Viewer::rendered_only(body)
+        }
         PreviewContent::Unsupported => Viewer::Message {
             title: tr("No visual preview"),
             detail: Some(tr("Metadata is available for this file type.")),
@@ -311,9 +396,81 @@ fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
             can_open: false,
         },
     };
+    app.preview.viewer.reset_viewport(tx);
     if app.preview.drawer.is_finding() {
         let query = app.preview.drawer.find_query().to_owned();
         app.preview.viewer.find(&query);
-        app.preview.viewer.poll(tx);
+        tx.wake_after(Duration::ZERO);
     }
+}
+
+struct DocumentLoad<'a> {
+    entry: &'a FileEntry,
+    content_type: &'a str,
+    file_name: &'a str,
+    source: String,
+    document: Option<DocumentLayout>,
+    fallback_reason: Option<String>,
+    warnings: Vec<String>,
+    truncated: bool,
+    wrap: bool,
+}
+
+fn build_document_viewer(
+    app: &mut App,
+    load: DocumentLoad<'_>,
+    highlighter: &Highlighter,
+) -> Viewer {
+    let render_pending = load.document.is_none() && load.fallback_reason.is_none();
+    let code = build_code_state(
+        CodeSource {
+            content: normalize_preview_text(&load.source).into_owned(),
+            truncated: load.truncated,
+            wrap: load.wrap,
+            file_name: load.file_name,
+            fallback_reason: load.fallback_reason.as_deref(),
+        },
+        highlighter,
+    );
+    let warnings = load.warnings;
+    let rendered = load.document.map(|doc_layout| {
+        build_rendered_body(
+            app,
+            load.entry,
+            load.content_type,
+            (doc_layout, warnings),
+            true,
+            load.wrap,
+        )
+    });
+    Viewer::document(app.preview.document_view, rendered, code, render_pending)
+}
+
+fn build_rendered_body(
+    app: &mut App,
+    entry: &FileEntry,
+    content_type: &str,
+    (layout, warnings): (DocumentLayout, Vec<String>),
+    source_available: bool,
+    wrap: bool,
+) -> RenderedBody {
+    if sheet::is_table_file(content_type, &entry.native_name)
+        && let Some(grid) = sheet::from_layout(&layout, &warnings, source_available)
+    {
+        return RenderedBody::Sheet(Box::new(grid));
+    }
+    let word_processor =
+        !source_available && DocumentFormat::for_file(content_type, &entry.native_name).is_some();
+    let blocks = app.preview.loader.blocks(&app.look);
+    let later = app.preview.loader.later.clone();
+    let doc = RenderedDocument::new(DocumentSpec {
+        layout,
+        warnings,
+        wrap: (!word_processor).then_some(wrap),
+        source_available,
+        document_path: entry.location.native_path().map(Path::to_path_buf),
+        blocks,
+        later,
+    });
+    RenderedBody::Document(Box::new(doc))
 }

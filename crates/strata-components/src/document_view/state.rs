@@ -113,6 +113,7 @@ pub struct DocumentState {
     source_available: bool,
     wrap: Option<bool>,
     media: HashMap<usize, MediaState>,
+    failed_text: HashMap<usize, String>,
     query: String,
     matches: Vec<Match>,
     current: Option<usize>,
@@ -149,6 +150,7 @@ impl DocumentState {
             source_available: false,
             wrap: Some(true),
             media: HashMap::new(),
+            failed_text: HashMap::new(),
             query: String::new(),
             matches: Vec::new(),
             current: None,
@@ -210,6 +212,7 @@ impl DocumentState {
         self.index = OnceCell::new();
         self.revision += 1;
         self.media.clear();
+        self.failed_text.clear();
         self.copied = None;
         self.matches = self.run_find();
         self.current = None;
@@ -243,7 +246,18 @@ impl DocumentState {
 
     /// The pixels for media unit `unit`, as they arrive (or fail).
     pub fn set_media(&mut self, unit: usize, media: MediaState) {
+        self.failed_text.remove(&unit);
         self.media.insert(unit, media);
+    }
+
+    /// Marks media unit `unit` as failed with an explicit fallback message.
+    pub fn set_media_failed(&mut self, unit: usize, message: impl Into<String>) {
+        self.media.insert(unit, MediaState::Failed);
+        self.failed_text.insert(unit, message.into());
+    }
+
+    pub(crate) fn failed_text(&self, unit: usize) -> Option<&str> {
+        self.failed_text.get(&unit).map(String::as_str)
     }
 
     pub(crate) fn media(&self, unit: usize) -> &MediaState {

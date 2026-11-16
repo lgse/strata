@@ -1577,5 +1577,17 @@
   "Line %{line} of %{lines}": "第 %{line} 行，共 %{lines} 行",
   "Blank": "空行",
   "Show password": "顯示密碼",
-  "Hide password": "隱藏密碼"
+  "Hide password": "隱藏密碼",
+  "Document": "文件",
+  "Sheets": "工作表",
+  "Table": "表格",
+  "Row": "列",
+  "Resize %{column}": "調整 %{column} 大小",
+  "Sort key %{index}": "排序鍵 %{index}",
+  "ascending": "遞增",
+  "descending": "遞減",
+  "Table preview reached its text, column, or value budget; open the file to see all data.": "表格預覽已達到文字、欄數或儲存格數量上限；請開啟檔案以檢視完整資料。",
+  "Loading sheet…": "正在載入工作表…",
+  "Try again": "重試",
+  "This sheet is empty": "此工作表為空白"
 }

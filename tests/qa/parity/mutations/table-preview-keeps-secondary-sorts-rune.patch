@@ -1,0 +1,11 @@
+diff --git a/crates/strata-app/src/preview/sheet.rs b/crates/strata-app/src/preview/sheet.rs
+--- a/crates/strata-app/src/preview/sheet.rs
++++ b/crates/strata-app/src/preview/sheet.rs
+@@ -46,6 +46,7 @@ pub(super) fn from_layout(
+     warnings: &[String],
+     source_available: bool,
+ ) -> Option<SheetGridState> {
++    if true { return None; }
+     let [
+         DocumentUnit {
+             kind:

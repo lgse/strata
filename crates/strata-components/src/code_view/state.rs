@@ -327,6 +327,7 @@ impl CodeState {
                 Request::Reveal(row) => {
                     tx.scroll_center_in(self.list_key(), format!("{row}/current"));
                     self.reveal_again = Some(row);
+                    tx.wake_after(std::time::Duration::ZERO);
                 }
             }
         }

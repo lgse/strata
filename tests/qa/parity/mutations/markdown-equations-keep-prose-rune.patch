@@ -1,0 +1,13 @@
+diff --git a/crates/strata-app/src/preview/document.rs b/crates/strata-app/src/preview/document.rs
+--- a/crates/strata-app/src/preview/document.rs
++++ b/crates/strata-app/src/preview/document.rs
+@@ -179,6 +179,9 @@ fn render_and_decode(
+     path: Option<PathBuf>,
+     cancel: &Cancellation,
+ ) -> DecodedMedia {
++    if matches!(source, DocumentMedia::Math { .. }) {
++        return Err("equation rendering disabled".to_owned());
++    }
+     let bytes = document_media::render(source, path.as_deref(), cancel)?;
+     let decoded = image::load_from_memory(&bytes)
+         .map_err(|_| "Cannot display decoded image".to_owned())?
