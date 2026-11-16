@@ -159,6 +159,7 @@ pub(super) fn lend_slot_to_child(app: &mut App, depth: usize, entry: Option<&Fil
 
 pub(super) fn clear_target(app: &mut App, tx: &mut Tx) {
     cancel_focus_timer(app);
+    app.preview.loader.focus_archive_on_ready = false;
     app.preview.loader.cancel();
     app.preview.raw.clear();
     app.preview.drawer.reset_find();
