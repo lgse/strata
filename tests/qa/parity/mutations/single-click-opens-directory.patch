@@ -1,0 +1,10 @@
+diff --git a/crates/strata-app/src/clicks.rs b/crates/strata-app/src/clicks.rs
+--- a/crates/strata-app/src/clicks.rs
++++ b/crates/strata-app/src/clicks.rs
+@@ -13,5 +13,5 @@ mod tests;
+ fn from_stored(stored: u8, default: ClickCount) -> ClickCount {
+     match stored {
+-        1 => ClickCount::One,
++        1 => ClickCount::Two,
+         2 => ClickCount::Two,
+         _ => default,

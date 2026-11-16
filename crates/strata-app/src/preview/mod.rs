@@ -295,13 +295,15 @@ pub(crate) fn toggle_entry(
 
 /// Whether single clicks open files in the currently shown view.
 pub(crate) fn one_click_files_in_shown_view(app: &App) -> bool {
-    if session::browsing_columns(app) {
-        app.columns.one_click_files()
+    let settings = shell::preferences(app);
+    let modes = if session::browsing_columns(app) {
+        crate::clicks::columns(settings)
     } else if session::browsing_icons(app) {
-        app.icons.single.one_click_files()
+        crate::clicks::icons(settings)
     } else {
-        app.list.single.one_click_files()
-    }
+        crate::clicks::list(settings)
+    };
+    crate::clicks::one_click_files(modes)
 }
 
 /// Updates an already-open preview when the user moves the selection among filtered results.

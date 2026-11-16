@@ -77,12 +77,9 @@ impl List {
         let settings: &Preferences = setup.settings;
         // `type_to_search_active` in `src/ui/preferences/input_settings.rs`.
         let typing = settings.type_to_search && !settings.tenxer_mode;
-        // `explorer_file_clicks` and `explorer_folder_clicks`: the List view's.
-        let clicks = (settings.list_file_clicks, settings.list_folder_clicks);
         Self {
             single: Single::new(Made {
                 key: VIEW,
-                clicks,
                 keys: keys(typing),
                 described: tr("List view"),
                 menu_at: AnchorEdge::Center,

@@ -277,4 +277,15 @@ impl Host for Staged {
             .runtime()
             .accessibility_action(&target.key, Action::Click, None)
     }
+
+    async fn scroll_to(&self, key: &str, x: f32, y: f32) -> Result<(), String> {
+        let key = key.to_owned();
+        let stage = &mut *self.stage.borrow_mut();
+        stage
+            .host()
+            .runtime()
+            .update(move |_, tx| tx.scroll_to_instant(key, x, y));
+        stage.settle();
+        Ok(())
+    }
 }
