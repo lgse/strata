@@ -39,6 +39,9 @@ toml.workspace = true
 
 # K4 user overrides (the overrides.toml parser)
 
+[dev-dependencies]
+rune = { workspace = true, features = ["embedded-fonts"] }
+
 [build-dependencies]
 
 # K3 icon catalogs: build.rs, which generates the catalogs from the SVG sources

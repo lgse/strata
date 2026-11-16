@@ -120,6 +120,7 @@ wayland-protocols-wlr = { workspace = true, optional = true, features = ["client
 # shared block, then one block per work package. Keep the blank lines.
 [dev-dependencies]
 # Shared by two or more work packages: the harness (W3) and its peer.
+rune = { workspace = true, features = ["embedded-fonts"] }
 serde.workspace = true
 serde_json.workspace = true
 strata-test-peer.workspace = true

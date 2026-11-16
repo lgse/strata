@@ -39,5 +39,8 @@ unicode-width.workspace = true
 
 # C25 ThumbnailStore
 
+[dev-dependencies]
+rune = { workspace = true, features = ["embedded-fonts"] }
+
 [lints]
 workspace = true
