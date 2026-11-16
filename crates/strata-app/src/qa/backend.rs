@@ -104,6 +104,34 @@ impl<H: Host> Rune<H> {
         let snapshot = self.snapshot();
         snapshot.get(node).map(|seen| read(&snapshot, seen))
     }
+
+    async fn set_scrollbar(&self, orientation: Orientation, value: f64) -> Result<(), String> {
+        let (node, key, offset) = self
+            .snapshot()
+            .scrollbar_target(orientation)
+            .ok_or_else(|| format!("no {orientation:?} scroll bar"))?;
+        let [mut x, mut y] = offset;
+        match orientation {
+            Orientation::Horizontal => x = value,
+            Orientation::Vertical => y = value,
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a scroll offset in window points fits f32"
+        )]
+        self.host.scroll_to(&key, x as f32, y as f32).await?;
+        let actual = self
+            .scroll(&node, orientation)
+            .map(|scroll| scroll.value)
+            .ok_or_else(|| format!("the {orientation:?} scroll bar left the tree"))?;
+        // Rune's accessibility dump rounds scroll offsets to tenths of a point.
+        if (actual - value).abs() > 0.5 {
+            return Err(format!(
+                "the {orientation:?} scroll bar took {actual} instead of {value}"
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Whether the folder the launch opened has been listed, or could not be.
@@ -397,6 +425,9 @@ impl<H: Host> Backend for Rune<H> {
     async fn command(&self, scope: &Scope<'_, Self>, command: &Command) -> Option<Outcome> {
         match command {
             Command::Keymap(keymap) => Some(Outcome::from(self.host.set_layout(keymap))),
+            Command::SetScrollbar { orientation, value } => Some(Outcome::from(
+                self.set_scrollbar(*orientation, *value).await,
+            )),
             Command::Invariants => {
                 let observation = scope.scene().observation;
                 let focused = scope.focused().is_some();

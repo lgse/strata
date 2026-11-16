@@ -85,11 +85,13 @@ mod undo;
 // A8 View switching and appearance
 mod appearance;
 // A9 Pointer and click modes
+mod clicks;
 // A10 Search, filter and sort
 mod filter;
 mod palette;
 mod sort;
 // A11 10xer mode
+mod tenxer;
 // A12 Clipboard and conflicts
 mod clipboard;
 mod conflict_dialog;
@@ -98,10 +100,13 @@ mod transfer;
 mod archive;
 mod file_providers;
 // A14 Open with, terminal and custom actions
+mod terminal;
 // A15 Preview drawer, text and documents
 mod preview;
 // A16 Media, PDF and model viewers
 // A17 Properties
+mod properties;
+mod raw_details;
 // A18 Settings and themes
 // A19 Drag and drop
 // A20 Portal chooser
@@ -148,6 +153,7 @@ slots::parts! {
     palette_menu: palette::menu::PaletteMenu,
     sort: sort::Sort,
     // A11 10xer mode
+    tenxer: tenxer::Tenxer,
     // A12 Clipboard and conflicts
     clipboard: clipboard::Clipboard,
     transfer: transfer::Transfer,
@@ -157,10 +163,12 @@ slots::parts! {
     archive: archive::Archive,
     file_providers: file_providers::FileProviders,
     // A14 Open with, terminal and custom actions
+    terminal: terminal::Terminal,
     // A15 Preview drawer, text and documents
     preview: preview::Preview,
     // A16 Media, PDF and model viewers
     // A17 Properties
+    properties: properties::Properties,
     // A18 Settings and themes
     // A19 Drag and drop
     // A20 Portal chooser

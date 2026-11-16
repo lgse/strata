@@ -12,26 +12,25 @@
 //!   Run, with Run focused when it opens. Escape, a click outside, the close button and
 //!   Cancel run nothing. Return presses the focused button only. The keyboard goes back to the
 //!   listing when it closes.
-//! - **The start** (`run_program`). The program starts in its own folder, with no input and
-//!   its output dropped, under the environment Strata was started with
-//!   (`child_environment::restore_command`). It starts on a thread of its own, which then
-//!   waits for it, so it never lingers as a zombie (`spawn_reaped`). If it cannot start,
-//!   "Unable to run program" says why, once the thread has answered.
+//! - **The start** (`run_program`). Regular binaries start in their own folder, with no input
+//!   and their output dropped, under the environment Strata was started with
+//!   (`child_environment::restore_command`); shell scripts (`.sh`) start in the resolved
+//!   terminal emulator ([`crate::terminal`]) with an exit-status prompt (`program_command`).
+//!   Each starts on a thread of its own, which then waits for it, so it never lingers as a
+//!   zombie (`spawn_reaped`). If it cannot start, "Unable to run program" says why, once the
+//!   thread has answered.
 //!
-//! Left out, with what brings each back:
+//! Left out, with what brings it back:
 //!
 //! - **Opening with an application first.** GTK asks only once its lookup finds no default
 //!   application for the file's type (`resolve_default_application`); here every executable
 //!   asks. The lookup, and opening every other file, are A14's
 //!   (`docs/rune/parity/packages/A14.md`).
-//! - **A shell script (`.sh`)**, which GTK runs in a terminal (`program_command`): the
-//!   terminal is A14's. Here Run on one starts nothing and says "Unable to run program",
-//!   "Unable to open terminal", until A14 replaces it with the terminal.
 
 use std::{
+    ffi::OsStr,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::mpsc,
 };
 
 use rune::Tx;
@@ -166,18 +165,8 @@ fn confirmed(app: &mut App) {
     let Some(path) = app.run.asked.as_ref().map(|asked| asked.path.clone()) else {
         return;
     };
-    if is_shell_script(&path) {
-        tracing::warn!(
-            path = %path.display(),
-            "a shell script runs in a terminal, which this interface does not open yet"
-        );
-        failed(app, tr("Unable to open terminal"));
-        return;
-    }
     let later = app.run.later.clone();
-    if let Err(error) = start(&path, later) {
-        failed(app, error.to_string());
-    }
+    start(path, later);
 }
 
 /// "Unable to run program", with why.
@@ -186,50 +175,74 @@ fn failed(app: &mut App, detail: String) {
     error_dialog::show(app, Error::new(tr("Unable to run program"), detail));
 }
 
-/// `program_command` and `spawn_reaped`: the program starts on a thread of its own, which
-/// then waits for it. Nothing runs when the thread cannot start; a start that fails on it
-/// comes back through GLib, and `later` shows it.
-fn start(path: &Path, later: Later<App>) -> std::io::Result<()> {
-    let mut command = program_command(path);
-    let (answer, answered) = mpsc::channel();
-    std::thread::Builder::new()
-        .name("process-reaper".into())
-        .spawn(move || match command.spawn() {
-            Ok(mut child) => {
-                let _ = answer.send(Ok(()));
-                if let Err(error) = child.wait() {
-                    tracing::warn!(%error, pid = child.id(), "unable to reap child process");
-                }
-            }
-            Err(error) => {
-                let _ = answer.send(Err(error.to_string()));
-            }
-        })?;
-    glib::MainContext::default().spawn_local(async move {
-        let started = gio::spawn_blocking(move || answered.recv()).await;
-        if let Ok(Ok(Err(detail))) = started {
-            later.then(move |app: &mut App, _: &mut Tx| {
-                failed(app, detail);
-                true
-            });
-        }
-    });
-    Ok(())
+/// `program_command` and `spawn_reaped`: the program (and, for `.sh` scripts, terminal
+/// resolution) starts on a thread of its own, which then waits for it; a start that fails
+/// comes back through `later`.
+fn start(path: PathBuf, later: Later<App>) {
+    crate::terminal::spawn_reaped(
+        later,
+        move || {
+            program_command(&path, crate::terminal::Emulator::resolve)
+                .and_then(|mut command| command.spawn())
+                .map_err(|error| {
+                    tracing::warn!(%error, "unable to run program");
+                    error.to_string()
+                })
+        },
+        failed,
+    );
 }
 
 fn is_shell_script(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension == "sh")
 }
 
-fn program_command(path: &Path) -> Command {
+fn program_command(
+    path: &Path,
+    resolve_terminal: impl FnOnce() -> Option<crate::terminal::Emulator>,
+) -> std::io::Result<Command> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    if is_shell_script(path) {
+        let terminal = resolve_terminal().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                crate::terminal::no_terminal_message(),
+            )
+        })?;
+        // Pass the path as data, preserving the script's shebang and avoiding shell injection.
+        let prompt = exit_prompt_format();
+        let mut command = terminal.exec_command(&[
+            OsStr::new("/bin/sh"),
+            OsStr::new("-c"),
+            OsStr::new(
+                "cd -- \"$2\" && \"$1\"; status=$?; printf '\\n'; printf \"$3\" \"$status\"; IFS= read -r answer; exit \"$status\"",
+            ),
+            OsStr::new("strata-run"),
+            path.as_os_str(),
+            parent.as_os_str(),
+            OsStr::new(&prompt),
+        ]);
+        command.current_dir(parent);
+        return Ok(command);
+    }
     let mut command = Command::new(path);
     command
-        .current_dir(path.parent().unwrap_or_else(|| Path::new(".")))
+        .current_dir(parent)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     strata_fs::child_environment::restore_command(&mut command);
-    command
+    Ok(command)
+}
+
+/// A printf format whose only conversion is the exit status.
+fn exit_prompt_format() -> String {
+    rust_i18n::t!(
+        "Process exited with status %{status}. Press Enter to close…",
+        status = "\u{1}"
+    )
+    .replace('%', "%%")
+    .replace('\u{1}', "%s")
 }
 
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {

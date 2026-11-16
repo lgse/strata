@@ -18,7 +18,7 @@ use strata_components::contract::EntryId;
 use strata_core::model::FileEntry;
 use strata_desktop::keys::{
     Active, Binding, Key as DesktopKey, KeyPress, Map, Modifiers,
-    bindings::{PREVIEW, RIGHT},
+    bindings::{LEFT, PREVIEW, RIGHT},
 };
 
 use super::session;
@@ -64,6 +64,13 @@ pub(super) const COMMANDS: &[Action<App>] = &[
             &[RIGHT.ignoring(Modifiers::empty())],
         )
         .when(can_enter_preview)]),
+    Action::new("preview-leave", leave_preview)
+        .command(LEFT)
+        .keys(&[Keys::at(
+            Stage::PreviewNavigation,
+            &[LEFT.ignoring(Modifiers::empty())],
+        )
+        .when(in_preview_body_outside_find)]),
     Action::new("preview-divider", focus_divider).keys(&[Keys {
         stage: Stage::FocusNavigation,
         reads: Reads::Press(|press| press.is(DIVIDER_KEY)),
@@ -77,6 +84,10 @@ fn on_filtered_result(app: &App, at: &Situation) -> bool {
 
 fn in_preview_outside_find(app: &App, at: &Situation) -> bool {
     app.preview.enabled && at.within("preview") && !app.preview.drawer.is_find_focused()
+}
+
+fn in_preview_body_outside_find(app: &App, at: &Situation) -> bool {
+    in_preview_outside_find(app, at) && !at.within("preview-grip")
 }
 
 fn in_listing_for_preview(app: &App, at: &Situation) -> bool {
@@ -228,6 +239,16 @@ fn enter_preview(app: &mut App, call: &Call<'_>, tx: &mut Tx) -> Outcome {
 
 fn focus_divider(app: &mut App, _: &Call<'_>, _: &mut Tx) -> Outcome {
     app.preview.drawer.focus_divider();
+    Outcome::Ran
+}
+
+fn leave_preview(app: &mut App, call: &Call<'_>, _: &mut Tx) -> Outcome {
+    if let Some(press) = call.press
+        && is_plain_letter_with_type_to_search(app, press)
+    {
+        return Outcome::Declined;
+    }
+    app.preview.drawer.focus_files();
     Outcome::Ran
 }
 

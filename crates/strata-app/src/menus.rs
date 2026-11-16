@@ -158,6 +158,7 @@ fn folder_menu(app: &App, depth: usize) -> Option<Opening> {
     let model = folder(&FolderTarget {
         has_entries: counts.is_some_and(|counts| counts.total > 0),
         can_paste: crate::clipboard::may_paste(app, &location),
+        can_open_terminal: crate::terminal::can_open(&location),
         hidden_shown: app.browser.preferences().show_hidden,
         typing: app.menu.typing,
     });
@@ -544,7 +545,10 @@ fn single(target: &EntryTarget<'_>) -> MenuModel {
             // `entry_supports_quick_preview` in `src/ui/preview.rs`, for a local file.
             (PREVIEW, is_file(entry)),
             (RUN, crate::run::runs(entry)),
-            (TERMINAL, folder),
+            (
+                TERMINAL,
+                folder && crate::terminal::can_open(&entry.location),
+            ),
         ],
         typing,
     );
@@ -634,12 +638,13 @@ pub(crate) struct FolderTarget {
     /// The folder lists something: Select All has entries to select.
     pub(crate) has_entries: bool,
     pub(crate) can_paste: bool,
+    pub(crate) can_open_terminal: bool,
     pub(crate) hidden_shown: bool,
     pub(crate) typing: bool,
 }
 
 /// A pane's background menu: `FolderMenuOptions`. Paste follows whether the clipboard offers
-/// files and the folder accepts pasted items.
+/// files and the folder accepts pasted items; Open in Terminal follows `can_open_terminal`.
 pub(crate) fn folder(target: &FolderTarget) -> MenuModel {
     let typing = target.typing;
     let hidden = if target.hidden_shown {
@@ -653,7 +658,10 @@ pub(crate) fn folder(target: &FolderTarget) -> MenuModel {
             NEW_FILE.item(typing),
             PASTE.item(typing).enabled(target.can_paste),
         ]))
-        .section(section(&[(OPEN_WITH, true), (TERMINAL, true)], typing))
+        .section(Section::new([
+            OPEN_WITH.item(typing),
+            TERMINAL.item(typing).enabled(target.can_open_terminal),
+        ]))
         .section(Section::new([
             SELECT_ALL.item(typing).enabled(target.has_entries),
             REFRESH.item(typing),

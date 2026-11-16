@@ -119,6 +119,7 @@ pub struct StrataDialog<S> {
     initial: Focus,
     primary_enabled: bool,
     default_button: bool,
+    expose_subtitle: bool,
     loading: Option<String>,
     close_label: String,
     closable: bool,
@@ -153,6 +154,7 @@ impl<S: 'static> StrataDialog<S> {
             initial: Focus::First,
             primary_enabled: true,
             default_button: true,
+            expose_subtitle: false,
             loading: None,
             close_label: "Close dialog".into(),
             closable: true,
@@ -181,6 +183,14 @@ impl<S: 'static> StrataDialog<S> {
     /// The line under the title; assistive technology reads it as the dialog's description.
     pub fn subtitle(mut self, subtitle: impl Into<String>) -> Self {
         self.subtitle = Some(subtitle.into());
+        self
+    }
+
+    /// Exposes `<key>-subtitle` as a named accessible label inside the dialog (in addition to
+    /// the dialog's own description), for dialogs such as Properties whose subtitle displays the
+    /// resolved content-type kind.
+    pub fn expose_subtitle(mut self, expose: bool) -> Self {
+        self.expose_subtitle = expose;
         self
     }
 
@@ -306,6 +316,21 @@ impl<S: 'static> StrataDialog<S> {
             label: label.into(),
             on_press: Some(Rc::new(on_press)),
         });
+        self
+    }
+
+    /// Disables the footer action `id` while false: it renders disabled and skips Tab and arrow
+    /// focus. Call after [`StrataDialog::action`] or [`StrataDialog::action_tx`].
+    pub fn action_enabled(mut self, id: &str, enabled: bool) -> Self {
+        let key = format!("{}-{id}", self.key);
+        debug_assert!(
+            self.actions.iter().any(|a| a.key == key),
+            "action_enabled({id:?}) names no action of dialog {:?}",
+            self.key
+        );
+        if !enabled && let Some(action) = self.actions.iter_mut().find(|a| a.key == key) {
+            action.on_press = None;
+        }
         self
     }
 
@@ -441,14 +466,7 @@ impl<S: 'static> StrataDialog<S> {
                 .a11y_hidden(),
         );
         if let Some(sub) = &self.subtitle {
-            heading = heading.child(
-                text(keep_words_whole(sub))
-                    .key(format!("{}-subtitle", self.key))
-                    .font(kit.ty.small)
-                    .color(kit.c.text_muted)
-                    .wrap()
-                    .a11y_hidden(),
-            );
+            heading = heading.child(subtitle_el(&self.key, sub, look, self.expose_subtitle));
         }
         let mut header = row()
             .w_full()
@@ -554,4 +572,17 @@ fn paragraph(look: &Look, message: &str) -> El {
         .font(look.kit.ty.ui)
         .color(look.kit.c.text_base)
         .wrap()
+}
+
+fn subtitle_el(key: &str, sub: &str, look: &Look, expose: bool) -> El {
+    let el = text(keep_words_whole(sub))
+        .key(format!("{key}-subtitle"))
+        .font(look.kit.ty.small)
+        .color(look.kit.c.text_muted)
+        .wrap();
+    if expose {
+        el.label(sub.to_owned())
+    } else {
+        el.a11y_hidden()
+    }
 }

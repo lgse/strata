@@ -42,29 +42,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     let key = keys::column(&st.key, c.serial);
     let scale = width::scale(look);
     let w = st.drawn_width(depth, c, scale);
-    let animated = look.animations;
-    let pair = SpringPair::new(MOTION, MOTION);
-    // The shell: a new column slides and fades in; a closed one narrows (its slot collapses)
-    // and fades out; it takes no input while it leaves (Rune's presence). Without animations
-    // both land at once.
-    let shell_motion = if !animated {
-        Transition::none()
-    } else {
-        let entrance = match c.entrance {
-            Entrance::Slide => Transition::offset(SLIDE, 0.0).combined(Transition::opacity()),
-            Entrance::Fade | Entrance::Still => Transition::none(),
-        };
-        Transition::asymmetric(entrance, Transition::opacity())
-            .hold_layout()
-            .springs(pair)
-    };
-    // The body: a sibling that takes a column's place fades in where the old one stood, and
-    // the old one goes at once (`ColumnsState::swap_from`).
-    let body_motion = if animated && c.entrance == Entrance::Fade {
-        Transition::asymmetric(Transition::opacity(), Transition::none()).springs(pair)
-    } else {
-        Transition::none()
-    };
+    let (shell_motion, body_motion) = shell_motions(look.animations, c.entrance);
     let list = collection(sh, s, c.serial).build(s);
     let body = col()
         .key(format!("{key}-body"))
@@ -91,7 +69,7 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
     let mut shell = col()
         .key(keys::slot(&st.key, c.slot))
         .role("group")
-        .label(title)
+        .label(title.clone())
         .description(sh.labels.pane.clone())
         .w(w)
         .h_full()
@@ -101,6 +79,9 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         .child(body)
         .child(line)
         .child(edge(sh, st, depth, c.serial, &key, scale, look));
+    if let Some(slice) = st.clipped_slice(depth, look) {
+        shell = shell.child(reveal_target(sh, &title, &key, slice));
+    }
     let resizing = st.resize.as_ref().is_some_and(|r| r.depth == depth);
     if st.edge_hover == Some(depth) || resizing {
         let caption = look.resize_caption();
@@ -143,6 +124,26 @@ pub(super) fn shell<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize) -> El {
         );
     }
     shell
+}
+
+fn shell_motions(animated: bool, entrance: Entrance) -> (Transition, Transition) {
+    if !animated {
+        return (Transition::none(), Transition::none());
+    }
+    let pair = SpringPair::new(MOTION, MOTION);
+    let shell_in = match entrance {
+        Entrance::Slide => Transition::offset(SLIDE, 0.0).combined(Transition::opacity()),
+        Entrance::Fade | Entrance::Still => Transition::none(),
+    };
+    let shell_motion = Transition::asymmetric(shell_in, Transition::opacity())
+        .hold_layout()
+        .springs(pair);
+    let body_motion = if entrance == Entrance::Fade {
+        Transition::asymmetric(Transition::opacity(), Transition::none()).springs(pair)
+    } else {
+        Transition::none()
+    };
+    (shell_motion, body_motion)
 }
 
 /// The resize edge over the line on a column's right: it reaches [`EDGE_REACH`] either side,
@@ -397,46 +398,58 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
                 ),
         );
     }
-    let mut controls = row().gap(look.space.xxs).items_center();
-    let mut any = false;
     let cx = HeaderCx {
         depth,
         active,
         targeted,
         loading,
     };
-    if targeted {
-        if let Some(actions) = sh.actions.as_ref().and_then(|f| f(s, cx)) {
-            controls = controls.child(actions);
-            any = true;
-        }
-        if depth > 0 {
-            let close = sh.clone();
-            controls = controls.child(
-                IconButton::new(look.icon(IconName::Close))
-                    .variant(IconButtonVariant::GhostMuted)
-                    .control_size(ControlSize::Small)
-                    .label(sh.labels.close.clone())
-                    .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-                        if let Some(depth) = depth_of(&close, s, serial) {
-                            close.emit(s, ColumnsIntent::CloseFrom(depth), tx);
-                        }
-                    })
-                    .build(k)
-                    // Not a focus stop: a press on it focuses the strip, which keeps the
-                    // keyboard when the button goes with its column.
-                    .focusable(false)
-                    .key(keys::close(&key)),
-            );
-            any = true;
-        }
-    }
-    if any {
+    if let Some(controls) = header_controls(sh, s, cx, serial) {
         // A secondary press on a control is the control's: no folder menu.
         bar = bar.child(controls.on_secondary_press(|_: &mut S, _, tx: &mut Tx| tx.live_only()));
     }
-    let menu = sh.clone();
-    let bar = bar.on_secondary_press(move |s: &mut S, at, tx: &mut Tx| {
+    let bar = with_header_menu(bar, sh.clone(), serial);
+    with_band(sh, s, bar, cx)
+}
+
+fn header_controls<S: 'static>(sh: &Rc<Shared<S>>, s: &S, cx: HeaderCx, serial: u64) -> Option<El> {
+    if !cx.targeted {
+        return None;
+    }
+    let p = (sh.parts)(s);
+    let look = p.look;
+    let key = keys::column(&p.state.key, serial);
+    let mut controls = row().gap(look.space.xxs).items_center();
+    let mut any = false;
+    if let Some(actions) = sh.actions.as_ref().and_then(|f| f(s, cx)) {
+        controls = controls.child(actions);
+        any = true;
+    }
+    if cx.depth > 0 && (sh.close_buttons)(s) {
+        let close = sh.clone();
+        controls = controls.child(
+            IconButton::new(look.icon(IconName::Close))
+                .variant(IconButtonVariant::GhostMuted)
+                .control_size(ControlSize::Small)
+                .label(sh.labels.close.clone())
+                .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                    if let Some(depth) = depth_of(&close, s, serial) {
+                        close.emit(s, ColumnsIntent::CloseFrom(depth), tx);
+                    }
+                })
+                .build(&look.kit)
+                // Not a focus stop: a press on it focuses the strip, which keeps the
+                // keyboard when the button goes with its column.
+                .focusable(false)
+                .key(keys::close(&key)),
+        );
+        any = true;
+    }
+    any.then_some(controls)
+}
+
+fn with_header_menu<S: 'static>(bar: El, menu: Rc<Shared<S>>, serial: u64) -> El {
+    bar.on_secondary_press(move |s: &mut S, at, tx: &mut Tx| {
         let Some(depth) = depth_of(&menu, s, serial) else {
             return;
         };
@@ -455,8 +468,7 @@ pub(super) fn header<S: 'static>(sh: &Rc<Shared<S>>, s: &S, depth: usize, serial
             },
             tx,
         );
-    });
-    with_band(sh, s, bar, cx)
+    })
 }
 
 /// The header row, and the host's band under it when there is one
@@ -466,4 +478,27 @@ fn with_band<S: 'static>(sh: &Shared<S>, s: &S, bar: El, cx: HeaderCx) -> El {
         Some(band) => col().w_full().child(bar).child(band),
         None => bar,
     }
+}
+
+/// Accessible `"Reveal <Folder> column"` target pinned over the visible slice of a partially
+/// clipped column (`src/ui/browser/columns/append/shell.rs`). Bare `el()` with no fill or handler
+/// has `vis_flags.hit() == false`, so pointer events pass through to the column underneath while
+/// assistive technology sees an enabled `button` with the visible slice's bounds.
+fn reveal_target<S>(
+    sh: &Shared<S>,
+    title: &str,
+    key: &str,
+    (left_clipped, vis_w): (bool, f32),
+) -> El {
+    let label = sh.labels.reveal.replace("{name}", title);
+    el().key(keys::reveal(key))
+        .role("button")
+        .label(label)
+        .w(vis_w)
+        .pin(
+            (!left_clipped).then_some(0.0),
+            Some(0.0),
+            left_clipped.then_some(0.0),
+            Some(0.0),
+        )
 }

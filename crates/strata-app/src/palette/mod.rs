@@ -16,8 +16,8 @@
 //!   it opens. Each edit asks the index again, and a batch counts only for the text the field
 //!   holds.
 //! - **Opening a result** ([`act`]): Enter or a click. A folder is navigated to; a file is
-//!   revealed in its folder, selected, and opened first when "Open files directly" is on. The
-//!   preview drawer GTK shows a file in otherwise is A15's.
+//!   opened first when "Open files directly" is on or shown in the preview drawer otherwise,
+//!   then revealed and selected in its folder.
 //! - **Its folder:** Alt+Return, with Super held or not, or the result's menu ([`menu`], "Open
 //!   containing folder") reveals it in its folder, the folder's filter emptied first, as GTK's
 //!   `reveal_location` does. The palette's field reads Alt+Return itself (C17's reveal
