@@ -729,54 +729,86 @@ fn opening_section(ctx: PageCtx<'_>) -> Option<El> {
     let rows: Vec<Option<El>> = modes
         .into_iter()
         .map(|(slug, title, files, folders)| {
-            let files_ctl =
-                click_pair_control(app, &format!("settings-clicks-{slug}-files"), files);
-            let folders_ctl =
-                click_pair_control(app, &format!("settings-clicks-{slug}-folders"), folders);
-            Some(
-                row()
-                    .w_full()
-                    .px(app.look.space.lg)
-                    .py(app.look.space.md)
-                    .gap(app.look.space.lg)
-                    .items_center()
-                    .child(
-                        text(tr(title))
-                            .font(app.look.kit.ty.ui_medium)
-                            .color(app.look.kit.c.text_base)
-                            .grow(1.0),
-                    )
-                    .child(files_ctl)
-                    .child(folders_ctl),
-            )
+            Some(opening_mode_row(app, slug, title, (files, folders)))
         })
         .collect();
     let card = group_card(&app.look, rows)?;
     ctx.search.row(app, &app.look, "opening", card)
 }
 
-fn click_pair_control(
+fn opening_mode_row(
     app: &App,
-    key: &str,
-    (current, write): (u8, fn(&mut Preferences, u8)),
+    slug: &str,
+    title: &str,
+    (files, folders): (ClickSlot, ClickSlot),
 ) -> El {
-    segmented_toggles(
-        &app.look,
-        key,
-        None,
-        vec![
-            (
-                tr("Single"),
-                current == 1,
-                Rc::new(move |app, _| shell::saved(app).change(|s| write(s, 1))),
-            ),
-            (
-                tr("Double"),
-                current != 1,
-                Rc::new(move |app, _| shell::saved(app).change(|s| write(s, 2))),
-            ),
-        ],
-    )
+    let view_name = tr(title);
+    let files_ctl = click_pair_control(
+        app,
+        &format!("settings-clicks-{slug}-files"),
+        &format!("{view_name} {}", tr("Files")),
+        files,
+    );
+    let folders_ctl = click_pair_control(
+        app,
+        &format!("settings-clicks-{slug}-folders"),
+        &format!("{view_name} {}", tr("Folders")),
+        folders,
+    );
+    row()
+        .w_full()
+        .px(app.look.space.lg)
+        .py(app.look.space.md)
+        .gap(app.look.space.lg)
+        .items_center()
+        .child(
+            text(view_name)
+                .font(app.look.kit.ty.ui_medium)
+                .color(app.look.kit.c.text_base)
+                .grow(1.0),
+        )
+        .child(files_ctl)
+        .child(folders_ctl)
+}
+
+fn click_pair_control(app: &App, key: &str, a11y_prefix: &str, (current, write): ClickSlot) -> El {
+    let kit = &app.look.kit;
+    let c = &kit.c;
+    let items: Vec<El> = [("Single", 1_u8), ("Double", 2_u8)]
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (choice, count))| {
+            let active = if count == 1 {
+                current == 1
+            } else {
+                current != 1
+            };
+            let variant = if active {
+                ButtonVariant::Submit
+            } else {
+                ButtonVariant::Ghost
+            };
+            let label = tr(choice);
+            let a11y_name = format!("{a11y_prefix} {label}");
+            let btn = Button::new(label)
+                .variant(variant)
+                .on_press_tx(move |app: &mut App, _: &mut Tx| {
+                    shell::saved(app).change(|s| write(s, count));
+                })
+                .build(kit)
+                .label(a11y_name)
+                .checked(active);
+            buttons::on_return(format!("{key}-{idx}"), btn)
+        })
+        .collect();
+    row()
+        .key(key.to_owned())
+        .gap(app.look.space.xxs)
+        .padding(app.look.space.xxs)
+        .radius(kit.radius.md)
+        .fill(c.bg_base)
+        .border(1.0, c.border_muted)
+        .children(items)
 }
 
 pub(super) fn sync_general_fields(
