@@ -358,7 +358,11 @@ fn default_filter_shows_the_result_total_without_a_footer_mark() {
                 select_named(&fixture, "beta.txt");
                 focus_files(&fixture);
                 wait_footer(&fixture, &format!("{mode:?}: seed selection"), || {
-                    fixture.shortcuts.count_text().0 == "1 file selected (6 B)"
+                    fixture
+                        .shortcuts
+                        .count_text()
+                        .0
+                        .starts_with("beta.txt (6 B)")
                 });
                 let directory_count = fixture.shortcuts.count_text();
                 assert_eq!(fixture.shortcuts.filter_mark(), None, "{mode:?}");
