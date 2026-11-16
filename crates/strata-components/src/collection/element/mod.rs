@@ -194,6 +194,7 @@
 mod a11y;
 mod keys;
 mod lines;
+mod origin;
 mod route;
 mod row;
 pub mod seam;
@@ -298,6 +299,7 @@ pub(crate) struct Config<S> {
     edge: Vec<PartFn<S>>,
     on_intent: Option<IntentFn<S>>,
     on_press: Option<PressFn<S>>,
+    on_header_click: Option<PressFn<S>>,
     on_cursor: Option<CursorFn<S>>,
     on_selection: Option<SelectionFn<S>>,
     on_visible: Option<VisibleFn<S>>,
@@ -379,6 +381,7 @@ impl<S: 'static> Collection<S> {
                 edge: Vec::new(),
                 on_intent: None,
                 on_press: None,
+                on_header_click: None,
                 on_cursor: None,
                 on_selection: None,
                 on_visible: None,
@@ -556,6 +559,13 @@ impl<S: 'static> Collection<S> {
     /// while a drag from its header's blank space starts a band, as in Strata.
     pub fn header_defers_press(mut self, threshold: f32) -> Self {
         self.cfg.header_defer = Some(threshold);
+        self
+    }
+
+    /// Hears a primary click on the header's blank space that released before travelling past
+    /// [`Collection::header_defers_press`], with the `Down` input of that press.
+    pub fn on_header_click(mut self, f: impl Fn(&mut S, &PointerInput, &mut Tx) + 'static) -> Self {
+        self.cfg.on_header_click = Some(Rc::new(f));
         self
     }
 
@@ -748,6 +758,20 @@ impl<S: 'static> Collection<S> {
     pub fn tick(self, s: &mut S, tx: &mut Tx) -> bool {
         let cfg = Rc::new(self.cfg);
         route::tick(&cfg, s, tx)
+    }
+
+    /// Routes a primary drag starting on an external marquee origin surface (such as the preview
+    /// drawer's blank space). When `clears_on_press` is true, a plain press clears the selection;
+    /// once the pointer travels past the drag threshold, a marquee band begins from the press
+    /// anchor into this collection.
+    pub fn origin_drag(
+        self,
+        s: &mut S,
+        (d, clears_on_press): (&mut rune::Drag, bool),
+        tx: &mut Tx,
+    ) {
+        let cfg = Rc::new(self.cfg);
+        origin::origin_drag(&cfg, s, (d, clears_on_press), tx);
     }
 
     /// Handles a key as the collection's own key handler would: the host's

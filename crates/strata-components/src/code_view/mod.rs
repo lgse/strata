@@ -78,9 +78,10 @@
 //!
 //! # Deviations
 //!
-//! - **D1** (owner item) No caret or keyboard selection in the read-only view: Shift+arrows,
-//!   Shift+Home and End, word steps (C11's R2; U-C10b-2: `text_input` has no read-only mode).
-//!   Strata's small source view shows a caret. Ctrl+Home and Ctrl+End scroll to the ends.
+//! - **D1** (owner item) No drawn caret bar in the read-only view (U-C10b-2: `text_input` has
+//!   no read-only mode), though [`CodeState`] tracks a byte caret for `Home` / `End`,
+//!   `Ctrl+Home` / `Ctrl+End`, `Shift+Arrow` / `Ctrl+Shift+Arrow` selection and gutter-margin
+//!   drags (packet entry 34).
 //! - **D2** One virtual view for every size. Strata shows small or recognised sources in
 //!   sourceview and only large plain text in its virtual view; here every source takes the
 //!   virtual view's rules (lines over 2 KiB split into rows).
@@ -190,6 +191,7 @@
 pub mod editor;
 pub mod highlight;
 
+mod caret;
 mod copy;
 mod find;
 mod position;
@@ -299,24 +301,15 @@ impl<S: 'static> CodeView<S> {
             .line_numbers()
             .then(|| gutter_width(rows.lines(), paint.mono, paint.pad));
         let bar_look = BarLook::app(look);
-        // A bar the last frame didn't lay out was taken away (the preview closed, or the text
-        // stopped overflowing): Rune sends a removed element no Up, so a drag it held ends
-        // here (U-C10b-8).
-        if cx.layout_with(&format!("{key}-position"), |_| ()).is_none() {
-            st.position.end_drag();
-        }
-        st.position.configure(
-            position::Keys {
-                scroll: scroll_key.clone(),
-                list: list_key.clone(),
-                row_prefix: format!("{key}-l"),
-                fixed: (!wrap).then(|| paint.line()),
-            },
-            rows.len(),
-            bar_look,
+        configure_position_bar(
+            st,
+            cx,
+            (&key, &scroll_key, &list_key),
+            (wrap, &paint, bar_look),
         );
         let ctx = Rc::new(Ctx {
             get,
+            get_mut,
             paint,
             gutter,
             wrap,
@@ -415,6 +408,30 @@ impl<S: 'static> CodeView<S> {
         }
         root.child(body)
     }
+}
+
+fn configure_position_bar<S: 'static>(
+    st: &CodeState,
+    cx: &mut Cx<S>,
+    (key, scroll_key, list_key): (&str, &str, &str),
+    (wrap, paint, bar_look): (bool, &Paint, BarLook),
+) {
+    // A bar the last frame didn't lay out was taken away (the preview closed, or the text
+    // stopped overflowing): Rune sends a removed element no Up, so a drag it held ends
+    // here (U-C10b-8).
+    if cx.layout_with(&format!("{key}-position"), |_| ()).is_none() {
+        st.position.end_drag();
+    }
+    st.position.configure(
+        position::Keys {
+            scroll: scroll_key.to_owned(),
+            list: list_key.to_owned(),
+            row_prefix: format!("{key}-l"),
+            fixed: (!wrap).then(|| paint.line()),
+        },
+        st.rows().len(),
+        bar_look,
+    );
 }
 
 /// The list's width with wrap off: the widest row's columns in the mono face's advance, or
@@ -545,31 +562,39 @@ fn key_in<S: 'static>(
     // Without this Ctrl+C still copies the whole text (`selection_copy` answers from the
     // model), but only after Rune has built up to 10,000 unbuilt rows to collect the
     // selection it then ignores: 59 ms against 42 to 47 ms on the 50,000-line fixture.
-    if ev.is_command('c') && plain && st.all_selected() {
+    if copy_shortcut(st, ev, plain, tx) {
+        return true;
+    }
+    // In a hosted preview (`intent` set), plain Left returns to the listing on the first press
+    // even when text is selected, matching GTK's capture-phase `PreviewSurface::Document`.
+    if is_plain_left(ev)
+        && let Some(f) = intent.clone()
+    {
+        f(s, CodeIntent::Leave, tx);
+        return true;
+    }
+    if let Some(handled) = caret::on_key(st, ev, tx) {
+        return handled;
+    }
+    false
+}
+
+fn copy_shortcut(st: &CodeState, ev: &KeyEvent, plain: bool, tx: &mut Tx) -> bool {
+    if !(ev.is_command('c') && plain) {
+        return false;
+    }
+    if st.all_selected() {
         tx.copy(st.copy_all());
         return true;
     }
-    let ctrl = m.ctrl || m.cmd;
-    match ev.key {
-        Key::Left if !ctrl && !m.shift && !m.alt => match intent.clone() {
-            Some(f) => {
-                f(s, CodeIntent::Leave, tx);
-                true
-            }
-            None => false,
-        },
-        Key::Home | Key::End if ctrl && !m.shift => {
-            let p = st.position.clone();
-            p.go(
-                if ev.key == Key::End {
-                    f64::INFINITY
-                } else {
-                    0.0
-                },
-                tx,
-            );
-            true
-        }
-        _ => false,
+    if let Some(text) = st.copy_keyboard() {
+        tx.copy(text);
+        return true;
     }
+    false
+}
+
+fn is_plain_left(ev: &KeyEvent) -> bool {
+    let m = ev.mods;
+    ev.key == Key::Left && !(m.ctrl || m.cmd || m.shift || m.alt)
 }

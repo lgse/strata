@@ -115,6 +115,15 @@ pub struct ColumnState {
     pub(super) entrance: Entrance,
     pub(super) keys: KeyHandle,
     pub(super) pending: Pending,
+    pub(super) peek_gate: std::rc::Rc<std::cell::Cell<super::pointer::PeekGate>>,
+}
+
+/// How a header press was classified on `Down`, for `on_header_click` on `Up`.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum HeaderPeek {
+    Suppress,
+    Peek(usize),
+    Normal(usize),
 }
 
 impl ColumnState {
@@ -203,6 +212,13 @@ pub struct ColumnsState {
     ticks: u64,
     /// The last reveal, worked out again while the strip's width changes soon after it.
     pub(super) recheck: Option<Recheck>,
+    /// Last built clipped-column slices `(left_clipped, visible_width)` per column.
+    clipped: Vec<Option<(bool, f32)>>,
+    /// Timestamp and window point of the last peek-reveal click, so the second press of a
+    /// double-click on a clipped column is ignored (`src/ui/browser/columns/reveal.rs`).
+    pub(super) peek_seq: Option<(f64, Point)>,
+    /// Classification of the held header press.
+    pub(super) header_peek: Option<HeaderPeek>,
 }
 
 /// A recent reveal of the active column ([`ColumnsState::tick_reveal`]).
@@ -282,6 +298,9 @@ impl ColumnsState {
             now: 0.0,
             ticks: 0,
             recheck: None,
+            clipped: Vec::new(),
+            peek_seq: None,
+            header_peek: None,
         }
     }
 
@@ -411,6 +430,7 @@ impl ColumnsState {
         let key = keys::column(&self.key, serial);
         let feed = ScrollFeed::new();
         let keys = KeyHandle::default();
+        let peek_gate = std::rc::Rc::new(std::cell::Cell::new(super::pointer::PeekGate::Open));
         let mut collection = CollectionState::new();
         collection.controllers.pointer = Some(Box::new(super::pointer::ColumnPointer::new(
             Box::new(AutoscrollPointer::new(
@@ -419,6 +439,7 @@ impl ColumnsState {
                 key,
                 feed.clone(),
             )),
+            peek_gate.clone(),
         )));
         collection.controllers.keyboard = Some(Box::new(Keyboard::new(keys.clone())));
         collection.controllers.marquee = Some(Box::new(Marquee::new()));
@@ -444,6 +465,7 @@ impl ColumnsState {
             entrance,
             keys,
             pending: Pending::None,
+            peek_gate,
         }
     }
 
@@ -741,6 +763,20 @@ impl ColumnsState {
         self.clear_all(sources);
     }
 
+    /// Clears the selection in every column before `limit` (the cursors stay) and resets their
+    /// pending click gestures when a plain marquee starts in column `limit`.
+    pub(super) fn clear_before(&mut self, limit: usize, sources: &dyn ColumnSources) {
+        for (depth, c) in self.columns.iter_mut().enumerate().take(limit) {
+            if let Some(ctl) = c.collection.controllers.pointer.as_mut() {
+                ctl.reset();
+            }
+            if depth < sources.len() && !c.collection.selection.is_empty() {
+                c.collection.selection.clear();
+                c.collection.note_selection(sources.source(depth));
+            }
+        }
+    }
+
     /// Clears the selection in every column (the cursors stay).
     pub(super) fn clear_all(&mut self, sources: &dyn ColumnSources) {
         for (depth, c) in self.columns.iter_mut().enumerate() {
@@ -934,7 +970,56 @@ impl ColumnsState {
         } else {
             tx.scroll_to_instant(strip, target, 0.0);
         }
+        tx.wake_after(std::time::Duration::ZERO);
         (target, true)
+    }
+
+    /// Visible slice `(left_clipped, visible_width_floor)` when column `depth` is partially
+    /// clipped by the strip's viewport (`src/ui/browser/columns/reveal.rs`).
+    pub(super) fn clipped_slice(&self, depth: usize, look: &Look) -> Option<(bool, f32)> {
+        let page = self.strip.w;
+        if page <= 0.0 || depth >= self.columns.len() {
+            return None;
+        }
+        let spans = self.spans(look);
+        let &(left, right) = spans.get(depth)?;
+        let w = right - left;
+        let x = left - self.strip_offset();
+        let visible = ((x + w).min(page) - x.max(0.0)).max(0.0);
+        let partial = w <= page + 1.0 && visible > 1.0 && visible < w - 1.0;
+        partial.then_some((x < 0.0, visible.floor()))
+    }
+
+    /// Updates the cached clipped-column slices; returns `true` when any column's reveal target
+    /// appeared, disappeared, or changed width.
+    pub(super) fn sync_clipped(&mut self, look: &Look) -> bool {
+        let next: Vec<Option<(bool, f32)>> = (0..self.columns.len())
+            .map(|d| self.clipped_slice(d, look))
+            .collect();
+        if next != self.clipped {
+            self.clipped = next;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Consumes a second press within double-click time and distance of a peek-reveal click.
+    pub(super) fn consume_peek_double_click(&mut self, now: f64, window: Point) -> bool {
+        let Some((at, pt)) = self.peek_seq else {
+            return false;
+        };
+        let within = (now - at) >= 0.0
+            && (now - at) <= 0.4
+            && (window.x - pt.x).abs() <= 5.0
+            && (window.y - pt.y).abs() <= 5.0;
+        if within {
+            self.peek_seq = None;
+            true
+        } else {
+            self.peek_seq = None;
+            false
+        }
     }
 
     // Drags.

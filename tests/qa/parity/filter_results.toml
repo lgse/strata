@@ -195,25 +195,22 @@ host = "offscreen"
 scenario = "filter-updates-retain-state"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A15: the preview, at line 12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-updates-retain-state"
 run = "icons"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A15: the preview, at line 12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filter-updates-retain-state"
 run = "list"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A15: the preview, at line 12"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "filtered-control-selection-group"
@@ -229,7 +226,7 @@ run = "columns-two-clicks"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A15: the preview, at line 8"
+blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
 
 [[run]]
 scenario = "filtered-file-click-previews"
@@ -237,7 +234,7 @@ run = "icons-two-clicks"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A15: the preview, at line 8"
+blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
 
 [[run]]
 scenario = "filtered-file-click-previews"
@@ -245,7 +242,7 @@ run = "list-two-clicks"
 package = "A10"
 status = "pending"
 reason = "scope"
-blocker = "A15: the preview, at line 8"
+blocker = "A14: opening a file (`BrowserEvent::OpenRequested`), at line 13"
 
 [[run]]
 scenario = "filtered-file-click-previews"

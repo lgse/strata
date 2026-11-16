@@ -22,12 +22,14 @@ use strata_components::{
     document_view::DocumentState,
     preview_drawer::{DocumentView, FindStatus, HostedPreview},
     sheet_grid::SheetGridState,
+    viewers::viewport::ViewportState,
 };
 use strata_core::i18n::tr;
 use strata_kit::look::Look;
 
 use super::{
     document::{self, DecodedMedia, MediaTask, RenderedDocument},
+    image::{self, ImageViewer},
     labels, sheet,
 };
 use crate::{App, buttons};
@@ -52,6 +54,7 @@ pub(super) enum Viewer {
     Loading,
     Code(Box<CodeState>),
     Document(DocumentViewer),
+    Image(Box<ImageViewer>),
     Message {
         title: String,
         detail: Option<String>,
@@ -86,7 +89,7 @@ impl Viewer {
 
     pub(super) fn can_focus(&self) -> bool {
         match self {
-            Self::Code(_) | Self::Document(_) => true,
+            Self::Code(_) | Self::Document(_) | Self::Image(_) => true,
             Self::Message { can_open, .. } => *can_open,
             Self::Empty | Self::Loading => false,
         }
@@ -130,7 +133,10 @@ impl Viewer {
         }
     }
 
-    pub(super) fn reset_viewport(&self, tx: &mut Tx) {
+    pub(super) fn reset_viewport(&mut self, tx: &mut Tx) {
+        if let Self::Image(img) = self {
+            img.reset();
+        }
         tx.clear_text_selection();
         for key in [
             CODE_KEY,
@@ -175,7 +181,7 @@ impl Viewer {
         match self {
             Self::Code(code) => code.poll(tx),
             Self::Document(doc) => doc.poll(clock, look, tx),
-            Self::Empty | Self::Loading | Self::Message { .. } => false,
+            Self::Empty | Self::Loading | Self::Image(_) | Self::Message { .. } => false,
         }
     }
 
@@ -183,7 +189,7 @@ impl Viewer {
         match self {
             Self::Code(code) => code.poll(tx),
             Self::Document(doc) => doc.poll_async(tx),
-            Self::Empty | Self::Loading | Self::Message { .. } => false,
+            Self::Empty | Self::Loading | Self::Image(_) | Self::Message { .. } => false,
         }
     }
 
@@ -191,7 +197,7 @@ impl Viewer {
         match self {
             Self::Code(code) => code.set_wrap(wrap),
             Self::Document(doc) => doc.set_wrap(wrap),
-            Self::Empty | Self::Loading | Self::Message { .. } => {}
+            Self::Empty | Self::Loading | Self::Image(_) | Self::Message { .. } => {}
         }
     }
 
@@ -201,6 +207,7 @@ impl Viewer {
             Self::Loading => Some(loading_view(&app.look)),
             Self::Code(_) => Some(code_view(app, cx, code_ref, code_mut)),
             Self::Document(doc) => doc.build(app, cx),
+            Self::Image(img) => Some(image::build_view(img, &app.look, cx, image_viewport_mut)),
             Self::Message {
                 title,
                 detail,
@@ -487,6 +494,13 @@ fn sheet_state_mut(app: &mut App) -> &mut SheetGridState {
     }
 }
 
+fn image_viewport_mut(app: &mut App) -> &mut ViewportState {
+    match &mut app.preview.viewer {
+        Viewer::Image(img) => &mut img.viewport,
+        _ => unreachable!("ImageView mutated only while Viewer::Image is active"),
+    }
+}
+
 fn code_view(
     app: &App,
     cx: &mut Cx<App>,
@@ -538,7 +552,7 @@ fn message_view(look: &Look, title: &str, detail: Option<&str>, can_open: bool) 
         );
     }
     if can_open {
-        let open_label = tr("Open Externally");
+        let open_label = tr("Open");
         let button = Button::new(&open_label)
             .on_press(|app: &mut App| super::open_current(app))
             .build(&look.kit);
