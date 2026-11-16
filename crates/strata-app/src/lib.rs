@@ -96,6 +96,7 @@ mod conflict_dialog;
 mod transfer;
 // A13 Archives and providers
 // A14 Open with, terminal and custom actions
+mod terminal;
 // A15 Preview drawer, text and documents
 mod preview;
 // A16 Media, PDF and model viewers
@@ -153,6 +154,7 @@ slots::parts! {
     conflict_dialog: conflict_dialog::ConflictDialog,
     // A13 Archives and providers
     // A14 Open with, terminal and custom actions
+    terminal: terminal::Terminal,
     // A15 Preview drawer, text and documents
     preview: preview::Preview,
     // A16 Media, PDF and model viewers
