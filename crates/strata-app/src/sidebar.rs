@@ -38,9 +38,10 @@ use std::io;
 
 use rune::{El, Tx};
 use strata_components::context_menu::ContextMenuState;
+use strata_components::contract::dnd::DropHover;
 use strata_components::sidebar::{
-    ItemId, PlacesSidebar, Section, SidebarData, SidebarIntent, SidebarLabels, SidebarState, Step,
-    Via,
+    DropSite, ItemId, PinVerdict, PlacesSidebar, Section, SidebarData, SidebarIntent,
+    SidebarLabels, SidebarState, Step, Via,
 };
 use strata_core::{
     i18n::{count, tr},
@@ -59,6 +60,7 @@ use crate::{
     slots::{self, Frame, Later, Listener, Part, Place, Setup},
 };
 
+mod drops;
 mod header;
 mod keys;
 mod menu;
@@ -67,6 +69,7 @@ mod reorder;
 mod trash;
 mod width;
 
+pub(crate) use drops::spring_open;
 pub(crate) use width::toggle_face;
 
 use menu::OPEN_IN_TAB;
@@ -103,6 +106,8 @@ pub(crate) struct Sidebar {
     menu: ContextMenuState,
     /// What the Trash holds, for its menu ([`trash`]).
     trash: trash::Probe,
+    /// Validated folder names for the latest foreign drag over `PINNED` gaps.
+    foreign_pins: drops::ForeignPinCache,
     started: bool,
 }
 
@@ -136,6 +141,7 @@ impl Part for Sidebar {
             header_entry: None,
             menu: ContextMenuState::default(),
             trash: trash::Probe::default(),
+            foreign_pins: None,
             started: false,
         }
     }
@@ -237,6 +243,7 @@ fn start(app: &mut App) {
     state.pinned_collapsed = saved.sidebar_pinned_collapsed;
     state.devices_collapsed = saved.sidebar_devices_collapsed;
     let sidebar = &mut app.sidebar;
+    state.pin_check = sidebar.state.pin_check.clone();
     sidebar.state = state;
     sidebar.started = true;
     let later = sidebar.later.clone();
@@ -362,6 +369,19 @@ impl Sidebar {
             .collect()
     }
 
+    pub(crate) fn drop_over(&self) -> Option<&(DropSite, DropHover)> {
+        self.state.drop_over()
+    }
+
+    pub(crate) fn set_local_pin_verdict(&mut self, verdict: PinVerdict) {
+        self.state.pin_check.local = verdict;
+    }
+
+    pub(crate) fn end_external_drag(&mut self) {
+        self.state.pin_check.local = PinVerdict::Unchecked;
+        self.state.end_drag();
+    }
+
     fn location_of(&self, item: &ItemId) -> Option<&places::Row> {
         self.listed.rows.iter().find(|row| &row.item == item)
     }
@@ -428,6 +448,8 @@ fn element(app: &App, look: &Look, data: SidebarData<'_>) -> El {
         data,
     )
     .key(KEY)
+    .dnd(crate::dnd::binder(app))
+    .drop_action(drops::drop_action)
     .reorder(true)
     // A middle click opens a row in a new tab once a part registers the command.
     .open_in_new_tab(commands::has(app, OPEN_IN_TAB.id))
@@ -457,6 +479,18 @@ fn heard(app: &mut App, intent: SidebarIntent, tx: &mut Tx) {
         }
         SidebarIntent::MovePlace { from, landing, .. } => reorder::move_place(app, from, landing),
         SidebarIntent::MovePin { from, landing, .. } => reorder::move_pin(app, from, landing),
+        SidebarIntent::DropInto { item, dropped } => drops::drop_into(app, &item, dropped, tx),
+        SidebarIntent::PinHover {
+            serial,
+            uris,
+            local,
+        } => drops::pin_hover(app, serial, uris, local),
+        SidebarIntent::PinDrop { gap, dropped } => drops::pin_drop(app, gap, dropped, tx),
+        SidebarIntent::RowDragStart { item } => drops::row_drag_start(app, &item),
+        SidebarIntent::RowDragMove { landing, at, .. } => drops::row_drag_move(app, landing, at, tx),
+        SidebarIntent::RowDragEnd {
+            dropped_outside, ..
+        } => drops::row_drag_end(app, dropped_outside, tx),
         SidebarIntent::SectionToggled { section, collapsed } => {
             shell::saved(app).change(|settings| match section {
                 Section::Pinned => settings.sidebar_pinned_collapsed = collapsed,

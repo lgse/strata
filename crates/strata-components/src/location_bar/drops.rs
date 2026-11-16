@@ -28,7 +28,7 @@ pub(super) fn zone<S: 'static>(cx: &Ctx<'_, S>, index: usize, id: &str) -> DropZ
     .on_hover(move |s: &mut S, hover, _: &DropOffer, tx: &mut Tx| {
         access(s).drag_over(index, &hover_id, hover, delay, tx.clock());
         if let (DropHover::Accepting, Some(delay)) = (hover, delay) {
-            tx.wake_at(tx.clock() + delay);
+            tx.wake_after(std::time::Duration::from_secs_f64(delay));
         }
         let id = hover_id.clone();
         hover_emit(s, LocationIntent::DropHover { id, hover }, tx);

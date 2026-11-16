@@ -22,6 +22,7 @@ fn label(above: &[&str], text: &str, x: f64) -> NameLabel {
             width: 50.0,
             height: 18.0,
         },
+        badge: false,
     }
 }
 

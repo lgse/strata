@@ -274,6 +274,20 @@ pub(crate) fn heard(app: &mut App, intent: Intent, tx: &mut Tx) {
         return;
     };
     shell::publish(app);
+    if let Intent::BeginDrag { ids, .. } = intent {
+        let entries: Vec<_> = ids
+            .into_iter()
+            .filter_map(|id| super::targets::at(app, depth, id))
+            .collect();
+        let scale = match Where::shown(app) {
+            Some(Where::Icons) => app.icons.single.scale(),
+            Some(Where::List) => app.list.single.scale(),
+            _ => 1.0,
+        };
+        crate::dnd::begin_entries(app, entries, scale, tx);
+        shell::settle(app, tx);
+        return;
+    }
     if !super::hit_intent(app, depth, &intent, tx) {
         match intent {
             Intent::ContextMenu { target, anchor } => {

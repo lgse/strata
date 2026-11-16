@@ -22,7 +22,9 @@
 use rune::{Anim, Drag, El, Phase, Tx};
 use strata_kit::look::Look;
 
+use super::Emit;
 use super::data::ItemId;
+use super::intent::SidebarIntent;
 use super::state::SidebarState;
 
 /// Points the pointer travels along either axis before a press on a row becomes a drag: GTK's
@@ -245,17 +247,34 @@ impl Block {
     }
 }
 
+pub(crate) struct AttachSpec<'a, S> {
+    pub look: &'a Look,
+    pub state: &'a RowDrag,
+    pub block: Block,
+    pub access: fn(&mut S) -> &mut SidebarState,
+    pub emit: Emit<S>,
+    pub item: ItemId,
+    pub index: usize,
+    pub count: usize,
+    pub intent: std::rc::Rc<dyn Fn(usize, Landing) -> SidebarIntent>,
+}
+
 /// Makes `el`, row `index` of `count` in its block, draggable to a new place: drawn where the
-/// drag puts it, and `moved` called with the handler's `Tx` when a drop lands somewhere. Every
-/// drop keeps the row as the sidebar's last dropped one, so the press Rune sends on the same
-/// release (U21) opens nothing, as Strata's drag source claims its gesture.
-pub(crate) fn attach<S: 'static>(
-    el: El,
-    look: &Look,
-    (state, block, access): (&RowDrag, Block, fn(&mut S) -> &mut SidebarState),
-    (item, index, count): (ItemId, usize, usize),
-    moved: impl Fn(&mut S, usize, Landing, &mut Tx) + 'static,
-) -> El {
+/// drag puts it, and `spec.intent` emitted with the handler's `Tx` when a drop lands somewhere.
+/// Every drop keeps the row as the sidebar's last dropped one, so the press Rune sends on the
+/// same release (U21) opens nothing, as Strata's drag source claims its gesture.
+pub(crate) fn attach<S: 'static>(el: El, spec: AttachSpec<'_, S>) -> El {
+    let AttachSpec {
+        look,
+        state,
+        block,
+        access,
+        emit,
+        item,
+        index,
+        count,
+        intent,
+    } = spec;
     let c = &look.kit.c;
     let mut el = el.offset(0.0, state.shift(index, count));
     if state.dragging() == Some(index) {
@@ -268,27 +287,123 @@ pub(crate) fn attach<S: 'static>(
         el = look.kit.elevate(lifted, &look.kit.elevation.raised);
     }
     el.on_drag(move |s: &mut S, d: &mut Drag, tx: &mut Tx| {
-        let sidebar = access(s);
-        match d.phase {
-            Phase::Down => {
-                sidebar.dropped = None;
-                block.of(sidebar).press(index);
+        handle_row_drag(
+            s,
+            d,
+            tx,
+            &RowDragCtx {
+                block,
+                access,
+                emit: &emit,
+                item: &item,
+                index,
+                count,
+                intent: &intent,
+            },
+        );
+    })
+}
+
+struct RowDragCtx<'a, S> {
+    block: Block,
+    access: fn(&mut S) -> &mut SidebarState,
+    emit: &'a Emit<S>,
+    item: &'a ItemId,
+    index: usize,
+    count: usize,
+    intent: &'a std::rc::Rc<dyn Fn(usize, Landing) -> SidebarIntent>,
+}
+
+fn handle_row_drag<S: 'static>(
+    s: &mut S,
+    d: &mut Drag,
+    tx: &mut Tx,
+    ctx: &RowDragCtx<'_, S>,
+) {
+    match d.phase {
+        Phase::Down => {
+            let sidebar = (ctx.access)(s);
+            sidebar.dropped = None;
+            ctx.block.of(sidebar).press(ctx.index);
+        }
+        Phase::Move => {
+            tx.animated();
+            let (started, dragging, landing) = {
+                let drag = ctx.block.of((ctx.access)(s));
+                let was = drag.dragging().is_some();
+                drag.follow(ctx.index, ctx.count, d);
+                let now = drag.dragging().is_some();
+                (!was && now, now, drag.target())
+            };
+            if started {
+                (ctx.emit)(s, SidebarIntent::RowDragStart { item: ctx.item.clone() }, tx);
             }
-            Phase::Move => {
-                tx.animated();
-                block.of(sidebar).follow(index, count, d);
-            }
-            Phase::Up => {
-                let Some((from, landing)) = block.of(sidebar).end(d.cancelled()) else {
-                    return;
-                };
-                sidebar.dropped = Some(item.clone());
-                if let Some(landing) = landing {
-                    moved(s, from, landing, tx);
-                }
+            if dragging {
+                (ctx.emit)(
+                    s,
+                    SidebarIntent::RowDragMove {
+                        item: ctx.item.clone(),
+                        landing,
+                        at: d.window_point(),
+                    },
+                    tx,
+                );
             }
         }
-    })
+        Phase::Up => finish_row_drag(s, d, tx, ctx),
+    }
+}
+
+fn finish_row_drag<S: 'static>(
+    s: &mut S,
+    d: &Drag,
+    tx: &mut Tx,
+    ctx: &RowDragCtx<'_, S>,
+) {
+    let (was_dragging, ended) = {
+        let sidebar = (ctx.access)(s);
+        let drag = ctx.block.of(sidebar);
+        let was = drag.dragging().is_some();
+        let ended = drag.end(d.cancelled());
+        if ended.is_some() {
+            sidebar.dropped = Some(ctx.item.clone());
+        }
+        (was, ended)
+    };
+    match ended {
+        Some((from, Some(landing))) => {
+            (ctx.emit)(
+                s,
+                SidebarIntent::RowDragEnd {
+                    item: ctx.item.clone(),
+                    dropped_outside: None,
+                },
+                tx,
+            );
+            (ctx.emit)(s, (ctx.intent)(from, landing), tx);
+        }
+        Some((_, None)) => {
+            (ctx.emit)(
+                s,
+                SidebarIntent::RowDragEnd {
+                    item: ctx.item.clone(),
+                    dropped_outside: Some(d.window_point()),
+                },
+                tx,
+            );
+        }
+        None if was_dragging => {
+            (ctx.emit)(
+                s,
+                SidebarIntent::RowDragEnd {
+                    item: ctx.item.clone(),
+                    dropped_outside: None,
+                },
+                tx,
+            );
+        }
+        None => {}
+    }
 }
 
 #[cfg(test)]

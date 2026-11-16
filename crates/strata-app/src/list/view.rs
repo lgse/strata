@@ -99,7 +99,9 @@ fn results_label(app: &App, rcx: &RowCx<'_>) -> El {
 /// Columns button among the header's actions (`append_columns_menu` in
 /// `src/ui/browser_modes/list_pane.rs`).
 pub(super) fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
-    app.list.thumbs.set_scale(frame.cx.env().scale);
+    let scale = frame.cx.env().scale;
+    app.list.single.set_scale(scale);
+    app.list.thumbs.set_scale(scale);
     let columns = columns_button(app, frame.layer);
     let body = match app.filter.pane.shows() {
         true => results(app).build(app),

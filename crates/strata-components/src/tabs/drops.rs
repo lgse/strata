@@ -141,7 +141,7 @@ pub(super) fn tab<S: 'static>(cx: &Ctx<S>, spec: TabSpec) -> Option<DropZone<S>>
             st.set_drop_hover(site, hover);
             let arm = hover_cx.spring.filter(|_| !spec.active);
             if let (true, Some(delay)) = (st.hover_tab(spec.id, hover, arm, tx.clock()), arm) {
-                tx.wake_at(tx.clock() + delay);
+                tx.wake_after(std::time::Duration::from_secs_f64(delay));
             }
         }
         let offer = offer.clone();

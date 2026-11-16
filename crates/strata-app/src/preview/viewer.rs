@@ -207,7 +207,7 @@ impl Viewer {
             Self::Loading => Some(loading_view(&app.look)),
             Self::Code(_) => Some(code_view(app, cx, code_ref, code_mut)),
             Self::Document(doc) => doc.build(app, cx),
-            Self::Image(img) => Some(image::build_view(img, &app.look, cx, image_viewport_mut)),
+            Self::Image(img) => Some(image::build_view(img, app, cx, image_viewport_mut)),
             Self::Message {
                 title,
                 detail,

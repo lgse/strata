@@ -64,6 +64,8 @@ pub(super) struct NameLabel {
     pub(super) text: String,
     /// In window points.
     pub(super) bounds: Rect,
+    /// True when the label is C2b's size/count chip (`strata_components::columns::BADGE`).
+    pub(super) badge: bool,
 }
 
 /// A row's icon as the view draws it: the GTK row's `image`, which a scenario aims at as an
@@ -387,6 +389,7 @@ impl Snapshot {
         }
         drawn.sidebar.present(&mut snapshot);
         drawn.tenxer.present(&mut snapshot);
+        snapshot.widen_unscrolled_tab_strip();
         snapshot
     }
 
@@ -510,7 +513,7 @@ impl Snapshot {
         }
     }
 
-    /// Presents a row's drawn name as a `label` under the entry it is in.
+    /// Presents a row's drawn name (or Columns size/count badge) as a `label` under its entry.
     fn add_label(&mut self, label: &NameLabel) {
         let Some(row) = self.entry_around(&label.above) else {
             return;
@@ -521,7 +524,8 @@ impl Snapshot {
             bounds: Some(label.bounds),
             ..Seen::default()
         };
-        self.push(row, "@label", seen);
+        let segment = if label.badge { "@badge" } else { "@label" };
+        self.push(row, segment, seen);
     }
 
     /// Presents a row's drawn icon as an `image` under the entry it is in.
@@ -616,6 +620,33 @@ impl Snapshot {
         let seen = &mut self.nodes[focused];
         if super::field::is_one(&seen.role) && seen.role != "password-input" {
             seen.edit_range = drawn.edit_range;
+        }
+    }
+
+    /// GTK's `GtkScrolledWindow` in `tabs/strip.rs` spans the full tab bar (`hexpand = true`),
+    /// whereas rune-kit's `tabs-scroll` shrinks to the tabs and leaves unused strip space on its
+    /// parent `tabs` row; match GTK's bounds while the strip does not scroll horizontally.
+    fn widen_unscrolled_tab_strip(&mut self) {
+        let Some(scroll_idx) = self
+            .nodes
+            .iter()
+            .position(|seen| seen.key.as_deref() == Some("tabs-scroll"))
+        else {
+            return;
+        };
+        if self.nodes[scroll_idx]
+            .scroll
+            .is_some_and(|scroll| scroll.scrolls[0])
+        {
+            return;
+        }
+        let Some(parent_idx) = self.nodes[scroll_idx].parent else {
+            return;
+        };
+        if self.nodes[parent_idx].key.as_deref() == Some("tabs")
+            && let Some(strip_bounds) = self.nodes[parent_idx].bounds
+        {
+            self.nodes[scroll_idx].bounds = Some(strip_bounds);
         }
     }
 

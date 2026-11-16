@@ -41,7 +41,7 @@ use crate::{
 };
 
 pub(super) struct Drops {
-    pub(super) dnd: Dnd<App>,
+    pub(super) dnd: Option<Dnd<App>>,
     pub(super) open_drag: Option<TabOpen>,
     later: Later<App>,
     volumes: Option<HoverVolumes>,
@@ -62,7 +62,7 @@ struct TabDrop {
 impl Drops {
     pub(super) fn new(setup: &Setup<'_>) -> Self {
         Self {
-            dnd: Dnd::rune(),
+            dnd: None,
             open_drag: None,
             later: setup.later.clone(),
             volumes: None,
@@ -232,7 +232,12 @@ pub(super) fn drop_into(app: &mut App, id: TabId, dropped: Dropped, tx: &mut Tx)
             dnd_volume(lookup.relation),
             cross,
         );
-        return commit_resolved(app, TabDrop { id, dest, sources }, input, tx);
+        return commit_resolved(
+            app,
+            TabDrop { id, dest, sources },
+            (input, lookup.relation),
+            tx,
+        );
     }
     let same = ActionInput::new(
         dropped.mods,
@@ -247,7 +252,12 @@ pub(super) fn drop_into(app: &mut App, id: TabId, dropped: Dropped, tx: &mut Tx)
         cross,
     );
     if choose_action(same) == choose_action(unknown) {
-        return commit_resolved(app, TabDrop { id, dest, sources }, unknown, tx);
+        return commit_resolved(
+            app,
+            TabDrop { id, dest, sources },
+            (unknown, strata_fs::services::VolumeRelation::Unknown),
+            tx,
+        );
     }
     commit_after_lookup(
         app,
@@ -257,12 +267,17 @@ pub(super) fn drop_into(app: &mut App, id: TabId, dropped: Dropped, tx: &mut Tx)
     )
 }
 
-fn commit_resolved(app: &mut App, drop: TabDrop, input: ActionInput, tx: &mut Tx) -> bool {
+fn commit_resolved(
+    app: &mut App,
+    drop: TabDrop,
+    (input, relation): (ActionInput, strata_fs::services::VolumeRelation),
+    tx: &mut Tx,
+) -> bool {
     let Some(action) = choose_action(input).filter(|&a| can_commit_action(a, &drop.sources)) else {
         return false;
     };
     super::select(app, super::key(drop.id), tx);
-    apply_drop_action(app, drop.dest, drop.sources, action);
+    crate::dnd::apply_drop_action(app, drop.dest, drop.sources, (action, relation));
     shell::settle(app, tx);
     true
 }
@@ -321,16 +336,7 @@ fn apply_lookup_result(
         base.cross_device,
     );
     if let Some(action) = choose_action(input).filter(|&a| can_commit_action(a, &sources)) {
-        apply_drop_action(app, dest, sources, action);
-    }
-}
-
-fn apply_drop_action(app: &mut App, dest: Location, sources: Vec<Location>, action: DropAction) {
-    match action {
-        DropAction::Copy => transfer::start_drop_transfer(app, dest, sources, false),
-        DropAction::Move => transfer::start_drop_transfer(app, dest, sources, true),
-        // Cross-volume confirmation (`Copy or move?`) lands in A19; link is never chosen.
-        DropAction::Ask | DropAction::Link => {}
+        crate::dnd::apply_drop_action(app, dest, sources, (action, relation));
     }
 }
 
