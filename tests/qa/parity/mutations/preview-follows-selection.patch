@@ -1,7 +1,7 @@
 diff --git a/crates/strata-app/src/preview/follow.rs b/crates/strata-app/src/preview/follow.rs
 --- a/crates/strata-app/src/preview/follow.rs
 +++ b/crates/strata-app/src/preview/follow.rs
-@@ -91,16 +91,11 @@ pub(super) fn follow_focus(
+@@ -84,16 +84,11 @@ pub(super) fn follow_focus(
      entry: Option<FileEntry>,
      tx: &mut Tx,
  ) -> bool {
