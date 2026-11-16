@@ -17,7 +17,6 @@ use rune::Tx;
 use strata_components::{
     collection::{
         keyboard::{KeySettings, Letters},
-        pointer::{ClickCount, ClickModes},
         selection::Listing,
     },
     columns::{ColumnsState, Focus, Opening},
@@ -80,7 +79,6 @@ pub(crate) struct Columns {
     /// Entries a rename gave another id, until the listing shows the change.
     moving: Moving,
     mirror: Mirror,
-    clicks: ClickModes,
     /// The keys the view reads other than by its default, when the saved settings ask.
     keys: Option<KeySettings>,
     labels: view::Labels,
@@ -99,13 +97,6 @@ pub(crate) struct Columns {
 /// `Context::of` in `src/ui/keys/alias.rs`. On, the view's default passes letters on.
 fn keys(typing: bool) -> Option<KeySettings> {
     (!typing).then(|| KeySettings::default().letters(Letters::Arrows))
-}
-
-fn clicks(count: u8) -> ClickCount {
-    match count {
-        1 => ClickCount::One,
-        _ => ClickCount::Two,
-    }
 }
 
 impl Columns {
@@ -128,10 +119,6 @@ impl Columns {
                 settings.columns_mirror_selection,
                 settings.single_click_previews,
                 setup.shown.clone(),
-            ),
-            clicks: ClickModes::new(
-                clicks(settings.columns_file_clicks),
-                clicks(settings.columns_folder_clicks),
             ),
             keys: keys(typing),
             labels: view::Labels::translated(),
@@ -162,10 +149,6 @@ impl Columns {
             settings.columns_mirror_selection,
             settings.single_click_previews,
         );
-    }
-
-    pub(crate) fn one_click_files(&self) -> bool {
-        self.clicks.files == ClickCount::One
     }
 
     pub(crate) fn last_edge_lit(&self) -> bool {

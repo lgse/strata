@@ -85,6 +85,7 @@ mod undo;
 // A8 View switching and appearance
 mod appearance;
 // A9 Pointer and click modes
+mod clicks;
 // A10 Search, filter and sort
 mod filter;
 mod palette;
