@@ -2,48 +2,15 @@
 
 //! The saved keymap overrides (`strata_desktop::settings::KeymapOverrides`)
 //! resolved against the key catalog, and the edits Settings makes to them.
-//! See the Keymap section of `docs/preferences.md`. Resolving them is shared
-//! with the Rune interface (`strata_desktop::settings::resolve_keymap`).
+//! See the Keymap section of `docs/preferences.md`. Resolving and editing them
+//! are shared with the Rune interface (`strata_desktop::settings`).
 
-use std::{collections::BTreeMap, path::Path, rc::Rc};
+use std::rc::Rc;
 
-use strata_desktop::settings::resolve_keymap;
+use strata_desktop::settings::{report_keymap_conflicts, resolve_keymap};
 
 use super::{KeymapOverrides, PreferenceManager, settings_path};
-use crate::ui::keys::{
-    Binding, Command, Keymap, Map,
-    conflicts::{self, Policy, Severity},
-};
-
-fn entries_mut(overrides: &mut KeymapOverrides, map: Map) -> &mut BTreeMap<String, toml::Value> {
-    match map {
-        Map::Default => &mut overrides.default,
-        Map::Tenxer => &mut overrides.tenxer,
-    }
-}
-
-/// Logs what the checker finds about the keys the file's entries add. The
-/// entries still apply.
-fn report_findings(keymap: &Keymap, file: &Path, policy: Policy) {
-    let file = file.display();
-    for map in [Map::Default, Map::Tenxer] {
-        for (command, finding) in conflicts::audit_added(keymap, map, policy) {
-            let id = command.id();
-            let accelerator = finding.binding.accelerator();
-            let kind = finding.kind;
-            match finding.severity {
-                Severity::Error => tracing::warn!(
-                    %file, ?map, id, %accelerator, ?kind,
-                    "keymap entry has a key that never fires there or stops another key working"
-                ),
-                Severity::Warning => tracing::info!(
-                    %file, ?map, id, %accelerator, ?kind,
-                    "keymap entry has a key that works only in some places"
-                ),
-            }
-        }
-    }
-}
+use crate::ui::keys::{Binding, Command, Keymap, Map, conflicts::Policy};
 
 impl PreferenceManager {
     /// Both maps' tables with the saved overrides applied. Built on first use,
@@ -58,7 +25,7 @@ impl PreferenceManager {
             &self.preferences.borrow().keymap,
             Some(&file),
         ));
-        report_findings(
+        report_keymap_conflicts(
             &keymap,
             &file,
             Policy {
@@ -87,38 +54,17 @@ impl PreferenceManager {
     /// Saves `bindings`, primary first, as `map`'s entry for `command`. The
     /// shipped bindings remove the override; an empty list unbinds.
     pub(crate) fn set_bindings(&self, map: Map, command: Command, bindings: Vec<Binding>) {
-        let mut unique = Vec::with_capacity(bindings.len());
-        for binding in bindings.into_iter().map(Binding::normalized) {
-            if !unique.contains(&binding) {
-                unique.push(binding);
-            }
-        }
-        self.edit_keymap(|overrides| {
-            let entries = entries_mut(overrides, map);
-            if unique == command.defaults(map) {
-                entries.remove(command.id());
-            } else {
-                let accelerators = unique
-                    .iter()
-                    .map(|binding| toml::Value::String(binding.accelerator().into()))
-                    .collect();
-                entries.insert(command.id().to_owned(), toml::Value::Array(accelerators));
-            }
-        });
+        self.edit_keymap(|overrides| overrides.set_bindings(map, command, bindings));
     }
 
     pub(crate) fn reset_binding(&self, map: Map, command: Command) {
-        self.edit_keymap(|overrides| {
-            entries_mut(overrides, map).remove(command.id());
-        });
+        self.edit_keymap(|overrides| overrides.reset_binding(map, command));
     }
 
     /// Restores every command of `map`; entries for ids this version does not
     /// know stay saved.
     pub(crate) fn reset_map(&self, map: Map) {
-        self.edit_keymap(|overrides| {
-            entries_mut(overrides, map).retain(|id, _| Command::parse(id).is_none());
-        });
+        self.edit_keymap(|overrides| overrides.reset_map(map));
     }
 
     /// Rebuilds the tables before the change publishes, so bindings that
