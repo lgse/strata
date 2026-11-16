@@ -58,6 +58,92 @@ fn live_folder_click_preference_applies_without_restarting_in_list_view() {
     );
 }
 
+/// Runs `steps` on the fixture with `mode` saved as the view to show.
+fn runs(mode: &str, name: &str, steps: &[serde_json::Value]) {
+    staged_after(
+        &format!("clicks::{name}"),
+        None,
+        || write_mode(mode),
+        |backend| {
+            let folder = fixture();
+            backend.open(folder.path());
+            now(backend.ready()).expect("the first listing");
+            let kept = Remembered::default();
+            for step in steps {
+                passes(&backend, &kept, step);
+            }
+        },
+    );
+}
+
+/// A folder's load leaves its cursor on the first entry and no Shift anchor, so a Shift+click
+/// there selects the clicked entry alone, as GTK's `pointer_selection` does with the shared
+/// browser's missing anchor (finding lgse/strata#2551).
+fn shift_click_after_a_load_selects_the_entry_alone(mode: &str, name: &str) {
+    runs(
+        mode,
+        name,
+        &[
+            json!({ "click": { "entry": "documents" }, "count": 2 }),
+            json!({ "wait": { "directory": "documents" } }),
+            json!({ "wait": { "focused": "notes.txt" } }),
+            json!({ "click": { "entry": "report.md" }, "mods": ["shift"] }),
+            json!({ "wait": { "selected": ["report.md"] }, "timeout_ms": 3000 }),
+        ],
+    );
+}
+
+/// A press on empty space clears the selection and leaves the Shift anchor where it was, as
+/// GTK's marquee does (`unselect_all`), so the next Shift+click ranges from it, not from the
+/// cursor (finding lgse/strata#2551).
+fn shift_click_after_a_background_click_ranges_from_the_anchor(mode: &str, name: &str) {
+    runs(
+        mode,
+        name,
+        &[
+            json!({ "click": { "entry": "readme.md" } }),
+            json!({ "click": { "entry": "todo.txt" }, "mods": ["shift"] }),
+            json!({ "wait": { "selected": ["readme.md", "todo.txt"] } }),
+            json!({ "click": { "background": true } }),
+            json!({ "wait": { "selected": [] } }),
+            json!({ "click": { "entry": "readme.md" }, "mods": ["shift"] }),
+            json!({ "wait": { "selected": ["readme.md"] }, "timeout_ms": 3000 }),
+        ],
+    );
+}
+
+#[test]
+fn a_shift_click_after_a_load_in_the_table_selects_the_entry_alone() {
+    shift_click_after_a_load_selects_the_entry_alone(
+        "list",
+        "a_shift_click_after_a_load_in_the_table_selects_the_entry_alone",
+    );
+}
+
+#[test]
+fn a_shift_click_after_a_load_in_the_grid_selects_the_entry_alone() {
+    shift_click_after_a_load_selects_the_entry_alone(
+        "icons",
+        "a_shift_click_after_a_load_in_the_grid_selects_the_entry_alone",
+    );
+}
+
+#[test]
+fn a_shift_click_after_a_background_click_in_the_table_ranges_from_the_anchor() {
+    shift_click_after_a_background_click_ranges_from_the_anchor(
+        "list",
+        "a_shift_click_after_a_background_click_in_the_table_ranges_from_the_anchor",
+    );
+}
+
+#[test]
+fn a_shift_click_after_a_background_click_in_the_grid_ranges_from_the_anchor() {
+    shift_click_after_a_background_click_ranges_from_the_anchor(
+        "icons",
+        "a_shift_click_after_a_background_click_in_the_grid_ranges_from_the_anchor",
+    );
+}
+
 #[test]
 fn second_press_drag_and_ctrl_drag_keep_selection_without_activating_folder() {
     staged_after(

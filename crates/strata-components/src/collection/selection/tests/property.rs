@@ -247,7 +247,6 @@ impl Model {
         self.end_gesture();
         self.provisional = false;
         self.sel.clear();
-        self.anchor = self.cursor;
     }
 
     fn discard_provisional(&mut self) {
@@ -374,7 +373,7 @@ impl Model {
         }
         if self.cursor.is_none() {
             self.anchor = None;
-        } else if self.anchor.and_then(|a| s.index_of(a)).is_none() {
+        } else if self.anchor.is_some_and(|a| s.index_of(a).is_none()) {
             self.anchor = self.cursor;
         }
     }
