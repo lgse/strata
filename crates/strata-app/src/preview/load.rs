@@ -249,12 +249,14 @@ pub(super) fn identity_for(
         .details([size, modified, kind])
 }
 
+/// The extension as written, as GTK's header shows it until a preview loads (`file_extension`
+/// in `src/ui/preview.rs`).
 fn extension_label(entry: &FileEntry) -> String {
     Path::new(&entry.native_name)
         .extension()
         .and_then(|ext| ext.to_str())
         .filter(|ext| !ext.is_empty())
-        .map_or_else(|| tr("File"), |ext| ext.to_ascii_uppercase())
+        .map_or_else(|| tr("File"), str::to_owned)
 }
 
 fn icon_for(entry: &FileEntry) -> IconName {

@@ -276,6 +276,11 @@ fn password_prompt_claims_field_holds_tracks_wrong_passwords_and_dismisses_on_es
             while host.turn() {}
 
             assert!(host.app().preview.viewer.is_prompt_focused());
+            assert_eq!(
+                host.app().preview.header.details.last().map(String::as_str),
+                Some("zip"),
+                "until the archive opens, the header names its extension as GTK writes it"
+            );
             assert_eq!(focused_key(&mut host).as_deref(), Some("input"));
             assert_eq!(
                 crate::preview::Preview::keyboard(host.app()),

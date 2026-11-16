@@ -1,0 +1,17 @@
+diff --git a/crates/strata-app/src/archive.rs b/crates/strata-app/src/archive.rs
+index b9073c520..2ee843b8b 100644
+--- a/crates/strata-app/src/archive.rs
++++ b/crates/strata-app/src/archive.rs
+@@ -336,9 +336,9 @@ fn queue_event(event: &BrowserEvent, heard: &mut Heard<'_, App>) {
+     match event {
+         BrowserEvent::ExtractRequested { entry } => {
+             let entry = entry.clone();
+-            heard.then(move |app, tx| {
+-                extract_entry(app, entry, tx);
+-                true
++            heard.then(move |_, _| {
++                drop(entry);
++                false
+             });
+         }
+         BrowserEvent::EntriesInserted { depth, .. }

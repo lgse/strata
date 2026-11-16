@@ -1992,3 +1992,47 @@ sequence only together with the alphabet's version, so the version is part of th
   `pointer v1`, never merged. Not driven by hand on GTK.
 - **State:** open, set aside: no Rune change. `pointer v3` sends no keyboard cursor moves, and
   any fix belongs on `main`.
+
+### #2559: GTK logs a `gtk_orientable_get_orientation` critical after a previewed tar is extracted
+
+- **Code:** `oracle`. [Issue](https://github.com/lgse/strata/issues/2559), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **Seen:** in [A13](packages/A13.md)'s `archives` alphabet, GTK calibration. In Columns, the
+  sequence compresses `todo.txt` into `packed.tar`, enters its preview with `l`, then extracts
+  it with `Extract here`, which selects `todo (2).txt`. A move with `k` to `readme.md` then
+  makes GTK log `Gtk-CRITICAL **: gtk_orientable_get_orientation: assertion
+  'GTK_IS_ORIENTABLE (orientable)' failed` while the preview switches to the Markdown file.
+  It needs all four parts, and about 700 ms between steps when run as a scenario.
+- **Concerns:** `fuzz-archives-v1-000000000000000d`, shrunk on GTK from 76 steps to 12 and
+  confirmed 3 of 3, parked in `tests/qa/fuzz/corpus/archives/`. Rune logs no GLib warnings,
+  and its replay agrees with GTK on everything else.
+- **State:** open, set aside: no Rune change. `archives` v4 keeps the drawer closed, for
+  [#2560](#2560-the-preview-drawers-accessible-tree-differs-between-gtk-and-rune)'s reasons, so it
+  no longer reaches the sequence. Any fix belongs on `main`.
+
+### #2560: the preview drawer's accessible tree differs between GTK and Rune
+
+- **Code:** `divergence`. [Issue](https://github.com/lgse/strata/issues/2560), filed on
+  2026-11-16 as the finding's reference and closed at once: its state is kept here.
+- **What differs:** `app.preview`, the names and texts of every node in the open drawer.
+  - The header: GTK exposes the `·` separators as labels, and Rune draws them `a11y_hidden`
+    (`crates/strata-components/src/preview_drawer/header.rs`).
+  - The archive member rows: GTK has a name label and a size label, while Rune names the row,
+    describes it by its size and draws the size `a11y_hidden`
+    (`crates/strata-components/src/viewers/archive/mod.rs`). The Rune QA backend adds the drawn
+    name label under the row.
+  - The password prompt: GTK exposes the field's placeholder and the `Unlock` button's inner
+    label, and Rune does not.
+  - A text preview: GTK has one label with the file's text, and Rune has `Source` and the
+    text's lines.
+
+  The drawer reads the same on both targets, and the scenario predicates are not affected.
+- **Concerns:** 12 of 20 smoke seeds of `archives` v1 (never merged), each first differing
+  there on a preview opened by `Space`, `Right` or `l`, and seed `0x07` of v3 by `Right` on
+  `packed (1).tar`.
+- **State:** open, for [A15](packages/A15.md) to settle with its preview alphabet: by the Rune
+  QA backend presenting the drawn nodes, by the components' trees, or by an `a11y` rule. The
+  same run found one visible difference, which A13's closing pull request fixed: until an
+  archive opens, the header named its kind `ZIP` (`extension_label`,
+  `crates/strata-app/src/preview/load.rs`) where GTK writes the extension as it is, `zip`.
+  `archives` v4 keeps the drawer closed, and the nine `archive_preview` runs hold the preview.
