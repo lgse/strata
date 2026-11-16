@@ -95,6 +95,7 @@ mod clipboard;
 mod conflict_dialog;
 mod transfer;
 // A13 Archives and providers
+mod archive;
 // A14 Open with, terminal and custom actions
 mod terminal;
 // A15 Preview drawer, text and documents
@@ -153,6 +154,7 @@ slots::parts! {
     transfer_dialog: transfer::TransferDialog,
     conflict_dialog: conflict_dialog::ConflictDialog,
     // A13 Archives and providers
+    archive: archive::Archive,
     // A14 Open with, terminal and custom actions
     terminal: terminal::Terminal,
     // A15 Preview drawer, text and documents

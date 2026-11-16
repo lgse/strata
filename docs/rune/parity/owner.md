@@ -212,13 +212,11 @@ comments of 2026-11-12, unless another is named.
   source.
 - **Which bindings the Rune side says never fire.** A key label leaves out a binding that
   can never fire in its map, and which those are is the interface's answer, installed
-  with its key backend (`NeverFires`). GTK answers from `src/ui/keys/conflicts.rs`, which
+  with its key backend (`NeverFires`). GTK answers from `conflicts::never_fires`, which
   knows the keys GTK's own stages and widgets take. It is one question with which
-  conflicts Rune's keyboard settings report, under A6 and A18 below. Meanwhile: the Rune
-  side answers that every binding fires, so its labels show every key of an entry. For the
-  shipped keys that is GTK's answer too: its check leaves out none of them in either map,
-  with type-to-search on or off. The two differ only for a key a user added, which the
-  Rune side does not read yet. Source: [#2195](https://github.com/lgse/strata/pull/2195) and [#2197](https://github.com/lgse/strata/pull/2197).
+  conflicts Rune's keyboard settings report, under A6 and A18 below. Meanwhile, from A18:
+  `conflicts.rs` moved with the key catalog to `strata_desktop::keys::conflicts`, and both
+  interfaces install `conflicts::never_fires`. Source: [#2195](https://github.com/lgse/strata/pull/2195), [#2197](https://github.com/lgse/strata/pull/2197) and A18.
 - **A rebinding's round trip where key libraries differ.** A key the code declares never
   diverges: both interfaces read and write it from Strata's own table, whatever is
   installed, and that is every key a shipped binding uses. The question is a key a user
@@ -354,8 +352,11 @@ Source for all of these: [B3](packages/B3.md), "Design", and the archived issue
 - **Which conflicts Rune's keyboard settings report**: GTK's as they are, or those of Rune's
   own text field and views, which nobody has listed; and what they say of a key Rune's host
   never delivers (dead keys, Compose, Caps Lock, AltGr, media keys, F25 to F35), whose
-  binding loads, gets a label and never fires. Meanwhile: `src/ui/keys/conflicts.rs` stays in
-  `src/ui`, and the Rune side has no conflict check. Source: the archived issues
+  binding loads, gets a label and never fires. Meanwhile, from A18: `src/ui/keys/conflicts.rs`
+  moved with the key catalog to `strata_desktop::keys::conflicts`, so Rune's keyboard
+  settings, key labels and start-up log report GTK's conflicts as they are; whether Rune's
+  own text field and views or the keys Rune's host never delivers should report different
+  conflicts stays open for the owner. Source: the archived issues
   [#2133](https://github.com/lgse/strata/issues/2133) and [#2150](https://github.com/lgse/strata/issues/2150).
 
 ### A6: Menus, dialogs and keymap
