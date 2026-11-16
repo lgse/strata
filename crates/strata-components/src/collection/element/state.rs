@@ -92,6 +92,9 @@ pub struct CollectionState {
     /// A press on the header's blank space held back until it travels past the threshold
     /// (`Collection::header_defers_press`).
     pub(super) deferred: Option<super::seam::PointerInput>,
+    /// A press on an external marquee origin (`Collection::origin_drag`) waiting to cross the
+    /// drag threshold.
+    pub(super) origin_press: Option<(Point, rune::Mods)>,
     /// Reveals move only this collection's viewport
     /// ([`CollectionState::set_own_viewport_reveals`]).
     pub(super) own_viewport_reveals: bool,
@@ -130,6 +133,7 @@ impl Default for CollectionState {
             header: Cell::new(Rect::default()),
             own_viewport_reveals: false,
             deferred: None,
+            origin_press: None,
         }
     }
 }
@@ -554,6 +558,7 @@ impl CollectionState {
         self.controllers.reset();
         self.gesture = None;
         self.deferred = None;
+        self.origin_press = None;
         self.keyboard = false;
         self.hover_live = true;
         let changed = match position {
@@ -594,6 +599,7 @@ impl CollectionState {
     /// and drop queued commands, which a dialog does not end on GTK.
     pub fn end_gestures(&mut self) {
         self.gesture = None;
+        self.origin_press = None;
         if let Some(pointer) = self.controllers.pointer.as_mut() {
             pointer.reset();
         }

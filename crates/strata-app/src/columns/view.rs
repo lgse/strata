@@ -28,6 +28,7 @@ impl Labels {
         // QA harness finds panes and their lists by these.
         labels.pane = tr("Columns view");
         labels.list = tr("Files");
+        labels.reveal = rust_i18n::t!("Reveal %{value1} column", value1 = "{name}").into_owned();
         Self(labels)
     }
 }

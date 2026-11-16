@@ -29,6 +29,20 @@ mod view;
 /// key of the view starts with it.
 pub(crate) const VIEW: &str = "icons";
 
+pub(crate) fn origin_drag(
+    app: &mut crate::App,
+    d: &mut rune::Drag,
+    clears: bool,
+    tx: &mut rune::Tx,
+) {
+    let c = if app.filter.pane.shows() {
+        view::results().collection(app)
+    } else {
+        view::grid().collection(app)
+    };
+    c.origin_drag(app, (d, clears), tx);
+}
+
 pub(crate) struct Icons {
     pub(crate) single: Single,
     grid: IconsGridState,

@@ -37,6 +37,15 @@ mod view;
 /// element key of the view starts with it.
 pub(crate) const VIEW: &str = "list";
 
+pub(crate) fn origin_drag(app: &mut App, d: &mut rune::Drag, clears: bool, tx: &mut Tx) {
+    let c = if app.filter.pane.shows() {
+        view::results(app)
+    } else {
+        view::ticked(app)
+    };
+    c.origin_drag(app, (d, clears), tx);
+}
+
 pub(crate) struct List {
     pub(crate) single: Single,
     table: ListTableState,

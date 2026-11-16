@@ -16,7 +16,7 @@ use strata_components::preview_drawer::{
 };
 use strata_core::{
     i18n::tr,
-    model::{EntryKind, FileEntry},
+    model::{EntryKind, FileEntry, Location, MetadataValue},
 };
 use strata_fs::{
     app::{Browser, BrowserEvent, EntrySplice},
@@ -27,6 +27,7 @@ use strata_fs::{
 };
 
 mod document;
+mod image;
 mod keys;
 mod labels;
 mod layout;
@@ -64,6 +65,7 @@ pub(crate) struct Preview {
     released_from: Option<Option<usize>>,
     operations: Option<file_activity::Subscription>,
     last_split_width: Option<f32>,
+    was_in_band: bool,
 }
 
 impl Preview {
@@ -109,6 +111,7 @@ impl Part for Preview {
             released_from: None,
             operations: None,
             last_split_width: None,
+            was_in_band: false,
         }
     }
 
@@ -129,8 +132,16 @@ impl Part for Preview {
         let lit = session::browsing_columns(app) && app.columns.last_edge_lit();
         let lit_changed = app.preview.drawer.line_lit() != lit;
         app.preview.drawer.light_line(lit);
+        let banding = session::in_band(app);
+        let band_ended = std::mem::replace(&mut app.preview.was_in_band, banding) && !banding;
+        let band_synced = if band_ended && app.preview.enabled {
+            let (depth, entry) = session::selected_entry(app);
+            follow_focus(app, depth.unwrap_or(0), entry, tx)
+        } else {
+            false
+        };
         let viewer = app.preview.viewer.poll(clock, &app.look, tx);
-        blocks | viewer | lit_changed
+        blocks | viewer | lit_changed | band_synced
     }
 
     fn switched(app: &mut App, tx: &mut Tx) {
@@ -174,6 +185,7 @@ fn wrap(app: &App, files: El, frame: &mut Frame<'_, App>) -> El {
             .files_key(files_key)
             .find_keys(keys::find_keys_in(tenxer))
             .hosted(&app.preview.viewer, |app: &mut App| &mut app.preview.viewer)
+            .on_background_drag(on_background_drag)
             .on_intent(on_intent);
 
     if app.preview.current.is_some() {
@@ -193,6 +205,27 @@ fn wrap(app: &App, files: El, frame: &mut Frame<'_, App>) -> El {
     drawer
         .build(files, &app.look, frame.cx)
         .on_layout_tx(layout::on_split_layout)
+}
+
+fn on_background_drag(app: &mut App, d: &mut rune::Drag, clears: bool, tx: &mut Tx) {
+    if session::browsing_columns(app) {
+        crate::columns::view(app).origin_drag(app, (d, clears), tx);
+    } else if session::browsing_icons(app) {
+        crate::icons::origin_drag(app, d, clears, tx);
+    } else {
+        crate::list::origin_drag(app, d, clears, tx);
+    }
+    if needs_post_drag_settle(d.phase, clears) {
+        shell::publish(app);
+        shell::settle(app, tx);
+    }
+}
+
+fn needs_post_drag_settle(phase: rune::Phase, clears: bool) -> bool {
+    if phase == rune::Phase::Up {
+        return true;
+    }
+    phase == rune::Phase::Down && clears
 }
 
 fn on_intent(app: &mut App, intent: DrawerIntent, tx: &mut Tx) {
@@ -291,6 +324,35 @@ pub(crate) fn toggle_entry(
     tx: &mut Tx,
 ) {
     session::toggle(app, entry, depth, tx);
+}
+
+/// Clears the preview's current target when navigating to a folder from the search palette.
+pub(crate) fn clear_search_target(app: &mut App, tx: &mut Tx) {
+    session::clear_target(app, tx);
+}
+
+/// Opens the preview drawer for a file chosen in the search palette when `search_open_files_directly` is off.
+pub(crate) fn show_search_file(app: &mut App, path: &Path, name: String, tx: &mut Tx) {
+    let native_name = path.file_name().unwrap_or_default().to_os_string();
+    let entry = FileEntry {
+        location: Location::local(path.to_path_buf()),
+        native_name,
+        thumbnail_path: None,
+        display_name: name,
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        created_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+        listable: MetadataValue::Unknown,
+        recent_uri: None,
+    };
+    session::show(app, entry, app.browser.active_depth(), tx);
 }
 
 /// Whether single clicks open files in the currently shown view.

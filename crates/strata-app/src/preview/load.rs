@@ -43,6 +43,7 @@ use strata_preview::sandbox::{DocumentFormat, MediaPreviewBackend};
 
 use super::{
     document::{DocumentSpec, RenderedDocument},
+    image::ImageViewer,
     sheet,
     viewer::{CodeSource, RenderedBody, Viewer, build_code_state},
 };
@@ -336,7 +337,7 @@ fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: 
     }
 }
 
-fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
+pub(super) fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
     app.preview.viewer.stop();
     app.preview.header = identity_for(&app.look, &loaded.entry, Some(&loaded.content_type));
     let wrap = shell::preferences(app).preview_text_wrap;
@@ -385,22 +386,45 @@ fn render_ready(app: &mut App, loaded: Preview, tx: &mut Tx) {
             );
             Viewer::rendered_only(body)
         }
+        PreviewContent::Rasterized { png } => build_rasterized_viewer(&loaded.entry, &png),
+        PreviewContent::Image | PreviewContent::Media => {
+            unavailable_viewer(Some("The sandboxed renderer returned no preview"))
+        }
         PreviewContent::Unsupported => Viewer::Message {
             title: tr("No visual preview"),
             detail: Some(tr("Metadata is available for this file type.")),
             can_open: false,
         },
-        _ => Viewer::Message {
-            title: tr("Preview unavailable"),
-            detail: None,
-            can_open: false,
-        },
+        _ => unavailable_viewer(None),
     };
     app.preview.viewer.reset_viewport(tx);
+    reapply_active_find(app, tx);
+}
+
+fn reapply_active_find(app: &mut App, tx: &mut Tx) {
     if app.preview.drawer.is_finding() {
         let query = app.preview.drawer.find_query().to_owned();
         app.preview.viewer.find(&query);
         tx.wake_after(Duration::ZERO);
+    }
+}
+
+fn unavailable_viewer(reason: Option<&str>) -> Viewer {
+    Viewer::Message {
+        title: tr("Preview unavailable"),
+        detail: reason.map(tr),
+        can_open: false,
+    }
+}
+
+fn build_rasterized_viewer(entry: &FileEntry, png: &[u8]) -> Viewer {
+    match ImageViewer::from_png(entry, png) {
+        Ok(img) => Viewer::Image(Box::new(img)),
+        Err(detail) => Viewer::Message {
+            title: tr("Preview unavailable"),
+            detail: Some(detail),
+            can_open: false,
+        },
     }
 }
 

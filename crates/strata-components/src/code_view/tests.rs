@@ -320,3 +320,93 @@ fn tab_and_shift_tab_follow_gtksourceview() {
     outdent(&mut e);
     assert_eq!((e.text.as_str(), e.range()), ("abc", (2, 2)));
 }
+
+#[test]
+fn keyboard_caret_and_shift_arrows_copy_ranges() {
+    use super::caret;
+    use rune::{Key, KeyEvent, Mods};
+
+    let mut st = CodeState::new("the quick brown fox\nsecond line\n");
+    let press = |key: Key, mods: Mods| KeyEvent { key, mods };
+    let ctrl = Mods {
+        ctrl: true,
+        ..Mods::default()
+    };
+    let shift = Mods {
+        shift: true,
+        ..Mods::default()
+    };
+    let mut tx = Tx::default();
+    assert_eq!(
+        caret::on_key(&mut st, &press(Key::Home, ctrl), &mut tx),
+        Some(true)
+    );
+    for _ in 0..3 {
+        assert_eq!(
+            caret::on_key(&mut st, &press(Key::Right, shift), &mut tx),
+            Some(true)
+        );
+    }
+    assert_eq!(st.copy_keyboard().as_deref(), Some("the"));
+
+    // Plain Left collapses a non-empty keyboard selection to its start instead of leaving;
+    // a second plain Left returns None so the host leaves the preview.
+    assert_eq!(
+        caret::on_key(&mut st, &press(Key::Left, Mods::default()), &mut tx),
+        Some(true)
+    );
+    assert_eq!(st.copy_keyboard(), None);
+    assert_eq!(
+        caret::on_key(&mut st, &press(Key::Left, Mods::default()), &mut tx),
+        None
+    );
+}
+
+#[test]
+fn gutter_drag_selects_into_line() {
+    use rune::{Cx, El, Env, Runtime};
+    use strata_kit::look::Look;
+
+    use super::CodeView;
+    use super::caret::byte_at_x;
+    use super::render::Paint;
+
+    struct Host {
+        code: CodeState,
+        look: Look,
+    }
+    fn view(s: &Host, cx: &mut Cx<Host>) -> El {
+        CodeView::new(|h: &Host| &h.code, |h: &mut Host| &mut h.code).build(s, &s.look, cx)
+    }
+
+    let mut rt = Runtime::new(
+        Host {
+            code: CodeState::new("the quick brown fox\nsecond line\n"),
+            look: Look::fallback(false),
+        },
+        view,
+        (320.0, 200.0),
+        Env::new(false, 1.0),
+    );
+    for _ in 0..8 {
+        rt.frame(1.0 / 60.0);
+    }
+
+    let mono = Paint::from_look(&rt.state.look).mono;
+    let w9 = rune::text::advance("the quick", mono);
+    assert_eq!(byte_at_x("the quick brown fox", w9, mono), 9);
+
+    rt.pointer_move(34.0, 14.0);
+    rt.pointer_down(34.0, 14.0);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(140.0, 14.0);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_up(140.0, 14.0);
+    rt.frame(1.0 / 60.0);
+    let copied = rt
+        .state
+        .code
+        .copy_keyboard()
+        .expect("gutter drag selects into line");
+    assert!(copied.contains("quick"), "copied {copied:?}");
+}
