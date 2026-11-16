@@ -360,8 +360,14 @@ fn on_event(app: &mut App, expected: PreviewRequestId, event: PreviewEvent, tx: 
     }
 }
 
+/// The listing's copy of the previewed entry, whose metadata may have been filled since the
+/// preview asked for it. A filter's result keeps its own, as GTK's header shows it.
 fn freshest_browser_entry(app: &App, fallback: FileEntry) -> FileEntry {
-    let Some(depth) = app.preview.current_depth else {
+    let Some(depth) = app
+        .preview
+        .current_depth
+        .filter(|&depth| !shows_results(app, depth))
+    else {
         return fallback;
     };
     (0..)
@@ -374,8 +380,17 @@ fn lacks_header_metadata(entry: &FileEntry) -> bool {
     entry.size == MetadataValue::Unknown || entry.modified_unix_seconds == MetadataValue::Unknown
 }
 
+fn shows_results(app: &App, depth: usize) -> bool {
+    crate::filter::targets::shows_results_at(app, depth)
+}
+
+/// Whether the preview shows an entry of column `depth`'s listing, not a filter's result.
+fn previews_listing_at(app: &App, depth: usize) -> bool {
+    app.preview.enabled && app.preview.current_depth == Some(depth) && !shows_results(app, depth)
+}
+
 pub(super) fn on_metadata_filled(app: &mut App, depth: usize, entries: &[FileEntry]) -> bool {
-    if !app.preview.enabled || app.preview.current_depth != Some(depth) {
+    if !previews_listing_at(app, depth) {
         return false;
     }
     let Some(current) = app.preview.current.as_ref() else {

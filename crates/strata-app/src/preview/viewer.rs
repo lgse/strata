@@ -96,7 +96,13 @@ impl Viewer {
     }
 
     pub(super) fn needs_body_focus_owner(&self) -> bool {
-        matches!(self, Self::Message { can_open: false, .. })
+        matches!(
+            self,
+            Self::Message {
+                can_open: false,
+                ..
+            }
+        )
     }
 
     pub(super) fn code(source: CodeSource<'_>, highlighter: &Highlighter) -> Self {

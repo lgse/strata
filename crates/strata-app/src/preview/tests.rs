@@ -17,6 +17,8 @@ use strata_components::preview_drawer::{DocumentView, HostedPreview};
 
 const MODULE: &str = "preview::tests";
 
+mod follow;
+
 fn listed(host: &mut Offscreen) -> tempfile::TempDir {
     let folder = fixture();
     host.app().open(Location::local(folder.path()));

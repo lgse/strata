@@ -315,6 +315,7 @@ fn heard(app: &mut App, intent: FilterIntent, tx: &mut Tx) {
         FilterIntent::Closed => {
             refocus_on_close(app, tx);
             closed(app);
+            crate::preview::follow_filter_close(app);
         }
         FilterIntent::Open { id } => {
             if let Some(open) = app.filter.open_in.clone() {

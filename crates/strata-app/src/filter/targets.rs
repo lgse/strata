@@ -26,6 +26,11 @@ fn showing(app: &App) -> Option<usize> {
     open.place.shows_hits(app, open.depth).then_some(open.depth)
 }
 
+/// Whether column `depth` shows a filter's results in place of its listing.
+pub(crate) fn shows_results_at(app: &App, depth: usize) -> bool {
+    showing(app) == Some(depth)
+}
+
 /// What the results' column shows, and their selection.
 fn shown(app: &App, depth: usize) -> Option<(&dyn EntrySource, &Selection)> {
     let open = app.filter.open_in.as_ref()?;

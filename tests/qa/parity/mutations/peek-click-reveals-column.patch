@@ -1,13 +1,14 @@
-diff --git a/crates/strata-components/src/columns/view.rs b/crates/strata-components/src/columns/view.rs
-index c29aa0a55..d750a4dcf 100644
---- a/crates/strata-components/src/columns/view.rs
-+++ b/crates/strata-components/src/columns/view.rs
-@@ -925,7 +925,7 @@ fn reveal_clipped<S: 'static>(
-         let now = tx.clock();
-         p.state.peek_seq = Some((now, window));
-         p.state.set_active_quiet(depth);
--        p.state.reveal(p.look, tx);
-+        let _ = p.look;
+diff --git a/crates/strata-app/src/preview/session.rs b/crates/strata-app/src/preview/session.rs
+--- a/crates/strata-app/src/preview/session.rs
++++ b/crates/strata-app/src/preview/session.rs
+@@ -110,9 +110,7 @@ pub(super) fn show(app: &mut App, entry: FileEntry, depth: Option<usize>, tx: &m
+     app.preview.enabled = true;
+     sync_reservation(app);
+     app.preview.drawer.open(&app.look, tx);
+-    if !was_open && browsing_columns(app) {
+-        app.columns.reveal_active(&app.look, tx);
+-    }
++    let _ = was_open;
+     if !was_open || !already_showing {
+         load::start(app, entry);
      }
-     sh.emit(s, ColumnsIntent::Active { depth }, tx);
- }

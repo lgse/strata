@@ -35,11 +35,10 @@ pub(super) const COMMANDS: &[Action<App>] = &[
     Action::new("preview-panel", toggle_panel),
     Action::new("preview-close", close_from_preview)
         .command(PREVIEW)
-        .keys(&[Keys::at(
-            Stage::DirectCommands,
-            &[PREVIEW.in_map(Map::Tenxer)],
-        )
-        .when(in_tenxer_preview_outside_find)]),
+        .keys(&[
+            Keys::at(Stage::DirectCommands, &[PREVIEW.in_map(Map::Tenxer)])
+                .when(in_tenxer_preview_outside_find),
+        ]),
     Action::new("preview", space_preview)
         .command(PREVIEW)
         .keys(&[
