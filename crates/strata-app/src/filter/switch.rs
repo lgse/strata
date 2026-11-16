@@ -21,13 +21,12 @@
 use rune::Tx;
 use strata_components::collection::selection::Position;
 
-use super::{HitsUpdate, OpenIn, Refocus, place::Where, route};
+use super::{HitsUpdate, OpenIn, place::Where, route};
 use crate::{App, listing::Column};
 
 /// The view shown changed: the filter follows it into the folder it shows, or closes.
 pub(super) fn follow(app: &mut App, tx: &mut Tx) {
     let Some(open) = app.filter.open_in.clone() else {
-        // Rune keeps a field's focus when it leaves the tree.
         app.filter.state.edit.focused = false;
         return;
     };
@@ -82,12 +81,12 @@ fn restore(app: &mut App, place: Where, depth: usize, position: &Position) {
 fn refocus(app: &mut App, place: Where, field: bool, tx: &mut Tx) {
     if field {
         app.filter.state.focus_field();
-        tx.focus(super::bar(app).field_key(), false);
+        tx.focus_when_shown(super::bar(app).field_key(), false);
         return;
     }
     app.filter.state.edit.focused = false;
     if !app.filter.state.text().trim().is_empty() {
-        tx.focus(place.view_key(), true);
+        tx.focus_when_shown(place.view_key(), true);
     }
 }
 
@@ -106,9 +105,20 @@ pub(super) fn tab_hidden(app: &mut App, tx: &mut Tx) {
     app.filter.back_to_field = field && app.filter.state.is_open();
 }
 
-/// The tab is shown again: the field takes the keyboard back if it had it.
+/// The tab is shown again: the field takes the keyboard back at once when its folder is listed,
+/// or once the listing arrives.
 pub(super) fn tab_shown(app: &mut App) {
-    if std::mem::take(&mut app.filter.back_to_field) {
-        app.filter.refocus = Refocus::Waiting;
+    if !std::mem::take(&mut app.filter.back_to_field) {
+        return;
+    }
+    let listed = app.filter.open_in.as_ref().is_some_and(|open| {
+        app.filter.state.is_open()
+            && app.browser.location_at(open.depth).as_ref() == Some(&open.folder)
+            && open.place.listed(app, open.depth)
+    });
+    if listed {
+        app.filter.state.focus_field();
+    } else {
+        app.filter.refocus_field = true;
     }
 }

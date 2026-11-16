@@ -37,10 +37,13 @@ mod hosted {
 
     use super::super::{DEBOUNCE, delivered, open, picked, queried, session::Batch};
     use crate::{
+        commands::Holds,
+        filter::Filter,
         host::offscreen::Offscreen,
+        slots::Part,
         test_support::{
             PATIENCE, fixture,
-            view::{hosted_in, press},
+            view::{field, hosted_in, press},
         },
     };
 
@@ -235,6 +238,67 @@ mod hosted {
                 assert!(sel.is_selected_at(source, 3), "the last result is selected");
                 assert_eq!(sel.cursor_index(source), Some(3));
             },
+        );
+    }
+
+    /// Typing `/` over a folder query enters the folder and keeps an empty filter field focused
+    /// there once listed (`filter-slash-enters-folder`).
+    fn slash_descent_keeps_filter_focused(
+        mode: &'static str,
+        where_shown: super::super::Where,
+        name: &str,
+    ) {
+        hosted_in(MODULE, mode, name, |mut host| {
+            let folder = fixture();
+            let pictures = Location::local(folder.path().join("pictures"));
+            host.app().open(Location::local(folder.path()));
+            assert!(
+                host.run_until(PATIENCE, |host| where_shown.listed(host.app(), 0)),
+                "{mode}: fixture was not listed"
+            );
+
+            let ctrl = Mods {
+                ctrl: true,
+                ..Mods::default()
+            };
+            press(&mut host, Key::Text("f".to_owned()), ctrl);
+            for ch in "pictures".chars() {
+                press(&mut host, Key::Text(ch.to_string()), Mods::default());
+            }
+            let found = host.run_until(PATIENCE, |host| !host.app().filter.found.is_empty());
+            assert!(found, "{mode}: pictures match did not arrive");
+
+            press(&mut host, Key::Text("/".to_owned()), Mods::default());
+
+            let descended = host.run_until(PATIENCE, |host| {
+                host.app().browser().location_at(0) == Some(pictures.clone())
+                    && where_shown.listed(host.app(), 0)
+                    && field(host) == Some((String::new(), true))
+            });
+            assert!(
+                descended,
+                "{mode}: did not descend with focused empty field: {:?}",
+                field(&host)
+            );
+            assert_eq!(<Filter as Part>::keyboard(host.app()), Some(Holds::Filter));
+        });
+    }
+
+    #[test]
+    fn slash_in_columns_enters_the_folder_and_keeps_the_filter_focused() {
+        slash_descent_keeps_filter_focused(
+            "columns",
+            super::super::Where::Columns,
+            "hosted::slash_in_columns_enters_the_folder_and_keeps_the_filter_focused",
+        );
+    }
+
+    #[test]
+    fn slash_in_list_enters_the_folder_and_keeps_the_filter_focused() {
+        slash_descent_keeps_filter_focused(
+            "list",
+            super::super::Where::List,
+            "hosted::slash_in_list_enters_the_folder_and_keeps_the_filter_focused",
         );
     }
 }

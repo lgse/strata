@@ -134,9 +134,9 @@ impl<S: 'static> FilterBar<S> {
 
     /// Whether Down in the field moves the keyboard to the results after
     /// [`FilterIntent::FocusResults`]: to [`FilterBar::focus_return`]'s element when set
-    /// (`Tx::focus`, which takes it or its first focusable element), else by a Tab sent to the
-    /// field, so the next focus stop takes it. On by default. Off, the keyboard stays in the
-    /// field, and the host may move it from the intent itself.
+    /// (`Tx::focus_when_shown`, which takes it or its first focusable element once shown), else by
+    /// a Tab sent to the field, so the next focus stop takes it. On by default. Off, the keyboard
+    /// stays in the field, and the host may move it from the intent itself.
     pub fn tab_to_results(mut self, on: bool) -> Self {
         self.tab_to_results = on;
         self
@@ -145,7 +145,7 @@ impl<S: 'static> FilterBar<S> {
     /// The results' focus stop (the listing's pane, or its cursor row): where Down sends the
     /// keyboard, and where it goes when the bar closes with it (Escape in the field), through
     /// the bar's `El::focus_return`, which covers every way the bar can go. Without it, Down
-    /// sends a Tab and nothing has the keyboard after a close.
+    /// sends a Tab and closing falls back to the next surviving control in the bar's container.
     pub fn focus_return(mut self, key: impl Into<String>) -> Self {
         self.focus_return = Some(key.into());
         self
@@ -306,9 +306,10 @@ fn key<S: 'static>(bar: &FilterBar<S>, s: &mut S, ev: &KeyEvent, tx: &mut Tx) ->
             polled.push(FilterIntent::FocusResults { id });
             bar.route(s, polled, tx);
             if let (true, Some(to)) = (bar.tab_to_results, &bar.focus_return) {
-                tx.focus(to.clone(), true);
+                tx.focus_when_shown(to.clone(), true);
             } else if bar.tab_to_results {
-                // Probe P1: a Tab sent from the field moves the keyboard to the next stop.
+                // Probe P1: while the field stays mounted and no `focus_return` names the
+                // results, a Tab sent from the field moves the keyboard to the next stop.
                 tx.send_key(KeyEvent {
                     key: Key::Tab,
                     mods: Mods::default(),

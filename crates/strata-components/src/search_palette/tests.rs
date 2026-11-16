@@ -573,3 +573,115 @@ fn a_middle_click_opens_nothing_when_the_host_turns_it_off() {
         rt.state.heard
     );
 }
+
+#[test]
+fn a_middle_click_opens_in_a_new_tab_by_default() {
+    let mut palette = PaletteState::new();
+    let g = query(&palette.open(search())).generation;
+    let _ = palette.set_query("re");
+    let host = QuietHost {
+        look: Look::fallback(false),
+        palette,
+        heard: Vec::new(),
+    };
+    fn default_view(h: &QuietHost, _cx: &mut Cx<QuietHost>) -> El {
+        let mut layer = Vec::new();
+        SearchPalette::new(
+            "p",
+            |h: &QuietHost| &h.palette,
+            |h: &mut QuietHost| &mut h.palette,
+        )
+        .on_intent(|h: &mut QuietHost, intent, _| h.heard.push(intent))
+        .build(&h.look, h, &mut layer);
+        rune_kit::root(rune::col().w_full().h_full(), layer)
+    }
+    let mut rt = Runtime::new(host, default_view, (960.0, 640.0), Env::new(false, 1.0));
+    rt.update(|h, tx| {
+        let _ = h
+            .palette
+            .deliver(Answer::new(g + 1, items(&["report.md", "readme.md"])), tx);
+    });
+    rt.frame(1.0 / 60.0);
+    let row = rt
+        .elements()
+        .into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some(option_key("p", 1).as_str()))
+        .expect("the second option");
+    let [x, y, w, h] = row.visible;
+    rt.button_down(x + w / 2.0, y + h / 2.0, rune::PointerButton::Middle);
+    rt.button_up(x + w / 2.0, y + h / 2.0, rune::PointerButton::Middle);
+    rt.frame(1.0 / 60.0);
+    assert!(!rt.state.palette.is_open());
+    assert!(rt.state.heard.contains(&PaletteIntent::Open {
+        id: "readme.md".into(),
+        new_tab: true,
+        via: Via::Middle,
+    }));
+}
+
+struct DelayedViewHost {
+    look: Look,
+    palette: PaletteState,
+    show_view: bool,
+}
+
+fn delayed_view(h: &DelayedViewHost, _cx: &mut Cx<DelayedViewHost>) -> El {
+    let mut layer = Vec::new();
+    SearchPalette::new(
+        "p",
+        |h: &DelayedViewHost| &h.palette,
+        |h: &mut DelayedViewHost| &mut h.palette,
+    )
+    .return_focus_on_open("files")
+    .reduced_motion(true)
+    .build(&h.look, h, &mut layer);
+    let mut base = rune::col().w_full().h_full().child(
+        rune::el()
+            .key("opener")
+            .label("Opener")
+            .size(40.0, 20.0)
+            .focusable(true),
+    );
+    if h.show_view {
+        base = base.child(
+            rune::el()
+                .key("files")
+                .label("Files")
+                .size(200.0, 200.0)
+                .focusable(true),
+        );
+    }
+    rune_kit::root(base, layer)
+}
+
+#[test]
+fn return_focus_on_open_waits_until_a_newly_mounted_view_shows() {
+    let host = DelayedViewHost {
+        look: Look::fallback(false),
+        palette: PaletteState::new(),
+        show_view: false,
+    };
+    let mut rt = Runtime::new(host, delayed_view, (960.0, 640.0), Env::new(false, 1.0));
+    rt.update(|_, tx| tx.focus("opener", true));
+    rt.frame(1.0 / 60.0);
+    rt.update(|h, tx| {
+        let g = query(&h.palette.open(search())).generation;
+        let _ = h.palette.set_query("re");
+        let _ = h
+            .palette
+            .deliver(Answer::new(g + 1, items(&["report.md"])), tx);
+    });
+    rt.frame(1.0 / 60.0);
+    rt.key(rune::KeyEvent {
+        key: rune::Key::Enter,
+        mods: rune::Mods::default(),
+    });
+    rt.frame(1.0 / 60.0);
+    assert!(!rt.state.palette.is_open());
+
+    rt.update(|h, _| h.show_view = true);
+    rt.frame(1.0 / 60.0);
+    let mut focused = None;
+    rt.update(|_, tx| focused = tx.focused().map(str::to_owned));
+    assert_eq!(focused.as_deref(), Some("files"));
+}

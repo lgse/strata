@@ -6,8 +6,9 @@
 //! Not rune-kit's `TextInput`, which draws a box and builds its inner field itself, taking no
 //! `on_secondary_press` for it (Rune draft U-C21-2): a right-click there asks for Rune's native
 //! field menu, empty on Linux. The core field takes the press, and the palette sends it as
-//! [`PaletteIntent::FieldMenu`] for C21's menu. C18's filter bar made the same choice; one
-//! shared field is a follow-up once both have merged.
+//! [`PaletteIntent::FieldMenu`] for C21's menu; pointer selections and middle-click paste use
+//! Rune's primary selection on Linux, and losing focus finishes an active IME composition into
+//! the query. C18's filter bar made the same choice; one shared field is a follow-up.
 
 use rune::{Chord, ChordMod, El, Key, KeyEvent, PointerPress, Tx, text_input};
 use strata_kit::look::Look;
@@ -30,6 +31,10 @@ pub(super) fn field<S: 'static>(
 ) -> El {
     let k = &look.kit;
     let access = cx.access;
+    let active = state
+        .highlighted()
+        .filter(|_| editable)
+        .map_or_else(String::new, |i| super::option_key(&cx.key, i));
     let mut field = text_input(&state.edit, k.ty.ui)
         .single_line()
         .key(super::field_key(&cx.key))
@@ -42,12 +47,10 @@ pub(super) fn field<S: 'static>(
         .grow(1.0)
         .shrink()
         .min_w(0.0)
-        .read_only(!editable);
+        .read_only(!editable)
+        .active_descendant(active);
     if let Some(d) = &mode.description {
         field = field.description(d.clone());
-    }
-    if let Some(i) = state.highlighted().filter(|_| editable) {
-        field = field.active_descendant(super::option_key(&cx.key, i));
     }
     if !editable {
         return field;
