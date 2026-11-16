@@ -164,17 +164,19 @@ fn extend_with_no_anchor_starts_at_the_target() {
 }
 
 #[test]
-fn clear_re_anchors_at_the_cursor() {
-    // browser/selection: After Escape clears a selection, the next Shift+arrow range starts at the keyboard cursor.
+fn clear_keeps_the_anchor_for_the_next_shift_click() {
+    // Strata's Escape (`clear_active_selection`) and empty-space press (`unselect_all`) leave
+    // the anchor, so a Shift+click after either ranges from it (finding lgse/strata#2551). The
+    // keyboard's Shift+arrow starts at the cursor instead: `keyboard::tests` holds that.
     let s = listing(8);
     let mut sel = Selection::new();
     sel.select_only(&s, 1);
     sel.extend_to(&s, 4, Extend::Replace);
     let changed = sel.clear();
-    assert!(changed.anchor);
-    assert_eq!(anchor(&sel), Some(4));
+    assert!(!changed.anchor);
+    assert_eq!(anchor(&sel), Some(1));
     sel.extend_to(&s, 5, Extend::Replace);
-    assert_eq!(selected(&sel, &s), [4, 5]);
+    assert_eq!(selected(&sel, &s), [1, 2, 3, 4, 5]);
 }
 
 #[test]
