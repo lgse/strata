@@ -24,6 +24,7 @@ pub(super) fn build<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> El {
         .h_full()
         .min_w(0.0)
         .scroll_x()
+        .drawn_rect_into(&st.strip_drawn)
         .on_scroll_offset(move |pos| {
             feed.set(pos);
             bar.follow(pos);

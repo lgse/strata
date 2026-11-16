@@ -23,6 +23,7 @@ use crate::collection::keyboard::{KeySettings, Rested};
 use crate::collection::pointer::PointerSettings;
 use crate::contract::{
     Direction, Dnd, DropAction, DropHover, DropOffer, DropZone, Entry, EntryId, EntrySource, Point,
+    Rect,
 };
 use crate::preview_drawer::{ColumnsFit, DrawerRules};
 use crate::scroll::{AutoscrollSettings, BarLook, overlay};
@@ -364,8 +365,8 @@ impl<S: 'static> ColumnsView<S> {
     }
 
     /// Where a drop at window point `window` would go: the column, and its folder row or its
-    /// background, by the strip's spans and each column's index geometry (mounted rows or
-    /// not). For a binder that routes drops itself (X2).
+    /// background, by the columns' drawn rects (`El::drawn_rect_into`) and each column's index
+    /// geometry (mounted rows or not). For a binder that routes drops itself (X2).
     pub fn drop_target_at(&self, s: &S, window: Point) -> Option<(usize, Option<EntryId>)> {
         let p = (self.sh.parts)(s);
         let geo = geometry(p.state, p.look);
@@ -373,12 +374,12 @@ impl<S: 'static> ColumnsView<S> {
         if depth >= p.sources.len() {
             return None;
         }
-        let coll = &p.state.columns[depth].collection;
-        if !coll.viewport().contains(window) {
+        let col_geo = geo.columns[depth];
+        if !col_geo.listing.contains(window) {
             return Some((depth, None));
         }
         let c = self.column_collection(s, depth)?;
-        let point = coll.content_point(window);
+        let point = Point::new(0.0, window.y - col_geo.listing.y + col_geo.offset);
         let source = p.sources.source(depth);
         let row = c
             .geometry(s)
@@ -854,28 +855,43 @@ pub(super) fn blank_zone<S: 'static>(sh: &Rc<Shared<S>>) -> DropZone<S> {
     })
 }
 
-/// Where the strip and its columns are now, in window points.
+/// Where the strip and its columns are now, in window points: each column's shell as the last
+/// frame drew it (`El::drawn_rect_into`, moving through width springs, entrance slides and strip
+/// scrolls), or its laid-out span before the first draw.
 pub(super) fn geometry(st: &ColumnsState, look: &Look) -> StripGeometry {
     let feed = st.strip_feed.get();
     let offset = feed.offset[0];
-    let x0 = st.strip.x - offset;
+    let sd = st.strip_drawn.get();
+    let strip = if sd[2] > 0.0 || sd[3] > 0.0 {
+        Rect::from(sd)
+    } else {
+        st.strip
+    };
+    let x0 = strip.x - offset;
     let columns = st
         .spans(look)
         .into_iter()
         .zip(&st.columns)
         .map(|((l, r), c)| {
             let pos = c.feed.get();
+            let cd = c.drawn.get();
+            let (left, right) = if cd[2] > 0.0 {
+                (cd[0], cd[0] + cd[2])
+            } else {
+                (x0 + l, x0 + r)
+            };
+            let v = c.collection.viewport();
             ColumnGeometry {
-                left: x0 + l,
-                right: x0 + r,
-                listing: c.collection.viewport(),
+                left,
+                right,
+                listing: Rect::new(left, v.y, (right - left).max(0.0), v.h),
                 offset: pos.offset[1],
                 max: pos.max[1],
             }
         })
         .collect();
     StripGeometry {
-        strip: st.strip,
+        strip,
         offset,
         max: feed.max[0],
         columns,
@@ -929,9 +945,10 @@ pub(super) fn columns_row<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> El {
         .min_w(0.0)
         .h_full()
         // Blank space, not a control: a press there clears the selection, as an empty area
-        // does, so assistive technology hears no button for it.
+        // does, so it takes no keyboard focus (`on_background_press`) and assistive technology
+        // hears nothing for it.
         .a11y_hidden()
-        .on_press(move |s: &mut S| blank_press(&blank, s));
+        .on_background_press(move |s: &mut S| blank_press(&blank, s));
     content.child(sh.dnd.drop_zone_keyed(blank_el, blank_key, blank_zone(sh)))
 }
 

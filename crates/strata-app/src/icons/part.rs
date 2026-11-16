@@ -87,7 +87,10 @@ impl Part for Icons {
         apply: single::apply::<Self>,
         returns: None,
         pointer_at: None,
-        end_gestures: single::end_gestures::<Self>,
+        end_gestures: |app| {
+            app.icons.grid.reset();
+            single::end_gestures::<Self>(app);
+        },
         rows: single::rows::<Self>(),
         editing: single::editing::<Self>(),
         #[cfg(feature = "qa")]

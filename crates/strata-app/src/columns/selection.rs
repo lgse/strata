@@ -177,8 +177,10 @@ impl Columns {
         self.mirror.note_pointer(at);
     }
 
-    /// A modal layer opened over the view: every column's pointer gesture ends.
+    /// A modal layer opened over the view, or the view left: every column's pointer gesture,
+    /// edge resize, drag autoscroll and scroll-bar drag ends.
     pub(crate) fn end_gestures(&mut self) {
+        self.state.reset();
         for depth in 0..self.state.len() {
             if let Some(column) = self.state.column_mut(depth) {
                 column.collection.end_gestures();

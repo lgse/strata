@@ -193,16 +193,17 @@
 //!
 //! - **U-C25-1: mipmaps for a streamed `Pixels`.** `Pixels::set` is the streaming path: no mip
 //!   levels (`pixels.rs`), so drawing an image well below its size samples it bilinearly and
-//!   aliases. `ImageCache` images get mips, but `ImageCache::rgba` makes a new handle for each
-//!   call (keyed by the bytes, `image.rs`) and fills its mips later, so a store holding one
-//!   handle per key can't use it: each landed image would be a new handle, and a view would
-//!   commit to swap it in. Repro (run headless, scale 1, `--snap`): a 256 × 256 one-pixel
-//!   checkerboard drawn at 37 × 37 points, streamed beside `ImageCache::rgba` of the same
-//!   bytes. The streamed square shows a beat pattern of near-black and white blocks (grey
-//!   levels 7 to 255, standard deviation 21 of 255); the cached one is an even grey (188, no
-//!   deviation). A 256 → 32 draw (an exact eighth) hides it: every sample falls between two
-//!   texels and averages to grey. Ask: a mipmapped `set` (levels built off the main thread), or
-//!   `ImageCache::rgba_into(&Pixels, …)` filling an existing handle.
+//!   aliases. `ImageCache` images get mips (inline up to 64 × 64 px and off-thread above, waking
+//!   once, in Rune 631e8a67, anomalyco/rune#971), but `ImageCache::rgba` makes a new handle for
+//!   each call (keyed by the bytes, `image.rs`), so a store holding one handle per key can't use
+//!   it: each landed image would be a new handle, and a view would commit to swap it in. Repro
+//!   (run headless, scale 1, `--snap`): a 256 × 256 one-pixel checkerboard drawn at 37 × 37
+//!   points, streamed beside `ImageCache::rgba` of the same bytes. The streamed square shows a
+//!   beat pattern of near-black and white blocks (grey levels 7 to 255, standard deviation 21 of
+//!   255); the cached one is an even grey (188, no deviation). A 256 → 32 draw (an exact eighth)
+//!   hides it: every sample falls between two texels and averages to grey. Ask: a mipmapped `set`
+//!   (levels built off the main thread for larger images), or `ImageCache::rgba_into(&Pixels, …)`
+//!   filling an existing handle.
 //! - **U-C25-2: whether a `Pixels` is drawn.** An app can't tell whether or when a handle was
 //!   last drawn, so a cache's recency has to be approximated (here, from builds and visible
 //!   ranges). Repro: none needed; `Pixels` has no such accessor at the pinned rev. Ask:

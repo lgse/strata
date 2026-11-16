@@ -2,6 +2,7 @@
 
 //! Unit tests of the pure parts: the reveal rule, the width rules and the drawer fit.
 
+mod drawn;
 mod perf;
 mod reveal;
 

@@ -56,9 +56,11 @@
 //! - Every bar hangs from a zero-size [`anchor`] (X2), so P1's hit tests find the rows under it.
 //! - C1e's `Collection::on_scroll` and `edge` add rather than replace (C24b), so a view's own
 //!   bar and a host's follower never drop each other.
-//! - **A plain viewport** (a sidebar, a preview): `.on_scroll_offset(bar.watch())`, the bar in
-//!   [`overlay`], and for autoscroll its own middle-press handler calling
-//!   [`Autoscroll::start`] with a [`Target`].
+//! - **A plain viewport** (a sidebar, a preview): `.on_scroll_offset(bar.watch())` and the bar in
+//!   [`overlay`]. On Linux, Rune 631e8a67 starts its own middle-click autoscroll (with directional
+//!   `pan_*` cursors, anomalyco/rune#874) on any overflowing viewport where no element takes the
+//!   middle press; a plain viewport that wants Strata's round anchor and [`Shield`] instead adds a
+//!   middle-press handler calling [`Autoscroll::start`] with a [`Target`].
 //!
 //! # Decisions
 //!
@@ -71,19 +73,23 @@
 //!   instead. It asks for frames only while a viewport moves: in the dead zone, or at an end, it
 //!   sleeps until the pointer's next move out of it.
 //! - **The stop is dead** (Strata parity): the viewports stay where the last frame drew them.
-//! - **The shield is a modal.** Rune has no capture phase; a modal layer over the window is how
-//!   every press anywhere, with any button, and Escape whatever has focus, reach the autoscroll
-//!   first and go no further (probe P5). It is labelled "Autoscroll" for assistive technology.
+//! - **The shield is a modal.** Rune has no capture phase; a modal layer (`El::modal_tx`,
+//!   anomalyco/rune#879, retiring U-C24-6) over the window is how every press anywhere, with any
+//!   button, and Escape whatever has focus, reach the autoscroll first, stop its glide in the same
+//!   frame, and go no further (probe P5). It is labelled "Autoscroll" for assistive technology.
 //! - **Background is Strata's.** A middle press starts autoscroll where it lands on no entry, or
 //!   in the blank strip along either side of a row ([`AutoscrollSettings::margin`]), which lies
 //!   outside the row in Strata's lists; anywhere else the controller inside hears it (C1b's
 //!   open-in-new-tab). In a listing that fits, a middle press on that background beside or
 //!   within an entry's row does nothing (C24b): Strata's start declines, and the row it isn't
-//!   on opens no tab. The decorator swallows it, so C1b and C1e are unchanged.
-//! - **A text field inside a listing keeps its middle press** (Strata's `is_text_target`): C5's
-//!   rename editor takes the middle button itself, so the press reaches neither autoscroll nor
-//!   the row. A raw `text_input` inside a listing doesn't: Rune hands a middle press to the
-//!   nearest element that takes the button, the collection.
+//!   on opens no tab. Because C1e's container claims middle presses for C1b, Rune's built-in
+//!   Linux autoscroll (`autoscroll_down`, #874) never fires inside a collection, and C24's
+//!   decorator handles both axes and the anchor marker.
+//! - **A text field inside a listing keeps its middle press** (Strata's `is_text_target`): on
+//!   Linux, Rune 631e8a67 intercepts a middle press on any text field before hit-testing
+//!   (`primary_paste_down`, anomalyco/rune#890, retiring U-C24b-3) to paste the primary selection,
+//!   and C5's rename editor also takes the middle button itself, so the press reaches neither
+//!   autoscroll nor the row.
 //! - **A wheel tick outside an open panel** ([`OutsideWheel`]) is taken by the panel's outside
 //!   layer, which Rune offers it first as the topmost element: it closes the panel and moves
 //!   the host's listing targets under the pointer by the tick's own delta (Shift turns a
@@ -109,8 +115,8 @@
 //!   R-C24-1). Its wrapper also moves the viewport under a new keyed parent, which breaks C1e's
 //!   key paths (`{scope}/viewport`, P4), and it must wrap the viewport it scrolls, which would
 //!   put C4's vertical bar at its content's right edge, off screen when the table is wider
-//!   than its pane. And it draws no trough, has no end-gap or minimum-thumb setting (R-C24-2).
-//!   Coordinator-approved; listed for the owner's plan edit.
+//!   than its pane. And it draws no trough and takes primary presses on the thumb alone rather
+//!   than GTK 4's trough warp (R-C24-2). Coordinator-approved; listed for the owner's plan edit.
 //! - **While autoscroll runs the wheel does nothing, and keys other than Escape don't reach
 //!   the listing**: the modal makes the window behind it inert (probe P5). Strata's capture
 //!   gestures take only presses, so its wheel and keys keep working during an autoscroll.
@@ -121,11 +127,10 @@
 //!   moves focus into it, and Rune gives it back to the element that had it as it closes, so
 //!   keys reach the listing again. Strata's capture gestures leave focus alone: here a field
 //!   that ends its edit on a blur (C5's rename) ends it when autoscroll starts (U-C24b-4).
-//! - **A middle click on a text field pastes nothing**: Rune has no middle-click paste of the
-//!   primary selection (U-C24b-3). It starts no autoscroll, as Strata's doesn't.
 //! - **C4's two bars cross at the bottom-right corner** of a table that scrolls both ways; GTK's
 //!   overlay indicators aren't confirmed either way.
-//! - **The scroll cursor is `Cursor::Move`**: Rune has no all-scroll cursor (U-C24-5).
+//! - **The scroll cursor is `Cursor::Move`**: Rune has no all-scroll cursor (U-C24-5; Rune's
+//!   built-in Linux autoscroll uses directional `pan_*` cursors instead).
 //! - **The bar's fade hold is 1 s**, not GTK's own indicator timing, which isn't confirmed.
 //!
 //! # Known gaps
@@ -152,7 +157,9 @@
 //! # Rune and rune-kit drafts (not filed)
 //!
 //! Written up for the owner to file; each repro runs headless (`rune::Runtime`). Probes:
-//! `strata-spikes/c24-probes`.
+//! `strata-spikes/c24-probes`. Retired at Rune 631e8a67: U-C24-6 (`El::modal_tx`,
+//! anomalyco/rune#879) and U-C24b-3 (Linux primary selection and middle-click paste in text
+//! fields, anomalyco/rune#890).
 //!
 //! - **R-C24-1 (rune-kit): scroll bars over viewports keyed alike share state and drag the
 //!   first.** `ScrollBar::scroll_bar_styled` keys its kept state by `"{key}-scroll-area"`
@@ -163,18 +170,16 @@
 //!   at 2,000. Ask: key the state and the target by the viewport's path, or take an explicit
 //!   key.
 //! - **R-C24-2 (rune-kit, a comment for anomalyco/rune#365): a scroll bar with a trough, apart
-//!   from its viewport.** Re-checked in C24b at the pin and at Rune dev (111 commits on, read
-//!   only): `ScrollBarStyle::track_offset(top, end)` starts the track below a viewport's top and
-//!   ends its strip in from the edge, and the `menu_scroll` preset has a 4 pt inset and a 24 pt
-//!   least thumb, but the inset and least thumb are still presets' only (#365 asks for them on
-//!   any style), there is still no track fill (or its hover fill), and the bar still wraps the
-//!   viewport it scrolls (`attach`, placed `viewport[1 - a] - end` across it), so it can't
-//!   sit at the visible edge of a vertical viewport inside a wider sideways one. Dev's only
-//!   change there is right to left (`ScrollPos::direction`). Repro (from the API, not run): a
-//!   `scroll_x` viewport 600 wide holding a 900-wide `.scroll()` viewport with
-//!   `.scroll_bar(&kit)`; `attach` places the strip at the inner viewport's right edge, past
-//!   the 600-wide view. Ask: track colours on the style, and a bar fed a `ScrollPos` and a
-//!   target that the app places. C24 keeps its own bar.
+//!   from its viewport.** At Rune 631e8a67, `ScrollBarStyle` adds `min_thumb` and `webkit_parts`
+//!   (anomalyco/rune#728, #871) and thumb-only hit testing (#715), while `track_offset(top, end)`
+//!   starts the track below a viewport's top and ends its strip in from the edge; there is still
+//!   no track fill (or its hover fill), no GTK-style primary-button trough warp, and the bar still
+//!   wraps the viewport it scrolls (`attach`, placed `viewport[1 - a] - end` across it), so it
+//!   can't sit at the visible edge of a vertical viewport inside a wider sideways one. Repro (from
+//!   the API, not run): a `scroll_x` viewport 600 wide holding a 900-wide `.scroll()` viewport
+//!   with `.scroll_bar(&kit)`; `attach` places the strip at the inner viewport's right edge, past
+//!   the 600-wide view. Ask: track colours and optional trough warp on the style, and a bar fed a
+//!   `ScrollPos` and a target that the app places. C24 keeps its own bar.
 //! - **U-C24-3: a vertical wheel gesture moves to whichever viewport the pointer reaches.** The
 //!   README says a gesture latches "as AppKit latches a gesture to the view it began on", but
 //!   only the axis latches: `Runtime::wheel` picks `scroll_at(x, y)` for every delta, and only a
@@ -189,13 +194,10 @@
 //!   with a cancelled `Up` (as Escape does mid-drag). The same holds for a bar's thumb: a
 //!   modal (any dialog) mounted mid-drag leaves the bar's drag held, so it stays shown, its
 //!   trough strengthened, until the next press on it.
-//! - **U-C24-5: no all-scroll cursor.** `Cursor` has `Move` but not CSS `all-scroll` (GTK's
-//!   `all-scroll`, the autoscroll cursor on Linux and Windows). Repro: none needed; the enum has
-//!   no variant. Ask: `Cursor::AllScroll`.
-//! - **U-C24-6: a modal's dismiss has no transaction.** `El::modal(click_outside, dismiss)`
-//!   takes `Fn(&mut S)`, so an Escape that dismisses can't make a scroll request (here: stop a
-//!   glide) in the same frame; it waits for the next poll. Ask: `Fn(&mut S, &mut Tx)`, as
-//!   `on_press_tx` is.
+//! - **U-C24-5: no all-scroll cursor.** `Cursor` has `Move` and directional `Pan*` cursors
+//!   (anomalyco/rune#874) but not CSS `all-scroll` (GTK's `all-scroll`, the resting autoscroll
+//!   cursor on Linux and Windows). Repro: none needed; the enum has no variant. Ask:
+//!   `Cursor::AllScroll`.
 //! - **U-C24-7: headless Shift + wheel doesn't scroll sideways.** The winit host turns a
 //!   Shift + mouse-wheel delta horizontal (`scroll/x.rs`, `wheel_delta`); `Runtime::wheel_event`
 //!   with `mods.shift` and a script `wheel` with `"shift": true` scroll vertically, so the
@@ -234,16 +236,12 @@
 //! - **U-C24b-2: a wheel over an overlay that doesn't scroll scrolls the viewport under it.**
 //!   `scroll_at` picks the innermost scroll viewport containing the point that isn't under a
 //!   modal (`runtime/input/pointer.rs`), whatever non-scrolling element is drawn over it, so a
-//!   wheel over a popover's plain surface scrolls the list beneath. Repro (run: the c24 page's
+//!   wheel over a popover's plain surface scrolls the list beneath (`#1021` skips still viewports
+//!   along the scroll stack, not non-scrolling overlays above one). Repro (run: the c24 page's
 //!   Sort by stand-in without [`OutsideWheel::surface`]): a 1,000-row virtual viewport with a
 //!   220-wide panel in the root layer over it, no handlers but a no-op `on_press`; one
 //!   `wheel_event` of `dy -120` over the panel: the list scrolls. Ask: a wheel over an element
 //!   drawn above a viewport, and not inside it, doesn't scroll it.
-//! - **U-C24b-3: no middle-click paste.** On Linux a middle click in a text field pastes the
-//!   primary selection; Rune's fields take no middle press and have no primary-selection
-//!   source. Repro: a `text_input` and a middle `tap` on it: nothing reaches the field (the
-//!   press goes to the nearest ancestor with `pointer_buttons([Middle])`). Ask: middle-click
-//!   paste of the primary selection in text fields on Linux (and the selection's ownership).
 //! - **U-C24b-4: a modal that leaves the keyboard where it was.** `El::modal` moves focus into
 //!   itself, so a field that commits on a blur commits when one opens, even one with nothing to
 //!   type into. Repro (C24 review 2's probe R2-P3, on the c24 page): focus a `text_input`, then
