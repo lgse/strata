@@ -124,6 +124,9 @@ impl TargetKind {
     fn sync_selection(self, app: &mut App, tx: &mut Tx) {
         match self {
             Self::Columns => {
+                if app.columns.shows_hits(0) {
+                    filter::picked(app);
+                }
                 shell::settle(app, tx);
             }
             Self::Icons | Self::List => single::moved(app, tx),

@@ -371,7 +371,6 @@ pub struct RestReport {
 /// as Strata draws them (`outline: 1px`, `src/style.css`). No look token sizes outlines.
 const OUTLINE: f32 = 1.0;
 
-/// Vertical margin above and below each row's card inside its virtual line, matching GTK's
 /// What the view decided once for every row it builds.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Frame {
@@ -432,6 +431,9 @@ pub(super) fn config_key<S>(cfg: &Config<S>) -> u64 {
     // Hashed only when set, so every collection without bare items keeps its rows' versions.
     if cfg.bare_items {
         true.hash(&mut h);
+    }
+    if cfg.row_gap_y > 0.0 {
+        cfg.row_gap_y.to_bits().hash(&mut h);
     }
     if cfg.rest.is_some() {
         "rest".hash(&mut h);

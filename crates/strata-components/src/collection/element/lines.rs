@@ -455,6 +455,12 @@ impl GroupedRows {
             line as usize
         }
     }
+
+    fn within_line_inset(&self, y: f32, index: usize) -> bool {
+        let local_y = f64::from(y) - index as f64 * f64::from(self.row_height);
+        let inset = self.inset_y;
+        (f64::from(inset)..f64::from(self.row_height - inset)).contains(&local_y)
+    }
 }
 
 impl CollectionGeometry for GroupedRows {
@@ -470,8 +476,8 @@ impl CollectionGeometry for GroupedRows {
     }
 
     fn index_at(&self, point: Point) -> Option<usize> {
-        let across = point.x >= 0.0 && point.x < self.width;
-        if !self.drawable() || !across || point.y.is_nan() || point.y < 0.0 {
+        let inside = (0.0..self.width).contains(&point.x) && point.y >= 0.0;
+        if !self.drawable() || !inside {
             return None;
         }
         let line = (f64::from(point.y) / f64::from(self.row_height)).floor();
@@ -479,9 +485,7 @@ impl CollectionGeometry for GroupedRows {
             return None;
         }
         let index = line as usize;
-        let local_y = f64::from(point.y) - index as f64 * f64::from(self.row_height);
-        let inset = self.inset_y;
-        if local_y < f64::from(inset) || local_y >= f64::from(self.row_height - inset) {
+        if !self.within_line_inset(point.y, index) {
             return None;
         }
         match self.groups.line(index) {

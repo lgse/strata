@@ -17,7 +17,9 @@ use strata_components::{
 };
 use strata_qa::Rect;
 
-use super::tree::{Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Shape, Snapshot};
+use super::tree::{
+    Drawn, DrawnButton, DrawnColumn, DrawnRow, NameLabel, RowIcon, Seen, Shape, Snapshot,
+};
 use crate::{App, host::offscreen::Offscreen, shell};
 
 /// How long one settle keeps turning a host that never comes to rest. The GTK harness waits
@@ -178,6 +180,20 @@ fn drawn_column(elements: &[ElementInfo], list: &str) -> Option<DrawnColumn> {
         pane: rect(pane),
         rows: rows.filter(inside).filter_map(row).collect(),
     })
+}
+
+/// Replaces `seen.bounds` with the inner card bounds drawn for its row in `list`, if present.
+pub(super) fn sync_entry_bounds(columns: &[DrawnColumn], list: &str, seen: &mut Seen) {
+    let Some(key) = seen.key.as_deref() else {
+        return;
+    };
+    let row = columns
+        .iter()
+        .find(|column| column.list == list)
+        .and_then(|column| column.rows.iter().find(|row| row.key == key));
+    if let Some(row) = row {
+        seen.bounds = Some(row.bounds);
+    }
 }
 
 /// What [`drawn_buttons`] reads of one drawn element.

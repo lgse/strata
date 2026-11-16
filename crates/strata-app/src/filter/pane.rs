@@ -196,6 +196,7 @@ impl PaneHits {
 
     /// Gives the listing its place back.
     pub(crate) fn drop_hits(&mut self) {
+        self.autoscroll.stop_gone(None);
         self.keys_handle.end_range();
         if self.hits.take().is_some() {
             self.swaps = self.swaps.wrapping_add(1);
@@ -204,6 +205,7 @@ impl PaneHits {
 
     /// The results taken out, with their selection, for the view a switch shows.
     pub(crate) fn take(&mut self) -> Option<(Column, Position)> {
+        self.autoscroll.stop_gone(None);
         self.keys_handle.end_range();
         let position = self.collection.selection.position(self.hits.as_ref()?);
         let hits = self.hits.take()?;
