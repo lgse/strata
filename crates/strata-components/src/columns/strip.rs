@@ -32,9 +32,10 @@ pub(super) fn build<S: 'static>(sh: &Rc<Shared<S>>, s: &S) -> El {
         .on_layout_tx(move |s: &mut S, r, tx: &mut Tx| {
             let p = (layout.parts_mut)(s);
             p.state.strip = Rect::from(r);
+            let clipped_changed = p.state.sync_clipped(p.look);
             if p.state.reveal_after_layout {
                 p.state.reveal(p.look, tx);
-            } else {
+            } else if !clipped_changed {
                 tx.live_only();
             }
         })
