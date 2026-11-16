@@ -1014,8 +1014,11 @@ fn a_secondary_press_selects_an_unselected_entry_and_keeps_a_selection_it_lands_
         }] if t == id(6)
     ));
     r.select(&[3, 4]);
-    r.down_with(Button::Secondary, Some(4), Spot::Gutter, PLAIN);
+    let group_anchor = r.f.sel.anchor();
+    r.down_with(Button::Secondary, Some(3), Spot::Gutter, PLAIN);
     assert_eq!(r.selected(), [3, 4]);
+    assert_eq!(r.f.sel.cursor(), Some(id(3)));
+    assert_eq!(r.f.sel.anchor(), group_anchor);
     r.down_with(Button::Secondary, None, Spot::Gutter, PLAIN);
     assert_eq!(r.selected(), [3, 4]);
     assert!(matches!(

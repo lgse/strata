@@ -465,6 +465,26 @@ impl Selection {
         changed
     }
 
+    /// Commits a provisional selection and moves the cursor to `index`, keeping the selection
+    /// and any anchor (`focus_context_entry` in `src/ui/browser/context_menu/focus.rs` when
+    /// right-clicking an already-selected entry).
+    pub(crate) fn focus_selected_keeping_anchor<S: EntrySource + ?Sized>(
+        &mut self,
+        source: &S,
+        index: usize,
+    ) -> Changed {
+        let Some(id) = listed(source, index) else {
+            return Changed::NONE;
+        };
+        self.gesture = Gesture::None;
+        let mut changed = Changed {
+            selection: self.set_provisional(false),
+            ..Changed::NONE
+        };
+        changed |= self.place_cursor(id, index);
+        self.finish(changed)
+    }
+
     /// Selects the entry at `index` as a load's automatic pick (provisional), with the
     /// cursor and the anchor on it: the first entry of a new listing, or the folder you came
     /// from. Any explicit operation makes it a real selection or replaces it.

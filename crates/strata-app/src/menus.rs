@@ -171,6 +171,17 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
     rename::commit(app, tx);
     // The menu acts on the browser's selection, which takes what the view changed first.
     shell::publish(app);
+    if app.browser.location_at(depth).is_some() && app.browser.active_depth() != Some(depth) {
+        app.browser.set_active_column(depth);
+    }
+    // `focus_context_column`: give the shown view the keyboard before the menu mounts so
+    // dismissing the menu — or a dialog opened from it — restores focus to the menu's column
+    // rather than leaving it in the sidebar or header.
+    let search_active =
+        entry.is_some_and(|id| crate::filter::targets::at(app, depth, id).is_some());
+    if !search_active && let Some(view) = shell::view_focus(app) {
+        tx.focus(view, tx.by_keys());
+    }
     let opening = match entry {
         Some(id) => entry_menu(app, depth, id),
         None => folder_menu(app, depth),

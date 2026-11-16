@@ -124,11 +124,14 @@ struct Target {
     location: Location,
 }
 
-/// A row asked for its menu, at `point` in window points; `by_keys` when the keyboard asked.
-pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, by_keys: bool) {
+/// A row asked for its menu, at `point` in window points. Focus moves to the row before the
+/// menu opens so closing the menu — or cancelling a modal dialog opened from one of its rows —
+/// returns focus to that sidebar row, as GTK's `popover.set_parent(row)` does.
+pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, tx: &mut Tx) {
     let Some(row) = app.sidebar.location_of(item) else {
         return;
     };
+    let by_keys = tx.by_keys();
     let model = model(row, app.sidebar.trash.contents);
     let opens_trash = is_trash(item);
     // GTK's popover points at the row from the keyboard, and at the click from the pointer.
@@ -139,6 +142,7 @@ pub(super) fn open(app: &mut App, item: &ItemId, point: PointerPress, by_keys: b
         item: item.clone(),
         location: row.location.clone(),
     }));
+    tx.focus(item.key(super::KEY), by_keys);
     app.sidebar.menu.open(target, at, model);
     // GTK probes the Trash again as its menu shows.
     if opens_trash {

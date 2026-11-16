@@ -148,11 +148,18 @@ fn the_state_keeps_its_query_and_category_across_closing() {
     s.toggle();
     assert!(s.is_open());
     s.set_query("copy");
+    s.search.anchor = 0;
+    s.search.focus = 0;
     s.set_category(Some("Search and tools".to_owned()));
     s.toggle();
     assert!(!s.is_open());
     s.open();
     assert_eq!(s.query(), "copy");
+    assert_eq!(
+        (s.search.anchor, s.search.focus),
+        (0, 4),
+        "reopening selects the kept query"
+    );
     assert_eq!(s.category().as_deref(), Some("Search and tools"));
     assert_eq!(s.section(&data()), Some(1));
     s.set_category(Some("Gone".to_owned()));

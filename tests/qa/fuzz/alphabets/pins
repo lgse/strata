@@ -25,6 +25,15 @@ list v3 53cac7ac7cdfa46c
 # Shift+Tab off the files. Its seeds name the shrunk sequences of its findings, parked in
 # tests/qa/fuzz/corpus/location.
 location v2 c074595ff2aab0b4
+# menus: versions 1 to 3 were A6's drafts, never merged: version 1 caught ReferenceState::open
+# leaving a kept query unselected on reopen and sidebar::menu::open leaving focus in the file
+# view on a sidebar menu open (both fixed); version 2 caught menus::open not focusing/activating
+# the right-clicked column, PointerMachine's secondary press inside a multi-selection leaving
+# the cursor on the prior entry, and Compress's invalid-name refusal leaving the rejected name
+# unselected (all three fixed), plus Ctrl+Z meeting undo_archive (A13's); version 3 guarded undo
+# while bundle.zip or bundle.tar exists and met Right/l on created archives opening A15's Quick
+# Preview on GTK. Version 4 keeps Right/l off created archives.
+menus v4 389c2a5b99f176f3
 sidebar v1 4acfcd20a194fff5
 # tabs: versions 1 and 2 were A4's drafts, never merged: version 1 caught the hidden-tab
 # view-switch focus and tab_shown bug (fixed in shell/tabs.rs) and met lgse/strata#2507;
