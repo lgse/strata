@@ -1575,5 +1575,7 @@
   "Flags": "Cờ",
   "Document position": "Vị trí trong tài liệu",
   "Line %{line} of %{lines}": "Dòng %{line} trên %{lines}",
-  "Blank": "Trống"
+  "Blank": "Trống",
+  "Show password": "Hiển thị mật khẩu",
+  "Hide password": "Ẩn mật khẩu"
 }

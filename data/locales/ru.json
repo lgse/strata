@@ -1575,5 +1575,7 @@
   "Flags": "Флаги",
   "Document position": "Позиция в документе",
   "Line %{line} of %{lines}": "Строка %{line} из %{lines}",
-  "Blank": "Пустая"
+  "Blank": "Пустая",
+  "Show password": "Показать пароль",
+  "Hide password": "Скрыть пароль"
 }
