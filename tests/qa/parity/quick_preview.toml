@@ -282,9 +282,8 @@ host = "offscreen"
 scenario = "preview-source-text-copies"
 run = "columns"
 package = "A15"
-status = "pending"
-reason = "scope"
-blocker = "A15"
+status = "required"
+host = "session"
 
 [[run]]
 scenario = "rendered-document-word-selection"

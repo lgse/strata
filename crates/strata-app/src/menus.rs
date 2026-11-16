@@ -193,6 +193,7 @@ pub(crate) fn open(app: &mut App, request: Request, tx: &mut Tx) {
     if let Some(opening) = opening {
         app.menu
             .show(depth, opening, Point::new(anchor.x, anchor.y));
+        crate::open_with::prepare_menu(app, depth, entry);
     }
 }
 
@@ -253,6 +254,10 @@ impl Menu {
 
     pub(crate) fn depth(&self) -> usize {
         self.depth
+    }
+
+    pub(crate) fn open_item(&self) -> Item {
+        OPEN.item(self.typing)
     }
 
     fn name(&self) -> &str {
