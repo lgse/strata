@@ -613,3 +613,95 @@ fn opening_a_menu_activates_its_column_and_returns_focus_to_the_view() {
         },
     );
 }
+
+fn current_focus(host: &mut Offscreen) -> Option<String> {
+    let mut focused = None;
+    host.runtime().update(|_: &mut App, tx: &mut Tx| {
+        focused = tx.focused().map(str::to_owned);
+    });
+    focused
+}
+
+/// `focus_context_column` and `focus_context_entry` while filter results show: a background
+/// folder menu (`entry = None`) keeps focus on the filter field across dismissal, whereas a
+/// result row's menu (`entry = Some(id)`) focuses the view (`focus_search_result`).
+#[test]
+fn filter_menus_keep_field_focus_on_background_and_focus_view_on_result_row() {
+    hosted(
+        "menus::tests",
+        "filter_menus_keep_field_focus_on_background_and_focus_view_on_result_row",
+        |mut host| {
+            let folder = fixture();
+            listed(&mut host, folder.path(), 5);
+            host.runtime().update(|app: &mut App, tx: &mut Tx| {
+                let view = shell::view_focus(app).expect("a view").to_owned();
+                tx.focus(view, true);
+            });
+            while host.turn() {}
+
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Text("f".to_owned()),
+                    mods: Mods {
+                        ctrl: true,
+                        ..Mods::default()
+                    },
+                },
+            );
+            while host.turn() {}
+            for ch in "readme".chars() {
+                host.runtime().key(KeyEvent {
+                    key: Key::Text(ch.to_string()),
+                    mods: Mods::default(),
+                });
+            }
+            let hits_shown = host.run_until(PATIENCE, |host| {
+                crate::filter::targets::selected_with_depth(host.app()).is_some()
+            });
+            assert!(hits_shown, "filter results shown");
+            let filter_field = current_focus(&mut host).expect("filter field focused");
+            assert!(filter_field.starts_with("filter-"), "{filter_field}");
+
+            // Background folder menu (`entry = None`) leaves focus on the filter field.
+            opened(&mut host, None);
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            while host.turn() {}
+            assert!(!host.app().menu.state.is_open());
+            assert_eq!(
+                current_focus(&mut host).as_deref(),
+                Some(filter_field.as_str())
+            );
+
+            // Result row menu (`entry = Some(hit_id)`) focuses the view (`focus_search_result`).
+            let hit_id = id_of(&host, folder.path(), "readme.md");
+            let row = strata_components::collection::element::row_key(hit_id);
+            let (x, y) = center_of(&mut host, &row);
+            host.runtime().pointer_move(x, y);
+            host.runtime().secondary_down(x, y);
+            host.turn();
+            host.runtime().secondary_up(x, y);
+            while host.turn() {}
+            assert!(host.app().menu.state.is_open());
+            send_key(
+                &mut host,
+                KeyEvent {
+                    key: Key::Escape,
+                    mods: Mods::default(),
+                },
+            );
+            while host.turn() {}
+            assert!(!host.app().menu.state.is_open());
+            assert_eq!(
+                current_focus(&mut host).as_deref(),
+                shell::view_focus(host.app())
+            );
+        },
+    );
+}
