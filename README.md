@@ -545,6 +545,15 @@ package names vary.
   charging-only mode. Accept any file-access prompt. Only storage exposed by the
   phone is available, not protected system files or private app data.
 
+  On KDE Plasma, KDE's own MTP service (from `kio-extras`, used by Dolphin and the
+  device notifier) competes with `gvfs-mtp` for the phone. Whichever claims it
+  first wins: the other sees the phone with no storage, so Strata shows an empty
+  volume, or Dolphin asks you to unlock the phone and tap **Allow**. To give the
+  phone to Strata, unplug it, run `pkill -x kiod6` (`kiod5` on Plasma 5), and
+  plug it back in unlocked. KDE restarts the service whenever a KDE app needs
+  it, so repeat this if you used Dolphin before connecting the phone.
+  **Settings → Diagnostics** warns when both are installed.
+
 After installing a backend, fully quit Strata (all windows) and reopen it.
 Reconnect the unlocked phone if necessary, then click its entry under **Devices**.
 The camera/PTP entry opens a single **Photos** view: files appear progressively

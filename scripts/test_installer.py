@@ -1034,6 +1034,7 @@ exit 23
             ("zz:fr", "C.UTF-8", f"Installer dans {path}"),
             ("fr", "C", f"Install to {path}"),
             ("de", "C.UTF-8", f"Installation nach {path}"),
+            ("hu", "C.UTF-8", f"Telepítés ide: {path}"),
             ("es", "C.UTF-8", f"Instalar en {path}"),
             ("ja", "C.UTF-8", f"インストール先: {path}"),
             ("pt_PT", "C.UTF-8", f"Instalar em {path}"),
