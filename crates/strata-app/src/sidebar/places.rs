@@ -73,7 +73,7 @@ impl Environment {
         }
     }
 
-    fn is_standard(&self, location: &Location) -> bool {
+    pub(super) fn is_standard(&self, location: &Location) -> bool {
         let Some(path) = location.native_path() else {
             return false;
         };

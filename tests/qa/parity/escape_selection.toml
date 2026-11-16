@@ -29,9 +29,8 @@ scenario = "escape-dismisses-transient"
 run = "columns"
 package = "A17"
 gate = "G2"
-status = "pending"
-reason = "scope"
-blocker = "C15: the properties dialog, at Alt+Return (`dialog`). Then the location field (C6), the filter (C18), the preview (C9) and a new folder"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "escape-only-clears-active-column"
