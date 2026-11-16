@@ -29,24 +29,5 @@ pub(super) fn install_mouse_history(root: &gtk::Box, view: &BrowserView) {
 
 pub(super) fn install_edit_cancellation(window: &impl IsA<gtk::Widget>, browser: &BrowserView) {
     browser.install_inline_edit_dismissal(window);
-    install_location_cancellation(window, browser);
-}
-
-fn install_location_cancellation(window: &impl IsA<gtk::Widget>, browser: &BrowserView) {
-    let view = browser.clone();
-    let gesture = gtk::GestureClick::new();
-    gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
-    gesture.connect_pressed(move |gesture, _, x, y| {
-        if !view.location_edit_is_active() {
-            return;
-        }
-        let on_location_edit = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-            .is_some_and(|target| view.location_edit_contains(&target));
-        if !on_location_edit {
-            view.cancel_location_edit();
-        }
-    });
-    window.add_controller(gesture);
+    browser.install_location_cancellation(window);
 }
