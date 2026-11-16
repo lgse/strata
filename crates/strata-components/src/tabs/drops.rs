@@ -141,7 +141,7 @@ pub(super) fn tab<S: 'static>(cx: &Ctx<S>, spec: TabSpec) -> Option<DropZone<S>>
             st.set_drop_hover(site, hover);
             let arm = hover_cx.spring.filter(|_| !spec.active);
             if let (true, Some(delay)) = (st.hover_tab(spec.id, hover, arm, tx.clock()), arm) {
-                tx.wake_after(std::time::Duration::from_secs_f64(delay));
+                tx.wake_after(spring_wake(tx.clock(), delay));
             }
         }
         let offer = offer.clone();
@@ -242,5 +242,17 @@ pub(super) fn opener<S: 'static>(cx: &Ctx<S>, site: DropSite) -> DropZone<S> {
     match site {
         DropSite::Strip => follow_moves(cx, zone, site),
         _ => zone,
+    }
+}
+
+/// How long a hover that armed a spring asks to wait: its delay, or, under a clock that reads
+/// zero (Rune packet entry 108), only until the next frame, whose tick stamps the spring's
+/// start and asks for the rest. Waiting the whole delay there would stretch the spring to
+/// about twice its length when nothing else draws a frame.
+fn spring_wake(clock: f64, delay: f64) -> std::time::Duration {
+    if clock > 0.0 {
+        std::time::Duration::from_secs_f64(delay)
+    } else {
+        std::time::Duration::ZERO
     }
 }
