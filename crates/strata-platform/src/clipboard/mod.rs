@@ -22,8 +22,10 @@
 //! (shared with `dnd`) while winit's display is alive. Call it from `App::on_quit`, which
 //! Rune runs in every open window before any closes for `Tx::quit` and `AppHandle::quit`,
 //! **and** in the last window's `on_close`: when the last window closes, `on_quit` runs only
-//! in the windows still open, so not in that one. Calling it before `Tx::quit` as well does no
-//! harm; a second call finds nothing to do. Either module's shutdown does both modules' work.
+//! in the windows still open, so not in that one. Both hooks run before Rune's default
+//! `fast_exit` (`_exit`) ends the process, and before `orderly_exit` drops the display. Calling
+//! it before `Tx::quit` as well does no harm; a second call finds nothing to do. Either
+//! module's shutdown does both modules' work.
 //!
 //! # What Rune lacks
 //!
@@ -34,7 +36,9 @@
 //!   other MIME type, so a file manager's copy can't carry the GNOME and KDE formats beside
 //!   text. A read gives no list of the offered types; nothing tells the app when another
 //!   client takes the clipboard; nothing hands a copy's every form to a clipboard manager at
-//!   exit, and nothing says when a write was dropped. Rune has no primary selection.
+//!   exit, and nothing says when a write was dropped. Rune's Linux primary selection is
+//!   internal to pointer text selection and middle-click paste in fields, with no app API to
+//!   read, write, list types on, or watch `Selection::Primary`.
 //! - **U9** (draft, not filed): no display handle and no hook before winit closes it. The
 //!   module rides P0's substrate (`transfer`), which recovers the display and runs its own
 //!   reader, and needs [`shutdown`] called first.
@@ -52,12 +56,14 @@
 //!
 //! # Rune's own clipboard
 //!
-//! Rune's `Tx::copy` and text fields write through arboard on a clipboard worker of their
-//! own. The last writer wins: Rune's copy takes the selection from this module's
-//! ([`Lost::Taken`]: it can't be told from another app's), and a copy here takes it from
-//! Rune's. Rune's text fields paste from this module's copies like any app (offer text with
-//! [`Content::text`]). Rune writes after its handler returns, on its worker, so a `Tx::copy`
-//! and a [`Clipboard::copy`] in one handler land in no fixed order: do one or the other.
+//! Rune's `Tx::copy` and text fields write `CLIPBOARD` through arboard on a clipboard worker of
+//! their own, and pointer text selection and middle-click paste in fields use a second arboard
+//! worker (`rune-primary`) on `PRIMARY` / Wayland data control. The last writer wins: Rune's
+//! copy or text selection takes that selection from this module's ([`Lost::Taken`]: it can't be
+//! told from another app's), and a copy here takes it from Rune's. Rune's text fields paste
+//! from this module's copies like any app (offer text with [`Content::text`]). Rune writes
+//! after its handler returns, on its worker, so a `Tx::copy` and a [`Clipboard::copy`] in one
+//! handler land in no fixed order: do one or the other.
 //!
 //! # After the app exits
 //!

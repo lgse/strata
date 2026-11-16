@@ -3,10 +3,16 @@
 //! Single instance and activation over D-Bus: one primary process per app id, and every later
 //! launch handed to it.
 //!
-//! Rune lacks: on Linux, Rune hands a second launch to a new process, with no way to reach the
-//! one already running. It has the window half: `AppHandle::activate(token)` shows and focuses
-//! a window with a forwarded activation token, and a window opened with `rune::open_window`
-//! from an app whose handle was given one is created with it.
+//! Rune lacks, at the pinned rev (`631e8a67`): D-Bus single instance and desktop activation.
+//! `rune::single_instance` on Linux binds a private Unix socket in `$XDG_RUNTIME_DIR` and sends
+//! UTF-8 arguments down it (`scheme://` links go to `App::on_open_url`, and a launch without
+//! links reopens the front window), with no session-bus registration (`org.freedesktop.Application`
+//! or GApplication wire interop), no plain path or non-UTF-8 byte-string arguments, no working
+//! directory (`cwd`), no forwarded activation token (`XDG_ACTIVATION_TOKEN` or
+//! `DESKTOP_STARTUP_ID`), no remote stdout/stderr or exit status, and no
+//! `org.freedesktop.FileManager1`. Rune has the window half: `AppHandle::activate(token)` shows
+//! and focuses a window with a forwarded activation token, and a window opened with
+//! `rune::open_window` from an app whose handle was given one is created with it.
 //!
 //! Rune issues: upstream [#22](https://github.com/anomalyco/rune/issues/22) (open-URL and
 //! reopen through `org.freedesktop.Application`, single instance). U-P8-1 (draft, not filed):
@@ -34,6 +40,9 @@
 //!     Claim::Forwarded(status) => std::process::exit(status),
 //! };
 //! rune::set_app_id("org.example.Files");
+//! // Release from `App::on_quit` / the last window's `on_close`, or opt into `orderly_exit`
+//! // so `run` returns instead of ending with `rune::fast_exit` (`_exit`).
+//! rune::orderly_exit();
 //! let app = rune::App::new(spec).windowless().args(Vec::new());
 //! primary.attach_rune(app.handle(), on_event);
 //! app.run();

@@ -199,3 +199,33 @@ fn every_single_colour_icon_paints() {
         );
     }
 }
+
+#[test]
+fn single_colour_icons_honour_stroke_miterlimit_on_paths_and_groups() {
+    let default_limit = Icon {
+        name: "miter-default",
+        view: 24.0,
+        body: r#"<path d="M8 22L12 6L16 22" stroke="currentColor" stroke-width="2" fill="none"/>"#,
+    };
+    let path_limit = Icon {
+        name: "miter-path",
+        view: 24.0,
+        body: r#"<path d="M8 22L12 6L16 22" stroke="currentColor" stroke-width="2" stroke-miterlimit="10" fill="none"/>"#,
+    };
+    let group_limit = Icon {
+        name: "miter-group",
+        view: 24.0,
+        body: r#"<g stroke="currentColor" stroke-width="2" stroke-miterlimit="10" fill="none"><path d="M8 22L12 6L16 22"/></g>"#,
+    };
+    let bevelled = rune::text::icon_coverage(&default_limit, 96);
+    let pointed = rune::text::icon_coverage(&path_limit, 96);
+    let inherited = rune::text::icon_coverage(&group_limit, 96);
+    assert_ne!(
+        bevelled, pointed,
+        "stroke-miterlimit=10 keeps the sharp miter point"
+    );
+    assert_eq!(
+        pointed, inherited,
+        "group stroke-miterlimit inherits to child paths"
+    );
+}

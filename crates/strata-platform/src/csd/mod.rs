@@ -4,22 +4,25 @@
 //! that resizes from its edges where the platform allows, and whose window buttons reach the
 //! window manager.
 //!
-//! Rune lacks, at the pinned rev (`2a44156`):
+//! Rune lacks, at the pinned rev (`631e8a67`):
 //!
 //! - **Interactive resize** of a borderless window. Rune doesn't reach winit's
 //!   `drag_resize_window`, and on Wayland the raw window handle (the `wl_surface`) can't start
 //!   one: `xdg_toplevel.resize` needs winit's toplevel and the press's serial. Rune also reports
-//!   no maximised or full-screen state (`Cx::chrome_insets()` is 0 on Linux). Draft
+//!   no maximised or full-screen state (`Cx::chrome_insets()` is 0 on Linux). Upstream
+//!   [#309](https://github.com/anomalyco/rune/issues/309) (draft comment
 //!   [U6](https://github.com/wmfeht/strata-components/blob/main/docs/decisions/S5-upstream.md#u6),
-//!   not filed. Diagonal resize cursors are upstream
+//!   not posted). Diagonal resize cursors are upstream
 //!   [#145](https://github.com/anomalyco/rune/issues/145); the Windows twin of U6 is
 //!   [#130](https://github.com/anomalyco/rune/issues/130).
-//! - **Minimise** of a borderless window: `Tx::minimize` ignores it. Draft
+//! - **Minimise** of a borderless window: `Tx::minimize` ignores it. Upstream
+//!   [#310](https://github.com/anomalyco/rune/issues/310) (draft comment
 //!   [U7](https://github.com/wmfeht/strata-components/blob/main/docs/decisions/S5-upstream.md#u7),
-//!   not filed.
-//! - **The window menu** on Linux, and the compositor's capabilities (`wm_capabilities`). Draft
+//!   not posted).
+//! - **The window menu** on Linux, and the compositor's capabilities (`wm_capabilities`).
+//!   Upstream [#313](https://github.com/anomalyco/rune/issues/313) (draft comment
 //!   [U8](https://github.com/wmfeht/strata-components/blob/main/docs/decisions/S5-upstream.md#u8),
-//!   not filed.
+//!   not posted).
 //! - **The native display connection.** The X11 backend below opens a second connection, which
 //!   can't release the pointer grab winit's connection holds during a press. Draft
 //!   [U9](https://github.com/wmfeht/strata-components/blob/main/docs/decisions/S5-upstream.md#u9),

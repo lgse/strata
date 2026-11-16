@@ -4,7 +4,7 @@
 //! handle an XDG portal passes (`wayland:<xdg-foreign handle>` or `x11:<xid>`), for a portal
 //! backend's dialog such as a FileChooser.
 //!
-//! Rune lacks, at the pinned rev (`2a44156`):
+//! Rune lacks, at the pinned rev (`631e8a67`):
 //!
 //! - **A transient-for of any kind**, and a hook that runs before every native window maps.
 //!   On X11, `App::on_window` runs after winit has mapped the window unless it was created
@@ -54,10 +54,11 @@
 //! - **[`release`]** from the window's `on_close` drops its import and detaches the window
 //!   from P0's substrate. A later [`apply`] also drops the imports of windows that have
 //!   closed.
-//! - **[`shutdown`]** on the UI thread before the event loop ends (before `Tx::quit` or
-//!   `AppHandle::quit`, and in the last window's `on_close`), as with `dnd` and `clipboard`:
-//!   it destroys the imports and tears down P0's substrate while winit's display lives. Any
-//!   of the three modules' shutdowns does for all of them. Without it the imports are never
+//! - **[`shutdown`]** on the UI thread before the event loop ends (from `App::on_quit` and in
+//!   the last window's `on_close`), as with `dnd` and `clipboard`: it destroys the imports and
+//!   tears down P0's substrate while winit's display lives, before Rune's default `fast_exit`
+//!   (`_exit`) ends the process or `orderly_exit` closes the display. Any of the three modules'
+//!   shutdowns does for all of them. Without it, under `orderly_exit` the imports are never
 //!   destroyed: the substrate is never dropped, so nothing is destroyed on a freed display.
 //!
 //! # What it does

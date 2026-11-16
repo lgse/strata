@@ -240,7 +240,7 @@ icon_names! {
     /// Take away: a number field's decrease step (C20a). Not [`IconName::Minimize`], the
     /// window button, though Strata draws both with Lucide's minus.
     Minus = "minus" => line!(r#"<path d="M3 8h10"/>"#),
-    /// Close or cancel: tabs, the preview drawer, dialogs, progress cards (C7, C9, C15, C16).
+    /// Close or cancel: tabs, the preview find bar, dialogs, progress cards (C7, C9, C15, C16).
     Close = "close" => kit!(CLOSE),
     /// Close a side panel: the preview drawer's close (C9).
     ClosePanel = "close_panel" => line!(r#"<rect x="2.5" y="3" width="11" height="10" rx="1"/><path d="M10 3v10M5.5 6l2 2-2 2"/>"#),

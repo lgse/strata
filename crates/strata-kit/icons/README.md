@@ -51,14 +51,14 @@ The SVG files stay as they are; the generator (`src/icons/lucide/generate.rs`, w
 
 ## What Rune doesn't draw under Theme colors
 
-Theme colors bodies draw through Rune's single-colour rasterizer, which ignores three
-attributes. Brand colors draw these icons through resvg, which keeps them. Rune draft U-K3-3
-asks for them.
+Theme colors bodies draw through Rune's single-colour rasterizer, which honours
+`stroke-miterlimit` on elements and groups (`strata-ctp-dub-selections`, `strata-ctp-yarn`)
+but ignores two attributes. Brand colors draw these icons through resvg, which keeps them.
+Rune draft U-K3-3 asks for them.
 
 | Attribute | Sources | Under Theme colors |
 | --- | --- | --- |
 | `stroke-dasharray` | `strata-ctp-go-template` | a solid line where the source dashes |
-| `stroke-miterlimit` | `strata-ctp-dub-selections`, `strata-ctp-yarn` | Rune's default miter limit |
 | `clip-path` | `strata-ctp-humans` | unclipped; its clip is the whole icon, so nothing changes |
 
 `strata-ctp-humans` (a white clip path) and `strata-ctp-poetry-lock` (a gradient's white stop)
@@ -85,9 +85,9 @@ strata-kit. The crate's own licence stays MIT; the data keeps its own licences.
    Strata revision over `lucide/` and `catppuccin/` (remove files Strata removed), and update
    the revisions above and the licence files from Strata's `data/licenses/`.
 2. Build. The build stops on a source outside the rules in `src/icons/lucide/generate.rs`:
-   an element, attribute or root attribute it doesn't list, a reference outside the file, a
-   named colour, a colour that isn't a tint placeholder in `lucide/`, a raw colour or unknown
-   variable in `catppuccin/`, a name in two folders. `src/icons/lucide/semantic.rs` fails to
-   compile when an icon it maps is gone. Update the Rune-ignored table above if those
-   attributes appear in new places.
+   an element, attribute or root attribute it doesn't list, stray text, any `&`, anything
+   outside the root `<svg>`, a reference outside the file, a named colour, a colour that
+   isn't a tint placeholder in `lucide/`, a raw colour or unknown variable in `catppuccin/`,
+   a name in two folders. `src/icons/lucide/semantic.rs` fails to compile when an icon it
+   maps is gone. Update the Rune-ignored table above if those attributes appear in new places.
 3. Run `mise run test icons::` and `mise run test k3`, then bless and review the `k3` goldens.

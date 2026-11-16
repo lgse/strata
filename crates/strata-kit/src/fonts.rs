@@ -6,8 +6,9 @@
 //!
 //! The face and its families are data, as rune-kit's theme crates export theirs: a host passes
 //! [`FONTS`] to `AppSpec::fonts` and [`FAMILIES`] to `AppSpec::families`, together. Fonts in
-//! `AppSpec::fonts` replace Rune's built-in Inter, so [`FAMILIES`] without [`FONTS`] names a
-//! face that isn't there, and text draws in whatever system face Rune falls back to.
+//! `AppSpec::fonts` replace Rune's built-in Inter (when Rune's `embedded-fonts` feature is on),
+//! so [`FAMILIES`] without [`FONTS`] names a face that isn't there, and text draws in whatever
+//! system face Rune falls back to.
 //! [`LookParams::default`](crate::shape::LookParams) takes [`families`] as the app's own, so a
 //! chosen interface font goes in front of it and Default puts it back (K2, `typography.rs`).
 //!
@@ -35,13 +36,13 @@
 //!   with fontconfig for GTK. Rune takes the bytes, so nothing is written and the system's
 //!   fonts are untouched.
 //! - Strata's family list is `"JetBrains Mono", "JetBrainsMono Nerd Font", monospace`. Both
-//!   slots here are `JetBrains Mono` alone. Rune loads an installed family by name (since Rune
-//!   `99c123d`), so the Nerd Font entry would resolve only where it is installed, and Rune's
-//!   stand-in for the generic `monospace` (`ui-monospace`) would load the system's monospace
-//!   files: either way drawn text would depend on the machine. The single bundled family keeps
-//!   it the same everywhere. A glyph JetBrains Mono lacks falls back to Rune's symbol and CJK
-//!   families, as before. A single name also keeps Rune treating the face as the slot's own
-//!   font rather than as a script fallback.
+//!   slots here are `JetBrains Mono` alone. Rune loads an installed family by name, so the Nerd
+//!   Font entry would resolve only where it is installed, and generic `monospace` resolves
+//!   through `fontconfig` to the system's monospace face: either way drawn text would depend on
+//!   the machine. The single bundled family keeps it the same everywhere. System fonts load
+//!   lazily on demand: a glyph JetBrains Mono lacks falls back in process through `fontconfig`
+//!   for its script and language. A single name also keeps Rune treating the face as the slot's
+//!   own font rather than as a script fallback.
 //! - Where Strata names the generic `monospace` (document code, the command entry, diagnostics,
 //!   job logs), the components use the mono slot, so those draw in JetBrains Mono, not the
 //!   system's monospace face.

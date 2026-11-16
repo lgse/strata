@@ -30,12 +30,12 @@ pub enum Route {
 /// Why a request can't go out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Gap {
-    /// Rune can't start a resize of a borderless Wayland window. Draft U6, not filed.
+    /// Rune can't start a resize of a borderless Wayland window. Upstream #309; draft U6.
     RuneResize,
-    /// Rune ignores minimise for a borderless window, and Wayland offers no other path. Draft
-    /// U7, not filed.
+    /// Rune ignores minimise for a borderless window, and Wayland offers no other path.
+    /// Upstream #310; draft U7.
     RuneMinimize,
-    /// Rune has no window menu on Wayland. Draft U8, not filed.
+    /// Rune has no window menu on Wayland. Upstream #313; draft U8.
     RuneWindowMenu,
     /// The X11 window manager says it can't: it doesn't list the request in `_NET_SUPPORTED`,
     /// or `_NET_WM_ALLOWED_ACTIONS` leaves it out for this window.

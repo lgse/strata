@@ -6,7 +6,7 @@
 //! `GMainContext`, so GIO's async calls, signals and file monitors never dispatch in a Rune app.
 //! Volumes, mount operations, monitors, `AppInfo` and GVfs all need one.
 //!
-//! Rune issue: S5 drafts.
+//! Rune issue: none (outside Rune's scope).
 //!
 //! Work package: P9, `docs/rune/work/phase-1-leaves/P9-glib-bridge.md`.
 //!

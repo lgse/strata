@@ -56,7 +56,7 @@ fn poll(app: &mut App, clock: f64, tx: &mut Tx) -> bool {
     shell::poll(app, clock, tx) | pumped
 }
 
-/// Opens the window on `initial` and returns when it closes.
+/// Opens the window on `initial` and exits when it closes, returning an error if startup fails.
 pub(crate) fn run(ui: UiThread, settings: Saved, initial: launch::Initial) -> Result<(), String> {
     run_initial(ui, settings, initial, |app| app)
 }
