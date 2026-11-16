@@ -69,6 +69,7 @@ mod open_failed;
 mod pane_header;
 mod popover;
 // A6 Menus, dialogs and keymap
+mod compress;
 mod customize;
 mod footer;
 mod run;
@@ -129,6 +130,7 @@ slots::parts! {
     footer: footer::Footer,
     shortcuts: shortcuts::Shortcuts,
     customize: customize::Customize,
+    compress: compress::Compress,
     // A7 Entry management and undo
     undo: undo::Undo,
     new_item: new_item::NewItem,

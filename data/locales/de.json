@@ -1576,6 +1576,8 @@
   "Document position": "Dokumentposition",
   "Line %{line} of %{lines}": "Zeile %{line} von %{lines}",
   "Blank": "Leer",
+  "Show password": "Passwort anzeigen",
+  "Hide password": "Passwort ausblenden",
   "Document": "Dokument",
   "Sheets": "Tabellenblätter",
   "Table": "Tabelle",

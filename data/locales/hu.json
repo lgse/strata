@@ -1576,6 +1576,8 @@
   "Document position": "Pozíció a dokumentumban",
   "Line %{line} of %{lines}": "%{line} / %{lines}. sor",
   "Blank": "Üres",
+  "Show password": "Jelszó megjelenítése",
+  "Hide password": "Jelszó elrejtése",
   "Document": "Dokumentum",
   "Sheets": "Munkalapok",
   "Table": "Táblázat",

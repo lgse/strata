@@ -1576,6 +1576,8 @@
   "Document position": "Позиция в документе",
   "Line %{line} of %{lines}": "Строка %{line} из %{lines}",
   "Blank": "Пустая",
+  "Show password": "Показать пароль",
+  "Hide password": "Скрыть пароль",
   "Document": "Документ",
   "Sheets": "Листы",
   "Table": "Таблица",

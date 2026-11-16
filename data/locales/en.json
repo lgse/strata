@@ -1576,6 +1576,8 @@
   "Document position": "Document position",
   "Line %{line} of %{lines}": "Line %{line} of %{lines}",
   "Blank": "Blank",
+  "Show password": "Show password",
+  "Hide password": "Hide password",
   "Document": "Document",
   "Sheets": "Sheets",
   "Table": "Table",

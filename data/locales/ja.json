@@ -1576,6 +1576,8 @@
   "Document position": "ドキュメント内の位置",
   "Line %{line} of %{lines}": "%{lines} 行中 %{line} 行目",
   "Blank": "空白",
+  "Show password": "パスワードを表示",
+  "Hide password": "パスワードを非表示",
   "Document": "ドキュメント",
   "Sheets": "シート",
   "Table": "表",

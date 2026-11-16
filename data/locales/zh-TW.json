@@ -1576,6 +1576,8 @@
   "Document position": "文件位置",
   "Line %{line} of %{lines}": "第 %{line} 行，共 %{lines} 行",
   "Blank": "空行",
+  "Show password": "顯示密碼",
+  "Hide password": "隱藏密碼",
   "Document": "文件",
   "Sheets": "工作表",
   "Table": "表格",

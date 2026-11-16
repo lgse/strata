@@ -1576,6 +1576,8 @@
   "Document position": "Posizione nel documento",
   "Line %{line} of %{lines}": "Riga %{line} di %{lines}",
   "Blank": "Vuota",
+  "Show password": "Mostra password",
+  "Hide password": "Nascondi password",
   "Document": "Documento",
   "Sheets": "Fogli",
   "Table": "Tabella",
