@@ -5,7 +5,7 @@
 
 use std::rc::Rc;
 
-use rune::{El, Key, KeyEvent, Mods, PointerButton, Tx, col, row};
+use rune::{Drag, El, Key, KeyEvent, Mods, Phase, PointerButton, Tx, col, row};
 use strata_kit::look::Look;
 
 use super::column;
@@ -13,9 +13,9 @@ use super::drag_scroll::{ColumnGeometry, Scroll, StripGeometry};
 use super::fit;
 use super::intent::ColumnsIntent;
 use super::keys;
-use super::pointer::BackgroundClick;
+use super::pointer::{BackgroundClick, PeekClick, PeekGate};
 use super::sources::ColumnSources;
-use super::state::ColumnsState;
+use super::state::{ColumnsState, HeaderPeek};
 use crate::collection::element::{
     Activation, Collection, Intent, KeyTaken, PointerInput, RowMarks, viewport_path,
 };
@@ -89,6 +89,8 @@ pub struct ColumnsLabels {
     pub pane: String,
     /// What each column's list, named by its folder, is described as ("Files").
     pub list: String,
+    /// Accessible name template for a clipped column's reveal target (`"{name}"` replaced).
+    pub reveal: String,
 }
 
 impl Default for ColumnsLabels {
@@ -100,6 +102,7 @@ impl Default for ColumnsLabels {
             width: "Column width".into(),
             pane: "Columns view".into(),
             list: "Files".into(),
+            reveal: "Reveal {name} column".into(),
         }
     }
 }
@@ -361,8 +364,63 @@ impl<S: 'static> ColumnsView<S> {
             let p = (self.sh.parts_mut)(s);
             p.state.tick_reveal(now, p.look, tx);
             changed |= p.state.tick_widths(p.look, tx);
+            changed |= p.state.sync_clipped(p.look);
         }
         changed | drive(&self.sh, s, now, tx)
+    }
+
+    /// Routes a primary drag starting on an external marquee origin surface (such as the preview
+    /// drawer) into the rightmost open column's collection.
+    pub fn origin_drag(&self, s: &mut S, (d, clears_on_press): (&mut Drag, bool), tx: &mut Tx) {
+        let (serial, last, was_in_band, press_mods) = {
+            let p = (self.sh.parts_mut)(s);
+            let n = p.sources.len().min(p.state.columns.len());
+            if n == 0 {
+                tx.live_only();
+                return;
+            }
+            if clears_selection_on_press(d.phase, clears_on_press, tx.mods()) {
+                p.state.clear_selection(p.sources);
+            }
+            let last = n - 1;
+            let col = &p.state.columns[last];
+            (
+                col.serial,
+                last,
+                col.collection.selection.in_band(),
+                col.collection.origin_press.map(|(_, m)| m),
+            )
+        };
+        collection(&self.sh, s, serial).origin_drag(s, (d, clears_on_press), tx);
+        if !was_in_band {
+            let plain = is_plain_mods(press_mods.unwrap_or_else(|| tx.mods()));
+            self.finish_origin_marquee_start(s, (last, plain), tx);
+        }
+    }
+
+    fn finish_origin_marquee_start(&self, s: &mut S, (last, plain): (usize, bool), tx: &mut Tx) {
+        let started = {
+            let p = (self.sh.parts_mut)(s);
+            let in_band = p
+                .state
+                .columns
+                .get(last)
+                .is_some_and(|c| c.collection.selection.in_band());
+            if in_band {
+                p.state.targeted = Some(last);
+                p.state.set_active_quiet(last);
+                if plain {
+                    p.state.clear_before(last, p.sources);
+                }
+                Some(p.state.key.clone())
+            } else {
+                None
+            }
+        };
+        if let Some(key) = started {
+            tx.focus(key, false);
+            self.sh.emit(s, ColumnsIntent::Active { depth: last }, tx);
+        }
     }
 
     /// What the strip tells C9's drawer about itself, for `PreviewDrawer::arrangement` in
@@ -407,6 +465,14 @@ impl<S: 'static> ColumnsView<S> {
     }
 }
 
+fn is_plain_mods(m: Mods) -> bool {
+    !(m.ctrl || m.shift || m.cmd)
+}
+
+fn clears_selection_on_press(phase: Phase, clears: bool, m: Mods) -> bool {
+    phase == Phase::Down && clears && is_plain_mods(m)
+}
+
 /// Column `serial`'s row height: one line, or the name and a two-line detail under it while
 /// the host gives the column's rows details ([`ColumnSources::has_details`]).
 fn row_height<S: 'static>(sh: &Shared<S>, s: &S, serial: u64, look: &Look) -> f32 {
@@ -427,34 +493,7 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
     let p = (sh.parts)(s);
     let depth = p.state.depth_of(serial).unwrap_or(0);
     let key = keys::column(&p.state.key, serial);
-    let (g, gm, lk, ver) = (sh.clone(), sh.clone(), sh.clone(), sh.clone());
-    let c = Collection::new(
-        key.clone(),
-        move |s: &S| {
-            let p = (g.parts)(s);
-            match p.state.depth_of(serial).filter(|d| *d < p.sources.len()) {
-                Some(d) => (p.sources.source(d), &p.state.columns[d].collection),
-                None => (&NO_ENTRIES as &dyn EntrySource, &p.state.spare),
-            }
-        },
-        move |s: &mut S| {
-            let p = (gm.parts_mut)(s);
-            match p.state.depth_of(serial).filter(|d| *d < p.sources.len()) {
-                Some(d) => (p.sources.source(d), &mut p.state.columns[d].collection),
-                None => (&NO_ENTRIES as &dyn EntrySource, &mut p.state.spare),
-            }
-        },
-        move |s: &S| (lk.parts)(s).look,
-        move |s: &S| {
-            let p = (ver.parts)(s);
-            p.state
-                .depth_of(serial)
-                .filter(|d| *d < p.sources.len())
-                .map_or(0, |d| p.sources.version(d))
-        },
-    );
-    // The host's extras may describe the column otherwise (a status in place of its rows).
-    let c = c.description(sh.labels.list.clone());
+    let c = new_column_collection(sh, serial, key.clone()).description(sh.labels.list.clone());
     let mut c = hosted(sh, s, depth, c);
     let look = p.look;
     let column = &p.state.columns[depth.min(p.state.columns.len().saturating_sub(1))];
@@ -472,7 +511,8 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         margin: strata_kit::slots::collection::row_inset(look),
         ..AutoscrollSettings::STRATA
     };
-    let (marks, intents, press, cursor, selection, drops, over) = (
+    let (marks, intents, press, hdr_click, cursor, selection, drops, over) = (
+        sh.clone(),
         sh.clone(),
         sh.clone(),
         sh.clone(),
@@ -501,6 +541,9 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
         .settings(autoscroll)
         .header(move |_: &S| header.borrow_mut().take())
         .header_defers_press(threshold)
+        .on_header_click(move |s: &mut S, input, tx| {
+            header_click(&hdr_click, s, (serial, input), tx)
+        })
         .marks(move |s: &S, id| row_marks(&marks, s, serial, id))
         .on_intent(move |s: &mut S, intent, tx| column_intent(&intents, s, serial, intent, tx))
         .on_press(move |s: &mut S, input, tx| column_press(&press, s, serial, input, tx))
@@ -543,6 +586,39 @@ pub(super) fn collection<S: 'static>(sh: &Rc<Shared<S>>, s: &S, serial: u64) -> 
                 Some(edge_bar.build::<S>(&bar_key, &bar_target, BarLook::column(look)))
             }
         })
+}
+
+fn new_column_collection<S: 'static>(
+    sh: &Rc<Shared<S>>,
+    serial: u64,
+    key: String,
+) -> Collection<S> {
+    let (g, gm, lk, ver) = (sh.clone(), sh.clone(), sh.clone(), sh.clone());
+    Collection::new(
+        key,
+        move |s: &S| {
+            let p = (g.parts)(s);
+            match p.state.depth_of(serial).filter(|d| *d < p.sources.len()) {
+                Some(d) => (p.sources.source(d), &p.state.columns[d].collection),
+                None => (&NO_ENTRIES as &dyn EntrySource, &p.state.spare),
+            }
+        },
+        move |s: &mut S| {
+            let p = (gm.parts_mut)(s);
+            match p.state.depth_of(serial).filter(|d| *d < p.sources.len()) {
+                Some(d) => (p.sources.source(d), &mut p.state.columns[d].collection),
+                None => (&NO_ENTRIES as &dyn EntrySource, &mut p.state.spare),
+            }
+        },
+        move |s: &S| (lk.parts)(s).look,
+        move |s: &S| {
+            let p = (ver.parts)(s);
+            p.state
+                .depth_of(serial)
+                .filter(|d| *d < p.sources.len())
+                .map_or(0, |d| p.sources.version(d))
+        },
+    )
 }
 
 /// Column `depth`'s collection with the host's extras ([`ColumnsView::collection`]), and its
@@ -619,6 +695,10 @@ fn column_intent<S: 'static>(
             let p = (sh.parts)(s);
             let id = p.state.columns[depth].collection.selection.cursor();
             sh.emit(s, ColumnsIntent::Cursor { depth, id }, tx);
+        }
+        Intent::Other(any) if any.downcast_ref::<PeekClick>().is_some() => {
+            let pt = any.downcast_ref::<PeekClick>().expect("checked").0;
+            reveal_clipped(sh, s, depth, (pt, tx));
         }
         Intent::Other(any) if any.downcast_ref::<BackgroundClick>().is_some() => {
             background_click(sh, s, depth, tx);
@@ -744,31 +824,110 @@ fn column_press<S: 'static>(
     let Some(depth) = depth_of(sh, s, serial) else {
         return;
     };
-    let p = (sh.parts_mut)(s);
-    for (i, c) in p.state.columns.iter_mut().enumerate() {
-        if i != depth
+    let mut p = (sh.parts_mut)(s);
+    reset_other_columns(p.state, depth);
+    p.state.press_was_active = p.state.active == depth;
+    p.state.targeted = Some(depth);
+    if input.button == PointerButton::Middle || classify_peek_press(&mut p, depth, input) {
+        return;
+    }
+    if !is_opening_second_click(&p, depth, input) && p.state.active != depth {
+        p.state.set_active_quiet(depth);
+    }
+}
+
+fn reset_other_columns(state: &mut ColumnsState, active_depth: usize) {
+    for (i, c) in state.columns.iter_mut().enumerate() {
+        if i != active_depth
             && let Some(ctl) = c.collection.controllers.pointer.as_mut()
         {
             ctl.reset();
         }
     }
-    p.state.press_was_active = p.state.active == depth;
-    p.state.targeted = Some(depth);
-    if input.button == PointerButton::Middle {
-        return;
+}
+
+fn is_opening_second_click(p: &ColumnsPartsMut<'_>, depth: usize, input: &PointerInput) -> bool {
+    if input.clicks < 2 || p.state.active != depth + 1 {
+        return false;
     }
     let hit = input
         .hit
         .index
         .filter(|&i| i < p.sources.source(depth).len())
         .map(|i| p.sources.source(depth).id_at(i));
-    let second = input.clicks >= 2
-        && hit.is_some()
-        && p.state.opened == hit.map(|id| (depth, id))
-        && p.state.active == depth + 1;
-    if !second && p.state.active != depth {
-        p.state.set_active_quiet(depth);
+    hit.is_some_and(|id| p.state.opened == Some((depth, id)))
+}
+
+fn classify_peek_press(p: &mut ColumnsPartsMut<'_>, depth: usize, input: &PointerInput) -> bool {
+    if input.button != PointerButton::Primary {
+        return false;
     }
+    let on_header = !p.state.columns[depth]
+        .collection
+        .viewport()
+        .contains(input.window);
+    if p.state.consume_peek_double_click(input.now, input.window) {
+        p.state.header_peek = Some(HeaderPeek::Suppress);
+        p.state.columns[depth].peek_gate.set(PeekGate::Suppress);
+        return true;
+    }
+    if input.hit.index.is_none() && p.state.clipped_slice(depth, p.look).is_some() {
+        if on_header {
+            p.state.header_peek = Some(HeaderPeek::Peek(depth));
+        } else {
+            p.state.columns[depth].peek_gate.set(PeekGate::Peek);
+        }
+        return true;
+    }
+    if on_header {
+        p.state.header_peek = Some(HeaderPeek::Normal(depth));
+    }
+    false
+}
+
+fn header_click<S: 'static>(
+    sh: &Rc<Shared<S>>,
+    s: &mut S,
+    (serial, input): (u64, &PointerInput),
+    tx: &mut Tx,
+) {
+    let Some(depth) = depth_of(sh, s, serial) else {
+        tx.live_only();
+        return;
+    };
+    let kind = (sh.parts_mut)(s).state.header_peek.take();
+    match kind {
+        Some(HeaderPeek::Suppress) => {
+            tx.live_only();
+        }
+        Some(HeaderPeek::Peek(d)) if d == depth => {
+            reveal_clipped(sh, s, depth, (input.window, tx));
+        }
+        Some(HeaderPeek::Normal(d)) if d == depth => {
+            let p = (sh.parts_mut)(s);
+            p.state.set_active_quiet(depth);
+            sh.emit(s, ColumnsIntent::Active { depth }, tx);
+        }
+        _ => {
+            tx.live_only();
+        }
+    }
+}
+
+fn reveal_clipped<S: 'static>(
+    sh: &Rc<Shared<S>>,
+    s: &mut S,
+    depth: usize,
+    (window, tx): (Point, &mut Tx),
+) {
+    {
+        let p = (sh.parts_mut)(s);
+        let now = tx.clock();
+        p.state.peek_seq = Some((now, window));
+        p.state.set_active_quiet(depth);
+        p.state.reveal(p.look, tx);
+    }
+    sh.emit(s, ColumnsIntent::Active { depth }, tx);
 }
 
 /// The strip's `on_key`: the key goes to the active column; then Escape that nothing took

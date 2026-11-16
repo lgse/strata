@@ -55,9 +55,8 @@ host = "offscreen"
 scenario = "global-search-preview-follows-neighbor"
 run = "columns"
 package = "A10"
-status = "pending"
-reason = "scope"
-blocker = "A15: the preview drawer, at `preview` on line 15"
+status = "required"
+host = "offscreen"
 
 [[run]]
 scenario = "global-search-reveal-visited-list"

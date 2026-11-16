@@ -67,6 +67,11 @@ pub fn wash(column: &str) -> String {
     format!("{column}-drop")
 }
 
+/// The key of a partially clipped column's reveal target (`"Reveal <Folder> column"`).
+pub fn reveal(column: &str) -> String {
+    format!("{column}-reveal")
+}
+
 /// The key of a row's size badge, under the row's key (`row-<id>/badge`).
 pub const BADGE: &str = "badge";
 
