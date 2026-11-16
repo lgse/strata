@@ -82,9 +82,10 @@ strata-test-support = { version = "0.0.0", path = "crates/strata-test-support" }
 # The Rune side. The GTK application depends on none of it, and deny.toml keeps it so.
 # Rune is pre-release and not on crates.io. Every Rune crate pins the same `dev` rev; move
 # them together, on purpose (docs/rune/plan.md §0).
-# Rune's defaults minus the macOS-only `metal-backend` and `ogg-audio` (MPL-2.0 decoders).
-rune = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "2a44156b21d63b0342a366b26d9222a6edd4622c", default-features = false, features = ["accessibility", "dbus", "embedded-fonts", "svg"] }
-rune-kit = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "2a44156b21d63b0342a366b26d9222a6edd4622c" }
+# Rune's defaults minus `embedded-fonts` (strata-kit supplies JetBrains Mono; tests enable it),
+# the macOS-only `metal-backend` and `ogg-audio` (MPL-2.0 decoders).
+rune = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "631e8a67cb3c40225efa3f6c4f57b80e7b18f190", default-features = false, features = ["accessibility", "dbus", "svg"] }
+rune-kit = { version = "0.0.1", git = "https://github.com/anomalyco/rune", rev = "631e8a67cb3c40225efa3f6c4f57b80e7b18f190" }
 
 strata-app = { version = "0.0.1", path = "crates/strata-app", default-features = false }
 strata-components = { version = "0.0.1", path = "crates/strata-components" }
@@ -254,3 +255,12 @@ todo = "warn"
 undocumented_unsafe_blocks = "deny"
 unimplemented = "warn"
 unwrap_used = "warn"
+
+# Patches Rune's root Cargo.toml carries ("Depending on Rune" in crates/rune/README.md).
+# Cargo does not inherit a dependency's [patch] table; move these revs with `rune` above.
+[patch.crates-io]
+winit = { git = "https://github.com/anomalyco/rune", rev = "631e8a67cb3c40225efa3f6c4f57b80e7b18f190" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "631e8a67cb3c40225efa3f6c4f57b80e7b18f190" }
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "631e8a67cb3c40225efa3f6c4f57b80e7b18f190" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "631e8a67cb3c40225efa3f6c4f57b80e7b18f190" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "631e8a67cb3c40225efa3f6c4f57b80e7b18f190" }

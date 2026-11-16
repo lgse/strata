@@ -12,16 +12,15 @@
 //! The picker does no I/O and holds no policy: what a colour is for, saving it, previewing it
 //! and the recent colours list are the host's ([`remember`] keeps one as GTK does).
 //!
-//! **Rune 2a44156: partly.** Gradients (`linear_gradient`, `gradient`), `Shape` fills, the
+//! **Rune 631e8a67: partly.** Gradients (`linear_gradient`, `gradient`), `Shape` fills, the
 //! slider role (`on_step`, `on_step_limit`, `range_value`, `a11y_value`), `on_drag` with its
-//! cancel, radio groups (`focus_group`), `El::modal` (Tab trap, first-stop focus, the opener's
-//! focus back, a press outside) and core `text_input` cover it, as do `rune::Color` and its
-//! sRGB transfer functions. Missing: no picker in rune-kit (no issue); no two-dimensional
+//! cancel, radio groups (`focus_group`), `El::modal_tx` (Tab trap, first-stop focus, the opener's
+//! focus back, a press outside with `Tx`) and core `text_input` cover it, as do `rune::Color` and
+//! its sRGB transfer functions. Missing: no picker in rune-kit (no issue); no two-dimensional
 //! control for assistive technology (U-C20b-3); rune-kit's `Popover` has no Escape or initial
 //! focus (U-C20b-1); a modal's dismissal can't tell Escape from a press outside (U-C20b-2);
-//! no focus-change hook (anomalyco/rune#106). `El::modal_tx` (22aa8cde) gives the dismissal a
-//! `Tx`. Not adopted: `Cx::force_focus_rings` (42f2d354, which would let a golden show focused
-//! swatches) and 16-stop gradients (c9cd9df3); this needs 7.
+//! no focus-change hook (anomalyco/rune#106). Not adopted: `Cx::force_focus_rings` (42f2d354,
+//! which would let a golden show focused swatches) and 16-stop gradients (c9cd9df3); this needs 7.
 //!
 //! # The colour
 //!
@@ -150,8 +149,7 @@
 //!   alpha off eight typed digits drop their alpha (OWNER ruling; GTK ignores typed alpha).
 //! - **D8**: the hue strip runs across under the plane (GTK's stands at its left), to fit the
 //!   popover.
-//! - **D9**: the host's poll commits the hex field on a blur (#106) and reports a press
-//!   outside the popover, a frame late (U-C20b-2).
+//! - **D9**: the host's poll commits the hex field on a blur (#106).
 //! - **D10** (OWNER ruling): hue steps a degree and pages ten, alpha a percent and ten (GTK's
 //!   hue steps 3.6° and pages 36°).
 //! - **D11**: arrows in a swatch row pick the colour they reach (Rune presses a radio its

@@ -229,7 +229,7 @@ mod c17 {
     fn escape_while_composing_keeps_the_palette_open() {
         let mut rt = mount("c17-idle-light");
         run(&mut rt, 0.5);
-        rt.ime(Ime::Preedit("ni".into(), None));
+        rt.ime(Ime::Preedit("ni".into(), None, Vec::new()));
         rt.frame(FRAME);
         press(&mut rt, Key::Escape, Mods::default());
         assert!(rt.state.c17.palette.is_open());
@@ -246,7 +246,7 @@ mod c17 {
         let mut rt = mount("c17-results-light");
         run(&mut rt, 1.0);
         let first = ids(&rt)[0].clone();
-        rt.ime(Ime::Preedit("ni".into(), None));
+        rt.ime(Ime::Preedit("ni".into(), None, Vec::new()));
         rt.frame(FRAME);
         press(&mut rt, Key::Enter, Mods::default());
         assert!(rt.state.c17.palette.is_open(), "the composition took Enter");
@@ -901,7 +901,7 @@ mod c17 {
     fn arrows_while_composing_leave_the_highlight() {
         let mut rt = mount("c17-results-light");
         run(&mut rt, 1.0);
-        rt.ime(Ime::Preedit("ni".into(), None));
+        rt.ime(Ime::Preedit("ni".into(), None, Vec::new()));
         rt.frame(FRAME);
         press(&mut rt, Key::Down, Mods::default());
         assert_eq!(rt.state.c17.palette.highlighted(), Some(0));

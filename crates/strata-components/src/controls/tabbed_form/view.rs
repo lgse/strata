@@ -7,7 +7,7 @@ use std::rc::Rc;
 use rune::{El, Key, KeyEvent, TextStyle, Tx, col, el, row, text};
 use strata_kit::look::Look;
 
-use super::state::{FormPage, Mounting, TabbedFormState};
+use super::state::{FormPage, Mounting, PageCarry, TabbedFormState};
 
 /// Strata's `.settings-action-tabs` (style.css): a tab at least 36 px tall (`min-height`, so
 /// it grows with a large text size) with 6 px sides and 8 px after it, its label at 55 % until
@@ -139,10 +139,19 @@ impl<S: 'static> TabbedForm<S> {
         let ring = tx.focus_visible() || tx.by_keys();
         if let Some(f) = tx.focused().map(str::to_owned) {
             if (0..pages).any(|j| f == self.tab_key(j)) {
-                tx.focus(self.tab_key(next), ring);
+                let tab = self.tab_key(next);
+                tx.focus(tab.clone(), ring);
+                (self.get_mut)(s).keep_tab(tab, ring, tx);
             } else {
-                let targets = vec![self.panel_key(next), self.tab_key(next)];
-                (self.get_mut)(s).carry(targets, ring, tx);
+                (self.get_mut)(s).carry_page(
+                    PageCarry {
+                        panel: self.panel_key(next),
+                        tab: self.tab_key(next),
+                        tabs_prefix: format!("{}-tab-", self.key),
+                        ring,
+                    },
+                    tx,
+                );
             }
         }
         choose(self.get_mut, &self.on_select, s, next, tx);
@@ -185,7 +194,7 @@ impl<S: 'static> TabbedForm<S> {
             .w_full()
             .equal_columns(1)
             .instant_changes();
-        for (i, p) in pages.iter().enumerate() {
+        for (i, _p) in pages.iter().enumerate() {
             let shown = i == chosen;
             if !shown && self.mounting == Mounting::Rebuilt {
                 continue;
@@ -204,7 +213,7 @@ impl<S: 'static> TabbedForm<S> {
             let panel = col()
                 .key(self.panel_key(i))
                 .role("tabpanel")
-                .label(p.title.clone())
+                .labelled_by(self.tab_key(i))
                 .grid_cell(0)
                 .w_full()
                 .min_w(0.0)
@@ -246,8 +255,10 @@ impl<S: 'static> TabbedForm<S> {
             )
             .child(label);
         let (get_mut, on_select) = (self.get_mut, self.on_select.clone());
+        let tab_key = self.tab_key(i);
+        let kept_key = tab_key.clone();
         let mut tab = row()
-            .key(self.tab_key(i))
+            .key(tab_key)
             .role("tab")
             .label(p.title.clone())
             .position_in_set(i + 1, n)
@@ -255,14 +266,19 @@ impl<S: 'static> TabbedForm<S> {
             .focus_selected(chosen)
             .focus_follows()
             .focus_ring(2.0, -2.0, k.alpha(accent, RING_ALPHA))
-            .hover_group_focus()
+            .hover_group()
             .min_h(TAB_HEIGHT)
             .px(TAB_PAD_X)
             .mr(TAB_GAP)
             .gap(look.space.xs)
             .items_center()
             .child(underline)
-            .on_press_tx(move |s: &mut S, tx: &mut Tx| choose(get_mut, &on_select, s, i, tx));
+            .on_press_tx(move |s: &mut S, tx: &mut Tx| {
+                if get_mut(s).selected() != i && tx.focused() == Some(kept_key.as_str()) {
+                    get_mut(s).keep_tab(kept_key.clone(), tx.focus_visible() || tx.by_keys(), tx);
+                }
+                choose(get_mut, &on_select, s, i, tx);
+            });
         if p.has_errors {
             tab = tab
                 .description(self.labels.has_errors.clone())

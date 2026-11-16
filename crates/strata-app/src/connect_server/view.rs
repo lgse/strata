@@ -48,7 +48,7 @@ pub(super) fn build_dialog(app: &App, form: &Form, open: bool, layer: &mut Vec<E
         .child(pin_checkbox(look, form))
         .secondary(tr("Cancel"), cancel)
         .primary_enabled(!form.connecting)
-        .primary(tr("Connect"), submit)
+        .primary_tx(tr("Connect"), submit)
         .close_label(tr("Close dialog"))
         .build(look, layer);
 }

@@ -61,6 +61,7 @@ wayland-protocols-wlr = { workspace = true, features = ["client"], optional = tr
 xkbcommon = { workspace = true, optional = true }
 
 [dev-dependencies]
+rune = { workspace = true, features = ["embedded-fonts"] }
 serde_json.workspace = true
 # The catalog's listed constants, for the shortcut reference's coverage test.
 strata-desktop = { workspace = true, features = ["xkb-keys", "test-support"] }

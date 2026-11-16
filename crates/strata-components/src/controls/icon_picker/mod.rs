@@ -19,13 +19,12 @@
 //! // the poll: picker.poll(s, tx)
 //! ```
 //!
-//! **Rune 2a44156: partly.** Covered: virtual lines, 2D keys and the active descendant (C1e over
-//! C3's `IconsGeometry`), the grid, row, grid cell and tab roles, `El::modal` and rune-kit's
-//! `Popover`, core `text_input`, and colour emoji from the system's font (CBDT and COLRv0, through
-//! swash), `Tx::focus`. Missing: emoji whose default presentation is emoji draw as the outline of a
-//! symbol font that covers them (anomalyco/rune#102; worked around, below); COLRv1-only fonts
-//! (Fedora 44's Noto) draw nothing (anomalyco/rune#103); no way to ask whether a font draws a
-//! grapheme (draft U-C20d-1); rune-kit's Popover has no Escape or first focus of its own
+//! **Rune 631e8a67: partly.** Covered: virtual lines, 2D keys and the active descendant (C1e over
+//! C3's `IconsGeometry`), the grid, row, grid cell and tab roles (`El::labelled_by` on the
+//! `tabpanel`), `El::modal_tx` and rune-kit's `Popover`, core `text_input`, colour emoji from the
+//! system's font (CBDT, COLRv0 and COLRv1, with `Emoji_Presentation` graphemes routed to the
+//! colour font automatically, #764), and `Tx::focus`. Missing: no way to ask whether a font draws
+//! a grapheme (draft U-C20d-1); rune-kit's Popover has no Escape or first focus of its own
 //! (U-C20b-1); an assistive client's action on a cell does nothing (U-C1e-8).
 //!
 //! # What it shows
@@ -74,8 +73,7 @@
 //!
 //! **Choosing** fires [`IconPicker::on_choose`] once; in a popover the popover then closes and
 //! [`IconPicker::on_close`] runs, and focus goes back to the button. A press outside closes it
-//! with no choice (reported by [`IconPicker::poll`] a frame later: Rune's modal dismissal has
-//! no `Tx`), as Escape does.
+//! with no choice (`El::modal_tx`), as Escape does.
 //!
 //! # What assistive technology hears
 //!
@@ -132,13 +130,12 @@
 //!   `should_close`).
 //! - **D7: recents are the host's** to store. GTK kept them in its own settings, shared by
 //!   every GTK app (`org.gtk.gtk4.Settings.EmojiChooser recently-used-emoji`).
-//! - **D8: emoji come from the system's colour font.** None on COLRv1-only systems (#103).
-//!   Emoji whose default presentation is emoji draw with U+FE0F after them, so Rune sends them
-//!   to the colour font (#102): probe P1 found 23 of the 1,898 (♈ to ♓, ⛎, ⛪, ⛲, ⛺, ⛽, ⚓,
-//!   ⛵, ⚡, ⛳, 🆎, 😐) drawn as Noto Sans Symbols outlines here without it, every one in colour
-//!   with it. The choice keeps the emoji's own text. A host hits #102 too wherever it draws
-//!   an emoji, so Strata must draw a saved emoji (the button's label, the 56 px preview, the
-//!   item's icons) through [`drawn_text`], and save and compare the [`Choice`] itself.
+//! - **D8: emoji come from the system's colour font.** Rune 631e8a67 (#764) draws COLR v1 paint
+//!   graphs and routes `Emoji_Presentation` graphemes directly to the colour font without needing
+//!   a trailing `U+FE0F` (resolving #102 and #103). Only unqualified text-default code points
+//!   (`Emoji_Presentation=No`, such as bare `"❤"` from hand-edited config) need `U+FE0F`, which
+//!   [`drawn_text`] borrows from the bundled table while leaving `Emoji_Presentation` emoji and
+//!   already-qualified sequences untouched. Save and compare the [`Choice`] itself.
 //! - **D9 (owner ruling): no emoji in PNG goldens.** The font is the system's (CI has none,
 //!   and its art moves between versions), so emoji scenes are review scenes, whose scripts end
 //!   on accessibility trees.

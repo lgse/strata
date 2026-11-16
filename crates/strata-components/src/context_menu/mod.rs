@@ -5,7 +5,7 @@
 //!
 //! Work package: C21, `docs/rune/work/phase-1-leaves/C21-context-menus.md`.
 //!
-//! **Rune dev 5d421fd: partly.** rune-kit's `Menu` gives pointer menus, placement inside the
+//! **Rune dev 631e8a67: partly.** rune-kit's `Menu` gives pointer menus, placement inside the
 //! window (flip, slide, shrink and scroll), Up, Down, Home, End and type-select, Escape and a
 //! press outside, check items, submenus and an open menu holding the keyboard. It leaves out a
 //! field menu on Linux, a way to give rune-kit's text inputs one, submenus from the keyboard,
@@ -85,15 +85,13 @@
 //! outside closes it. C21 adds:
 //!
 //! - Right, Enter or Space on a submenu's row opens it with its first row focused; Left closes
-//!   it and refocuses the row; Escape in it closes the whole menu. The keys open it as a click
-//!   does, then send a Tab, which moves the keyboard into it (the next focus group in the
-//!   menu's modal); its `focus_return` brings the keyboard back to its row as it closes. So
-//!   the parent's rows stay clickable, and a press outside both closes the whole menu. (A
-//!   submenu of its own modal would take the keyboard as well, but swallows a press outside
-//!   it: a click on the parent's Copy would run nothing.) A submenu with no sensitive row
-//!   opens too, so its greyed rows show, but the keyboard stays on its row: it has nowhere to
-//!   go there, and the Tab would leave the menu (Rune's `tab_order` takes the next group's
-//!   selected or first member, and a group of insensitive rows has none).
+//!   it and refocuses the row; Escape in it closes the whole menu. The keys open it and call
+//!   `Tx::focus` on the submenu's surface, which lands on its first sensitive row in the same
+//!   commit, while its `focus_return` brings the keyboard back to its row as it closes. So the
+//!   parent's rows stay clickable, and a press outside both closes the whole menu. (A submenu of
+//!   its own modal would take the keyboard as well, but swallows a press outside it: a click on
+//!   the parent's Copy would run nothing.) A submenu with no sensitive row opens too, so its
+//!   greyed rows show, but the keyboard stays on its row.
 //! - Tab and Shift+Tab move as Down and Up, as GTK's menus do (Rune's Tab leaves a focus group).
 //! - Ctrl+A stays in the menu, so the window's Select All doesn't run under it.
 //!
@@ -213,9 +211,9 @@
 //! - **U-C21-4 (draft, not filed)** rune-kit's submenus open only when the app sets them
 //!   open, and nothing in them moves the keyboard: no Right or Left, and the keyboard can't
 //!   enter one, and no hover opens one. Ask: Right, Left, Enter and Space on a submenu row, focus
-//!   into it, and hover-open with a delay. `Tx::focus` and `Tx::by_keys` (Rune 22aa8cde,
-//!   3847cf0a) cover the focus part. Here: C21's own keys, and a sent Tab that moves the
-//!   keyboard into a submenu, whose rows are keyed by position (U-C21-5).
+//!   into it, and hover-open with a delay. `Tx::focus` and `Tx::by_keys` cover the focus part:
+//!   C21's keys open the submenu and focus its surface directly, whose rows are keyed by position
+//!   (U-C21-5).
 //! - **U-C21-5 (draft, not filed)** `MenuItem` is keyed by position, so a row added above the
 //!   focused one moves the keyboard. Ask: `MenuItem::key`. Its menu-name half is U-C6-8 (extend
 //!   it; C21 names the surface it finds in the layer).

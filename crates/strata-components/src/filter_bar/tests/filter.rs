@@ -424,3 +424,81 @@ fn pick_last_chooses_the_last_selected_result_for_down_and_enter() {
     assert_eq!(st.target(r(&src, &sel)), None);
     assert_eq!(st.landing(r(&src, &sel)), Some(id(1)));
 }
+
+struct BareBarHost {
+    look: strata_kit::look::Look,
+    filter: FilterState,
+    source: ListSource,
+    selection: Selection,
+}
+
+fn bare_bar_view(h: &BareBarHost, _cx: &mut rune::Cx<BareBarHost>) -> rune::El {
+    let bar = crate::filter_bar::filter::FilterBar::new(
+        "bar",
+        |h: &BareBarHost| &h.filter,
+        |h: &mut BareBarHost| &mut h.filter,
+    )
+    .results(|h: &BareBarHost| Results {
+        source: &h.source,
+        selection: &h.selection,
+    });
+    rune::col()
+        .w_full()
+        .h_full()
+        .children(bar.build(h, &h.look))
+        .child(
+            rune::el()
+                .key("results")
+                .role("listbox")
+                .label("Results")
+                .size(200.0, 200.0)
+                .focusable(true),
+        )
+}
+
+// Without `focus_return`, Down moves focus to the next stop while the bar stays mounted, and
+// Escape closing the bar falls back to the surviving sibling control.
+#[test]
+fn without_focus_return_down_and_escape_reach_the_following_results_stop() {
+    let mut filter = FilterState::new();
+    let _ = typed(&mut filter, "a");
+    let host = BareBarHost {
+        look: strata_kit::look::Look::fallback(false),
+        filter,
+        source: source(&["alpha", "beta"]),
+        selection: Selection::new(),
+    };
+    let mut rt = rune::Runtime::new(
+        host,
+        bare_bar_view,
+        (400.0, 300.0),
+        rune::Env::new(false, 1.0),
+    );
+    rt.frame(1.0 / 60.0);
+
+    rt.key(rune::KeyEvent {
+        key: rune::Key::Down,
+        mods: rune::Mods::default(),
+    });
+    // Frame 1 runs Down and queues `send_key(Tab)`; frame 2 dispatches `Tab`.
+    rt.frame(1.0 / 60.0);
+    rt.frame(1.0 / 60.0);
+    let mut focused = None;
+    rt.update(|_, tx| focused = tx.focused().map(str::to_owned));
+    assert_eq!(focused.as_deref(), Some("results"), "Down tabs to results");
+
+    rt.update(|h, _| h.filter.focus_field());
+    rt.frame(1.0 / 60.0);
+    rt.key(rune::KeyEvent {
+        key: rune::Key::Escape,
+        mods: rune::Mods::default(),
+    });
+    rt.frame(1.0 / 60.0);
+    rt.update(|_, tx| focused = tx.focused().map(str::to_owned));
+    assert!(!rt.state.filter.is_open());
+    assert_eq!(
+        focused.as_deref(),
+        Some("results"),
+        "unmount fallback moves focus to results"
+    );
+}

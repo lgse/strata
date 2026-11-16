@@ -22,8 +22,8 @@ pub fn decorate<S: 'static>(content: El, csd: &Csd, access: fn(&mut S) -> &mut C
     }
     let (t, c) = (csd.bands().thickness, csd.bands().corner);
     root.children(Edge::ALL.map(|edge| {
-        // Rune reads an element with a drag handler as a button: hide it, since a band has
-        // nothing to say to assistive technology.
+        // Rune keeps a keyed element in the accessibility tree as a group: hide it, since a
+        // band has nothing to say to assistive technology.
         let band = el()
             .key(edge.key())
             .cursor(edge.cursor())

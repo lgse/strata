@@ -323,3 +323,40 @@ fn view_folder_drags_transfer_on_tabs_refuse_trash_and_open_at_end_on_strip() {
         [TabsIntent::OpenTabs { at: 3, .. }]
     ));
 }
+
+#[test]
+fn words_names_each_tabs_close_button() {
+    struct State {
+        strip: BrowserTabsState,
+        look: strata_kit::look::Look,
+    }
+    fn view(s: &State, cx: &mut rune::Cx<State>) -> rune::El {
+        let t = tabs(2);
+        let d = TabsData::new(&t, Some(TabId(1)));
+        BrowserTabs::new(
+            &d,
+            &s.strip,
+            |s: &mut State| &mut s.strip,
+            |s| &mut s.strip.drag,
+        )
+        .words(TabWords {
+            close: "Fermer l’onglet",
+            ..TabWords::default()
+        })
+        .build(&s.look, cx)
+    }
+    let state = State {
+        strip: BrowserTabsState::default(),
+        look: strata_kit::look::Look::default(),
+    };
+    let mut rt = rune::Runtime::new(state, view, (600.0, 48.0), rune::Env::default());
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+    let close_buttons: Vec<_> = rt
+        .elements()
+        .into_iter()
+        .filter(|e| !e.exiting && e.role == "button" && e.label.as_deref() != Some("New tab"))
+        .map(|e| e.label.unwrap_or_default())
+        .collect();
+    assert_eq!(close_buttons, ["Fermer l’onglet", "Fermer l’onglet"]);
+}

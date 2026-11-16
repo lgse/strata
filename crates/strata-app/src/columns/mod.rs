@@ -11,7 +11,7 @@
 //!   the evidence for that choice.
 //! - **Mirroring** is view policy, ported from the GTK views ([`mirror`]).
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use rune::Tx;
 use strata_components::{
@@ -90,6 +90,9 @@ pub(crate) struct Columns {
     thumbs: Thumbs,
     /// The rows' metadata fills: one for each open column.
     fills: ColumnFills,
+    /// Set by `Reset` or a root `Added(0)` until the rebuilt strip builds: keeps replay and
+    /// return-follow additions in that transaction instant (`ColumnsState::replace`).
+    pub(super) rebuilding: Cell<bool>,
 }
 
 /// With "Type to search" off a plain letter starts no search, so `h j k l` are the arrows:
@@ -135,6 +138,7 @@ impl Columns {
             surface: Surface::translated(),
             thumbs: Thumbs::new(setup.later.clone()),
             fills: ColumnFills::new(settings.columns_show_sizes),
+            rebuilding: Cell::new(true),
         }
     }
 
@@ -211,6 +215,7 @@ impl Columns {
         match change {
             // The first column's `Added` follows, and replaces the strip.
             Change::Reset => {
+                self.rebuilding.set(true);
                 self.listings.drop_hits();
                 self.listings.columns.clear();
                 self.held.clear();
@@ -284,6 +289,9 @@ impl Columns {
         self.held.truncate(len);
         // A sibling takes the place of the column at `len` when it is added, with no exit.
         if !replacing {
+            if !self.rebuilding.get() && hands.look.animations {
+                hands.tx.animated();
+            }
             self.state.truncate(len, hands.look, hands.tx);
         }
     }
@@ -310,12 +318,18 @@ impl Columns {
             .columns
             .push(Column::new(location, show_hidden, from).with_worn(worn));
         if depth == 0 {
+            self.rebuilding.set(true);
             // Another location: the old columns go with no exit.
             self.state
                 .replace(&self.listings, 0, &|_| None, hands.look, hands.tx);
             // The GTK window gives a new listing the keyboard too.
             hands.tx.focus(VIEW, false);
         } else {
+            // Browser observer callbacks drain from `poll` (no input cause in Rune 631e8a67),
+            // including mirroring's 75 ms timer: mark child opens animated unless rebuilding.
+            if !self.rebuilding.get() && hands.look.animations {
+                hands.tx.animated();
+            }
             let opening = Opening::new(&self.listings.columns[depth], Listing::Loading);
             // The browser places the cursor of a folder it opens, once it is listed.
             let focus = if active { Focus::Column } else { Focus::No };

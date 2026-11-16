@@ -8,7 +8,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
-rune.workspace = true
+rune = { workspace = true, features = ["embedded-fonts", "tooling"] }
 rune-kit = { workspace = true, features = ["markdown"] }
 strata-kit.workspace = true
 strata-components.workspace = true

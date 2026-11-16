@@ -70,6 +70,9 @@ pub(crate) const SHOW_LIST: Action<App> =
 pub(crate) fn switch(app: &mut App, mode: &'static str, tx: &mut Tx) -> Outcome {
     let shown = shell::shown_view(app).is_some_and(|view| (view.shows)(mode));
     if !shown {
+        if let Some(leaving) = shell::shown_view(app) {
+            (leaving.end_gestures)(app);
+        }
         rename::cancel(app, tx);
         shell::show_view(app, mode, tx);
     }

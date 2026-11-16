@@ -109,8 +109,9 @@ impl<S: 'static> RenameEditor<S> {
 
     /// The key of the element that takes the keyboard when the field goes while it has it. By
     /// default the row's collection ([`RowCx::scope`]). A collection keyed by its host
-    /// (`Collection::keys_by_host`) is no focus stop, so its host names the element that
-    /// holds the keyboard for it: Columns' strip (C2).
+    /// (`Collection::keys_by_host`) is no focus stop: without a named target Rune falls back
+    /// to a surviving sibling control before an ancestor container, so the host names the
+    /// element that holds the keyboard for it: Columns' strip (C2).
     pub fn focus_return(mut self, key: impl Into<String>) -> Self {
         self.focus_return = Some(key.into());
         self
@@ -211,12 +212,13 @@ fn build<S: 'static>(cfg: &Rc<RenameEditor<S>>, s: &S, rcx: &RowCx<'_>) -> El {
     // menu press is the field's too (which gives the box a context-menu action of its own:
     // without it, a right-click in the margin would open the row's menu).
     //
-    // The `textbox` routing is for primary presses only. A middle press walks up to the
-    // nearest element that takes the middle button (`runtime/input/gesture.rs`,
-    // `button_down`), which would be the collection's root: the row being renamed would open in
-    // a new tab. So the box takes the middle button itself, with a drag handler that does
-    // nothing (an empty `on_press` would give it a click action). Back and Forward stay the
-    // host's: its own handling commits the edit (D4).
+    // The `textbox` routing is for primary presses only. On Linux Rune pastes the primary
+    // selection on a middle click in the field itself (`primary_paste_down`), while a middle
+    // press in the box's margin walks up to the nearest element that takes the middle button
+    // (`runtime/input/gesture.rs`, `button_down`), which would be the collection's root: the
+    // row being renamed would open in a new tab. So the box takes the middle button itself,
+    // with a drag handler that does nothing (an empty `on_press` would give it a click
+    // action). Back and Forward stay the host's: its own handling commits the edit (D4).
     row()
         .key(EDITOR)
         .role("textbox")

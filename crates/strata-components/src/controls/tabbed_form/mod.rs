@@ -36,23 +36,23 @@
 //!
 //! A tablist named by [`FormLabels::tabs`]; each tab by its title, selected when chosen, with
 //! its place in the set. A page with errors: its tab is described "Has errors" and reports
-//! itself invalid. The chosen panel is a `tabpanel` named by its title (Rune 2a44156 has no
-//! labelled-by relation to name it by its tab); hidden panels are out of the tree, and nothing
-//! in them takes focus or the pointer.
+//! itself invalid. The chosen panel is a `tabpanel` named by its tab (`El::labelled_by`); hidden
+//! panels are out of the tree, and nothing in them takes focus or the pointer.
 //!
 //! # Deviations
 //!
 //! - **D2 (new against Strata):** the error mark. Strata's notebook marks no tab; it switches
 //!   to the invalid field's tab and shows one error line, as the host still does here.
 //! - **D3 (OWNER: Strata's look on own elements):** the plan builds this from rune-kit
-//!   `SegmentedControl`, which at Rune 5d421fd is a radiogroup of radios that take a text
+//!   `SegmentedControl`, which at Rune 631e8a67 is a radiogroup of radios that take a text
 //!   label only, so it can neither be a tablist nor carry a mark (Rune draft U-C20c-1). The
 //!   tabs are our own elements with tab roles, in Strata's underline look (bullets 43, 44 of
 //!   `integration/custom-actions`).
 //! - **D5:** with Ctrl+Page Up or Down, a keyboard on the page being hidden is dropped by the
-//!   switch and carried into the new page a frame later, from the host's poll: Rune's
-//!   `Tx::focused` gives only the focused key, not whether the hidden page holds it, so the
-//!   form waits to see whether the switch dropped it.
+//!   switch (or, when unmounted under [`Mounting::Rebuilt`], moved onto a form tab by Rune's
+//!   unmount `focus_fallback`) and carried into the new page a frame later, from the host's
+//!   poll: Rune's `Tx::focused` gives only the focused key, not whether the hidden page holds
+//!   it, so the form waits to see whether the switch dropped it.
 //! - **D6:** a kept page is hidden by opacity 0, `inert` and `a11y_hidden` in a shared grid
 //!   cell, so it still costs layout every frame: Rune has no subtree that stays mounted out of
 //!   layout (Rune draft U-C20c-2).
@@ -62,10 +62,10 @@
 //!
 //! # Rune
 //!
-//! Rune 2a44156: partly. It has the tab, tablist and tabpanel roles, arrow, Home and End
-//! movement in a `focus_group` (wrapping, with `focus_follows` choosing), `inert`,
-//! `instant_changes` and `Tx::focus`; it lacks a tab-style SegmentedControl and an offstage
-//! subtree.
+//! Rune 631e8a67: partly. It has the tab, tablist and tabpanel roles, `El::labelled_by`,
+//! `El::hover_group` (matching hover and keyboard focus), arrow, Home and End movement in a
+//! `focus_group` (wrapping, with `focus_follows` choosing), `inert`, `instant_changes` and
+//! `Tx::focus`; it lacks a tab-style SegmentedControl and an offstage subtree.
 //!
 //! # Rune drafts (not filed)
 //!

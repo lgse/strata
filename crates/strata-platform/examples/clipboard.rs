@@ -340,6 +340,37 @@ mod demo {
             })
     }
 
+    fn spawn_stdin(stdin_handle: AppHandle<State>) {
+        std::thread::spawn(move || {
+            for line in std::io::stdin().lock().lines() {
+                let Ok(line) = line else { break };
+                let Ok(cmd) = serde_json::from_str::<Value>(&line) else {
+                    log("bad-command", json!({ "line": line }));
+                    continue;
+                };
+                stdin_handle.update(move |s, tx| command(s, &cmd, tx));
+            }
+        });
+    }
+
+    fn attach_clip(clip: &Clipboard<State>, w: &WindowHandle, handle: &AppHandle<State>) {
+        match clip.attach(w, handle) {
+            Ok(st) => log(
+                "attached",
+                json!({
+                    "backend": st.backend,
+                    "route": format!("{:?}", st.route),
+                    "hears_unfocused": st.hears_unfocused,
+                    "primary": st.primary,
+                    "keeps_after_exit": st.keeps_after_exit,
+                    "xwayland": st.xwayland,
+                    "unsupported": st.unsupported,
+                }),
+            ),
+            Err(e) => log("attach-error", json!({ "error": e.to_string() })),
+        }
+    }
+
     pub(super) fn main() {
         let args = rune::tooling::extra_args();
         let flag = |f: &str| args.iter().any(|a| a == f);
@@ -388,17 +419,8 @@ mod demo {
             .on_quit(|_, _| shutdown("on-quit"))
             .on_close(on_close);
         let handle: AppHandle<State> = app.handle();
-        let stdin_handle = handle.clone();
-        std::thread::spawn(move || {
-            for line in std::io::stdin().lock().lines() {
-                let Ok(line) = line else { break };
-                let Ok(cmd) = serde_json::from_str::<Value>(&line) else {
-                    log("bad-command", json!({ "line": line }));
-                    continue;
-                };
-                stdin_handle.update(move |s, tx| command(s, &cmd, tx));
-            }
-        });
+        spawn_stdin(handle.clone());
+        rune::orderly_exit();
         static DRAWN: AtomicBool = AtomicBool::new(false);
         let result = app
             .on_window(move |w: &WindowHandle| {
@@ -408,21 +430,7 @@ mod demo {
                 {
                     log("dnd-attach-error", json!({ "error": e.to_string() }));
                 }
-                match clip.attach(w, &handle) {
-                    Ok(st) => log(
-                        "attached",
-                        json!({
-                            "backend": st.backend,
-                            "route": format!("{:?}", st.route),
-                            "hears_unfocused": st.hears_unfocused,
-                            "primary": st.primary,
-                            "keeps_after_exit": st.keeps_after_exit,
-                            "xwayland": st.xwayland,
-                            "unsupported": st.unsupported,
-                        }),
-                    ),
-                    Err(e) => log("attach-error", json!({ "error": e.to_string() })),
-                }
+                attach_clip(&clip, w, &handle);
             })
             .on_ready(|_: &WindowHandle| log("ready", json!({})))
             .on_frame_drawn(|_| {

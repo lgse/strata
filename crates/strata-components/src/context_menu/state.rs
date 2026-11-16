@@ -79,9 +79,6 @@ struct Open {
     model: MenuModel,
     /// The open submenus: the item index (as [`MenuModel::item_at`] counts) at each level.
     submenu: Vec<usize>,
-    /// Keys opened a submenu and sent the Tab that moves the keyboard into it: that Tab is
-    /// Rune's, not a Down (see `view.rs`).
-    entering: bool,
 }
 
 impl ContextMenuState {
@@ -98,7 +95,6 @@ impl ContextMenuState {
             at,
             model,
             submenu: Vec::new(),
-            entering: false,
         });
     }
 
@@ -165,26 +161,6 @@ impl ContextMenuState {
         }
         open.submenu = path.to_vec();
         true
-    }
-
-    /// [`Self::open_submenu`] from the keys: the next Tab moves the keyboard into it. True
-    /// when the path names a submenu, open already or not.
-    pub(super) fn enter_submenu(&mut self, path: &[usize]) -> bool {
-        self.open_submenu(path);
-        match &mut self.open {
-            Some(open) if open.submenu == path => {
-                open.entering = true;
-                true
-            }
-            _ => false,
-        }
-    }
-
-    /// Whether the Tab arriving now is the one [`Self::enter_submenu`] sent.
-    pub(super) fn take_entering(&mut self) -> bool {
-        self.open
-            .as_mut()
-            .is_some_and(|o| std::mem::take(&mut o.entering))
     }
 
     /// Closes the submenus `depth` levels in and deeper: 0 closes them all. True when one

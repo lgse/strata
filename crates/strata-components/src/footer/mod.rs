@@ -9,13 +9,13 @@
 //! `status.rs`, `indicators.rs`, `catalog.rs`, `reference.rs`, `reference_keys.rs`),
 //! `src/ui/shortcut_reference.rs` and `src/style.css`.
 //!
-//! **Rune 2a44156: partly.** `DialogShell` (C15: Rune's modal, backdrop and Tab trap), core
+//! **Rune 631e8a67: partly.** `DialogShell` (C15: Rune's modal, backdrop and Tab trap), core
 //! `text_input` and `TextEdit` (editing, undo, word moves), focus groups with `tablist` and `tab`
 //! roles, `virtual_rows` with `on_visible_rows`, `Tx::scroll_page`, `scroll_into_view` and
 //! `scroll_to_instant`, the table, status and live-region roles, `El::checked` (a toggle's pressed
 //! state) and `Chord::matches` beside `matches_tx` and `Tx::focus` cover it. Missing: a line scroll
 //! for a focused viewport (draft U-C19-1), a `Keybind` that keeps case (U-C18-1), a hover border
-//! colour (#328), window focus in scripts (U-X1-1) and input-method events in scripts (U-C6-7).
+//! colour (#328) and window focus in scripts (U-X1-1).
 //!
 //! # Hosting
 //!

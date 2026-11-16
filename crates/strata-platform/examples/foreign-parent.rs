@@ -281,6 +281,7 @@ mod probe {
                 handle.update(move |_, tx| command(&line, tx));
             }
         });
+        rune::orderly_exit();
         let started = AtomicBool::new(false);
         let result = app
             .on_ready(move |_| {

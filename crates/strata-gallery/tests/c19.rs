@@ -175,7 +175,7 @@ mod c19 {
     #[test]
     fn an_input_method_types_into_the_search() {
         let mut rt = mount("c19-reference-light");
-        rt.ime(Ime::Preedit("zhong".into(), None));
+        rt.ime(Ime::Preedit("zhong".into(), None, Vec::new()));
         run(&mut rt, 0.1);
         rt.ime(Ime::Commit("中文".into()));
         run(&mut rt, 0.1);

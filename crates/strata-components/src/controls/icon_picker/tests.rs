@@ -237,28 +237,40 @@ fn the_cursor_starts_on_the_current_choice_where_the_page_shows_it() {
 }
 
 #[test]
-fn an_emoji_draws_with_one_emoji_presentation_selector() {
-    let drawn = |c: Choice| drawn_text(&c).into_owned();
-    assert_eq!(
-        drawn(Choice::emoji("♈")),
-        "♈\u{fe0f}",
-        "added where missing"
-    );
-    assert_eq!(
-        drawn(Choice::emoji("❤\u{fe0f}")),
-        "❤\u{fe0f}",
-        "never twice"
-    );
-    // A keycap holds its selector before U+20E3, a ZWJ sequence in the middle.
-    assert_eq!(
-        drawn(Choice::emoji("#\u{fe0f}\u{20e3}")),
-        "#\u{fe0f}\u{20e3}"
-    );
+fn emoji_presentation_borrows_as_is_and_unqualified_text_default_qualifies() {
     let rainbow = "🏳\u{fe0f}\u{200d}🌈";
-    assert_eq!(drawn(Choice::emoji(rainbow)), rainbow);
-    assert_eq!(
-        drawn(Choice::icon("strata-pin")),
-        "strata-pin",
-        "icons as they are"
-    );
+    // A keycap holds its selector before U+20E3, a ZWJ sequence in the middle.
+    let cases = [
+        (
+            Choice::emoji("♈"),
+            "♈",
+            "Emoji_Presentation needs no U+FE0F",
+        ),
+        (Choice::emoji("😀"), "😀", "emoji presentation"),
+        (
+            Choice::emoji("🧑\u{200d}🚀"),
+            "🧑\u{200d}🚀",
+            "ZWJ sequence",
+        ),
+        (
+            Choice::emoji("❤"),
+            "❤\u{fe0f}",
+            "unqualified text-default emoji takes its bundled U+FE0F",
+        ),
+        (Choice::emoji("❤\u{fe0f}"), "❤\u{fe0f}", "never twice"),
+        (
+            Choice::emoji("#\u{fe0f}\u{20e3}"),
+            "#\u{fe0f}\u{20e3}",
+            "keycap",
+        ),
+        (Choice::emoji(rainbow), rainbow, "ZWJ with selector"),
+        (
+            Choice::icon("strata-pin"),
+            "strata-pin",
+            "icons as they are",
+        ),
+    ];
+    for (choice, expected, note) in cases {
+        assert_eq!(drawn_text(&choice).as_ref(), expected, "{note}");
+    }
 }

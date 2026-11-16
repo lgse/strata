@@ -95,8 +95,10 @@
 //!   it wraps at its width.
 //! - **D8** Lines over 16 KiB draw plain (C10a), and colour reaches a split line's rows
 //!   only up to there.
-//! - **D9** The editor misses its 16.7 ms keystroke budget on a 5,000-line script (see
-//!   [`editor`]), from Rune's whole-text shaping (U-C10b-1, U-C10b-5). Owner item.
+//! - **D9** The editor missed its 16.7 ms keystroke budget on a 5,000-line script when first
+//!   measured (see [`editor`]), before Rune `631e8a67` (`#979`, `#985`) moved multiline
+//!   `text_input` shaping to per-paragraph caching; colour-span changes still reshape the
+//!   paragraphs they touch (`U-C10b-1`). Owner item.
 //! - **D10** Opening a 50,000-line text takes one commit over the 8 ms budget (14 to 19 ms,
 //!   below): Rune reads every row's key on a list's first commit (Rune issue #203, as C1e
 //!   reports for its 100,000 rows). The jump to the end and scrolling stay within it.
@@ -156,10 +158,8 @@
 //! - **U-C10b-4** A multi-line `text_input` always wraps at its width (`text_input` sets
 //!   `wrap`; only `single_line` turns it off). A code editor without wrap has to make the
 //!   field wider than its widest line inside a sideways viewport. Ask: `El::no_wrap` for a
-//!   multi-line field.
-//! - **U-C10b-5** A keystroke in a multi-line `text_input` reshapes its whole text: about
-//!   19 ms per key in a 153 KB, 5,000-line field with no spans (probe P3, perf profile).
-//!   Ask: shape a field by paragraph and reuse the unchanged paragraphs' layouts.
+//!   multi-line field. (`U-C10b-5`, per-paragraph shaping in multiline `text_input`, landed in
+//!   Rune `631e8a67` via `#979` and `#985`.)
 //! - **U-C10b-6** A triple-click selects one text's paragraph, even inside a selection group:
 //!   an app that draws one logical line as several texts (a line split for layout, as here
 //!   past 2 KiB) can't have the triple-click take the whole line. Repro: a selection group of

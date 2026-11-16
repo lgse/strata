@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use rune::{El, ScrollSpec, col, el, icon, row, text};
+use rune::{El, ScrollSpec, Tx, col, el, icon, row, text};
 use rune_kit::{Button, ButtonVariant, IconButton, IconButtonVariant, Spinner};
 use strata_kit::icons::IconName;
 use strata_kit::look::Look;
@@ -61,8 +61,8 @@ enum Body {
     Message(String),
 }
 
-/// A button's or a dismissal's handler.
-type Handler<S> = Rc<dyn Fn(&mut S)>;
+/// A button's or a dismissal's handler, with the change's `Tx`.
+type Handler<S> = Rc<dyn Fn(&mut S, &mut Tx)>;
 
 struct Action<S> {
     key: String,
@@ -76,7 +76,7 @@ impl<S: 'static> Action<S> {
         b = match &self.on_press {
             Some(f) => {
                 let f = f.clone();
-                b.on_press(move |s: &mut S| f(s))
+                b.on_press_tx(move |s: &mut S, tx: &mut Tx| f(s, tx))
             }
             None => b.disabled(true),
         };
@@ -136,12 +136,11 @@ impl<S: 'static> StrataDialog<S> {
     ) -> Self {
         let key = key.into();
         let title = title.into();
-        let dismiss: Handler<S> = Rc::new(on_dismiss);
+        let dismiss: Handler<S> = Rc::new(move |s, _| on_dismiss(s));
         let shell_dismiss = dismiss.clone();
         StrataDialog {
-            shell: DialogShell::new(key.clone(), title.clone(), move |s: &mut S| {
-                shell_dismiss(s)
-            }),
+            shell: DialogShell::new(key.clone(), title.clone(), |_| {})
+                .on_dismiss_tx(move |s: &mut S, tx: &mut Tx| shell_dismiss(s, tx)),
             key,
             title,
             subtitle: None,
@@ -159,6 +158,18 @@ impl<S: 'static> StrataDialog<S> {
             closable: true,
             dismiss,
         }
+    }
+
+    /// Replaces `on_dismiss` with one that gets the dismissal's `Tx` on Escape, backdrop click,
+    /// or the close button.
+    pub fn on_dismiss_tx(mut self, on_dismiss: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+        let dismiss: Handler<S> = Rc::new(on_dismiss);
+        let shell_dismiss = dismiss.clone();
+        self.shell = self
+            .shell
+            .on_dismiss_tx(move |s: &mut S, tx: &mut Tx| shell_dismiss(s, tx));
+        self.dismiss = dismiss;
+        self
     }
 
     /// Shown while true.
@@ -207,10 +218,15 @@ impl<S: 'static> StrataDialog<S> {
 
     /// The primary button, last in the footer; Enter presses it from a single-line field or
     /// when nothing is focused. Without `enabled`, see [`StrataDialog::primary_enabled`].
-    pub fn primary(
+    pub fn primary(self, label: impl Into<String>, on_press: impl Fn(&mut S) + 'static) -> Self {
+        self.primary_tx(label, move |s, _| on_press(s))
+    }
+
+    /// [`StrataDialog::primary`] with the press's `Tx`.
+    pub fn primary_tx(
         mut self,
         label: impl Into<String>,
-        on_press: impl Fn(&mut S) + 'static,
+        on_press: impl Fn(&mut S, &mut Tx) + 'static,
     ) -> Self {
         self.primary = Some(Action {
             key: format!("{}-primary", self.key),
@@ -238,10 +254,15 @@ impl<S: 'static> StrataDialog<S> {
     }
 
     /// The secondary button, before the primary: usually Cancel or Close.
-    pub fn secondary(
+    pub fn secondary(self, label: impl Into<String>, on_press: impl Fn(&mut S) + 'static) -> Self {
+        self.secondary_tx(label, move |s, _| on_press(s))
+    }
+
+    /// [`StrataDialog::secondary`] with the press's `Tx`.
+    pub fn secondary_tx(
         mut self,
         label: impl Into<String>,
-        on_press: impl Fn(&mut S) + 'static,
+        on_press: impl Fn(&mut S, &mut Tx) + 'static,
     ) -> Self {
         self.secondary = Some(Action {
             key: format!("{}-secondary", self.key),
@@ -254,10 +275,20 @@ impl<S: 'static> StrataDialog<S> {
     /// Another footer button, keyed `<key>-<id>`, before the secondary. `id` can't be one of
     /// the dialog's own parts ([`RESERVED`]) or another action's.
     pub fn action(
-        mut self,
+        self,
         id: &str,
         label: impl Into<String>,
         on_press: impl Fn(&mut S) + 'static,
+    ) -> Self {
+        self.action_tx(id, label, move |s, _| on_press(s))
+    }
+
+    /// [`StrataDialog::action`] with the press's `Tx`.
+    pub fn action_tx(
+        mut self,
+        id: &str,
+        label: impl Into<String>,
+        on_press: impl Fn(&mut S, &mut Tx) + 'static,
     ) -> Self {
         debug_assert!(
             !RESERVED.contains(&id),
@@ -475,7 +506,7 @@ impl<S: 'static> StrataDialog<S> {
         let mut close = IconButton::new(look.icon(IconName::Close))
             .variant(IconButtonVariant::Ghost)
             .label(self.close_label.clone())
-            .on_press(move |s: &mut S| dismiss(s))
+            .on_press_tx(move |s: &mut S, tx: &mut Tx| dismiss(s, tx))
             .build(kit)
             .key(format!("{}-close", self.key))
             .focus_ring(FOCUS_RING_WIDTH, 0.0, accent_ring.alpha(FOCUS_RING_ALPHA))

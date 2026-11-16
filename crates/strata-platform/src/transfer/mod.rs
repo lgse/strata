@@ -63,17 +63,17 @@
 //!
 //! # Teardown is the app's job
 //!
-//! Call [`Transfer::shutdown`] on the UI thread before the event loop ends: before
-//! `Tx::quit` or `AppHandle::quit`, and in `App::on_close` of the last window when closing it
-//! ends the app. It stops the reader and destroys everything bound on winit's display while
+//! Call [`Transfer::shutdown`] on the UI thread before the event loop ends: from `App::on_quit`
+//! and in `App::on_close` of the last window when closing it ends the app (both run before
+//! Rune's default `fast_exit` ends the process with `_exit`, and before `orderly_exit` closes
+//! winit's display). It stops the reader and destroys everything bound on winit's display while
 //! the display is alive, the wayland-backend on it included. Rune runs no hook before winit
 //! closes it (U9), and after a quit no further `on_close` runs. After a shutdown, handles and
 //! offers the app still holds are safe to drop at any time, after `run` too: they make no
-//! libwayland call. Without the shutdown, the backend's late drop destroys its proxies on the
-//! freed display (SIGSEGV in every S2 run, and in P0's quit test with the backend's drop
-//! removed). A substrate never shut down is never dropped (it lives in a static), but its
-//! reader then stays parked on a display winit has freed, which is unsound if the process
-//! lives on.
+//! libwayland call. Under `orderly_exit` without the shutdown, the backend's late drop destroys
+//! its proxies on the freed display (SIGSEGV in every S2 run, and in P0's quit test with the
+//! backend's drop removed). A substrate never shut down is never dropped (it lives in a static),
+//! but its reader then stays parked on a display winit has freed if the process lives on.
 
 mod data;
 mod error;

@@ -26,7 +26,7 @@ use crate::{
     slots::TabKey,
     test_support::{
         PATIENCE, fixture, hosted, send_key,
-        view::{all, field, hosted_in, idle, press, text},
+        view::{all, field, hosted_in, hosted_with, idle, press, text},
     },
 };
 
@@ -463,6 +463,35 @@ fn a_tab_left_by_a_press_on_the_strip_gets_the_keyboard_back_in_its_view() {
                 Some(view),
                 "the first tab's view"
             );
+        },
+    );
+}
+
+/// Each tab's close button reads GTK's translated `"Close tab"` key (`strip.rs`) in the active
+/// interface language (`TabStrip::words`, finding lgse/strata#2469).
+#[test]
+fn the_close_buttons_speak_the_users_language() {
+    hosted_with(
+        MODULE,
+        "columns",
+        "language = \"fr\"\n".to_owned(),
+        "the_close_buttons_speak_the_users_language",
+        |mut host| {
+            let folder = fixture();
+            two_tabs_at(&mut host, folder.path());
+            let tree = host.tree();
+            let lists = all(&tree, &|node| node["role"] == "tab-list");
+            let list = lists.first().expect("the tab list");
+            assert_eq!(
+                text(list, "name"),
+                rust_i18n::t!("Tabs", locale = "fr").as_ref()
+            );
+            let close_buttons: Vec<_> = all(list, &|node| node["role"] == "button")
+                .into_iter()
+                .map(|node| text(node, "name"))
+                .collect();
+            let expected = rust_i18n::t!("Close tab", locale = "fr").into_owned();
+            assert_eq!(close_buttons, [expected.clone(), expected]);
         },
     );
 }

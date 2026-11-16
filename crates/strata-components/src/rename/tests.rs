@@ -266,7 +266,8 @@ fn a_held_enter_ends_one_edit() {
 #[test]
 fn keys_stay_the_input_methods_while_it_composes() {
     let mut st = typed("Notes.md", "x.md");
-    st.edit.ime(&rune::Ime::Preedit("か".into(), None));
+    st.edit
+        .ime(&rune::Ime::Preedit("か".into(), None, Vec::new()));
     for key in [Key::Enter, Key::Escape, Key::Tab] {
         assert!(press(&mut st, key, Mods::default(), false).is_none());
     }
@@ -364,6 +365,7 @@ fn view(s: &App, _: &mut Cx<App>) -> El {
             text_input(&s.other, s.look.kit.ty.ui_compact)
                 .single_line()
                 .key("other")
+                .label_static("Other")
                 .w(120.0)
                 .on_edit(|s: &mut App| &mut s.other),
         )
@@ -497,10 +499,11 @@ fn closing_from_the_field_gives_the_keyboard_back_to_the_collection() {
 }
 
 const HOST: &str = "strip";
+const BAR: &str = "bar";
 
 /// A page as Columns builds one: the collection is keyed by its host and takes no keyboard,
-/// and the element around it does.
-fn hosted_view(s: &App, _: &mut Cx<App>) -> El {
+/// and the element around it does (with or without a sibling control inside the host).
+fn hosted_view(s: &App, sibling: bool) -> El {
     let editor = match s.returns {
         Some(key) => editor().focus_return(key),
         None => editor(),
@@ -515,22 +518,31 @@ fn hosted_view(s: &App, _: &mut Cx<App>) -> El {
     .keys_by_host()
     .rename(|s: &App| s.rename.renaming_in(KEY), editor.slot())
     .build(s);
-    let host = col()
+    let mut host = col()
         .key(HOST)
         .focusable(true)
         .on_key(|_: &mut App, _: &KeyEvent, _: &mut Tx| false)
         .w(300.0)
-        .h_full()
-        .child(list);
-    rune_kit::root(host, Vec::new())
+        .h_full();
+    if sibling {
+        host = host.child(rune_kit::Button::new("Filter").build(&s.look.kit).key(BAR));
+    }
+    rune_kit::root(host.child(list), Vec::new())
 }
 
 #[test]
 fn a_collection_keyed_by_its_host_gets_the_keyboard_back_where_the_host_says() {
-    for (returns, lands) in [(Some(HOST), Some(HOST)), (None, None)] {
+    let bare: fn(&App, &mut Cx<App>) -> El = |s, _| hosted_view(s, false);
+    let with_sibling: fn(&App, &mut Cx<App>) -> El = |s, _| hosted_view(s, true);
+    for (sibling, returns, lands) in [
+        (false, None, Some(HOST)),
+        (true, None, Some(BAR)),
+        (true, Some(HOST), Some(HOST)),
+    ] {
+        let view_fn = if sibling { with_sibling } else { bare };
         for key in [Key::Enter, Key::Escape] {
             let app = App { returns, ..app(20) };
-            let mut rt = Runtime::new(app, hosted_view, (400.0, 300.0), Env::new(false, 1.0));
+            let mut rt = Runtime::new(app, view_fn, (400.0, 300.0), Env::new(false, 1.0));
             rt.frame(0.0);
             frames(&mut rt, 2);
             begin(&mut rt, 1);
@@ -543,7 +555,7 @@ fn a_collection_keyed_by_its_host_gets_the_keyboard_back_where_the_host_says() {
             frames(&mut rt, 3);
 
             assert!(!rt.state.rename.is_open());
-            assert_eq!(focused(&rt).as_deref(), lands, "after {key:?}");
+            assert_eq!(focused(&rt).as_deref(), lands, "{returns:?} after {key:?}");
         }
     }
 }
@@ -933,28 +945,35 @@ fn a_tick_with_another_collections_state_is_a_host_bug() {
 }
 
 #[test]
-fn a_composition_ending_in_a_blur_keeps_only_the_committed_text() {
-    let mut rt = mount(20);
-    begin(&mut rt, 1);
-    rt.ime(rune::Ime::Commit("か".into()));
-    frames(&mut rt, 1);
-    rt.ime(rune::Ime::Preedit("き".into(), Some((0, 3))));
-    frames(&mut rt, 1);
-    rt.key(KeyEvent {
-        key: Key::Escape,
-        mods: Mods::default(),
-    });
-    frames(&mut rt, 1);
-    assert!(rt.state.rename.is_open(), "Escape went to the composition");
-    tap(&mut rt, "other");
-    assert_eq!(
-        last(&rt),
-        Some(&RenameIntent::Rename {
-            id: EntryId::new(1),
-            name: "か.md".into(),
-            by: By::Blur
-        })
-    );
+fn a_composition_commits_on_blur_unless_the_ime_cancelled_its_preedit() {
+    for (ime_cancelled, expected) in [(false, "かき.md"), (true, "か.md")] {
+        let mut rt = mount(20);
+        begin(&mut rt, 1);
+        rt.ime(rune::Ime::Commit("か".into()));
+        frames(&mut rt, 1);
+        rt.ime(rune::Ime::Preedit("き".into(), Some((0, 3)), Vec::new()));
+        frames(&mut rt, 1);
+        rt.key(KeyEvent {
+            key: Key::Escape,
+            mods: Mods::default(),
+        });
+        frames(&mut rt, 1);
+        assert!(rt.state.rename.is_open(), "Escape went to the composition");
+        if ime_cancelled {
+            rt.ime(rune::Ime::Preedit(String::new(), None, Vec::new()));
+            frames(&mut rt, 1);
+        }
+        tap(&mut rt, "other");
+        assert_eq!(
+            last(&rt),
+            Some(&RenameIntent::Rename {
+                id: EntryId::new(1),
+                name: expected.into(),
+                by: By::Blur
+            }),
+            "ime_cancelled={ime_cancelled}"
+        );
+    }
 }
 
 #[test]

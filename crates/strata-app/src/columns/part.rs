@@ -35,6 +35,7 @@ fn apply(app: &mut App, change: Change, tx: &mut Tx) -> bool {
 impl Part for Columns {
     const PLACE: Place<App> = Place::View(View {
         build: |app, frame| {
+            app.columns.rebuilding.set(false);
             app.columns.thumbs.set_scale(frame.cx.env().scale);
             let built = view(app).build(app);
             Some(built.on_layout(|app: &mut App, rect| width::fit_area(app, rect)))

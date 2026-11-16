@@ -4,11 +4,12 @@
 //! `text_input` inside a text box frame of our own, drawn with the Kit tokens rune-kit's
 //! `TextInput` draws its box with.
 //!
-//! Not rune-kit's `TextInput`: at Rune 5d421fd it builds its inner field itself and takes no
+//! Not rune-kit's `TextInput`: at Rune 631e8a67 it builds its inner field itself and takes no
 //! `on_secondary_press` for it (Rune draft U-C21-2), so a right-click on it asks for Rune's
 //! native field menu, which shows nothing on Linux. A core field takes the press itself
 //! (probe P4): the bar and the prompt raise a field-menu intent, which C21's `FieldMenu`
-//! answers.
+//! answers, while keeping Rune's Linux primary selection, middle-click paste, and IME
+//! finish-on-blur.
 
 use std::rc::Rc;
 

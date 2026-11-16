@@ -638,3 +638,70 @@ fn an_operation_in_the_dialog_leaves_the_dock_empty() {
     assert!(dock.op(1).is_some());
     assert!(dock.is_empty(), "the dialog shows it, not the dock");
 }
+
+#[test]
+fn running_cards_and_job_rows_mark_themselves_busy_until_they_finish() {
+    struct Host {
+        look: strata_kit::look::Look,
+        dock: Dock,
+        jobs_ui: jobs::JobsState,
+        rows: Vec<JobRow>,
+    }
+
+    fn view(s: &Host, _: &mut rune::Cx<Host>) -> rune::El {
+        let mut layer = Vec::new();
+        let button = jobs::Jobs::new(
+            "jobs",
+            |s: &Host| &s.jobs_ui,
+            |s: &mut Host| &mut s.jobs_ui,
+            |s: &Host| &s.rows,
+        )
+        .build(s, &s.look, &mut layer);
+        DockView::new("dock", |s: &Host| &s.dock, |s: &mut Host| &mut s.dock)
+            .build(s, &s.look, &mut layer);
+        rune_kit::root(
+            rune::col()
+                .w_full()
+                .h_full()
+                .children(button.into_iter().collect::<Vec<_>>()),
+            layer,
+        )
+    }
+
+    fn is_busy(rt: &rune::Runtime<Host>, key: &str) -> Option<bool> {
+        let tree = rt.accessibility_tree();
+        tree.nodes
+            .iter()
+            .find(|(_, n)| n.author_id() == Some(key))
+            .map(|(_, n)| n.is_busy())
+    }
+
+    let mut host = Host {
+        look: strata_kit::look::Look::fallback(false),
+        dock: Dock::new(),
+        jobs_ui: jobs::JobsState::new(),
+        rows: vec![
+            JobRow::new(1, "Resize", JobStatus::Running, 0.0),
+            JobRow::new(2, "Archive", JobStatus::Queued, 0.0),
+            JobRow::new(3, "Rename", JobStatus::Succeeded, 0.0),
+        ],
+    };
+    let mut tx = Tx::default();
+    host.dock.start(1, copy(1), &mut tx);
+    let mut rt = rune::Runtime::new(host, view, (640.0, 480.0), rune::Env::new(false, 1.0));
+    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(is_busy(&rt, "dock-card-1"), Some(true));
+
+    rt.update(|s, tx| {
+        s.dock.complete(1, "Copy complete", tx);
+    });
+    rt.frame(1.0 / 60.0);
+    assert_eq!(is_busy(&rt, "dock-card-1"), Some(false));
+
+    rt.update(|s, tx| s.jobs_ui.open(tx));
+    rt.frame(1.0 / 60.0);
+    assert_eq!(is_busy(&rt, "jobs-row-1"), Some(true));
+    assert_eq!(is_busy(&rt, "jobs-row-2"), Some(false));
+    assert_eq!(is_busy(&rt, "jobs-row-3"), Some(false));
+}

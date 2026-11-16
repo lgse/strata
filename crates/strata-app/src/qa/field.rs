@@ -4,14 +4,11 @@
 //! its selection are.
 //!
 //! The protocol counts a field in characters, as AT-SPI's text interface does and the GTK
-//! harness reports. Rune reports a place in a field as a line and a count of the clusters it
-//! shaped on that line, each a user-perceived character: `é` written as a letter and a
-//! combining accent is one cluster and two characters. The tree carries no cluster's length,
-//! so the count is turned into characters over the field's text, by the grapheme clusters
-//! of Unicode's segmentation, which is what a shaper clusters by.
-//!
-//! A field is read while the caret and the selection are on its first line, which is all of
-//! a single-line field. The tree does not say where a later line starts in the text.
+//! harness reports. On the focused field Rune exposes the selection's anchor and caret in
+//! UTF-8 bytes of its text (`ElementInfo::edit_range`), which gives character offsets across
+//! any line. For an unfocused field Rune's tree reports a line and a count of the clusters it
+//! shaped on that line (`é` written as a letter and a combining accent is one cluster and two
+//! characters), turned into characters over the first line's grapheme clusters.
 
 use strata_qa::FieldState;
 use unicode_segmentation::UnicodeSegmentation;
@@ -43,8 +40,20 @@ fn characters_before(text: &str, cluster: u64) -> i32 {
     i32::try_from(text[..end].chars().count()).unwrap_or(i32::MAX)
 }
 
+/// How many characters come before UTF-8 byte `byte` of `text`.
+fn characters_to_byte(text: &str, byte: usize) -> Option<i32> {
+    let before = text.get(..byte)?;
+    i32::try_from(before.chars().count()).ok()
+}
+
 /// The two ends of the selection in characters: the one that stays, and the caret.
 fn ends(seen: &Seen, text: &str) -> Option<(i32, i32)> {
+    if let Some([anchor, caret]) = seen.edit_range {
+        return Some((
+            characters_to_byte(text, anchor)?,
+            characters_to_byte(text, caret)?,
+        ));
+    }
     match seen.selection {
         Some([FIRST_LINE, anchor, FIRST_LINE, caret]) => Some((
             characters_before(text, anchor),
@@ -56,8 +65,8 @@ fn ends(seen: &Seen, text: &str) -> Option<(i32, i32)> {
     }
 }
 
-/// What the field `seen` holds. `None` for a node that is no field, and for a field whose
-/// caret the tree does not place: one on a later line, or with too much text for Rune to
+/// What the field `seen` holds. `None` for a node that is no field, and for an unfocused field
+/// whose caret the tree does not place: one on a later line, or with too much text for Rune to
 /// report its lines.
 pub(super) fn state(seen: &Seen, focused: bool) -> Option<FieldState> {
     if !is_one(&seen.role) {

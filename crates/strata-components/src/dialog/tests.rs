@@ -396,3 +396,67 @@ fn the_initial_button_opens_focused_and_tab_keeps_document_order() {
         assert_eq!(seen, want, "{initial:?}");
     }
 }
+
+#[test]
+fn primary_tx_can_chain_a_dialog_with_the_focus_ring_cleared() {
+    #[derive(Default)]
+    struct Chain {
+        step: u8,
+    }
+
+    fn chain_view(s: &Chain, _cx: &mut Cx<Chain>) -> El {
+        let mut look = strata_kit::look::Look::fallback(false);
+        look.animations = false;
+        let mut layer = Vec::new();
+        super::StrataDialog::new("d1", "First?", |s: &mut Chain| s.step = 0)
+            .open(s.step == 1)
+            .initial_focus(super::Focus::Primary)
+            .primary_tx("Next", |s: &mut Chain, tx: &mut rune::Tx| {
+                s.step = 2;
+                tx.focus_when_shown("d2-primary", false);
+            })
+            .build(&look, &mut layer);
+        super::StrataDialog::new("d2", "Second?", |s: &mut Chain| s.step = 0)
+            .open(s.step == 2)
+            .return_focus("opener")
+            .initial_focus(super::Focus::Primary)
+            .primary("Done", |s: &mut Chain| s.step = 0)
+            .build(&look, &mut layer);
+        let opener = Button::new("Open").build(&look.kit).key("opener");
+        rune_kit::root(col().child(opener), layer)
+    }
+
+    let mut rt = Runtime::new(
+        Chain { step: 0 },
+        chain_view,
+        (600.0, 400.0),
+        Env::new(false, 1.0),
+    );
+    rt.frame(0.0);
+    rt.update(|_, tx| tx.focus("opener", true));
+    rt.frame(1.0 / 60.0);
+    rt.update(|s, _| s.step = 1);
+    rt.frame(1.0 / 60.0);
+
+    let button = |rt: &Runtime<Chain>, k: &str| {
+        rt.elements()
+            .into_iter()
+            .find(|e| e.key.as_deref() == Some(k))
+            .expect("button mounted")
+    };
+    assert!(button(&rt, "d1-primary").focus_visible);
+
+    rt.key(key(Key::Enter));
+    rt.frame(1.0 / 60.0);
+    rt.frame(1.0 / 60.0);
+    let second = button(&rt, "d2-primary");
+    assert!(second.focused, "chained primary has focus");
+    assert!(!second.focus_visible, "ring=false cleared focus_visible");
+
+    rt.key(key(Key::Escape));
+    rt.frame(1.0 / 60.0);
+    assert!(
+        button(&rt, "opener").focused,
+        "return_focus restores opener"
+    );
+}

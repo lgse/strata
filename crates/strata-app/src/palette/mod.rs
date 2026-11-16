@@ -174,18 +174,19 @@ fn no_text(_: &App, at: &Situation) -> bool {
 
 /// The palette, while open, over every other dialog.
 fn build(app: &App, frame: &mut Frame<'_, App>) -> Option<El> {
-    let return_to = shell::view_focus(app).unwrap_or_default();
-    SearchPalette::new(
+    let mut palette = SearchPalette::new(
         KEY,
         |app: &App| &app.palette.state,
         |app: &mut App| &mut app.palette.state,
     )
     .new_tab_keys(Vec::new())
     .middle_click_opens(false)
-    .return_focus_on_open(return_to)
     .reduced_motion(frame.cx.is_reduced_motion())
-    .on_intent(heard)
-    .build(&app.look, app, frame.layer);
+    .on_intent(heard);
+    if let Some(return_to) = shell::view_focus(app) {
+        palette = palette.return_focus_on_open(return_to);
+    }
+    palette.build(&app.look, app, frame.layer);
     None
 }
 

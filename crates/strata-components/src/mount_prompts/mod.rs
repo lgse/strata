@@ -166,7 +166,7 @@
 //! - **D9** The fields are the core `text_input` in C18's frame, not rune-kit's `TextInput`,
 //!   which takes no right-click handler (Rune draft U-C21-2).
 //!
-//! Rune 2a44156: **partly**. It covers secure single-line fields (role `password-input`,
+//! Rune 631e8a67: **partly**. It covers secure single-line fields (role `password-input`,
 //! the value never exposed, no copy, cut, undo or input method; `El::revealed` to show it),
 //! modal dialogs, a dialog's first focus (`El::autofocus`, through C15) and radio groups. It
 //! lacks a rune-kit text field that takes a right-click menu (U-C21-2), and a GLib loop (P9).

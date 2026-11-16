@@ -7,7 +7,9 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use rune::{Color, Cx, El, Mods, Tx, el, row, text};
-use rune_kit::shell::{TabDragState, TabItem, TabOrientation, TabOverflow, TabStrip, TearOutSpec};
+use rune_kit::shell::{
+    TabDragState, TabItem, TabOrientation, TabOverflow, TabStrip, TabWords, TearOutSpec,
+};
 use strata_kit::look::Look;
 use strata_kit::slots::tabs as slot;
 
@@ -48,6 +50,7 @@ pub struct BrowserTabs<'a, S: 'static> {
     badges: bool,
     new_tab: bool,
     labels: TabsLabels,
+    words: TabWords,
     emit: Emit<S>,
 }
 
@@ -76,6 +79,7 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
             badges: false,
             new_tab: true,
             labels: TabsLabels::default(),
+            words: TabWords::default(),
             emit: Rc::new(|_, _, _| {}),
         }
     }
@@ -155,6 +159,13 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         self
     }
 
+    /// Translated words for `TabStrip`'s own chrome, including each tab's close button
+    /// ([`TabWords::close`], default `"Close tab"`).
+    pub fn words(mut self, words: TabWords) -> Self {
+        self.words = words;
+        self
+    }
+
     pub fn on_intent(mut self, f: impl Fn(&mut S, TabsIntent, &mut Tx) + 'static) -> Self {
         self.emit = Rc::new(f);
         self
@@ -173,35 +184,23 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
         self.assemble(look, cx, Some(layer))
     }
 
-    fn assemble(self, look: &Look, cx: &mut Cx<S>, layer: Option<&mut Vec<El>>) -> El {
-        let key = self.state.key().to_owned();
+    fn tab_items(&self, key: &str, zones: &Ctx<S>, look: &Look) -> Vec<TabItem<'a, S>> {
         let data = self.data;
-        let zones = Ctx {
-            access: self.access,
-            emit: self.emit.clone(),
-            action: self.action.clone(),
-            opens: self.opens.clone(),
-            guard_none: self.guard_none,
-            content: self.content,
-            spring: self.spring,
-            len: data.tabs.len(),
-        };
         let drop = self.state.drop_hover();
-        let scroll = scroll_key(&key);
+        let scroll = scroll_key(key);
         let underline = Underline {
             color: slot::underline_color(look),
             height: slot::underline_height(look),
             inset: look.space.sm,
             matched: look.animations.then(|| format!("{key}-underline")),
         };
-        let items: Vec<TabItem<'_, S>> = data
-            .tabs
+        data.tabs
             .iter()
             .enumerate()
             .map(|(i, tab)| {
                 let active = data.active == Some(tab.id);
                 let mut item = TabItem::new(
-                    rune_id(&key, tab.id),
+                    rune_id(key, tab.id),
                     elide_end(&tab.name, LABEL_CHARS).into_owned(),
                 );
                 item = match (self.badges && i < BADGED).then(|| badge(i, look)) {
@@ -218,7 +217,7 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
                     probe: self.state.probe.clone(),
                     scroll: scroll.clone(),
                     zone: drops::tab(
-                        &zones,
+                        zones,
                         TabSpec {
                             id: tab.id,
                             index: i,
@@ -226,12 +225,28 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
                             active,
                         },
                     ),
-                    key: super::tab_key(&key, tab.id),
+                    key: super::tab_key(key, tab.id),
                     dnd: self.dnd.clone(),
                 };
                 item.decorate(move |e, _| dress.apply(e))
             })
-            .collect();
+            .collect()
+    }
+
+    fn assemble(self, look: &Look, cx: &mut Cx<S>, layer: Option<&mut Vec<El>>) -> El {
+        let key = self.state.key().to_owned();
+        let data = self.data;
+        let zones = Ctx {
+            access: self.access,
+            emit: self.emit.clone(),
+            action: self.action.clone(),
+            opens: self.opens.clone(),
+            guard_none: self.guard_none,
+            content: self.content,
+            spring: self.spring,
+            len: data.tabs.len(),
+        };
+        let items = self.tab_items(&key, &zones, look);
         let active = data.active.map(|id| rune_id(&key, id));
         let min = slot::min_width(look);
         let strip = TabStrip::new(key.clone(), TabOrientation::Horizontal)
@@ -249,6 +264,7 @@ impl<'a, S: 'static> BrowserTabs<'a, S> {
             .fill(slot::strip_fill(look))
             .close_icon(look.icon(strata_kit::icons::IconName::Close))
             .label(self.labels.list.clone().into_owned())
+            .words(self.words)
             .drag_state(&self.state.drag, self.drag)
             .tear_out(self.tear.then(TearOutSpec::default));
         let (strip, trailing) = if self.new_tab {

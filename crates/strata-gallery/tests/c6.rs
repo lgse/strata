@@ -118,7 +118,7 @@ mod c6 {
     fn escape_while_composing_keeps_the_entry_open() {
         let mut rt = mount("c6-short-light");
         key(&mut rt, Key::Command('l'), ctrl());
-        rt.ime(Ime::Preedit("か".into(), Some((3, 3))));
+        rt.ime(Ime::Preedit("か".into(), Some((3, 3)), Vec::new()));
         rt.frame(FRAME);
         key(&mut rt, Key::Escape, Mods::default());
         run(&mut rt, 0.2);
@@ -619,11 +619,11 @@ mod c6 {
         typ(&mut rt, "~/D");
         run(&mut rt, 0.3);
         assert!(rt.state.c6.bar.suggestions_open());
-        rt.ime(Ime::Preedit("か".into(), Some((3, 3))));
+        rt.ime(Ime::Preedit("か".into(), Some((3, 3)), Vec::new()));
         rt.frame(FRAME);
         key(&mut rt, Key::Down, Mods::default());
         assert_eq!(rt.state.c6.bar.highlighted(), None);
-        rt.ime(Ime::Preedit(String::new(), None));
+        rt.ime(Ime::Preedit(String::new(), None, Vec::new()));
         rt.frame(FRAME);
         key(&mut rt, Key::Down, Mods::default());
         assert_eq!(rt.state.c6.bar.highlighted(), Some(0));

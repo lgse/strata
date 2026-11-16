@@ -88,9 +88,9 @@ pub fn section(key: impl Into<String>, areas: Areas, look: &Look) -> El {
         .padding(look.space.xl)
         .gap(look.space.lg)
         .center()
-        // The width cap is put as the height it gives at the aspect: at Rune 5d421fd an
-        // `aspect_fit` box with a `max_w` takes the cap for the cross room, so a box bound by the
-        // height overflows a column narrower than the cap (C13's Rune draft U-C13-4).
+        // The width cap is put as the height it gives at the aspect: an `aspect_fit` box with a
+        // `max_w` takes the cap for the cross room, so a box bound by the height overflows a
+        // column narrower than the cap (C13's Rune draft U-C13-4).
         .child(
             areas
                 .content

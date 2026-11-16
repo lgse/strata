@@ -41,10 +41,7 @@ fn shortens(header: &[String]) -> bool {
 }
 
 type Select<S> = Rc<dyn Fn(&mut S, &[usize], &mut Tx)>;
-/// Open the submenu at a path: from the pointer (`false`), or from the keys, which then send
-/// the Tab that moves the keyboard into it (`true`; true back when it opened).
-type Submenu<S> = Rc<dyn Fn(&mut S, Vec<usize>, bool) -> bool>;
-type Entering<S> = Rc<dyn Fn(&mut S) -> bool>;
+type Submenu<S> = Rc<dyn Fn(&mut S, Vec<usize>)>;
 type CloseTo<S> = Rc<dyn Fn(&mut S, usize)>;
 type Dismiss<S> = Rc<dyn Fn(&mut S)>;
 
@@ -65,8 +62,6 @@ pub(super) struct Render<'a, S> {
     pub on_select: Select<S>,
     /// Open the submenu at a path.
     pub on_submenu: Submenu<S>,
-    /// Whether this Tab is the one opening a submenu from the keys sent.
-    pub entering: Entering<S>,
     /// Close the submenus this many levels in and deeper.
     pub close_to: CloseTo<S>,
     /// Escape, or a press outside: close the whole menu.
@@ -102,14 +97,18 @@ impl<S: 'static> Render<'_, S> {
             .iter()
             .map(|l| MenuEntry::Label(shown(l).into_owned()))
             .collect();
-        let body = self.entries(self.sections, &[], self.key, self.open, &mut rows);
+        let has_body = self.sections.iter().any(|s| !s.items.is_empty());
+        let shift = if !entries.is_empty() && has_body {
+            entries.len() + 1
+        } else {
+            entries.len()
+        };
+        let body = self.entries(self.sections, &[], (self.key, shift), self.open, &mut rows);
         if !entries.is_empty() && !body.is_empty() {
             entries.push(MenuEntry::Separator);
         }
-        // The header's separator shifts every row's index by one, so number the rows again.
-        let shift = entries.len();
         entries.extend(body);
-        let rows: Rc<Vec<Row>> = Rc::new(renumber(rows, self.key, shift));
+        let rows: Rc<Vec<Row>> = Rc::new(rows);
         for e in entries {
             menu = match e {
                 MenuEntry::Item(i) => menu.item(*i),
@@ -166,13 +165,13 @@ impl<S: 'static> Render<'_, S> {
         out
     }
 
-    /// The rune-kit entries for `sections`, under item key prefix `prefix`, numbered from 0:
-    /// the top level's caller renumbers them past the header.
+    /// The rune-kit entries for `sections`, under item key prefix `prefix`, numbered from
+    /// `start` (`shift` past the header at the top level, `0` inside submenus).
     fn entries(
         &self,
         sections: &[Section],
         path: &[usize],
-        prefix: &str,
+        (prefix, start): (&str, usize),
         open: &[usize],
         rows: &mut Vec<Row>,
     ) -> Vec<MenuEntry> {
@@ -186,9 +185,13 @@ impl<S: 'static> Render<'_, S> {
                 out.push(MenuEntry::Label(label.clone()));
             }
             for item in &section.items {
-                let key = format!("{prefix}-item{}", out.len());
+                let key = format!("{prefix}-item{}", start + out.len());
                 let mut here = path.to_vec();
                 here.push(n);
+                let enterable = item
+                    .submenu
+                    .as_deref()
+                    .is_some_and(|sub| super::model::items(sub).any(|i| i.enabled));
                 let mut mi = MenuItem::new(item.label.clone())
                     .danger(item.danger)
                     .disabled(!item.enabled);
@@ -208,19 +211,23 @@ impl<S: 'static> Render<'_, S> {
                     Some(sub) => {
                         let is_open = open.first() == Some(&n);
                         let deeper = if is_open { &open[1..] } else { &[] };
-                        let sub_entries =
-                            self.entries(sub, &here, &format!("{key}-sub"), deeper, rows);
+                        let sub_prefix = format!("{key}-sub");
+                        let sub_menu = format!("{sub_prefix}-menu");
+                        let sub_entries = self.entries(sub, &here, (&sub_prefix, 0), deeper, rows);
                         let (toggle, close_to) = (self.on_submenu.clone(), self.close_to.clone());
                         let at = here.clone();
-                        mi = mi
-                            .submenu(sub_entries, is_open)
-                            .on_select(move |s: &mut S| {
-                                if is_open {
+                        mi = mi.submenu(sub_entries, is_open).on_select_tx(
+                            move |s: &mut S, tx: &mut Tx| {
+                                if is_open && !tx.by_keys() {
                                     close_to(s, at.len() - 1);
                                 } else {
-                                    toggle(s, at.clone(), false);
+                                    toggle(s, at.clone());
+                                    if tx.by_keys() && enterable {
+                                        tx.focus(sub_menu.clone(), true);
+                                    }
                                 }
-                            });
+                            },
+                        );
                     }
                     None => {
                         let select = self.on_select.clone();
@@ -228,10 +235,6 @@ impl<S: 'static> Render<'_, S> {
                         mi = mi.on_select_tx(move |s: &mut S, tx: &mut Tx| select(s, &at, tx));
                     }
                 }
-                let enterable = item
-                    .submenu
-                    .as_deref()
-                    .is_some_and(|sub| super::model::items(sub).any(|i| i.enabled));
                 rows.push(Row {
                     key,
                     path: here,
@@ -283,7 +286,6 @@ impl<S: 'static> Render<'_, S> {
         }
         let hands = Hands {
             open: self.on_submenu.clone(),
-            entering: self.entering.clone(),
             close_to: self.close_to.clone(),
         };
         e.on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
@@ -295,18 +297,18 @@ impl<S: 'static> Render<'_, S> {
 /// What a surface's keys can ask of the menu.
 struct Hands<S> {
     open: Submenu<S>,
-    entering: Entering<S>,
     close_to: CloseTo<S>,
 }
 
 /// The surface `depth` levels in heard `ev`:
 ///
-/// - Right, Enter and Space on a submenu's row open it and send a Tab, which Rune's focus moves
-///   into it, the next focus group in the menu's modal. (A submenu of its own modal would move
-///   the keyboard too, but swallows a press outside it, so a click on the parent's rows would
-///   run nothing.) A submenu with no sensitive row opens with the keyboard left on its row.
-/// - Left in a submenu closes it. Escape anywhere is the top menu's modal's: it closes the
-///   whole menu.
+/// - Right, Enter and Space on a submenu's row open it and focus its surface (`Tx::focus`),
+///   which lands on its first sensitive row in the same commit without making the submenu a
+///   separate modal (so a click on the parent's rows still runs them, and a press outside both
+///   closes the whole menu). A submenu with no sensitive row opens with the keyboard left on its
+///   row.
+/// - Left in a submenu closes it, and its `focus_return` brings focus back to its row. Escape
+///   anywhere is the top menu's modal's: it closes the whole menu.
 /// - Tab and Shift+Tab move as Down and Up do, wrapping, as GTK's menus move (Rune's Tab
 ///   leaves a focus group whole).
 /// - Ctrl+A stays in the menu.
@@ -322,9 +324,6 @@ fn menu_key<S>(
     let plain = !(m.ctrl || m.cmd || m.alt || m.logo || m.shift);
     if ev.is_command('a') {
         return true;
-    }
-    if ev.key == Key::Tab && (hands.entering)(s) {
-        return false;
     }
     if ev.key == Key::Tab && !(m.ctrl || m.cmd || m.alt || m.logo) {
         let to = if m.shift { Key::Up } else { Key::Down };
@@ -352,42 +351,15 @@ fn menu_key<S>(
     // A surface hears only its own rows' keys: a submenu is the layer's, not a child of its
     // parent's surface.
     match focused {
-        // A submenu with no sensitive row opens, so its rows show, but the keyboard stays on
-        // its row: the Tab would find no row there and leave the menu, for the top level's
-        // first row (Rune's `tab_order` takes the next group's selected or first member).
-        Some(row) if row.submenu && !row.enterable => {
-            (hands.open)(s, row.path.clone(), false);
-            true
-        }
         Some(row) if row.submenu => {
-            if (hands.open)(s, row.path.clone(), true) {
-                tx.send_key(KeyEvent {
-                    key: Key::Tab,
-                    mods: Mods::default(),
-                });
+            (hands.open)(s, row.path.clone());
+            if row.enterable {
+                tx.focus(format!("{}-sub-menu", row.key), true);
             }
             true
         }
         _ => false,
     }
-}
-
-/// `rows` with the top level's keys moved on by `shift` entries (the header and its
-/// separator). Submenu keys hang off their row's key, so they move with it.
-fn renumber(rows: Vec<Row>, key: &str, shift: usize) -> Vec<Row> {
-    if shift == 0 {
-        return rows;
-    }
-    let prefix = format!("{key}-item");
-    rows.into_iter()
-        .map(|mut r| {
-            let rest = &r.key[prefix.len()..];
-            let digits = rest.chars().take_while(char::is_ascii_digit).count();
-            let n: usize = rest[..digits].parse().unwrap_or(0);
-            r.key = format!("{prefix}{}{}", n + shift, &rest[digits..]);
-            r
-        })
-        .collect()
 }
 
 /// How wide a compact rune-kit menu must be to show `header` and `sections` whole: each

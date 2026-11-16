@@ -21,23 +21,28 @@
 //! ```
 //!
 //! Call [`shutdown`] on the UI thread before the event loop ends: it ends a running drag and
-//! tears down P0's substrate while winit's display is alive (see `transfer`). Call it before
-//! `Tx::quit` or `AppHandle::quit`, **and** in the last window's `on_close`. Rune's
-//! `App::on_quit` runs before teardown on `Tx::quit` and `AppHandle::quit`, so call it there
-//! too, but it runs in no window when the last window closes, and Linux has no system quit to
-//! hook: the last window's `on_close` stays needed.
+//! tears down P0's substrate while winit's display is alive (see `transfer`). Call it from
+//! `App::on_quit` (which Rune runs before teardown on `Tx::quit` and `AppHandle::quit`) **and**
+//! in the last window's `on_close` (which runs when closing the last window ends the app, where
+//! `on_quit` runs in no window): both run before Rune's default `fast_exit` (`_exit`) ends the
+//! process, and before `orderly_exit` closes the display.
 //!
 //! # What Rune lacks
 //!
-//! Rune issues: none filed yet; the drafts are in `docs/rune/decisions/S5-upstream.md`.
+//! Rune issues: upstream [#171](https://github.com/anomalyco/rune/issues/171) and
+//! [#424](https://github.com/anomalyco/rune/issues/424); the drafts below are in
+//! `docs/rune/decisions/S5-upstream.md`.
 //!
-//! - **U1** (draft, not filed): `drag_out` starts nothing off macOS, takes no MIME types and
-//!   no actions, and its live-frame element snapshot is `pub(crate)`. P1's source is an
-//!   `on_drag` element, and its snapshot icon renders a second `Runtime` ([`DragIcon`]).
-//! - **U2** (draft, not filed): Wayland drops reach no handler (winit 0.30 reports none),
-//!   and no handler takes MIME types or a position per motion on either backend. P1 hears
-//!   drags through P0's `wl_data_device`, and on X11 through `XdndProxy` (which turns off
-//!   Rune's own X11 `on_drop_files`: take file drops through P1 there).
+//! - **U1** (draft, not filed): `drag_out` starts nothing on Linux (macOS and Windows only).
+//!   `DragItem` carries files, PNG data and text with copy, move and link, but takes no
+//!   arbitrary MIME types (lazy writers) and no ask action, and its live-frame element snapshot
+//!   is `pub(crate)`. P1's source is an `on_drag` element, and its snapshot icon renders a
+//!   second `Runtime` ([`DragIcon`]).
+//! - **U2** (draft comment on [#424](https://github.com/anomalyco/rune/issues/424), not posted):
+//!   Wayland drops reach no handler (winit 0.30 reports none), and no handler takes MIME types
+//!   or a position per motion on either backend. P1 hears drags through P0's `wl_data_device`,
+//!   and on X11 through `XdndProxy` (which turns off Rune's own X11 `on_drop_files`: take file
+//!   drops through P1 there).
 //! - **U9** (draft, not filed): no display handle, no hook before winit closes the display,
 //!   no every-turn hook. P0 recovers the display and runs its own reader (S2's driver C);
 //!   P1 adds neither a queue nor a thread to it (the owner's ruling on S2 Q2).
@@ -50,15 +55,15 @@
 //!   on an app window, or a target's `target` or `action` answer), the drag hasn't dropped
 //!   or ended, the pressed element is still live where it was, and P1 saw the press. A drag
 //!   no proof reaches keeps its capture until the window's next press or focus change.
-//!   Rune 2a44156 still has no public way to end it. "Rune's capture on Wayland" below lists
+//!   Rune `631e8a67` still has no public way to end it. "Rune's capture on Wayland" below lists
 //!   what remains. Tests guard it at the pinned Rune rev.
 //!
 //!   Rune #408 (`dece2aff`, in the pin) rewrote how Rune holds a press (`capture::Held`
 //!   replaces the runtime's capture fields). The Escape relies on Rune's `cancel_drag` finding
 //!   the held element by its path and answering with a cancelled `Up`, which it still does:
 //!   P1's session suites (`mise run test-platform p1::`, among them
-//!   `wayland_runes_capture_ends_when_the_drag_starts`) pass at 2a44156. Re-run them at every
-//!   Rune bump.
+//!   `wayland_runes_capture_ends_when_the_drag_starts`) pass at `2a44156` and `cancel_drag` is
+//!   unchanged at `631e8a67`. Re-run them at every Rune bump.
 //! - **U3** (draft, not filed): file-drop acceptance sees no app state and no drag identity.
 //! - **U-P1-1** (draft, not filed): an element has one handler of each kind, and a shim
 //!   can't read an element's key. So [`Dnd::drag_source`] takes the element's `on_drag` and

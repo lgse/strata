@@ -458,7 +458,10 @@ impl CollectionState {
             return;
         }
         if self.own_viewport_reveals {
-            return self.reveal_by_offset(scope, source, index, tx);
+            if let Some(target) = self.reveal_offset(source.len(), index) {
+                tx.scroll_to_instant(viewport_path(scope), 0.0, target);
+            }
+            return;
         }
         let map = self.line_map(source.len());
         // Rune runs a transaction's reveals in order, each from where the one before left the
@@ -471,9 +474,9 @@ impl CollectionState {
     }
 
     /// [`CollectionState::reveal`] as one instant scroll worked out from the geometry, to the
-    /// same place (going up, the line above at the top, under any stuck header; going down,
-    /// the entry at the bottom; nowhere when it shows): for a view a glide is moving, which a
-    /// reveal request would keep moving (C1d's S-B, a key during a band's edge scroll).
+    /// same place (going up, at the top clear of any stuck header; going down, the entry at the
+    /// bottom; where it stands when it shows): for a view a glide is moving, which a reveal
+    /// request would keep moving (C1d's S-B, a key during a band's edge scroll).
     pub(super) fn reveal_instant(
         &self,
         scope: &str,
@@ -484,28 +487,27 @@ impl CollectionState {
         if index >= source.len() || self.row_height <= 0.0 || self.viewport.w <= 0.0 {
             return self.reveal(scope, source, index, tx);
         }
-        self.reveal_by_offset(scope, source, index, tx);
+        let target = self
+            .reveal_offset(source.len(), index)
+            .unwrap_or_else(|| self.scroll.get());
+        tx.scroll_to_instant(viewport_path(scope), 0.0, target);
     }
 
-    /// The scroll of [`CollectionState::reveal_instant`], on a laid-out viewport: an offset
-    /// request on this collection's viewport alone (Rune leaves a viewport's other axis and
-    /// the viewports around it where they are).
-    fn reveal_by_offset(&self, scope: &str, source: &dyn EntrySource, index: usize, tx: &mut Tx) {
+    /// The scroll offset that brings `index` into view on this collection's viewport alone,
+    /// clear of any stuck group header, or `None` when it already shows.
+    fn reveal_offset(&self, len: usize, index: usize) -> Option<f32> {
         let h = self.row_height;
-        let map = self.line_map(source.len());
-        let line = map.line_of(index);
-        let top = line as f32 * h;
+        let map = self.line_map(len);
+        let top = map.line_of(index) as f32 * h;
         let offset = self.scroll.get();
         let covered = if map.groups().is_some() { h } else { 0.0 };
-        let above = if line > 0 { h } else { 0.0 };
-        let target = if top < offset + covered {
-            (top - above - covered).max(0.0)
+        if top < offset + covered {
+            Some((top - covered).max(0.0))
         } else if top + h > offset + self.viewport.h {
-            top + h - self.viewport.h
+            Some(top + h - self.viewport.h)
         } else {
-            offset
-        };
-        tx.scroll_to_instant(viewport_path(scope), 0.0, target);
+            None
+        }
     }
 
     // Position restore.

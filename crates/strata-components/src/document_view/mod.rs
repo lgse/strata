@@ -79,8 +79,9 @@
 //!
 //! - **D1** Tables draw static: columns sized from an estimate of their widest text, wrapping
 //!   within 320 points; no sorting or resizing (C11b).
-//! - **D2** An inline equation shows its source in the mono face: Rune draws no images inside
-//!   text (R3). It still copies as `$source$`. (Owner item.)
+//! - **D2** An inline equation shows its source in the mono face: `El::inline_icon` draws only
+//!   a square icon before a word and is skipped by selection, copy and `Role::Image`
+//!   accessibility (R3, `anomalyco/rune#350`). It still copies as `$source$`. (Owner item.)
 //! - **D3** No caret or keyboard selection: Shift with the arrows, Home and End, word steps
 //!   and Right collapsing a selection (R2). Ctrl+Home and Ctrl+End scroll to the ends.
 //!   (Owner item.)

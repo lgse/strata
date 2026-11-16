@@ -62,10 +62,10 @@ fn cost(code: &str) -> usize {
     code.len() + ENTRY_BYTES
 }
 
-/// A block colours up to its last line end within this many bytes: the cut rune-kit's
-/// `Markdown` hands an app's highlighter over (`rune_kit::syntax` cut at 32 KiB at 5d421fd;
-/// its built-in highlighter takes 128 KiB at 2a44156). C11's own blocks get the same cut, so a
-/// block colours alike either way, and one huge block can't hold the thread or the cache.
+/// A block colours up to its last line end within this many bytes: the cut C11's own blocks
+/// share with earlier `rune_kit::syntax` cuts (its built-in highlighter takes up to 128 KiB at
+/// Rune `631e8a67`), so a block colours alike either way, and one huge block can't hold the
+/// thread or the cache.
 const BLOCK_CUT: usize = 32 * 1024;
 
 /// How much of `code` gets colour: all of it, or up to its last line end within

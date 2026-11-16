@@ -146,8 +146,6 @@ pub(crate) struct ErrorDialog {
     /// The error shown; kept after the dialog closes, for its closing motion.
     shown: Option<Error>,
     open: bool,
-    /// The offered action, pressed and not yet run.
-    pending: Option<Run>,
 }
 
 /// Shows `error` over the window.
@@ -161,27 +159,21 @@ fn close(app: &mut App) {
     app.error_dialog.open = false;
 }
 
-/// The offered action: the dialog closes, and the action runs in the next poll, where the
-/// browser's answer can be applied (a dialog's button hands its handler no `Tx`).
-fn act(app: &mut App) {
+/// The offered action: the dialog closes, then the action runs between `publish` and `settle`.
+fn act(app: &mut App, tx: &mut Tx) {
     close(app);
-    let dialog = &mut app.error_dialog;
-    dialog.pending = dialog
+    let Some(run) = app
+        .error_dialog
         .shown
         .as_ref()
         .and_then(|error| error.offer.as_ref())
-        .map(|offer| offer.run.clone());
-}
-
-/// Runs the action a press left, as a handler that makes the browser act does.
-fn run_pending(app: &mut App, tx: &mut Tx) -> bool {
-    let Some(run) = app.error_dialog.pending.take() else {
-        return false;
+        .map(|offer| offer.run.clone())
+    else {
+        return;
     };
     shell::publish(app);
     run(app);
     shell::settle(app, tx);
-    true
 }
 
 fn dialog(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {
@@ -208,7 +200,7 @@ fn dialog(app: &App, frame: &mut Frame<'_, App>) -> Option<rune::El> {
             .icon(offer.icon)
             .tone(Tone::Accent)
             .secondary(labels.close.clone(), close)
-            .primary(offer.label.clone(), act),
+            .primary_tx(offer.label.clone(), act),
         None => built
             .icon(error.icon)
             .tone(error.tone)
@@ -246,12 +238,7 @@ impl Part for ErrorDialog {
             },
             shown: None,
             open: false,
-            pending: None,
         }
-    }
-
-    fn poll(app: &mut App, _: f64, tx: &mut Tx) -> bool {
-        run_pending(app, tx)
     }
 
     fn keyboard(app: &App) -> Option<Holds> {

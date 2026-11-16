@@ -34,9 +34,10 @@
 //!   white in `strata-check-on-primary`), or Catppuccin's `var(--vscode-ctp-<colour>)` in
 //!   `catppuccin/`, plus the raw colours in [`CATPPUCCIN_OWN_COLOURS`]. No named colours.
 //!
-//! Rune's single-colour rasterizer ignores `stroke-dasharray`, `stroke-miterlimit` and
-//! `clip-path`. They are allowed, as Brand colours draw them through resvg, and the
-//! Theme-colours bodies that hold them are listed in `icons/README.md` (Rune draft U-K3-3).
+//! Rune's single-colour rasterizer honours `stroke-miterlimit` on elements and groups, and
+//! ignores `stroke-dasharray` and `clip-path`. Those two are still allowed, as Brand colours
+//! draw them through resvg, and the Theme-colours bodies that hold them are listed in
+//! `icons/README.md` (Rune draft U-K3-3).
 //!
 //! std only, deterministic: sorted output, no paths, times or hash order.
 

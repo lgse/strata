@@ -10,10 +10,12 @@
 //! `chord_panel.rs`, `indicators.rs`), `src/ui/tenxer_mode.rs` and
 //! `src/ui/window/keyboard/prompts.rs`.
 //!
-//! **Rune 2a44156: partly.** Core `text_input`, `TextEdit`, `popover::anchored` and
-//! `raised`, `El::focus_return`, `Tx::focus`, `preserve_focus_on_press`, live regions,
-//! `Tx::send_key` and `Tx::wake_after` cover the field, the bar, the panels and the timers.
-//! Missing: a focus-change hook (#106, U-C6-3), a field menu for rune-kit's `TextInput`
+//! **Rune 631e8a67: partly.** Core `text_input` (with Linux primary selection and middle-click
+//! paste, IME finish-on-blur, and `El::active_descendant`), `TextEdit`, `popover::anchored` and
+//! `raised`, `El::on_background_press`, `El::focus_return` (plus unmount focus fallback and
+//! staying-mounted field blur), `Tx::focus_when_shown`, `preserve_focus_on_press`, live regions,
+//! `Tx::send_key`, `Tx::clock` and `Tx::wake_after` cover the field, the bar, the panels and the
+//! timers. Missing: a focus-change hook (#106, U-C6-3), a field menu for rune-kit's `TextInput`
 //! (U-C21-2) and a `Keybind` that keeps case (U-C18-1).
 //!
 //! # Parts
@@ -73,8 +75,8 @@
 //!   result while Enter opens it, else on the first selected result (or an unselected cursor or
 //!   the top result, Strata's `inline_search/collection.rs`; [`filter::FilterState::landing`]), as
 //!   [`filter::FilterIntent::FocusResults`], picks it, then moves the keyboard to the results:
-//!   to the bar's `focus_return` element with `Tx::focus`, else by a Tab sent from the field
-//!   (probe P1).
+//!   to the bar's `focus_return` element with `Tx::focus_when_shown`, else by a Tab sent from the
+//!   field (probe P1; blurring the staying-mounted field keeps focus where it went).
 //!   Space previews when something is selected and the host's `previews` accepts it; with only
 //!   the outline, or with Shift, it types. Escape closes the bar. A right-click, the Menu key or
 //!   Shift+F10 is [`filter::FilterIntent::FieldMenu`], never the folder menu. Rune hands Enter
@@ -147,9 +149,9 @@
 //!   above the pill, its right edge with the pill's, down two columns; it takes neither focus
 //!   nor the keyboard. The host clears the chord when a prompt opens, Settings opens, the mode
 //!   is left or the window closes.
-//! - [`Flash::show`] asks for a wake on its `Tx`; the next [`Flash::tick`] stamps the time and
-//!   asks for a wake when the 2 s are up, so the flash goes in a window at rest. A new flash
-//!   starts its 2 s again.
+//! - [`Flash::show`] stamps `Tx::clock` and schedules `Tx::wake_at` for 2 s later; [`Flash::tick`]
+//!   renews the wake for the time left and clears the flash once due, so it ends in a window at
+//!   rest. A new flash starts its 2 s again.
 //!
 //! # What assistive technology hears
 //!
@@ -317,8 +319,7 @@
 //!   than a typed character. Searched upstream issues ("keybind", "uppercase", "keycap"): none.
 //! - Reused: U-C21-2 (rune-kit's text inputs take no secondary press), #106 and U-C6-3 (no
 //!   focus-change hook), U-C6-1 (an input is always a text box: the combobox group), U-C6-4
-//!   (`PopupItem` has no rich label), U-C6-7 (scripts have no input-method event: tests use
-//!   `Runtime::ime`).
+//!   (`PopupItem` has no rich label).
 
 pub mod chord;
 pub(crate) mod field;

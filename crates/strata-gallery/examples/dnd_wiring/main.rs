@@ -133,7 +133,7 @@ fn window_app(
     })
 }
 
-fn main() {
+fn parse_args() -> (PathBuf, &'static str, bool, bool) {
     let args = rune::tooling::extra_args();
     let flag = |f: &str| args.iter().any(|a| a == f);
     let value = |f: &str| {
@@ -155,19 +155,10 @@ fn main() {
             .unwrap_or_else(|| "dnd wiring".into())
             .into_boxed_str(),
     );
-    let apply = flag("--apply");
-    rune::tooling::set_app_id("strata-dnd-wiring");
-    let handles: Handles = Arc::default();
-    let mut app = window_app(title, "main", root.clone(), apply, &handles);
-    if flag("--two-windows") {
-        let second: &'static str = Box::leak(format!("{title} second").into_boxed_str());
-        let spec = WindowSpec::from_app(
-            "second",
-            window_app(second, "second", root, apply, &handles),
-        );
-        let _ = app.window(spec);
-    }
-    let stdin_handles = handles.clone();
+    (root, title, flag("--apply"), flag("--two-windows"))
+}
+
+fn spawn_stdin(stdin_handles: Handles) {
     std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {
             let Ok(line) = line else { break };
@@ -189,6 +180,23 @@ fn main() {
             }
         }
     });
+}
+
+fn main() {
+    let (root, title, apply, two_windows) = parse_args();
+    rune::tooling::set_app_id("strata-dnd-wiring");
+    let handles: Handles = Arc::default();
+    let mut app = window_app(title, "main", root.clone(), apply, &handles);
+    if two_windows {
+        let second: &'static str = Box::leak(format!("{title} second").into_boxed_str());
+        let spec = WindowSpec::from_app(
+            "second",
+            window_app(second, "second", root, apply, &handles),
+        );
+        let _ = app.window(spec);
+    }
+    spawn_stdin(handles);
+    rune::orderly_exit();
     static DRAWN: AtomicBool = AtomicBool::new(false);
     let result = app
         .on_ready(|w: &WindowHandle| log("main", "ready", json!({ "key": w.key() })))

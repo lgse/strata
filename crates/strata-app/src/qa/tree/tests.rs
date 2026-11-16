@@ -716,3 +716,28 @@ fn an_entry_is_focusable_as_its_focus_stops_active_descendant() {
         );
     }
 }
+
+/// Rune `#732` appends a 1x1 `status` announcer to the window's children on every frame;
+/// GTK's `GtkAccessible::announce` adds no widget, so the snapshot leaves the announcer out
+/// while keeping real status bars.
+#[test]
+fn window_announcer_is_stripped_while_real_status_bars_remain() {
+    let tree = json!({
+        "role": "window",
+        "children": [
+            { "role": "group", "key": "footer", "children": [
+                { "role": "status", "key": "clipboard-status", "name": "1 item copied",
+                  "states": ["live-polite"], "bounds": [0.0, 736.0, 200.0, 24.0] },
+            ] },
+            { "role": "status", "name": "Copied\u{200b}",
+              "states": ["live-assertive"], "bounds": [0.0, 0.0, 1.0, 1.0] },
+        ],
+    });
+    let snapshot = Snapshot::read(&tree, &Drawn::default());
+    let statuses: Vec<_> = (0..)
+        .map_while(|index| snapshot.at(index))
+        .filter(|seen| seen.role() == "status bar")
+        .map(|seen| seen.name.as_str())
+        .collect();
+    assert_eq!(statuses, ["1 item copied"]);
+}

@@ -27,9 +27,11 @@
 //!   turns the camera.
 //! - **Indicator.** An image named "Camera position", described by the view's name, with no
 //!   visible caption ([`indicator`]).
-//! - **Rendering.** While another view renders, the last picture stays at 0.3 opacity. A failed
-//!   render keeps it and shows the error under the controls; the buttons try again. A first
-//!   load that fails shows "Preview unavailable" and the error, with no controls.
+//! - **Rendering.** While the initial view loads or another view renders, `<key>-picture`
+//!   carries `El::busy(true)` for assistive technology; while another view renders, the last
+//!   picture stays at 0.3 opacity. A failed render keeps it and shows the error under the
+//!   controls; the buttons try again. A first load that fails shows "Preview unavailable" and
+//!   the error, with no controls.
 //! - **The picture** is a fixed viewport (C14a, no zoom or pan) on a square box for a mesh, and
 //!   ScaleDown (never enlarged) for an embedded picture. It keeps the grab cursor and the file
 //!   drag ([`ModelView::drag_source`]).
@@ -158,7 +160,7 @@ impl<'a, S: 'static> ModelView<'a, S> {
                 Cursor::Grab
             })
             .opacity(if rendering { RENDERING_OPACITY } else { 1.0 })
-            .child(picture.build(look, cx));
+            .child(picture.build(look, cx).busy(st.busy().is_some()));
 
         if st.plain() {
             let aspect = st
@@ -173,7 +175,7 @@ impl<'a, S: 'static> ModelView<'a, S> {
                 .padding(look.space.lg)
                 .center()
                 // The cap as the height it gives: an `aspect_fit` box with a `max_w` takes the
-                // cap for the cross room at Rune 5d421fd (C13's Rune draft U-C13-4).
+                // cap for the cross room (C13's Rune draft U-C13-4).
                 .child(
                     picture
                         .aspect_fit(aspect)

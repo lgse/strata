@@ -254,14 +254,27 @@ mod prompt {
             .build(&s.look)
     }
 
-    /// The AccessKit ids of the live nodes in the tree.
+    /// The AccessKit ids of the prompt's polite live error nodes (ignoring Rune's empty
+    /// window-level announcer live region until `Tx::announce` speaks).
     fn live_nodes(rt: &Runtime<App>) -> Vec<u64> {
         rt.accessibility_tree()
             .nodes
             .iter()
-            .filter(|(_, n)| n.live() == Some(Live::Polite))
+            .filter(|(_, n)| {
+                n.live() == Some(Live::Polite)
+                    && (n.label().is_some_and(|s| !s.is_empty())
+                        || n.value().is_some_and(|s| !s.is_empty()))
+            })
             .map(|(id, _)| id.0)
             .collect()
+    }
+
+    fn field_description(rt: &Runtime<App>) -> Option<String> {
+        rt.accessibility_tree()
+            .nodes
+            .iter()
+            .find(|(_, n)| n.role() == rune::accesskit::Role::PasswordInput)
+            .and_then(|(_, n)| n.description().map(str::to_owned))
     }
 
     fn unlock(rt: &mut Runtime<App>) -> Vec<u64> {
@@ -285,8 +298,13 @@ mod prompt {
         let mut rt = Runtime::new(app, view, (420.0, 400.0), Env::new(false, 1.0));
         rt.frame(1.0 / 60.0);
         assert!(live_nodes(&rt).is_empty(), "no error before an attempt");
+        assert_eq!(field_description(&rt), None);
         let first = unlock(&mut rt);
         assert_eq!(first.len(), 1, "one error after the first attempt");
+        assert_eq!(
+            field_description(&rt).as_deref(),
+            Some("The password is incorrect.")
+        );
         let second = unlock(&mut rt);
         assert_eq!(second.len(), 1, "one error after the second attempt");
         assert_ne!(
@@ -477,5 +495,45 @@ mod element {
             heard(0, 0),
             "up, with on_leave"
         );
+    }
+
+    /// Pressing a folder crumb or "Go up one level" unmounts the activated crumb and returns
+    /// focus to the archive collection where the folder came through is highlighted, instead
+    /// of stranding focus on an earlier crumb.
+    #[test]
+    fn crumb_and_up_buttons_return_focus_to_the_archive_list() {
+        let app = App {
+            archive: ArchiveState::new("archive", tree()),
+            look: Look::fallback(false),
+            leave: false,
+            letters: false,
+        };
+        let mut rt = Runtime::new(app, view, (420.0, 400.0), Env::new(false, 1.0));
+        for _ in 0..5 {
+            rt.frame(1.0 / 60.0);
+        }
+        click(&mut rt, "docs/");
+        // Advance past the double-click interval so clicking row 0 (`api/`) opens the second level.
+        rt.frame(0.6);
+        click(&mut rt, "api/");
+        assert_eq!(rt.state.archive.listing().depth(), 2);
+
+        let focused = |rt: &mut Runtime<App>| {
+            rt.elements()
+                .into_iter()
+                .find(|e| e.focused && !e.exiting)
+                .and_then(|e| e.key)
+        };
+
+        // At depth 2 (`Contents / docs / api`), clicking `docs` unmounts `archive-crumb-1`
+        // while `archive-crumb-0` stays mounted; focus returns to `archive`, not `crumb-0`.
+        click(&mut rt, "docs");
+        assert_eq!(rt.state.archive.listing().depth(), 1);
+        assert_eq!(focused(&mut rt).as_deref(), Some("archive"));
+
+        // Clicking "Go up one level" at depth 1 returns to root and focuses `archive`.
+        click(&mut rt, "Go up one level");
+        assert!(rt.state.archive.at_root());
+        assert_eq!(focused(&mut rt).as_deref(), Some("archive"));
     }
 }

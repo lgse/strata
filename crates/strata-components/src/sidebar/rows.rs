@@ -6,7 +6,7 @@
 //! the sidebar sets the look Strata's rows have over the built row: the accent tint and
 //! icon, the neutral hover, the rail's tooltip and the device actions.
 
-use rune::{El, Key, KeyEvent, PointerButton, PointerPress, Tx, icon, row};
+use rune::{El, Key, KeyEvent, PointerPress, Side, Tx, icon, row};
 use rune_kit::shell::{RowStatus, SidebarRow};
 use rune_kit::{ControlSize, IconButton, IconButtonVariant, Keybind};
 use strata_kit::icons::IconName;
@@ -162,74 +162,90 @@ pub(crate) fn trash_icon(
     }
 }
 
-/// Activation shared by every row: a click or a middle click, Enter or Space, the 10xer
-/// keys, and the context menu.
+/// Activation shared by every row: a click (`Via::Pointer`), Return or Space through the list's
+/// focus group (`Tx::by_keys` -> `Via::Keyboard`), a middle click (`El::on_middle_press`), the
+/// 10xer keys, and the context menu.
 fn activate<S: 'static>(ctx: &Ctx<'_, S>, el: El, item: ItemId, new_tab: bool) -> El {
     let access = ctx.access;
-    let tenxer = ctx.tenxer;
     let press_emit = ctx.emit.clone();
-    let key_emit = ctx.emit.clone();
     let menu_emit = ctx.emit.clone();
     let press_item = item.clone();
-    let key_item = item.clone();
+    let menu_item = item.clone();
     let laid_out = item.clone();
-    let mut el = el
+    let el = el
         .on_layout_tx(move |s: &mut S, rect, tx: &mut Tx| {
             access(s).boxes.insert(laid_out.clone(), rect);
             tx.live_only();
         })
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-            // The press on the release that ended this row's drag (U21) opens nothing.
-            if access(s).dropped.take().as_ref() == Some(&press_item) {
+            let dropped = access(s).dropped.take();
+            // The pointer release that ended this row's drag (U21) opens nothing; a keyboard
+            // press after an off-row drag release still opens.
+            if !tx.by_keys() && dropped.as_ref() == Some(&press_item) {
                 return;
             }
-            let item = press_item.clone();
-            if tx.button() == PointerButton::Middle {
-                if new_tab {
-                    press_emit(s, SidebarIntent::OpenInNewTab { item }, tx);
-                }
-                return;
-            }
+            let via = if tx.by_keys() {
+                Via::Keyboard
+            } else {
+                Via::Pointer
+            };
             press_emit(
                 s,
                 SidebarIntent::Open {
-                    item,
-                    via: Via::Pointer,
+                    item: press_item.clone(),
+                    via,
                 },
                 tx,
             );
         })
-        .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
+        .on_secondary_press(move |s: &mut S, point: PointerPress, tx: &mut Tx| {
+            menu_emit(
+                s,
+                SidebarIntent::ContextMenu {
+                    item: Some(menu_item.clone()),
+                    point,
+                },
+                tx,
+            );
+        });
+    optional_row_handlers(ctx, el, item, new_tab)
+}
+
+fn optional_row_handlers<S: 'static>(
+    ctx: &Ctx<'_, S>,
+    mut el: El,
+    item: ItemId,
+    new_tab: bool,
+) -> El {
+    if new_tab {
+        let middle_emit = ctx.emit.clone();
+        let middle_item = item.clone();
+        el = el.on_middle_press(move |s: &mut S, tx: &mut Tx| {
+            middle_emit(
+                s,
+                SidebarIntent::OpenInNewTab {
+                    item: middle_item.clone(),
+                },
+                tx,
+            );
+        });
+    }
+    if ctx.tenxer {
+        let key_emit = ctx.emit.clone();
+        el = el.on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
             let open = |s: &mut S, tx: &mut Tx| {
                 key_emit(
                     s,
                     SidebarIntent::Open {
-                        item: key_item.clone(),
+                        item: item.clone(),
                         via: Via::Keyboard,
                     },
                     tx,
                 );
                 true
             };
-            match &ev.key {
-                Key::Enter => open(s, tx),
-                Key::Text(t) if t == " " => open(s, tx),
-                _ if tenxer => tenxer_key(s, ev, tx, &key_emit, open),
-                _ => false,
-            }
-        })
-        .on_secondary_press(move |s: &mut S, point: PointerPress, tx: &mut Tx| {
-            menu_emit(
-                s,
-                SidebarIntent::ContextMenu {
-                    item: Some(item.clone()),
-                    point,
-                },
-                tx,
-            );
+            tenxer_key(s, ev, tx, &key_emit, open)
         });
-    if ctx.new_tabs {
-        el = el.pointer_buttons([PointerButton::Middle]);
     }
     el
 }
@@ -308,7 +324,7 @@ fn dress<S>(ctx: &Ctx<'_, S>, el: El, spec: &Spec<'_>) -> El {
         el = el.focus_ring(0.0, 0.0, rune::Color::TRANSPARENT);
     }
     if ctx.rail {
-        el = el.help(spec.label);
+        el = el.help(spec.label).help_side(Side::Right);
     }
     el
 }

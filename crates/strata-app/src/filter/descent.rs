@@ -68,6 +68,7 @@ pub(super) fn finish(app: &mut App, tx: &mut Tx) {
     app.filter.typed.clear();
     shell::publish(app);
     app.filter.serial += 1;
+    app.filter.seen_in_column = false;
     let place = app
         .filter
         .open_in
@@ -86,7 +87,7 @@ pub(super) fn finish(app: &mut App, tx: &mut Tx) {
     if columns {
         app.columns.hold_header(Some(0));
     }
-    app.filter.refocus = super::Refocus::Waiting;
+    app.filter.refocus_field = true;
     app.filter.state.focus_field();
     shell::settle(app, tx);
 }

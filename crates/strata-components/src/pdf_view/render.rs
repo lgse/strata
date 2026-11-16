@@ -211,7 +211,11 @@ pub(crate) fn pages<S: 'static>(ctx: Rc<Ctx<S>>, st: &PdfState, look: &Look, sca
 
 fn wheel(st: &mut PdfState, e: WheelEvent, tx: &mut Tx) -> bool {
     // Any Ctrl, as Strata's PDF zoom takes it (`install_zoom`): the text size never sees it.
-    if !e.mods.ctrl || st.content != Content::Pages {
+    if !e.mods.ctrl {
+        st.anchor = None;
+        return false;
+    }
+    if st.content != Content::Pages {
         return false;
     }
     st.zoom_wheel(e.dy, tx);
@@ -242,7 +246,7 @@ fn page_row<S: 'static>(ctx: &Rc<Ctx<S>>, st: &PdfState, i: usize) -> El {
         .outline(1.0, 0.0, p.edge)
         .center()
         .on_layout_tx(move |s: &mut S, r: [f32; 4], tx: &mut Tx| {
-            if !get_mut(s).page_laid_out(i, zoom_gen, r, tx) {
+            if !get_mut(s).page_laid_out(i, zoom_gen, r) {
                 tx.live_only();
             }
         });
@@ -337,6 +341,7 @@ fn key_in<S: 'static>(ctx: &Ctx<S>, s: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bo
     if m.cmd || m.ctrl || m.alt || m.logo {
         return match ev.key {
             Key::Home | Key::End if !m.shift && !m.alt => {
+                st.anchor = None;
                 let y = if ev.key == Key::Home { 0.0 } else { f32::MAX };
                 tx.scroll_to_y(st.scroll_key(), y);
                 true
@@ -348,19 +353,23 @@ fn key_in<S: 'static>(ctx: &Ctx<S>, s: &mut S, ev: &KeyEvent, tx: &mut Tx) -> bo
     let off = st.feed.get().offset;
     match ev.key {
         Key::Up | Key::Down if !m.shift => {
+            st.anchor = None;
             let d = if ev.key == Key::Up { -step } else { step };
             tx.scroll_to_y(st.scroll_key(), (off[1] + d).max(0.0));
             true
         }
         Key::PageUp | Key::PageDown => {
+            st.anchor = None;
             tx.scroll_page(st.scroll_key(), if ev.key == Key::PageUp { -1 } else { 1 });
             true
         }
         Key::Right if !m.shift && st.can_pan_right() => {
+            st.anchor = None;
             tx.scroll_to_x(st.scroll_key(), off[0] + step);
             true
         }
         Key::Left if !m.shift && st.can_pan_left() => {
+            st.anchor = None;
             tx.scroll_to_x(st.scroll_key(), (off[0] - step).max(0.0));
             true
         }

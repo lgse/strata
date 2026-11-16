@@ -250,8 +250,9 @@ impl<S: 'static> SettingsSearch<S> {
         // Probe P3 (C20c plan): a reveal in the Tx that shows the page lands on the new row.
         tx.scroll_into_view(target.clone());
         (self.get_mut)(s).flash(row, tx);
-        // The page shows in this change, and the focus request resolves against it.
-        tx.focus(target, tx.focus_visible() || tx.by_keys());
+        // The page shows in this change (or as it mounts), and the focus request resolves
+        // against it.
+        tx.focus_when_shown(target, tx.focus_visible() || tx.by_keys());
         true
     }
 

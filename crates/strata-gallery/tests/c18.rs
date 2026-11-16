@@ -106,7 +106,7 @@ mod c18 {
     #[test]
     fn escape_while_composing_keeps_the_filter_open() {
         let mut rt = mount("c18-filter-target-light");
-        rt.ime(Ime::Preedit("か".into(), Some((3, 3))));
+        rt.ime(Ime::Preedit("か".into(), Some((3, 3)), Vec::new()));
         rt.frame(FRAME);
         key(&mut rt, Key::Escape, Mods::default());
         run(&mut rt, 0.2);
@@ -121,7 +121,7 @@ mod c18 {
         let mut rt = mount("c18-tenxer-light");
         typ(&mut rt, "/");
         assert!(rt.state.c18.prompt.focused());
-        rt.ime(Ime::Preedit("ぱ".into(), Some((3, 3))));
+        rt.ime(Ime::Preedit("ぱ".into(), Some((3, 3)), Vec::new()));
         rt.frame(FRAME);
         key(&mut rt, Key::Enter, Mods::default());
         run(&mut rt, 0.1);
@@ -304,7 +304,7 @@ mod c18 {
     #[test]
     fn down_and_space_while_composing_stay_with_the_composition() {
         let mut rt = mount("c18-filter-picked-light");
-        rt.ime(Ime::Preedit("か".into(), Some((3, 3))));
+        rt.ime(Ime::Preedit("か".into(), Some((3, 3)), Vec::new()));
         rt.frame(FRAME);
         key(&mut rt, Key::Down, Mods::default());
         key(&mut rt, Key::Text(" ".into()), Mods::default());
@@ -324,7 +324,7 @@ mod c18 {
         let mut rt = mount("c18-prompt-go-light");
         run(&mut rt, 0.5);
         assert_eq!(rt.state.c18.prompt.chosen_index(), Some(0));
-        rt.ime(Ime::Preedit("か".into(), Some((3, 3))));
+        rt.ime(Ime::Preedit("か".into(), Some((3, 3)), Vec::new()));
         rt.frame(FRAME);
         key(&mut rt, Key::Down, Mods::default());
         run(&mut rt, 0.2);

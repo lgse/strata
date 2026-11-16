@@ -6,8 +6,7 @@
 //! inside a scroll pane, which assistive technology meets as such.
 
 use rune::{
-    Cursor, El, Key, KeyEvent, Mods, PointerButton, PointerEvent, Tx, WheelEvent, col, el, icon,
-    row, text,
+    Cursor, El, Key, KeyEvent, Mods, PointerEvent, Tx, WheelEvent, col, el, icon, row, text,
 };
 use strata_kit::icons::IconName;
 
@@ -147,8 +146,8 @@ fn gap<S: 'static>(cx: &Ctx<'_, S>, name: String) -> El {
 }
 
 /// A press that opens the entry: on a separator, a gap, the current crumb or the empty space.
-/// Each takes its own, as the viewport is a scroll pane and Rune presents a box that takes
-/// presses as a button.
+/// Attached to those slices rather than the scroll viewport so ancestor crumbs keep their own
+/// presses cleanly.
 fn opens_the_entry<S: 'static>(cx: &Ctx<'_, S>) -> impl Fn(&mut S, &mut Tx) + 'static {
     let (access, emit, text) = (cx.access, cx.emit.clone(), cx.trail.text.clone());
     move |s: &mut S, tx: &mut Tx| {
@@ -199,39 +198,41 @@ fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb) -> El {
             .fill(look.fill.highlight)
             .outline(RING, -RING, k.c.border_focus);
     }
-    let id = crumb.id.clone();
-    let (press_id, key_id) = (id.clone(), id.clone());
+    ancestor_handlers(cx, button, i, &crumb.id)
+}
+
+fn has_command_mod(mods: Mods) -> bool {
+    mods.ctrl || mods.alt || mods.cmd
+}
+
+fn is_plain_return(ev: &KeyEvent) -> bool {
+    ev.key == Key::Enter && !has_command_mod(ev.mods)
+}
+
+fn ancestor_handlers<S: 'static>(cx: &Ctx<'_, S>, button: El, i: usize, id: &str) -> El {
+    let (press_id, key_id) = (id.to_owned(), id.to_owned());
     let (emit, key_emit) = (cx.emit.clone(), cx.emit.clone());
-    let open_in_new = cx.open_in_new;
     let access = cx.access;
-    button = button
+    let mut button = button
         .on_hover_change(move |s: &mut S, over: bool, _: &mut Tx| access(s).hover_crumb(i, over))
         .on_press_tx(move |s: &mut S, tx: &mut Tx| {
-            let id = press_id.clone();
-            let intent = if tx.button() == PointerButton::Middle {
-                let m = tx.mods();
-                if m.ctrl || m.shift {
-                    LocationIntent::OpenInNewWindow { id }
-                } else {
-                    LocationIntent::OpenInNewTab { id }
-                }
-            } else {
+            emit(
+                s,
                 LocationIntent::Open {
-                    id,
+                    id: press_id.clone(),
                     via: Via::Click,
-                }
-            };
-            emit(s, intent, tx);
+                },
+                tx,
+            );
         })
         // Return presses a focused crumb, as GTK's buttons take it (Rune gives a focused
         // button's Return to the default button).
         .on_key(move |s: &mut S, ev: &KeyEvent, tx: &mut Tx| {
-            if ev.key == Key::Enter && !(ev.mods.ctrl || ev.mods.alt || ev.mods.cmd) {
-                let id = key_id.clone();
+            if is_plain_return(ev) {
                 key_emit(
                     s,
                     LocationIntent::Open {
-                        id,
+                        id: key_id.clone(),
                         via: Via::Click,
                     },
                     tx,
@@ -240,11 +241,22 @@ fn ancestor<S: 'static>(cx: &Ctx<'_, S>, i: usize, crumb: &Crumb) -> El {
             }
             false
         });
-    if open_in_new {
-        button = button.pointer_buttons([PointerButton::Middle]);
+    if cx.open_in_new {
+        let middle_id = id.to_owned();
+        let middle_emit = cx.emit.clone();
+        button = button.on_middle_press(move |s: &mut S, tx: &mut Tx| {
+            let m = tx.mods();
+            let id = middle_id.clone();
+            let intent = if m.ctrl || m.shift {
+                LocationIntent::OpenInNewWindow { id }
+            } else {
+                LocationIntent::OpenInNewTab { id }
+            };
+            middle_emit(s, intent, tx);
+        });
     }
     cx.dnd
-        .drop_zone_keyed(button, crumb_key(cx.key, i), drops::zone(cx, i, &id))
+        .drop_zone_keyed(button, crumb_key(cx.key, i), drops::zone(cx, i, id))
 }
 
 /// Return presses a focused button as Space does, as GTK's buttons take both (finding

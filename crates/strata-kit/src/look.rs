@@ -536,7 +536,7 @@ impl Ladder {
 ///
 /// Strata's are 32, 64, 128 and 256 px ([`Look::fallback`]). Rune draws a streamed `Pixels`
 /// bilinearly with no mipmaps (C25's draft U-C25-1), which averages cleanly only down to 2:1,
-/// so each class is twice the one below it: the class a draw gets is less than twice its size
+/// so each class is twice the one below it: the class a draw gets is at most twice its size
 /// for any draw of 16 px or more, where a 128 px image drawn at 37 px aliases.
 ///
 /// There is no 512 px class for tiles over 128 pt at scale 2. Strata renders no thumbnail

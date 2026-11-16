@@ -228,6 +228,7 @@ mod demo {
                 std::process::exit(status);
             }
         };
+        rune::orderly_exit();
         rune::set_app_id(APP_ID);
         let app = App::new(AppSpec::new(
             "Single instance demo",

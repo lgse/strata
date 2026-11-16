@@ -97,30 +97,53 @@ fn view(_: &Controller, _: &mut Cx<Controller>) -> El {
     col()
 }
 
-/// Claims the app id, then runs the controller until the last window closes. Returns the exit
-/// status.
-pub fn run(options: Options) -> i32 {
+fn claim_primary() -> Result<Primary, i32> {
     let id = AppId::new(APP_ID).unwrap_or_else(|e| panic!("{APP_ID}: {e:?}"));
-    let primary = match claim(&id, Launch::from_env(), &ClaimOptions::default()) {
+    match claim(&id, Launch::from_env(), &ClaimOptions::default()) {
         Claim::Primary(p) => {
             log(
                 "claim",
                 json!({ "result": "primary", "pid": std::process::id() }),
             );
-            p
+            Ok(p)
         }
         Claim::Standalone(p, reason) => {
             log(
                 "claim",
                 json!({ "result": "standalone", "reason": format!("{reason:?}") }),
             );
-            p
+            Ok(p)
         }
         Claim::Forwarded(status) => {
             log("claim", json!({ "result": "forwarded", "status": status }));
-            return status;
+            Err(status)
         }
+    }
+}
+
+fn start_glib(state: &mut Controller, wake: AppHandle<Controller>) {
+    match GlibThread::start(Arc::new(move || wake.wake())) {
+        Ok(bridge) => {
+            state.mount_changes = Some(watch_mounts(&bridge));
+            state.file_changes = state.path.clone().map(|path| watch_file(&bridge, path));
+            state.listing = Some(list_mounts(&bridge));
+            state.bridge = Some(bridge);
+        }
+        Err(e) => {
+            log("glib", json!({ "error": e.to_string() }));
+            state.mounts = Volumes::Failed(format!("No GLib bridge: {e}"));
+        }
+    }
+}
+
+/// Claims the app id, then runs the controller until the last window closes. Returns the exit
+/// status.
+pub fn run(options: Options) -> i32 {
+    let primary = match claim_primary() {
+        Ok(p) => p,
+        Err(status) => return status,
     };
+    rune::orderly_exit();
     rune::set_app_id(APP_ID);
 
     let theme_id = options.theme.as_deref().unwrap_or(DEFAULT_ID);
@@ -154,20 +177,7 @@ pub fn run(options: Options) -> i32 {
     // Read the file once before any window opens, so the first frame has its look.
     let first = state.path.as_deref().map(read_now);
     state.first_read(first.unwrap_or(Ok(None)));
-
-    let wake = handle.clone();
-    match GlibThread::start(Arc::new(move || wake.wake())) {
-        Ok(bridge) => {
-            state.mount_changes = Some(watch_mounts(&bridge));
-            state.file_changes = state.path.clone().map(|path| watch_file(&bridge, path));
-            state.listing = Some(list_mounts(&bridge));
-            state.bridge = Some(bridge);
-        }
-        Err(e) => {
-            log("glib", json!({ "error": e.to_string() }));
-            state.mounts = Volumes::Failed(format!("No GLib bridge: {e}"));
-        }
-    }
+    start_glib(&mut state, handle.clone());
 
     // The watcher's first answer arrives as a snapshot; until then the defaults stand.
     let settings_handle = handle.clone();

@@ -64,3 +64,22 @@ fn only_a_text_field_whose_caret_the_tree_places_is_read() {
     let read = state(&empty, false).expect("an empty field");
     assert_eq!((read.caret, read.selection, read.focused), (0, None, false));
 }
+
+#[test]
+fn focused_field_byte_range_places_selections_across_lines_and_multibyte_characters() {
+    for (text, edit_range, selection, caret) in [
+        ("one\ntwo", [4, 7], Some([4, 7]), 7),
+        ("one\ntwo", [7, 0], Some([0, 7]), 0),
+        ("日本語\nテスト", [10, 19], Some([4, 7]), 7),
+        ("re\u{301}sume\u{301}", [4, 10], Some([3, 8]), 8),
+    ] {
+        let multiline = Seen {
+            role: "multiline-text-input".to_owned(),
+            selection: Some([2, 0, 2, 3]),
+            edit_range: Some(edit_range),
+            ..field(text, 0, 0)
+        };
+        let read = state(&multiline, true).expect("focused multiline field");
+        assert_eq!((read.selection, read.caret), (selection, caret), "{text:?}");
+    }
+}

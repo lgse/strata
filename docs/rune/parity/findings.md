@@ -1733,8 +1733,10 @@ sequence only together with the alphabet's version, so the version is part of th
   Tab stop are settable, so C7's `BrowserTabs` cannot pass Strata's label.
 - **Concerns:** the strip's accessible names ([A4](packages/A4.md)'s done-when item 2) in the
   twelve languages other than English. No run reads the name in another language.
-- **State:** open, no workaround. Rune packet entry
-  [39](../upstream/rune/39-kit-tab-strip.md), item 1 (U-C7-1), asks for `close_label`.
+- **State:** fixed on Rune `631e8a67` (`rune_kit::shell::TabStrip::words` / `TabWords::close`,
+  anomalyco/rune#922, packet entry [39](../upstream/rune/39-kit-tab-strip.md) item 1): C7's
+  `BrowserTabs::words` forwards `TabWords` to `TabStrip`, and `strata-app`'s `tab_strip` passes
+  GTK's translated `"Close tab"` string (`the_close_buttons_speak_the_users_language`).
 
 ### #2473: a close the window manager asks for is not refused while file operations run
 
